@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-11-21T20:05:25Z
+  page:             frescopa-atelier-cafe-html
+  slug:             frescopa-atelier-cafe-html
+  pagePath:         migrated/cafe.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/frescopa-atelier-cafe-html-proposed.html
+  sourceCurrent:    stardust/current/pages/frescopa-atelier-cafe-html.json
+  againstDirection: stardust/direction.md (Active)
+  designMd:         DESIGN.md (sha: 2b3e154a30bc)
+  designJson:       DESIGN.json (sha: a3e828d436de)
+  canonShas:        header:4a8f369e8fef footer:b671270abc23 css:b989c60f9f0c
+  decisionTrace:    cafe._meta.json
+  brokenInternalLinks: 2
+  stardustVersion:  local
+-->
+<style>
+:root {
+  color-scheme: light;
+  --burgundy: oklch(0.34 0.093 25);
+  --burgundy-deep: oklch(0.275 0.082 26);
+  --terracotta: oklch(0.605 0.116 44);
+  --terracotta-deep: oklch(0.515 0.108 40);
+  --amber: oklch(0.79 0.128 74);
+  --amber-soft: oklch(0.865 0.083 80);
+  --teal: oklch(0.55 0.05 205);
+  --paper: oklch(0.970 0.010 82);
+  --paper-2: oklch(0.948 0.015 78);
+  --paper-3: oklch(0.918 0.020 74);
+  --sand: oklch(0.884 0.025 71);
+  --line: oklch(0.855 0.018 68);
+  --ink: oklch(0.262 0.021 52);
+  --ink-soft: oklch(0.430 0.022 52);
+  --charcoal: oklch(0.222 0.016 52);
+  --charcoal-2: oklch(0.282 0.020 50);
+  --line-dark: oklch(0.400 0.020 55);
+  --cream: oklch(0.945 0.016 80);
+  --cream-soft: oklch(0.795 0.021 78);
+  --bg: var(--paper);
+  --fg: var(--ink);
+  /* Semantic aliases (_ds tokens/colors.css), used by React page types. */
+  --surface-raised: var(--paper-2);
+  --surface-card: var(--paper);
+  --surface-dark: var(--charcoal);
+  --text-body: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-heading: var(--burgundy);
+  --text-on-dark: var(--cream);
+  --accent: var(--terracotta);
+  --focus: var(--terracotta);
+  /* Families: the source's rendered faces (atelier.css `.atelier` override). */
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "Hanken Grotesk", system-ui, sans-serif;
+  --fs-eyebrow: 0.75rem;
+  --fs-sm: 0.9375rem;
+  --fs-body: 1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4: clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h3: clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);
+  --fs-h2: clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --fs-h1: clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);
+  --lh-tight: 1.03;
+  --lh-snug: 1.15;
+  --lh-body: 1.62;
+  --tracking-eyebrow: 0.2em;
+  --tracking-tight: -0.02em;
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem);
+  --content: 1120px;
+  --content-wide: 1320px;
+  --content-narrow: 760px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+}
+</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Fréscopa — Café","url":"https://markszulc.github.io/frescopa-atelier/cafe.html"}</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fréscopa — Café</title>
+  <link rel="preload" href="../assets/shared/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/shared/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../assets/shared/canon.css">
+  <link rel="stylesheet" href="../assets/frescopa-atelier-cafe-html.css">
+  <script defer src="../assets/shared/canon.js"></script>
+  <script defer src="../assets/frescopa-atelier-cafe-html.js"></script>
+</head>
+<body>
+<div class="page page--app">
+
+  <header class="header header--app" data-header>
+    <div class="container header__inner">
+      <a class="header__brand" href="../frescopa-atelier/index.html" aria-label="Fréscopa home" data-broken-link="true">
+        <img class="header__logo header__logo--light" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="110" height="30">
+        <img class="header__logo header__logo--dark" src="../assets/media/frescopa-logo.svg" alt="" width="110" height="30">
+      </a>
+      <nav class="nav" id="primary-nav" data-nav aria-label="Primary">
+        <a href="../frescopa-atelier/landing.html">The Atelier</a>
+        <a href="../frescopa-atelier/machines.html">Machines</a>
+        <a href="../frescopa-atelier/beverages.html">Beverages</a>
+        <a href="../frescopa-atelier/cafe.html" aria-current="page">Café</a>
+        <a href="../frescopa-atelier/blog.html">Journal</a>
+      </nav>
+      <div class="header__utils">
+        <button class="iconbtn" aria-label="Search">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Account">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn iconbtn--cart" aria-label="Cart, 0 items">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"/></svg>
+        </button>
+        <button class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false" aria-controls="primary-nav"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+  <main id="main" class="cafe" data-template="frescopa-atelier-cafe-html">
+    <section class="cafe-hero" data-section="1">
+      <img class="cafe-hero__img" src="../assets/media/cafe-interior.jpg" alt="Inside a Fréscopa café" width="1408" height="768" fetchpriority="high">
+      <div class="cafe-hero__scrim"></div>
+      <div class="cafe-hero__inner">
+        <span class="cafe-hero__eyebrow">The café &amp; showroom</span>
+        <h1 class="cafe-hero__title">Come taste the whole of Fréscopa.</h1>
+        <p class="cafe-hero__lead">Part coffee bar, part showroom, part gathering place. Sit with a cup, get hands-on with the machines, and stay for a class — no purchase, no pressure.</p>
+        <div class="cafe-hero__actions">
+          <a class="btn btn--cream" href="#locations">Find your nearest café<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="#experience">See what's inside</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-sec" data-section="2">
+      <div class="container">
+        <span class="cafe-eyebrow">Why come in</span>
+        <h2 class="cafe-title cafe-title--20">Reasons to make the trip.</h2>
+        <div class="reasons">
+          <div class="reason">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z"/><path d="M17 9h2a2.5 2.5 0 0 1 0 5h-2"/><path d="M7 4c0 .8-.5 1.2-.5 2M11 4c0 .8-.5 1.2-.5 2"/></svg>
+            <h3 class="reason__title">Taste before you commit</h3>
+            <p class="reason__text">Flight through the coffee, tea and cold-press range at the bar. Find the cup you'll want at home.</p>
+          </div>
+          <div class="reason">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M14 8h3M14 11h3M7 15h10"/></svg>
+            <h3 class="reason__title">Meet the machines</h3>
+            <p class="reason__text">Pull a shot on the Atelier line yourself. Feel the difference before it lands on your counter.</p>
+          </div>
+          <div class="reason">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c-3 2-6 2-7 2 0 6 2.5 10 7 12 4.5-2 7-6 7-12-1 0-4 0-7-2Z"/><path d="M9 11l2 2 4-4"/></svg>
+            <h3 class="reason__title">Learn from the team</h3>
+            <p class="reason__text">Brewing classes, latte-art labs and cuppings led by people who do it every day.</p>
+          </div>
+          <div class="reason">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15 19a4.5 4.5 0 0 1 6-3.9"/></svg>
+            <h3 class="reason__title">Somewhere to linger</h3>
+            <p class="reason__text">A warm room to meet, work, or read the morning away. Come for the coffee, stay for the quiet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-sec cafe-sec--alt" id="experience" data-section="3">
+      <div class="container">
+        <span class="cafe-eyebrow">The experience</span>
+        <h2 class="cafe-title cafe-title--22">Three rooms, one long morning.</h2>
+        <div class="room">
+          <div class="room__body">
+            <span class="room__eyebrow">01 · The taste bar</span>
+            <h3 class="room__title">Every drink we make, poured to order.</h3>
+            <p class="room__text">Sit at the bar and work through the range — espresso and slow-pour coffee, loose-leaf tea, and cold-pressed juice. Our team talks you through each one and builds a tasting flight around what you like. It's the fastest way to find your everyday cup.</p>
+            <div class="room__cta"><a class="link" href="../frescopa-atelier/coffee.html" data-broken-link="true">Browse the coffee range<span class="arrow" aria-hidden="true">→</span></a></div>
+          </div>
+          <div class="room__media"><img src="../assets/media/espresso-pour.jpg" alt="Espresso poured at the bar" width="1408" height="768" loading="lazy"></div>
+        </div>
+        <div class="room room--flip">
+          <div class="room__media"><img src="../assets/media/hero-machine.jpg" alt="The Atelier machine on display" width="1408" height="768" loading="lazy"></div>
+          <div class="room__body">
+            <span class="room__eyebrow">02 · The showroom</span>
+            <h3 class="room__title">Get your hands on the whole line.</h3>
+            <p class="room__text">The full Atelier range is set up and running. Pull your own shot, watch the machine learn a profile, and ask the questions a spec sheet can't answer. When you're ready, we'll help you pick the one that fits your kitchen — or arrange a home delivery.</p>
+            <div class="room__cta"><a class="link" href="../frescopa-atelier/machines.html">Explore the machines<span class="arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </div>
+        <div class="room">
+          <div class="room__body">
+            <span class="room__eyebrow">03 · The table</span>
+            <h3 class="room__title">Learn something, meet someone.</h3>
+            <p class="room__text">Most evenings the long table hosts something — a brewing class, a latte-art lab, a cupping, or just a slow community morning. Classes are small and hands-on, and most are free with a drink. Check what's on below and save a seat.</p>
+            <div class="room__cta"><a class="link" href="#whatson">See what's on<span class="arrow" aria-hidden="true">→</span></a></div>
+          </div>
+          <div class="room__media"><img src="../assets/media/tea-moment.jpg" alt="A shared moment over tea" width="1408" height="768" loading="lazy"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-sec" id="whatson" data-section="4">
+      <div class="container">
+        <div class="whatson__head">
+          <div>
+            <span class="cafe-eyebrow">What's on</span>
+            <h2 class="cafe-title">This week at the table.</h2>
+          </div>
+          <p class="whatson__note">Free with a drink unless noted</p>
+        </div>
+        <div class="events">
+          <article class="event">
+            <span class="event__day">Tuesday</span>
+            <h3 class="event__title">Origins cupping</h3>
+            <p class="event__text">Taste three single-origin lots side by side and learn to name what you taste.</p>
+            <div class="event__foot"><span class="event__time">6:30–7:30pm</span><span class="event__price">Free</span></div>
+          </article>
+          <article class="event">
+            <span class="event__day">Wednesday</span>
+            <h3 class="event__title">Latte-art lab</h3>
+            <p class="event__text">Hands-on milk steaming and pour practice on the Atelier line. Beginners welcome.</p>
+            <div class="event__foot"><span class="event__time">6:00–7:30pm</span><span class="event__price">$15</span></div>
+          </article>
+          <article class="event">
+            <span class="event__day">Thursday</span>
+            <h3 class="event__title">Home brewing 101</h3>
+            <p class="event__text">Dial in grind, dose and time for a filter cup you can repeat at home.</p>
+            <div class="event__foot"><span class="event__time">6:30–8:00pm</span><span class="event__price">Free</span></div>
+          </article>
+          <article class="event">
+            <span class="event__day">Saturday</span>
+            <h3 class="event__title">Slow morning cupping</h3>
+            <p class="event__text">A relaxed community tasting over pastries. Drop in, no booking needed.</p>
+            <div class="event__foot"><span class="event__time">9:00–11:00am</span><span class="event__price">Free</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-sec cafe-sec--alt" id="locations" data-section="5">
+      <div class="container">
+        <span class="cafe-eyebrow">Find us</span>
+        <h2 class="cafe-title cafe-title--xl">There's a Fréscopa in your town.</h2>
+        <p class="locations__lede">From flagship showrooms to the café on the corner, we're probably closer than you think. Every café pours the full range — showrooms and workshop tables vary by location.</p>
+        <div class="stats">
+          <div class="stat"><span class="stat__num">1,200+</span><span class="stat__label">Cafés nationwide</span></div>
+          <div class="stat"><span class="stat__num">190</span><span class="stat__label">Cities</span></div>
+          <div class="stat"><span class="stat__num">48</span><span class="stat__label">States</span></div>
+          <div class="stat"><span class="stat__num">12</span><span class="stat__label">Flagship showrooms</span></div>
+        </div>
+        <article class="flagship">
+          <div class="flagship__media">
+            <image-slot id="cafe-flagship" shape="rect" placeholder="Fréscopa SoHo flagship"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">Fréscopa SoHo flagship</div></div><div class="ring"></div></template></image-slot>
+            <div class="flagship__badge"><span class="badge badge--burgundy">Flagship</span></div>
+          </div>
+          <div class="flagship__body">
+            <span class="flagship__eyebrow">New York · SoHo</span>
+            <h3 class="flagship__title">The Fréscopa flagship</h3>
+            <p class="flagship__text">Our largest room: a full taste bar, the complete showroom, and a dedicated workshop table upstairs. The best place to spend an unhurried afternoon in the Fréscopa world.</p>
+            <div class="flagship__tags"><span class="tag">Café</span><span class="tag">Showroom</span><span class="tag">Workshops</span></div>
+            <div class="flagship__meta"><span>112 Greene Street, New York, NY</span><span class="flagship__hours">Mon–Sun · 7am–8pm</span></div>
+            <div class="flagship__cta"><a class="btn btn--terracotta" href="#">Get directions<span class="arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </article>
+        <div class="finder" data-finder>
+          <div class="finder__search">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="finder__input" type="text" placeholder="Search by city, neighborhood or ZIP" data-finder-search>
+          </div>
+          <div class="finder__pills">
+            <button class="filter-pill is-active" type="button" data-region="all" aria-pressed="true">All regions</button>
+            <button class="filter-pill" type="button" data-region="East" aria-pressed="false">East</button>
+            <button class="filter-pill" type="button" data-region="Midwest" aria-pressed="false">Midwest</button>
+            <button class="filter-pill" type="button" data-region="South" aria-pressed="false">South</button>
+            <button class="filter-pill" type="button" data-region="West" aria-pressed="false">West</button>
+          </div>
+          <div class="finder__grid">
+            <div class="finder__map">
+              <image-slot id="cafe-map" shape="rect" placeholder="Map of Fréscopa cafés near you"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">Map of Fréscopa cafés near you</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <div class="finder__results">
+              <p class="finder__count" data-finder-count>26 cafés near you</p>
+              <div class="finder__list" data-finder-list>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Williamsburg</h3><span class="loc__city">Brooklyn, NY</span></div>
+                    <p class="loc__addr">134 N 6th St, Brooklyn, NY</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–8pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Seaport</h3><span class="loc__city">Boston, MA</span></div>
+                    <p class="loc__addr">48 Harbor Way, Boston, MA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Back Bay</h3><span class="loc__city">Boston, MA</span></div>
+                    <p class="loc__addr">221 Newbury St, Boston, MA</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 6:30am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Rittenhouse</h3><span class="loc__city">Philadelphia, PA</span></div>
+                    <p class="loc__addr">1820 Walnut St, Philadelphia, PA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Georgetown</h3><span class="loc__city">Washington, DC</span></div>
+                    <p class="loc__addr">3040 M St NW, Washington, DC</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="East">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Ponce City Market</h3><span class="loc__city">Atlanta, GA</span></div>
+                    <p class="loc__addr">675 Ponce De Leon Ave NE, Atlanta, GA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–8pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="Midwest">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa West Loop</h3><span class="loc__city">Chicago, IL</span></div>
+                    <p class="loc__addr">905 W Fulton Market, Chicago, IL</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="Midwest">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Wicker Park</h3><span class="loc__city">Chicago, IL</span></div>
+                    <p class="loc__addr">1547 N Milwaukee Ave, Chicago, IL</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 6:30am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="Midwest">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa North Loop</h3><span class="loc__city">Minneapolis, MN</span></div>
+                    <p class="loc__addr">215 N Washington Ave, Minneapolis, MN</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–6pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="Midwest">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Crossroads</h3><span class="loc__city">Kansas City, MO</span></div>
+                    <p class="loc__addr">1801 Grand Blvd, Kansas City, MO</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–6pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="Midwest">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa RiNo</h3><span class="loc__city">Denver, CO</span></div>
+                    <p class="loc__addr">2601 Larimer St, Denver, CO</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa South Congress</h3><span class="loc__city">Austin, TX</span></div>
+                    <p class="loc__addr">1601 S Congress Ave, Austin, TX</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–6pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa The Domain</h3><span class="loc__city">Austin, TX</span></div>
+                    <p class="loc__addr">11700 Domain Blvd, Austin, TX</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–8pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Deep Ellum</h3><span class="loc__city">Dallas, TX</span></div>
+                    <p class="loc__addr">2822 Main St, Dallas, TX</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa The Heights</h3><span class="loc__city">Houston, TX</span></div>
+                    <p class="loc__addr">714 Yale St, Houston, TX</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Wynwood</h3><span class="loc__city">Miami, FL</span></div>
+                    <p class="loc__addr">2750 NW 3rd Ave, Miami, FL</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–9pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="South">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Warehouse District</h3><span class="loc__city">New Orleans, LA</span></div>
+                    <p class="loc__addr">640 Julia St, New Orleans, LA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Ferry Building</h3><span class="loc__city">San Francisco, CA</span></div>
+                    <p class="loc__addr">1 Ferry Building, San Francisco, CA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Hayes Valley</h3><span class="loc__city">San Francisco, CA</span></div>
+                    <p class="loc__addr">556 Hayes St, San Francisco, CA</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 6:30am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Capitol Hill</h3><span class="loc__city">Seattle, WA</span></div>
+                    <p class="loc__addr">520 E Pine St, Seattle, WA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 6:30am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Ballard</h3><span class="loc__city">Seattle, WA</span></div>
+                    <p class="loc__addr">5405 Ballard Ave NW, Seattle, WA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Pearl District</h3><span class="loc__city">Portland, OR</span></div>
+                    <p class="loc__addr">1130 NW Everett St, Portland, OR</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Arts District</h3><span class="loc__city">Los Angeles, CA</span></div>
+                    <p class="loc__addr">720 E 3rd St, Los Angeles, CA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span><span class="tag">Workshops</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–8pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Silver Lake</h3><span class="loc__city">Los Angeles, CA</span></div>
+                    <p class="loc__addr">2909 Sunset Blvd, Los Angeles, CA</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 6:30am–8pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Little Italy</h3><span class="loc__city">San Diego, CA</span></div>
+                    <p class="loc__addr">1660 India St, San Diego, CA</p>
+                    <div class="loc__tags"><span class="tag">Café</span><span class="tag">Showroom</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+                <article class="loc" data-region="West">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  <div class="loc__body">
+                    <div class="loc__head"><h3 class="loc__name">Fréscopa Roosevelt Row</h3><span class="loc__city">Phoenix, AZ</span></div>
+                    <p class="loc__addr">814 N 2nd St, Phoenix, AZ</p>
+                    <div class="loc__tags"><span class="tag">Café</span></div>
+                    <div class="loc__foot"><span class="loc__hours">Mon–Sun · 7am–7pm</span><a class="link link--sm" href="#">Directions<span class="arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-sec" id="tour" data-section="6">
+      <div class="container">
+        <div class="tour">
+          <div class="tour__intro">
+            <span class="cafe-eyebrow">Book an Atelier tour</span>
+            <h2 class="cafe-title cafe-title--18">A guided hour with the machine that learns you.</h2>
+            <p class="tour__text">Book a free, 45-minute private tour at any showroom café. A specialist walks you through the Atelier line, dials a shot to your taste, and answers everything a spec sheet can't. No obligation to buy.</p>
+            <ul class="tour__list">
+              <li><span class="tour__arrow" aria-hidden="true">→</span><span>45 minutes, one-to-one with a specialist</span></li>
+              <li><span class="tour__arrow" aria-hidden="true">→</span><span>Taste the full range, dialled to your palate</span></li>
+              <li><span class="tour__arrow" aria-hidden="true">→</span><span>Free, and yours to book whenever suits</span></li>
+            </ul>
+          </div>
+          <div class="tour__card" data-tour>
+            <form class="tour-form" action="#" data-tour-form novalidate>
+              <h3 class="tour-form__title">Reserve your tour</h3>
+              <label class="field">
+                <span class="field__label">Café</span>
+                <select class="field__control" data-field="cafe">
+                  <option value="">Choose a showroom café</option>
+                  <option value="Fréscopa SoHo, Flagship — New York, NY">Fréscopa SoHo, Flagship — New York, NY</option>
+                  <option value="Fréscopa Williamsburg — Brooklyn, NY">Fréscopa Williamsburg — Brooklyn, NY</option>
+                  <option value="Fréscopa Seaport — Boston, MA">Fréscopa Seaport — Boston, MA</option>
+                  <option value="Fréscopa Georgetown — Washington, DC">Fréscopa Georgetown — Washington, DC</option>
+                  <option value="Fréscopa Ponce City Market — Atlanta, GA">Fréscopa Ponce City Market — Atlanta, GA</option>
+                  <option value="Fréscopa West Loop — Chicago, IL">Fréscopa West Loop — Chicago, IL</option>
+                  <option value="Fréscopa RiNo — Denver, CO">Fréscopa RiNo — Denver, CO</option>
+                  <option value="Fréscopa The Domain — Austin, TX">Fréscopa The Domain — Austin, TX</option>
+                  <option value="Fréscopa Deep Ellum — Dallas, TX">Fréscopa Deep Ellum — Dallas, TX</option>
+                  <option value="Fréscopa Wynwood — Miami, FL">Fréscopa Wynwood — Miami, FL</option>
+                  <option value="Fréscopa Ferry Building — San Francisco, CA">Fréscopa Ferry Building — San Francisco, CA</option>
+                  <option value="Fréscopa Ballard — Seattle, WA">Fréscopa Ballard — Seattle, WA</option>
+                  <option value="Fréscopa Arts District — Los Angeles, CA">Fréscopa Arts District — Los Angeles, CA</option>
+                  <option value="Fréscopa Little Italy — San Diego, CA">Fréscopa Little Italy — San Diego, CA</option>
+                </select>
+              </label>
+              <div class="field-row">
+                <label class="field">
+                  <span class="field__label">Date</span>
+                  <input class="field__control" type="date" data-field="date">
+                </label>
+                <label class="field">
+                  <span class="field__label">Time</span>
+                  <select class="field__control" data-field="time">
+                    <option value="">Pick a slot</option>
+                    <option value="9:00 AM">9:00 AM</option>
+                    <option value="10:30 AM">10:30 AM</option>
+                    <option value="12:00 PM">12:00 PM</option>
+                    <option value="1:30 PM">1:30 PM</option>
+                    <option value="3:00 PM">3:00 PM</option>
+                    <option value="4:30 PM">4:30 PM</option>
+                  </select>
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Guests</span>
+                <select class="field__control" data-field="guests">
+                  <option value="Just me">Just me</option>
+                  <option value="2 guests">2 guests</option>
+                  <option value="3 guests">3 guests</option>
+                  <option value="4 guests">4 guests</option>
+                  <option value="5+ guests">5+ guests</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field__label">Name</span>
+                <input class="field__control" type="text" data-field="name" placeholder="Your name">
+              </label>
+              <div class="field-row">
+                <label class="field">
+                  <span class="field__label">Email</span>
+                  <input class="field__control" type="email" data-field="email" placeholder="you@email.com">
+                </label>
+                <label class="field">
+                  <span class="field__label">Phone <span class="field__opt">(optional)</span></span>
+                  <input class="field__control" type="tel" data-field="phone" placeholder="(555) 000-0000">
+                </label>
+              </div>
+              <div class="field field--chips">
+                <span class="field__label">I'd most like to see <span class="field__opt">(optional)</span></span>
+                <div class="chips">
+                  <button class="chip" type="button" aria-pressed="false">The Atelier line</button>
+                  <button class="chip" type="button" aria-pressed="false">Espresso &amp; milk</button>
+                  <button class="chip" type="button" aria-pressed="false">Cold brew &amp; tea</button>
+                  <button class="chip" type="button" aria-pressed="false">Bean subscriptions</button>
+                </div>
+              </div>
+              <div class="tour-form__submit"><button class="btn btn--terracotta" type="submit">Request this tour<span class="arrow" aria-hidden="true">→</span></button></div>
+              <p class="tour-form__fine">We'll confirm by email within one business day. No payment needed to book.</p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cafe-cta" data-section="7">
+      <div class="cafe-cta__glow"></div>
+      <div class="container cafe-cta__inner">
+        <span class="cafe-cta__eyebrow">Come say hello</span>
+        <h2 class="cafe-cta__title">The kettle's on. The door's open.</h2>
+        <p class="cafe-cta__text">No appointment, no pressure — just a good cup and a warm room. We'd love to see you.</p>
+        <div class="cafe-cta__actions">
+          <a class="btn btn--cream" href="#locations">Find a café<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="#tour">Book an Atelier tour</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer footer--app">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="140" height="38">
+        <p class="footer__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p>
+        <form class="signup" action="#" onsubmit="return false">
+          <label class="signup__label" for="fr-ftr-email">A little warmth in your inbox.</label>
+          <div class="signup__row">
+            <input id="fr-ftr-email" class="signup__input" type="email" placeholder="you@example.com" autocomplete="email">
+            <button class="btn btn--cream" type="submit">Sign up</button>
+          </div>
+        </form>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div class="footer__col">
+          <h3>Shop</h3>
+          <a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a>
+        </div>
+        <div class="footer__col">
+          <h3>Company</h3>
+          <a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a>
+        </div>
+        <div class="footer__col">
+          <h3>Support</h3>
+          <a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a>
+        </div>
+      </nav>
+    </div>
+    <div class="container footer__legal">
+      <div class="footer__social">
+        <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"/></svg></a>
+        <a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"/></svg></a>
+        <a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"/><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"/></svg></a>
+      </div>
+      <p class="footer__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-11-21T20:05:25Z
+  page:             frescopa-atelier-machines-html
+  slug:             frescopa-atelier-machines-html
+  pagePath:         migrated/machines.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/frescopa-atelier-machines-html-proposed.html
+  sourceCurrent:    stardust/current/pages/frescopa-atelier-machines-html.json
+  againstDirection: stardust/direction.md (Active)
+  designMd:         DESIGN.md (sha: 2b3e154a30bc)
+  designJson:       DESIGN.json (sha: a3e828d436de)
+  canonShas:        header:6be0b6f81a6f footer:b671270abc23 css:b989c60f9f0c
+  decisionTrace:    machines._meta.json
+  brokenInternalLinks: 3
+  stardustVersion:  local
+-->
+<style>
+:root {
+  color-scheme: light;
+  --burgundy: oklch(0.34 0.093 25);
+  --burgundy-deep: oklch(0.275 0.082 26);
+  --terracotta: oklch(0.605 0.116 44);
+  --terracotta-deep: oklch(0.515 0.108 40);
+  --amber: oklch(0.79 0.128 74);
+  --amber-soft: oklch(0.865 0.083 80);
+  --teal: oklch(0.55 0.05 205);
+  --paper: oklch(0.970 0.010 82);
+  --paper-2: oklch(0.948 0.015 78);
+  --paper-3: oklch(0.918 0.020 74);
+  --sand: oklch(0.884 0.025 71);
+  --line: oklch(0.855 0.018 68);
+  --ink: oklch(0.262 0.021 52);
+  --ink-soft: oklch(0.430 0.022 52);
+  --charcoal: oklch(0.222 0.016 52);
+  --charcoal-2: oklch(0.282 0.020 50);
+  --line-dark: oklch(0.400 0.020 55);
+  --cream: oklch(0.945 0.016 80);
+  --cream-soft: oklch(0.795 0.021 78);
+  --bg: var(--paper);
+  --fg: var(--ink);
+  /* Semantic aliases (_ds tokens/colors.css), used by React page types. */
+  --surface-raised: var(--paper-2);
+  --surface-card: var(--paper);
+  --surface-dark: var(--charcoal);
+  --text-body: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-heading: var(--burgundy);
+  --text-on-dark: var(--cream);
+  --accent: var(--terracotta);
+  --focus: var(--terracotta);
+  /* Families: the source's rendered faces (atelier.css `.atelier` override). */
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "Hanken Grotesk", system-ui, sans-serif;
+  --fs-eyebrow: 0.75rem;
+  --fs-sm: 0.9375rem;
+  --fs-body: 1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4: clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h3: clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);
+  --fs-h2: clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --fs-h1: clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);
+  --lh-tight: 1.03;
+  --lh-snug: 1.15;
+  --lh-body: 1.62;
+  --tracking-eyebrow: 0.2em;
+  --tracking-tight: -0.02em;
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem);
+  --content: 1120px;
+  --content-wide: 1320px;
+  --content-narrow: 760px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+}
+</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Fréscopa — Machines","url":"https://markszulc.github.io/frescopa-atelier/machines.html"}</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fréscopa — Machines</title>
+  <link rel="preload" href="../assets/shared/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/shared/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../assets/shared/canon.css">
+  <link rel="stylesheet" href="../assets/frescopa-atelier-machines-html.css">
+  <script defer src="../assets/shared/canon.js"></script>
+  <script defer src="../assets/frescopa-atelier-machines-html.js"></script>
+</head>
+<body>
+<div class="page page--app">
+
+  <header class="header header--solid is-scrolled" data-header>
+    <div class="container header__inner">
+      <a class="header__brand" href="../frescopa-atelier/index.html" aria-label="Fréscopa home" data-broken-link="true">
+        <img class="header__logo header__logo--light" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="110" height="30">
+        <img class="header__logo header__logo--dark" src="../assets/media/frescopa-logo.svg" alt="" width="110" height="30">
+      </a>
+      <nav class="nav" id="primary-nav" data-nav aria-label="Primary">
+        <a href="../frescopa-atelier/landing.html">The Atelier</a>
+        <a href="../frescopa-atelier/machines.html" aria-current="page">Machines</a>
+        <a href="../frescopa-atelier/beverages.html">Beverages</a>
+        <a href="../frescopa-atelier/cafe.html">Café</a>
+        <a href="../frescopa-atelier/blog.html">Journal</a>
+      </nav>
+      <div class="header__utils">
+        <button class="iconbtn" aria-label="Search">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Account">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn iconbtn--cart" aria-label="Cart, 0 items">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"/></svg>
+        </button>
+        <button class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false" aria-controls="primary-nav"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+
+  <main id="main" data-template="frescopa-atelier-machines-html">
+    <section class="machines-hero" data-section="1">
+      <div class="container">
+        <nav class="breadcrumb"><a href="../frescopa-atelier/index.html" data-broken-link="true">Home</a><span aria-hidden="true">/</span><span aria-current="page">Machines</span></nav>
+        <h1 class="machines-hero__title">Made in the workshop.</h1>
+        <p class="machines-hero__lede">Four families of machine, each tuned by hand for a different kind of morning. Start with how you like to make it — we'll help you find the rest.</p>
+      </div>
+    </section>
+
+    <section class="machines-filter" data-section="2">
+      <div class="container machines-filter__inner" data-filter-pills>
+        <button class="filter-pill is-active" type="button" data-filter="all" aria-pressed="true">All machines</button>
+        <button class="filter-pill" type="button" data-filter="bean" aria-pressed="false">Bean-to-cup</button>
+        <button class="filter-pill" type="button" data-filter="espresso" aria-pressed="false">Espresso</button>
+        <button class="filter-pill" type="button" data-filter="filter" aria-pressed="false">Filter</button>
+        <button class="filter-pill" type="button" data-filter="cold" aria-pressed="false">Cold brew</button>
+      </div>
+    </section>
+
+    <section class="machine-band machine-band--tail" data-band="bean" data-section="3">
+      <div class="container">
+        <div class="band-head">
+          <div>
+            <span class="band-head__eyebrow">Bean-to-cup · Premium</span>
+            <h2 class="band-head__title">The thinking machines</h2>
+            <p class="band-head__value">Whole beans in, a finished cup out — milk, timing and all. The most hands-off way to drink well, and the only machines that actually learn your taste.</p>
+          </div>
+          <div class="band-head__note">
+            <span class="band-head__note-label">How they differ</span>
+            <p>The Atelier learns and adapts on its own; the Mini carries the same brain to a smaller counter.</p>
+          </div>
+        </div>
+        <article class="machine-feature">
+          <div class="machine-feature__media">
+            <img src="../assets/media/hero-machine.jpg" alt="The Atelier" width="1408" height="768">
+            <div class="machine-feature__badge"><span class="badge badge--burgundy"><span>New</span></span></div>
+          </div>
+          <div class="machine-feature__body">
+            <span class="machine-feature__tagline">The flagship</span>
+            <h3 class="machine-feature__name">The Atelier</h3>
+            <p class="machine-feature__blurb">It senses what you like, builds a taste profile, reads the day ahead and pours accordingly — quietly taking care of the rest.</p>
+            <ul class="machine-feature__list">
+              <li><span class="machine-feature__arrow" aria-hidden="true">→</span><span>Learns your taste cup by cup, no dialing-in</span></li>
+              <li><span class="machine-feature__arrow" aria-hidden="true">→</span><span>Reads your calendar and mood to pace the morning</span></li>
+              <li><span class="machine-feature__arrow" aria-hidden="true">→</span><span>Reorders beans before you run out</span></li>
+            </ul>
+            <div class="machine-feature__foot">
+              <span class="machine-feature__price">$2,199</span>
+              <a class="btn btn--terracotta" href="../frescopa-atelier/atelier.html" data-broken-link="true"><span>View the Atelier</span><span class="arrow" aria-hidden="true">→</span></a>
+            </div>
+          </div>
+        </article>
+        <div class="companions">
+          <span class="companions__label">Also in this family</span>
+          <article class="companion-card">
+            <div class="companion-card__media">
+              <image-slot id="m-mini" shape="rect" placeholder="The Atelier Mini"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">The Atelier Mini</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <div class="companion-card__body">
+              <div class="companion-card__text">
+                <span class="companion-card__cat">Bean-to-cup</span>
+                <h3 class="companion-card__name">The Atelier Mini</h3>
+                <p class="companion-card__blurb">The same clever heart, sized for smaller kitchens.</p>
+              </div>
+              <div class="companion-card__buy">
+                <span class="companion-card__price">$799</span>
+                <a class="link link--sm" href="#"><span>Join the list</span><span class="arrow" aria-hidden="true">→</span></a>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="machine-band machine-band--alt" data-band="espresso" data-section="4">
+      <div class="container">
+        <div class="band-head">
+          <div>
+            <span class="band-head__eyebrow">Espresso</span>
+            <h2 class="band-head__title">For the hands-on ritual</h2>
+            <p class="band-head__value">Grind, tamp, pull. Machines for people who want to be the barista — precise, tactile, and built to reward practice.</p>
+          </div>
+          <div class="band-head__note">
+            <span class="band-head__note-label">How they differ</span>
+            <p>The Barista gives you full manual control; the Everyday keeps it simple for a reliable shot each morning.</p>
+          </div>
+        </div>
+        <div class="machine-grid">
+          <article class="machine-card">
+            <div class="machine-card__media">
+              <image-slot id="m-barista" shape="rect" placeholder="The Barista"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">The Barista</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <div class="machine-card__body">
+              <span class="machine-card__cat">Espresso</span>
+              <h3 class="machine-card__name">The Barista</h3>
+              <p class="machine-card__blurb">A hands-on machine for the morning ritualist.</p>
+              <div class="machine-card__foot">
+                <span class="machine-card__price">$899</span>
+                <a class="link link--sm" href="#"><span>Join the list</span><span class="arrow" aria-hidden="true">→</span></a>
+              </div>
+            </div>
+          </article>
+          <article class="machine-card">
+            <div class="machine-card__media">
+              <image-slot id="m-everyday" shape="rect" placeholder="The Everyday"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">The Everyday</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <div class="machine-card__body">
+              <span class="machine-card__cat">Espresso</span>
+              <h3 class="machine-card__name">The Everyday</h3>
+              <p class="machine-card__blurb">Honest espresso, every single morning.</p>
+              <div class="machine-card__foot">
+                <span class="machine-card__price">$499</span>
+                <a class="link link--sm" href="#"><span>Join the list</span><span class="arrow" aria-hidden="true">→</span></a>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="machine-band machine-band--tail" data-band="filter" data-section="5">
+      <div class="container">
+        <div class="band-head">
+          <div>
+            <span class="band-head__eyebrow">Filter</span>
+            <h2 class="band-head__title">Slow and even</h2>
+            <p class="band-head__value">Clean, balanced filter coffee for the unhurried cup — the kind you sip through a quiet morning.</p>
+          </div>
+          <div class="band-head__note">
+            <span class="band-head__note-label">How they differ</span>
+            <p>One machine, perfected: even saturation and gentle timing, so every batch tastes the same.</p>
+          </div>
+        </div>
+        <article class="machine-solo">
+          <div class="machine-solo__media">
+            <image-slot id="m-slowpour" shape="rect" placeholder="The Slow Pour"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">The Slow Pour</div></div><div class="ring"></div></template></image-slot>
+          </div>
+          <div class="machine-solo__body">
+            <span class="machine-solo__cat">Filter</span>
+            <h3 class="machine-solo__name">The Slow Pour</h3>
+            <p class="machine-solo__blurb">Filter coffee, unhurried and beautifully even.</p>
+            <div class="machine-solo__foot">
+              <span class="machine-solo__price">$279</span>
+              <a class="btn btn--cream" href="#"><span>Join the list</span><span class="arrow" aria-hidden="true">→</span></a>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="machine-band machine-band--tail machine-band--alt" data-band="cold" data-section="6">
+      <div class="container">
+        <div class="band-head">
+          <div>
+            <span class="band-head__eyebrow">Cold brew</span>
+            <h2 class="band-head__title">Ready by morning</h2>
+            <p class="band-head__value">Smooth, low-acid cold brew steeped overnight — poured cold straight from the fridge.</p>
+          </div>
+          <div class="band-head__note">
+            <span class="band-head__note-label">How they differ</span>
+            <p>Set it before bed; the Carafe does the steeping while you sleep.</p>
+          </div>
+        </div>
+        <article class="machine-solo">
+          <div class="machine-solo__media">
+            <image-slot id="m-carafe" shape="rect" placeholder="The Carafe"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">The Carafe</div></div><div class="ring"></div></template></image-slot>
+          </div>
+          <div class="machine-solo__body">
+            <span class="machine-solo__cat">Cold brew</span>
+            <h3 class="machine-solo__name">The Carafe</h3>
+            <p class="machine-solo__blurb">Smooth cold brew, ready and waiting by morning.</p>
+            <div class="machine-solo__foot">
+              <span class="machine-solo__price">$179</span>
+              <a class="btn btn--cream" href="#"><span>Join the list</span><span class="arrow" aria-hidden="true">→</span></a>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer footer--app">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="140" height="38">
+        <p class="footer__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p>
+        <form class="signup" action="#" onsubmit="return false">
+          <label class="signup__label" for="fr-ftr-email">A little warmth in your inbox.</label>
+          <div class="signup__row">
+            <input id="fr-ftr-email" class="signup__input" type="email" placeholder="you@example.com" autocomplete="email">
+            <button class="btn btn--cream" type="submit">Sign up</button>
+          </div>
+        </form>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div class="footer__col">
+          <h3>Shop</h3>
+          <a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a>
+        </div>
+        <div class="footer__col">
+          <h3>Company</h3>
+          <a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a>
+        </div>
+        <div class="footer__col">
+          <h3>Support</h3>
+          <a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a>
+        </div>
+      </nav>
+    </div>
+    <div class="container footer__legal">
+      <div class="footer__social">
+        <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"/></svg></a>
+        <a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"/></svg></a>
+        <a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"/><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"/></svg></a>
+      </div>
+      <p class="footer__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

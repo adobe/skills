@@ -1,0 +1,159 @@
+/* mood — copy column + calendar → brew suggestion (prototype section.mood), mobile-first. */
+
+.mood {
+  background: var(--paper);
+  padding-block: clamp(3rem, 2rem + 4vw, 6rem);
+}
+
+.mood .mood-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: center;
+}
+
+.mood .mood-title {
+  margin-top: 1rem;
+}
+
+.mood .mood-title :is(h2, h3) {
+  font-size: var(--fs-h2);
+}
+
+.mood .mood-hint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  margin-top: 1.6rem;
+}
+
+.mood .mood-panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+  padding: clamp(1.3rem, 3vw, 1.9rem);
+}
+
+.mood .cal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.mood .cal-month {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+.mood .cal-year {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-soft);
+}
+
+.mood .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
+  text-align: center;
+}
+
+.mood .cal-grid :is(ul, ol) {
+  display: contents;
+  list-style: none;
+}
+
+.mood .cal-grid li {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  padding-bottom: 0.4rem;
+}
+
+.mood .cal-day {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink);
+  border: 1px solid transparent;
+}
+
+.mood .cal-day strong {
+  font-weight: inherit;
+}
+
+.mood button.cal-day {
+  cursor: pointer;
+  transition:
+    background-color var(--dur-2) var(--ease-quint),
+    color var(--dur-2) var(--ease-quint),
+    transform var(--dur-1);
+}
+
+.mood button.cal-day:hover {
+  background: var(--paper-3);
+  transform: translateY(-1px);
+}
+
+.mood .cal-day.cal-day-muted {
+  color: color-mix(in oklch, var(--ink) 32%, var(--paper));
+}
+
+.mood .cal-day.is-active {
+  background: var(--terracotta);
+  color: var(--cream);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.mood .brew {
+  margin-top: 1.4rem;
+  background: color-mix(in oklch, var(--amber) 13%, var(--paper));
+  border-radius: var(--r-md);
+  padding: 1.2rem 1.35rem;
+}
+
+.mood .brew-panel[hidden] {
+  display: none;
+}
+
+.mood .brew-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--terracotta-deep);
+  margin-bottom: 0.45rem;
+}
+
+.mood .brew-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  color: var(--burgundy);
+}
+
+.mood .brew-note {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  margin-top: 0.35rem;
+  min-height: 3.24em;
+}
+
+@media (width > 900px) {
+  .mood .mood-grid {
+    grid-template-columns: 1fr 0.9fr;
+  }
+}

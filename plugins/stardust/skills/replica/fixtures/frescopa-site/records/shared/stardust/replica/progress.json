@@ -1,0 +1,869 @@
+{
+  "_provenance": {
+    "writtenBy": "replica Phase 3+4 (home archetype, hands-off sub-agent)",
+    "writtenAt": "2026-11-21T19:20:00Z"
+  },
+  "types": {
+    "home": {
+      "pageType": "home",
+      "archetype": "home",
+      "slug": "frescopa-atelier",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/",
+      "prototype": "stardust/prototypes/frescopa-atelier-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier.css",
+          "stardust/prototypes/frescopa-atelier.js"
+        ]
+      },
+      "regime": "prototype",
+      "rounds": {
+        "360": 2,
+        "1440": 2
+      },
+      "final": {
+        "360": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 8972,
+          "buildH": 8972,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 360)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "5 compared, 0 off",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "0 layout deltas; the DNA readout 2- vs 3-line note (−24px) is autocycle state"
+        },
+        "1440": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 21,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 6474,
+          "buildH": 6474,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 1440)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "5 compared, 0 off",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "0 section height deltas; only autocycle-state text nodes differ"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 10 rows failed (gates/frescopa-atelier-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "chrome-parity",
+              "flag": "header REGION STYLE backgroundColor alpha 0.0004 vs 0.0002 (gate.sh exit 2)",
+              "why": "same transition-tail sampling as 1440; crop-compare header 0.00% / footer 0.00%"
+            }
+          ],
+          "residuals": [],
+          "captureState": [
+            {
+              "what": "DNA readout note wraps 2 or 3 lines depending on the auto-cycled profile (page height 8972 vs spec 8996)",
+              "where": "learn",
+              "restoreAtDelivery": "auto-cycle as at 1440"
+            }
+          ]
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "chrome-parity",
+              "flag": "header REGION STYLE backgroundColor + 5 nav PAIR colour deltas (gate.sh exit 2 on iter1/iter2)",
+              "why": "instrument sampling: the probe reads the fixed header while its 0.6s background/colour transition (lifted verbatim) is still settling after the scroll-back to y=0 — both sides sit at the transition tail (alpha 0.00008 vs 0.0007, L Δ<0.0004); the iter1 ICONS 5→4 came from a live cache taken mid logo-crossfade and vanished on re-probe; header/footer crop-compare 0.00% both rounds"
+            }
+          ],
+          "residuals": [],
+          "captureState": [
+            {
+              "what": "flavour-DNA radar and mood calendar auto-cycle every 3 s once on screen; the profile/day shown at capture depends on time-on-screen",
+              "where": "learn, mood",
+              "restoreAtDelivery": "DNA: bloom-in from 0 on first view (1100 ms expo), then weekday→sunday→evening every 3 s until a button is clicked (820 ms morph); calendar: cycles day buttons every 3 s once visible, stops on click"
+            }
+          ]
+        }
+      },
+      "residuals": [],
+      "motion": {
+        "observed": "header is-scrolled (y>12) / is-hidden (down past 480, restore on up), 600 ms; .reveal→.is-in on 24 elements (IO threshold .14, rootMargin -8% bottom, 900 ms expo, per-element --reveal-delay); card hover (translateY -5px, shadow-lg, img scale 1.06, 600/800 ms); .dna__btn hover colour 600 ms; DNA + calendar auto-cycle and click (is-active class toggles); parallax translate3d on hero (12) and café (14) images",
+        "implemented": "canon.js: header scroll state machine, mobile nav toggle, footer year; frescopa-atelier.js: reveal observer, hero copy positioning (hero.js), parallax, calendar, flavour DNA radar — motion-compare: 16 parity, 0 missing, 0 extra",
+        "dead": [
+          ".btn hover (no sampled diff)",
+          ".nav a hover (no sampled diff)",
+          ".link hover (no sampled diff)",
+          ".footer__col a hover (no sampled diff)",
+          ".iconbtn hover (no sampled diff)",
+          "widget sampler: no track/box change on DNA/calendar pokes (class-toggled; is-active parity confirmed on class lines)"
+        ],
+        "evidence": [
+          "stardust/replica/motion/frescopa-atelier-live.json",
+          "stardust/replica/motion/frescopa-atelier-build.json"
+        ],
+        "note": "dead hovers kept as lifted source CSS: the sampler read no diff on BOTH sides (symmetric)"
+      },
+      "decisions": [
+        "Root font tokens carry the source's rendered faces (Schibsted Grotesk display, Hanken Grotesk body/mono) — tokens.css's Playfair/DM Sans stacks are overridden by .atelier on every captured page and have no captured files",
+        "Reveal, parallax, hero positioning, calendar and DNA live in the page JS (brief: canon.js = chrome only); .reveal CSS lives in canon.css"
+      ],
+      "status": "passed"
+    },
+    "journal-index": {
+      "pageType": "journal-index",
+      "archetype": "journal-index",
+      "slug": "frescopa-atelier-blog-html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/blog.html",
+      "prototype": "stardust/prototypes/frescopa-atelier-blog-html-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier-blog-html.css",
+          "stardust/prototypes/frescopa-atelier-blog-html.js"
+        ]
+      },
+      "regime": "prototype",
+      "contentRoot": "body > div (live #dc-root; prototype div.page.page--app)",
+      "rounds": {
+        "360": 2,
+        "1440": 3
+      },
+      "final": {
+        "360": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 4854,
+          "buildH": 4854,
+          "clipped": 0,
+          "overflow": "none",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 7,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "12 compared (post-card ×6, filter-pill ×6): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 deltas, 0 missing, 0 extra"
+        },
+        "1440": {
+          "round": "iter3",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 2478,
+          "buildH": 2478,
+          "clipped": 0,
+          "overflow": "none",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 7,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "12 compared (post-card ×6, filter-pill ×6): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 deltas, 0 missing, 0 extra"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 4 rows failed (gates/frescopa-atelier-blog-html-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "header-contract",
+              "flag": "gate.sh exit 2: header contract NOT RECORDED (stardust/chrome/header-contract.json absent)",
+              "why": "site-level contract, not recorded by any archetype yet (home ended the same way); every other probe passed — coordinator to record it once with chrome-explore"
+            },
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in post-card and filter-pill families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp>; the probe measures that inline box vs the blockified element on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false with this note"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "header-contract",
+              "flag": "gate.sh exit 2: header contract NOT RECORDED (stardust/chrome/header-contract.json absent)",
+              "why": "site-level contract, not recorded by any archetype yet (home ended the same way); every other probe passed — coordinator to record it once with chrome-explore"
+            },
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in post-card and filter-pill families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp>; the probe measures that inline box vs the blockified element on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false with this note"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        }
+      },
+      "residuals": [],
+      "motion": {
+        "observed": "filter pills (row 13): click sets the one active pill (burgundy/cream, others transparent/ink/line), all 0.25s ease-quint colour+border transitions, and filters the cards to that category ('The Atelier' → none, 'All posts' → all 6; verified card lists and section heights 661/281/661/1099 identical live vs build); header static (always is-scrolled, never hidden); hovers: .fr-link arrow 3px, footer col/social colour, signup .fr-btn lift+shadow, icon buttons background",
+        "implemented": "frescopa-atelier-blog-html.js: filter pills (is-active class + aria-pressed, cards hidden); canon .header--solid (no scroll morph); hovers from canon CSS — motion-compare: 15 parity, 0 missing, 0 extra, 1 advisory (is-active class is the build's state carrier; live uses inline styles)",
+        "dead": [
+          "pill hover",
+          "post-card hover",
+          "featured card hover",
+          "header nav hover",
+          "header scroll-morph",
+          "widget sampler: no track/box change on pill pokes (state shown by transitions + filter check)"
+        ],
+        "evidence": [
+          "stardust/replica/motion/frescopa-atelier-blog-html-live.json",
+          "stardust/replica/motion/frescopa-atelier-blog-html-build.json"
+        ]
+      },
+      "decisions": [
+        "React chrome = canon chrome with modifiers: header.header--solid.is-scrolled (paper 90 %, 30px logo, no letter-spacing, no morph/hide; canon.js skips it), aria-current=page underline = live .is-active; footer.footer--app (38px logo, static year); .page--app wrapper (= live #dc-root: .btn line-height 1 as .fr-btn, no smooth scroll); .badge lifted from .fr-badge into canon; _ds semantic colour aliases added to canon tokens",
+        "Content root: live has no wrapper between header and footer; gated with --main 'body > div' (live #dc-root, prototype div.page) so both sides include the chrome symmetrically",
+        "Featured card: live nests <a> inside <a> (React DOM); static HTML cannot, so a cover link (aria-hidden, tabindex -1) carries the card click and 'Read the story' is a real link above it",
+        "Unfilled <image-slot> placeholders replicated as <image-slot> with a declarative shadow root carrying the element's own shadow stylesheet (no JS); badge wrapped in a display:contents div as on live",
+        "Inline <style> blocks of the live React page extracted to stardust/replica/work/blog-inline.css for css-rules.mjs queries"
+      ],
+      "status": "passed"
+    },
+    "product-catalog": {
+      "pageType": "product-catalog",
+      "archetype": "product-catalog",
+      "slug": "frescopa-atelier-machines-html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/machines.html",
+      "prototype": "stardust/prototypes/frescopa-atelier-machines-html-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier-machines-html.css",
+          "stardust/prototypes/frescopa-atelier-machines-html.js"
+        ]
+      },
+      "regime": "prototype",
+      "contentRoot": "body > div (live #dc-root; prototype div.page.page--app)",
+      "rounds": {
+        "360": 2,
+        "1440": 2
+      },
+      "final": {
+        "360": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 6543,
+          "buildH": 6543,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 360)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 10,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "11 compared (machine-band ×4, machine-card ×2, machine-filter-pill ×5): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 section deltas, 0 nodes off, 0 missing, 0 extra"
+        },
+        "1440": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 4234,
+          "buildH": 4234,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 1440)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 10,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "11 compared (machine-band ×4, machine-card ×2, machine-filter-pill ×5): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 section deltas, 0 nodes off, 0 missing, 0 extra"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 7 rows failed (gates/frescopa-atelier-machines-html-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in machine-band, machine-card and machine-filter-pill families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp>; the probe measures that inline box vs the blockified element on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false (journal-index precedent)"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in machine-band, machine-card and machine-filter-pill families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp>; the probe measures that inline box vs the blockified element on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false (journal-index precedent)"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        }
+      },
+      "residuals": [],
+      "motion": {
+        "observed": "family filter pills (row 13): click FILTERS in place — no scroll (scrollY stays 0) — one active pill (burgundy/cream, others transparent/ink/line, 0.25s ease-quint colour+border transitions); a family pill shows only that band, 'All machines' all four; band backgrounds re-alternate by visible index (a lone band is always paper). Verified live vs build at 1440 and 360 for every pill: same visible bands, backgrounds, band heights and page heights (1749/2029/1667/1667/4234 @1440; 2841/3149/2517/2493/6543 @360). Hovers: .fr-btn lift+shadow+arrow 3px with label turning terracotta-deep (live base a:hover outranks .fr-btn colour), .fr-link arrow 3px; header static (always is-scrolled); pill bar sticky at top 72px (CSS)",
+        "implemented": "frescopa-atelier-machines-html.js: filter pills (is-active + aria-pressed, bands hidden, machine-band--alt recomputed by visible index); page CSS `.machine-band a.btn:hover { color: var(--terracotta-deep) }`; other hovers from canon CSS — motion-compare: 12 parity, 0 missing, 0 extra, 2 advisory (is-active / machine-band--alt are the build's state carriers; live uses inline styles)",
+        "dead": [
+          "pill hover",
+          "machine-card hover",
+          "feature card hover",
+          "companion card hover",
+          "solo card hover",
+          "breadcrumb Home hover",
+          "header scroll-morph",
+          "widget sampler: no track/box change on pill pokes (state shown by transitions + filter check)"
+        ],
+        "evidence": [
+          "stardust/replica/motion/frescopa-atelier-machines-html-live.json",
+          "stardust/replica/motion/frescopa-atelier-machines-html-build.json"
+        ]
+      },
+      "canonBackportCandidates": [
+        "`:where(.page--app) a:hover { color: var(--terracotta-deep) }` — live _ds base.css a:hover recolours every .fr-btn link label on all React page types (page-local here as `.machine-band a.btn:hover`)"
+      ],
+      "updatedAt": "2026-11-21T19:35:32Z"
+    },
+    "category-overview": {
+      "pageType": "category-overview",
+      "archetype": "category-overview",
+      "slug": "frescopa-atelier-beverages-html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+      "prototype": "stardust/prototypes/frescopa-atelier-beverages-html-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier-beverages-html.css"
+        ]
+      },
+      "regime": "prototype",
+      "contentRoot": "body > div (live #dc-root; prototype div.page.page--app)",
+      "rounds": {
+        "360": 1,
+        "1440": 2
+      },
+      "final": {
+        "360": {
+          "round": "iter1",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 4207,
+          "buildH": 4207,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 360)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "range-row 3 + range-pick 3: 6 compared, 34 elements within, 0 off",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 section height deltas, 0 nodes off/missing/extra"
+        },
+        "1440": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 2986,
+          "buildH": 2986,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 1440)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "range-row 3 + range-pick 3: 6 compared, 34 elements within, 0 off",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "exit 0 — 0 section height deltas, 0 nodes off/missing/extra"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 6 rows failed (gates/frescopa-atelier-beverages-html-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 1,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": []
+        }
+      },
+      "residuals": [],
+      "motion": {
+        "observed": "hover on link-buttons (.fr-btn--terracotta/--cream): lift -2px, shadow-md, background, arrow 3px, label colour → terracotta-deep (_ds base.css a:hover outranks .fr-btn colour), 350ms ease-quint; header static (always is-scrolled)",
+        "implemented": "canon .btn hovers + page-local `main a.btn:hover { color: var(--terracotta-deep) }`; canon .header--solid — motion-compare: 7 parity, 0 missing, 0 extra, 0 advisory",
+        "dead": [
+          "pick-chip hover",
+          "range image hover",
+          "header nav hover",
+          "header scroll-morph"
+        ],
+        "evidence": [
+          "stardust/replica/motion/frescopa-atelier-beverages-html-live.json",
+          "stardust/replica/motion/frescopa-atelier-beverages-html-proto.json"
+        ]
+      },
+      "decisions": [
+        "Canon chrome reused unchanged (header--solid is-scrolled with aria-current on Beverages; footer--app); chrome-parity quiet and crop-compare 0.00% at both widths",
+        "Sections → future blocks: bev-hero (category hero, same values as journal-hero except h1 max-width 18ch, lede 56ch), range ×3 (media+copy split, range--alt = paper-2 bg with copy first), bev-cta (dark band + amber glow)",
+        "Pick chips authored as ul/li (live inline spans) — role improvement, no pixel change",
+        "No page JS: no client tool fires on live",
+        "Canon back-port candidates (canon frozen this wave): `:where(.page--app) a.btn:hover` label colour (also page-local on machines); category/journal hero could share one hero module"
+      ],
+      "status": "approved"
+    },
+    "product-landing": {
+      "pageType": "product-landing",
+      "archetype": "product-landing",
+      "slug": "frescopa-atelier-landing-html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/landing.html",
+      "prototype": "stardust/prototypes/frescopa-atelier-landing-html-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/widgets.css",
+          "stardust/prototypes/shared/widgets.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier-landing-html.css"
+        ]
+      },
+      "regime": "prototype",
+      "contentRoot": "body > div (live #dc-root; prototype div.page.page--app)",
+      "rounds": {
+        "360": 1,
+        "1440": 2
+      },
+      "final": {
+        "360": {
+          "round": "iter1",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 10244,
+          "buildH": 10244,
+          "clipped": 0,
+          "overflow": "none",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 0,
+            "advisory": 1
+          },
+          "visualFlags": 0,
+          "units": "18 compared (lp-pillar ×3, lp-step ×4, lp-review ×3, lp-bundle ×3, lp-chip ×5): 55 elements within, 0 off/missing",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "0 section deltas, page height Δ0; only time-dependent DNA autocycle rows (readout text / button colours) + 9 build extras the live spec did not capture (eyebrows inside display:contents hosts, badge)"
+        },
+        "1440": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 8465,
+          "buildH": 8465,
+          "clipped": 0,
+          "overflow": "none",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 0,
+            "advisory": 1
+          },
+          "visualFlags": 0,
+          "units": "18 compared (lp-pillar ×3, lp-step ×4, lp-review ×3, lp-bundle ×3, lp-chip ×5): 55 elements within, 0 off/missing",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0
+          },
+          "sourceSpecCompare": "0 section deltas, page height Δ0; only time-dependent DNA autocycle rows (readout text / button colours) + 9 build extras the live spec did not capture (eyebrows inside display:contents hosts, badge)"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 11 rows failed (gates/frescopa-atelier-landing-html-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 1,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "content-diff advisory",
+              "flag": "EDITABLE COUNT: build 51 vs source 58 outermost editable elements",
+              "why": "live React template wraps components in display:contents sc-host-x divs; advisory tier only, 0 structural red"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "content-diff advisory",
+              "flag": "EDITABLE COUNT: build 51 vs source 58 outermost editable elements",
+              "why": "live React template wraps components in display:contents sc-host-x divs; advisory tier only, 0 structural red"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        }
+      },
+      "motion": {
+        "observed": "stardust/replica/motion/frescopa-atelier-landing-html-live.json",
+        "build": "stardust/replica/motion/frescopa-atelier-landing-html-build.json",
+        "implemented": [
+          "header scroll state: transparent over hero → is-scrolled past 12px, never hidden (canon .header--app + canon.js)",
+          "flavour-DNA radar: grows on mount (820ms expo), 3s autocycle once on screen, click switches + stops cycle (shared/widgets.js data-dna-intro=mount)",
+          ".btn hover: lift/arrow + label turns terracotta-deep (live _ds a:hover; canon :where(.page--app) a.btn:hover)",
+          ".dna__btn hover colour (shared/widgets.css)"
+        ],
+        "dead": [
+          "reveal (no .reveal on live landing)",
+          "parallax (no [data-parallax])",
+          "film play button: click and hover inert (no video, no hover-video)",
+          "review card / chip hover"
+        ],
+        "compare": "motion-compare: 13 parity, 0 missing, 0 extra, 0 out of tolerance"
+      },
+      "canonChanges": [
+        "canon.css: + .header--app modifier (4 rules) — React chrome transparent over a dark hero",
+        "canon.css: + :where(.page--app) a.btn:hover (live _ds base a:hover)",
+        "canon.js: header--app skips hide-on-scroll",
+        "new shared/widgets.css (.dna moved from frescopa-atelier.css) + shared/widgets.js (reveal, parallax, whenOnScreen, flavour DNA moved from frescopa-atelier.js); home imports both"
+      ],
+      "sharedRecheck": {
+        "home1440": "landingwidgets: 0.00% (43 px, same as gated blogcanon round)",
+        "blog1440": "landingcanon: 0.00% (0 px) — after rounds.mjs extend (prior FAILs were header-contract-not-recorded only)"
+      }
+    },
+    "cafe": {
+      "pageType": "cafe",
+      "archetype": "cafe",
+      "slug": "frescopa-atelier-cafe-html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+      "prototype": "stardust/prototypes/frescopa-atelier-cafe-html-proposed.html",
+      "layers": {
+        "shared": [
+          "stardust/prototypes/shared/canon.css",
+          "stardust/prototypes/shared/canon.js",
+          "stardust/prototypes/shared/fonts/"
+        ],
+        "page": [
+          "stardust/prototypes/frescopa-atelier-cafe-html.css",
+          "stardust/prototypes/frescopa-atelier-cafe-html.js"
+        ]
+      },
+      "regime": "prototype",
+      "contentRoot": "body > div (live #dc-root; prototype div.page.page--app)",
+      "chrome": "header.header.header--app (transparent over the dark photo hero, is-scrolled past 12px — observed live fr-hdr → fr-hdr is-scrolled), footer.footer.footer--app; both canon, unchanged",
+      "rounds": {
+        "360": 2,
+        "1440": 2
+      },
+      "final": {
+        "360": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 0,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 10744,
+          "buildH": 10744,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 360)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 30,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "16 compared (cafe-reason ×4 required, cafe-event ×4, cafe-stat ×4, cafe-location ×4): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0,
+            "headerBand": 77,
+            "footerBand": 969
+          },
+          "sourceSpecCompare": "0 section deltas, 0 nodes off, 0 missing, 1 extra (flagship badge text, justified)"
+        },
+        "1440": {
+          "round": "iter2",
+          "pixelPct": 0,
+          "differingPx": 383,
+          "alignedPct": 0,
+          "heightDelta": 0,
+          "liveH": 7355,
+          "buildH": 7355,
+          "clipped": 0,
+          "overflow": "none (scrollWidth 1440)",
+          "contentDiff": {
+            "looksSameRed": 0,
+            "nothingLostYellow": 0,
+            "accepted": 30,
+            "advisory": 0
+          },
+          "visualFlags": 0,
+          "units": "16 compared (cafe-reason ×4 required, cafe-event ×4, cafe-stat ×4, cafe-location ×4): unit boxes Δ0; element rows advisory (sc-interp inline spans)",
+          "chrome": {
+            "headerPct": 0,
+            "footerPct": 0,
+            "headerBand": 75,
+            "footerBand": 495
+          },
+          "sourceSpecCompare": "0 section deltas, 0 nodes off, 0 missing, 1 extra (flagship badge text, justified)"
+        }
+      },
+      "capProbe": "PASS at 2560 — 0 of 8 rows failed (gates/frescopa-atelier-cafe-html-2560/cap-iter.json)",
+      "breakpoints": {
+        "360": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in cafe-event, cafe-stat and cafe-location families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp> (and its pill tags hold the text one span deeper, read as text-less boxes); the probe measures those inline boxes vs the blockified elements on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false (journal-index precedent); cafe-reason (no interpolation) required and Δ0"
+            },
+            {
+              "probe": "source-spec compare",
+              "flag": "1 EXTRA node: the flagship 'Flagship' badge",
+              "why": "live badge renders at the same box (measure.mjs: 227,4044 73×26 @1440) but the live spec did not record its text node; pixel 0.00% over the band"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "unit-geometry",
+              "flag": "element rows off/missing in cafe-event, cafe-stat and cafe-location families",
+              "why": "live wraps every interpolated text in an inline <span class=sc-interp> (and its pill tags hold the text one span deeper, read as text-less boxes); the probe measures those inline boxes vs the blockified elements on the build. Unit boxes Δ0 at both widths, pixel 0.00% — families declared required:false (journal-index precedent); cafe-reason (no interpolation) required and Δ0"
+            },
+            {
+              "probe": "source-spec compare",
+              "flag": "1 EXTRA node: the flagship 'Flagship' badge",
+              "why": "live badge renders at the same box (measure.mjs: 227,4044 73×26 @1440) but the live spec did not record its text node; pixel 0.00% over the band"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        }
+      },
+      "residuals": [],
+      "motion": {
+        "observed": "header over the dark hero: transparent at top, is-scrolled once scrolled (class mutation fr-hdr is-scrolled), no hide. No reveal/scroll animation fires on live (0 animations, only header class mutations). Location finder (row 13): region pills filter in place (East 6, Midwest 5 incl. Denver, South 6, West 9 — names verified), search input filters by name/city, trimmed, case-insensitive, AND with region; count line 'N cafés near you' / '1 café near you' / 'No matches' + dashed 'No cafés match “q”.' note; pill colours 0.25s ease-quint. Tour request (row 4): interest chips toggle burgundy/cream; submit validates café → date → time → name → email (one terracotta-deep line above the button); success swaps the form for a confirmation (check mark, 'You're on the list, <name>.', '<café> … for <weekday, Month D> at <time>, for <guests lowercased>.', email) with 'Book another tour' resetting every field. Hovers: .fr-btn lift+shadow+arrow, label terracotta-deep on link-buttons; .fr-link arrow.",
+        "implemented": "frescopa-atelier-cafe-html.js: initFinder (region pills + search + empty state), initTour (chips, ordered validation, confirmation, reset); header morph via canon .header--app + canon.js; hovers via canon .btn/.link + page-local `.cafe a.btn:hover` colour",
+        "dead": [
+          "region-pill / chip / submit clicks: no sampled motion (state change only, live re-renders in place)",
+          "hover on location cards: no live hover effect"
+        ],
+        "evidence": "gates/frescopa-atelier-cafe-html-1440/motion-live.json, motion-proto.json, motion-compare.txt (13 parity, 0 missing, 0 extra, 2 advisory: build state classes is-active/is-on drive the observed inline-style colour change)"
+      },
+      "canonBackportCandidates": [
+        "`:where(.page--app) a:hover { color: var(--terracotta-deep) }` — page-local here as `.cafe a.btn:hover` (same as machines)",
+        "`<image-slot>` empty-placeholder rule (`image-slot { display:block; width:100%; height:100% }` + its declarative shadow template) now duplicated in machines and café — candidate for a shared module",
+        "`.filter-pill` (burgundy active pill) now authored in blog, machines and café page CSS with near-identical rules (café: 0.88rem / 0.45rem 1rem) — candidate shared component with size modifier"
+      ],
+      "updatedAt": "2026-11-21T19:56:06Z"
+    }
+  },
+  "siblings": {},
+  "migrate": {
+    "at": "2026-11-21T20:05:44.284Z",
+    "pages": 6,
+    "archetypes": 6,
+    "siblings": 0,
+    "thin": 0,
+    "gates": {
+      "content-fidelity": 6,
+      "pixel-gate-1440": 5,
+      "pixel-gate-360": 5,
+      "content-count": 6,
+      "delivery-lint": 6
+    },
+    "missing": {}
+  }
+}

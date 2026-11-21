@@ -1,0 +1,64 @@
+{
+  "writtenBy": "skills/replica/scripts/reference.mjs freeze",
+  "schema": 1,
+  "capturedAt": "2026-11-21T19:30:54.690Z",
+  "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+  "width": 1440,
+  "vh": 900,
+  "height": 8465,
+  "settle": true,
+  "chunks": 10,
+  "fontsFailed": [],
+  "deadFaces": [],
+  "fixedLayers": {
+    "capture": "once",
+    "count": 1,
+    "late": 0
+  },
+  "timers": {
+    "hold": 2000,
+    "held": 1,
+    "intervals": 0,
+    "chains": 1,
+    "delays": [
+      3000
+    ]
+  },
+  "primed": true,
+  "prime": {
+    "height": 8465,
+    "pct": 0,
+    "heightDelta": 0
+  },
+  "captures": 2,
+  "heights": [
+    8465,
+    8465
+  ],
+  "noiseFloor": 0,
+  "heightSpread": 0,
+  "outside": 0,
+  "variable": [],
+  "variableShare": 0,
+  "maskArg": "",
+  "stable": true,
+  "reason": null,
+  "frozenAt": "2026-11-21T19:31:37.696Z",
+  "flags": {
+    "consent": null,
+    "dismiss": null,
+    "noDismiss": false,
+    "locale": null,
+    "vh": null,
+    "headed": false,
+    "holdTimers": 2000
+  },
+  "thresholds": {
+    "floorMax": 1,
+    "heightMax": 8,
+    "variableMax": 50,
+    "band": 20,
+    "bandMin": 0.5,
+    "pad": 8
+  }
+}

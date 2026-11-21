@@ -1,0 +1,41 @@
+/* lp-dna — copy + flavour-DNA radar, two columns at every width (prototype .lp-dna; the
+   radar's .dna styles are shared in styles/styles.css). */
+
+.lp-dna {
+  background: var(--paper);
+  padding: var(--section-y) 0;
+}
+
+.lp-dna .lp-dna-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 1rem + 4vw, 4rem);
+  align-items: center;
+}
+
+.lp-dna .lp-h2 :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--burgundy);
+  margin-top: 1rem;
+}
+
+.lp-dna .lp-dna-lede p {
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+  margin-top: 1.2rem;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+.lp-dna .lp-dna-more {
+  margin-top: 2rem;
+}
+
+.lp-dna .lp-dna-viz {
+  max-width: 460px;
+  width: 100%;
+  margin-inline: auto;
+}

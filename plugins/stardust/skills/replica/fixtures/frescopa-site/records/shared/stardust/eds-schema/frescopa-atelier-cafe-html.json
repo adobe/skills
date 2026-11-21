@@ -1,0 +1,1821 @@
+{
+ "source": "http://localhost:8792/frescopa-atelier-cafe-html-proposed.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "cafe-hero",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "The café & showroom"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Come taste the whole of Fréscopa."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Part coffee bar, part showroom, part gathering place. Sit with a cup, get hands-on with the machines, and stay for a class — no purchase, no pressure."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "Find your nearest café →",
+     "href": "#locations"
+    },
+    {
+     "role": "cta",
+     "order": 4,
+     "text": "See what's inside",
+     "href": "#experience"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 2,
+   "repeats": [
+    {
+     "unitSelector": "A.btn",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "cafe-sec",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Why come in"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Reasons to make the trip."
+    },
+    {
+     "role": "heading",
+     "order": 2,
+     "text": "Taste before you commit"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "Flight through the coffee, tea and cold-press range at the bar. Find the cup you'll want at home."
+    },
+    {
+     "role": "heading",
+     "order": 4,
+     "text": "Meet the machines"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Pull a shot on the Atelier line yourself. Feel the difference before it lands on your counter."
+    },
+    {
+     "role": "heading",
+     "order": 6,
+     "text": "Learn from the team"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "Brewing classes, latte-art labs and cuppings led by people who do it every day."
+    },
+    {
+     "role": "heading",
+     "order": 8,
+     "text": "Somewhere to linger"
+    },
+    {
+     "role": "body",
+     "order": 9,
+     "text": "A warm room to meet, work, or read the morning away. Come for the coffee, stay for the quiet."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 9,
+   "repeats": [
+    {
+     "unitSelector": "DIV.reason",
+     "count": 4,
+     "unit": {
+      "headings": 1,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 2
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "cafe-sec",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "The experience"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Three rooms, one long morning."
+    },
+    {
+     "role": "eyebrow",
+     "order": 2,
+     "text": "01 · The taste bar"
+    },
+    {
+     "role": "heading",
+     "order": 3,
+     "text": "Every drink we make, poured to order."
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Sit at the bar and work through the range — espresso and slow-pour coffee, loose-leaf tea, and cold-pressed juice. Our team talks you through each one and builds a tasting flight around what you like. It's the fastest way to find your everyday cup."
+    },
+    {
+     "role": "cta",
+     "order": 5,
+     "text": "Browse the coffee range →",
+     "href": "coffee.html"
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "02 · The showroom"
+    },
+    {
+     "role": "heading",
+     "order": 7,
+     "text": "Get your hands on the whole line."
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "The full Atelier range is set up and running. Pull your own shot, watch the machine learn a profile, and ask the questions a spec sheet can't answer. When you're ready, we'll help you pick the one that fits your kitchen — or arrange a home delivery."
+    },
+    {
+     "role": "cta",
+     "order": 9,
+     "text": "Explore the machines →",
+     "href": "machines.html"
+    },
+    {
+     "role": "eyebrow",
+     "order": 10,
+     "text": "03 · The table"
+    },
+    {
+     "role": "heading",
+     "order": 11,
+     "text": "Learn something, meet someone."
+    },
+    {
+     "role": "body",
+     "order": 12,
+     "text": "Most evenings the long table hosts something — a brewing class, a latte-art lab, a cupping, or just a slow community morning. Classes are small and hands-on, and most are free with a drink. Check what's on below and save a seat."
+    },
+    {
+     "role": "cta",
+     "order": 13,
+     "text": "See what's on →",
+     "href": "#whatson"
+    }
+   ],
+   "imgCount": 3,
+   "editableTexts": 7,
+   "repeats": [
+    {
+     "unitSelector": "DIV.room",
+     "count": 3,
+     "unit": {
+      "headings": 1,
+      "ctas": 1,
+      "imgs": 1,
+      "textRuns": 5
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "cafe-sec",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "What's on"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "This week at the table."
+    },
+    {
+     "role": "eyebrow",
+     "order": 2,
+     "text": "Free with a drink unless noted"
+    },
+    {
+     "role": "eyebrow",
+     "order": 3,
+     "text": "Tuesday"
+    },
+    {
+     "role": "heading",
+     "order": 4,
+     "text": "Origins cupping"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Taste three single-origin lots side by side and learn to name what you taste."
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "6:30–7:30pm"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "Free"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "Wednesday"
+    },
+    {
+     "role": "heading",
+     "order": 9,
+     "text": "Latte-art lab"
+    },
+    {
+     "role": "body",
+     "order": 10,
+     "text": "Hands-on milk steaming and pour practice on the Atelier line. Beginners welcome."
+    },
+    {
+     "role": "eyebrow",
+     "order": 11,
+     "text": "6:00–7:30pm"
+    },
+    {
+     "role": "body",
+     "order": 12,
+     "text": "$15"
+    },
+    {
+     "role": "eyebrow",
+     "order": 13,
+     "text": "Thursday"
+    },
+    {
+     "role": "heading",
+     "order": 14,
+     "text": "Home brewing 101"
+    },
+    {
+     "role": "body",
+     "order": 15,
+     "text": "Dial in grind, dose and time for a filter cup you can repeat at home."
+    },
+    {
+     "role": "eyebrow",
+     "order": 16,
+     "text": "6:30–8:00pm"
+    },
+    {
+     "role": "body",
+     "order": 17,
+     "text": "Free"
+    },
+    {
+     "role": "eyebrow",
+     "order": 18,
+     "text": "Saturday"
+    },
+    {
+     "role": "heading",
+     "order": 19,
+     "text": "Slow morning cupping"
+    },
+    {
+     "role": "body",
+     "order": 20,
+     "text": "A relaxed community tasting over pastries. Drop in, no booking needed."
+    },
+    {
+     "role": "eyebrow",
+     "order": 21,
+     "text": "9:00–11:00am"
+    },
+    {
+     "role": "body",
+     "order": 22,
+     "text": "Free"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 10,
+   "repeats": [
+    {
+     "unitSelector": "ARTICLE.event",
+     "count": 4,
+     "unit": {
+      "headings": 1,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 5
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "cafe-sec",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Find us"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "There's a Fréscopa in your town."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "From flagship showrooms to the café on the corner, we're probably closer than you think. Every café pours the full range — showrooms and workshop tables vary by location."
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "1,200+"
+    },
+    {
+     "role": "eyebrow",
+     "order": 4,
+     "text": "Cafés nationwide"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "190"
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "Cities"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "48"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "States"
+    },
+    {
+     "role": "body",
+     "order": 9,
+     "text": "12"
+    },
+    {
+     "role": "eyebrow",
+     "order": 10,
+     "text": "Flagship showrooms"
+    },
+    {
+     "role": "eyebrow",
+     "order": 11,
+     "text": "Flagship"
+    },
+    {
+     "role": "eyebrow",
+     "order": 12,
+     "text": "New York · SoHo"
+    },
+    {
+     "role": "heading",
+     "order": 13,
+     "text": "The Fréscopa flagship"
+    },
+    {
+     "role": "body",
+     "order": 14,
+     "text": "Our largest room: a full taste bar, the complete showroom, and a dedicated workshop table upstairs. The best place to spend an unhurried afternoon in the Fréscopa world."
+    },
+    {
+     "role": "eyebrow",
+     "order": 15,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 16,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 17,
+     "text": "Workshops"
+    },
+    {
+     "role": "body",
+     "order": 18,
+     "text": "112 Greene Street, New York, NY"
+    },
+    {
+     "role": "body",
+     "order": 19,
+     "text": "Mon–Sun · 7am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 20,
+     "text": "Get directions →",
+     "href": "#"
+    },
+    {
+     "role": "body",
+     "order": 21,
+     "text": "All regions"
+    },
+    {
+     "role": "body",
+     "order": 22,
+     "text": "East"
+    },
+    {
+     "role": "body",
+     "order": 23,
+     "text": "Midwest"
+    },
+    {
+     "role": "body",
+     "order": 24,
+     "text": "South"
+    },
+    {
+     "role": "body",
+     "order": 25,
+     "text": "West"
+    },
+    {
+     "role": "eyebrow",
+     "order": 26,
+     "text": "26 cafés near you"
+    },
+    {
+     "role": "heading",
+     "order": 27,
+     "text": "Fréscopa Williamsburg"
+    },
+    {
+     "role": "eyebrow",
+     "order": 28,
+     "text": "Brooklyn, NY"
+    },
+    {
+     "role": "body",
+     "order": 29,
+     "text": "134 N 6th St, Brooklyn, NY"
+    },
+    {
+     "role": "eyebrow",
+     "order": 30,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 31,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 32,
+     "text": "Mon–Sun · 7am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 33,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 34,
+     "text": "Fréscopa Seaport"
+    },
+    {
+     "role": "eyebrow",
+     "order": 35,
+     "text": "Boston, MA"
+    },
+    {
+     "role": "body",
+     "order": 36,
+     "text": "48 Harbor Way, Boston, MA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 37,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 38,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 39,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 40,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 41,
+     "text": "Fréscopa Back Bay"
+    },
+    {
+     "role": "eyebrow",
+     "order": 42,
+     "text": "Boston, MA"
+    },
+    {
+     "role": "body",
+     "order": 43,
+     "text": "221 Newbury St, Boston, MA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 44,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 45,
+     "text": "Mon–Sun · 6:30am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 46,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 47,
+     "text": "Fréscopa Rittenhouse"
+    },
+    {
+     "role": "eyebrow",
+     "order": 48,
+     "text": "Philadelphia, PA"
+    },
+    {
+     "role": "body",
+     "order": 49,
+     "text": "1820 Walnut St, Philadelphia, PA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 50,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 51,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 52,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 53,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 54,
+     "text": "Fréscopa Georgetown"
+    },
+    {
+     "role": "eyebrow",
+     "order": 55,
+     "text": "Washington, DC"
+    },
+    {
+     "role": "body",
+     "order": 56,
+     "text": "3040 M St NW, Washington, DC"
+    },
+    {
+     "role": "eyebrow",
+     "order": 57,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 58,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 59,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 60,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 61,
+     "text": "Fréscopa Ponce City Market"
+    },
+    {
+     "role": "eyebrow",
+     "order": 62,
+     "text": "Atlanta, GA"
+    },
+    {
+     "role": "body",
+     "order": 63,
+     "text": "675 Ponce De Leon Ave NE, Atlanta, GA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 64,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 65,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 66,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 67,
+     "text": "Mon–Sun · 7am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 68,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 69,
+     "text": "Fréscopa West Loop"
+    },
+    {
+     "role": "eyebrow",
+     "order": 70,
+     "text": "Chicago, IL"
+    },
+    {
+     "role": "body",
+     "order": 71,
+     "text": "905 W Fulton Market, Chicago, IL"
+    },
+    {
+     "role": "eyebrow",
+     "order": 72,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 73,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 74,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 75,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 76,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 77,
+     "text": "Fréscopa Wicker Park"
+    },
+    {
+     "role": "eyebrow",
+     "order": 78,
+     "text": "Chicago, IL"
+    },
+    {
+     "role": "body",
+     "order": 79,
+     "text": "1547 N Milwaukee Ave, Chicago, IL"
+    },
+    {
+     "role": "eyebrow",
+     "order": 80,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 81,
+     "text": "Mon–Sun · 6:30am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 82,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 83,
+     "text": "Fréscopa North Loop"
+    },
+    {
+     "role": "eyebrow",
+     "order": 84,
+     "text": "Minneapolis, MN"
+    },
+    {
+     "role": "body",
+     "order": 85,
+     "text": "215 N Washington Ave, Minneapolis, MN"
+    },
+    {
+     "role": "eyebrow",
+     "order": 86,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 87,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 88,
+     "text": "Mon–Sun · 7am–6pm"
+    },
+    {
+     "role": "cta",
+     "order": 89,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 90,
+     "text": "Fréscopa Crossroads"
+    },
+    {
+     "role": "eyebrow",
+     "order": 91,
+     "text": "Kansas City, MO"
+    },
+    {
+     "role": "body",
+     "order": 92,
+     "text": "1801 Grand Blvd, Kansas City, MO"
+    },
+    {
+     "role": "eyebrow",
+     "order": 93,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 94,
+     "text": "Mon–Sun · 7am–6pm"
+    },
+    {
+     "role": "cta",
+     "order": 95,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 96,
+     "text": "Fréscopa RiNo"
+    },
+    {
+     "role": "eyebrow",
+     "order": 97,
+     "text": "Denver, CO"
+    },
+    {
+     "role": "body",
+     "order": 98,
+     "text": "2601 Larimer St, Denver, CO"
+    },
+    {
+     "role": "eyebrow",
+     "order": 99,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 100,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 101,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 102,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 103,
+     "text": "Fréscopa South Congress"
+    },
+    {
+     "role": "eyebrow",
+     "order": 104,
+     "text": "Austin, TX"
+    },
+    {
+     "role": "body",
+     "order": 105,
+     "text": "1601 S Congress Ave, Austin, TX"
+    },
+    {
+     "role": "eyebrow",
+     "order": 106,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 107,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 108,
+     "text": "Mon–Sun · 7am–6pm"
+    },
+    {
+     "role": "cta",
+     "order": 109,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 110,
+     "text": "Fréscopa The Domain"
+    },
+    {
+     "role": "eyebrow",
+     "order": 111,
+     "text": "Austin, TX"
+    },
+    {
+     "role": "body",
+     "order": 112,
+     "text": "11700 Domain Blvd, Austin, TX"
+    },
+    {
+     "role": "eyebrow",
+     "order": 113,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 114,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 115,
+     "text": "Mon–Sun · 7am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 116,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 117,
+     "text": "Fréscopa Deep Ellum"
+    },
+    {
+     "role": "eyebrow",
+     "order": 118,
+     "text": "Dallas, TX"
+    },
+    {
+     "role": "body",
+     "order": 119,
+     "text": "2822 Main St, Dallas, TX"
+    },
+    {
+     "role": "eyebrow",
+     "order": 120,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 121,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 122,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 123,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 124,
+     "text": "Fréscopa The Heights"
+    },
+    {
+     "role": "eyebrow",
+     "order": 125,
+     "text": "Houston, TX"
+    },
+    {
+     "role": "body",
+     "order": 126,
+     "text": "714 Yale St, Houston, TX"
+    },
+    {
+     "role": "eyebrow",
+     "order": 127,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 128,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 129,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 130,
+     "text": "Fréscopa Wynwood"
+    },
+    {
+     "role": "eyebrow",
+     "order": 131,
+     "text": "Miami, FL"
+    },
+    {
+     "role": "body",
+     "order": 132,
+     "text": "2750 NW 3rd Ave, Miami, FL"
+    },
+    {
+     "role": "eyebrow",
+     "order": 133,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 134,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 135,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 136,
+     "text": "Mon–Sun · 7am–9pm"
+    },
+    {
+     "role": "cta",
+     "order": 137,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 138,
+     "text": "Fréscopa Warehouse District"
+    },
+    {
+     "role": "eyebrow",
+     "order": 139,
+     "text": "New Orleans, LA"
+    },
+    {
+     "role": "body",
+     "order": 140,
+     "text": "640 Julia St, New Orleans, LA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 141,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 142,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 143,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 144,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 145,
+     "text": "Fréscopa Ferry Building"
+    },
+    {
+     "role": "eyebrow",
+     "order": 146,
+     "text": "San Francisco, CA"
+    },
+    {
+     "role": "body",
+     "order": 147,
+     "text": "1 Ferry Building, San Francisco, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 148,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 149,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 150,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 151,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 152,
+     "text": "Fréscopa Hayes Valley"
+    },
+    {
+     "role": "eyebrow",
+     "order": 153,
+     "text": "San Francisco, CA"
+    },
+    {
+     "role": "body",
+     "order": 154,
+     "text": "556 Hayes St, San Francisco, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 155,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 156,
+     "text": "Mon–Sun · 6:30am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 157,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 158,
+     "text": "Fréscopa Capitol Hill"
+    },
+    {
+     "role": "eyebrow",
+     "order": 159,
+     "text": "Seattle, WA"
+    },
+    {
+     "role": "body",
+     "order": 160,
+     "text": "520 E Pine St, Seattle, WA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 161,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 162,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 163,
+     "text": "Mon–Sun · 6:30am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 164,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 165,
+     "text": "Fréscopa Ballard"
+    },
+    {
+     "role": "eyebrow",
+     "order": 166,
+     "text": "Seattle, WA"
+    },
+    {
+     "role": "body",
+     "order": 167,
+     "text": "5405 Ballard Ave NW, Seattle, WA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 168,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 169,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 170,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 171,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 172,
+     "text": "Fréscopa Pearl District"
+    },
+    {
+     "role": "eyebrow",
+     "order": 173,
+     "text": "Portland, OR"
+    },
+    {
+     "role": "body",
+     "order": 174,
+     "text": "1130 NW Everett St, Portland, OR"
+    },
+    {
+     "role": "eyebrow",
+     "order": 175,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 176,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 177,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 178,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 179,
+     "text": "Fréscopa Arts District"
+    },
+    {
+     "role": "eyebrow",
+     "order": 180,
+     "text": "Los Angeles, CA"
+    },
+    {
+     "role": "body",
+     "order": 181,
+     "text": "720 E 3rd St, Los Angeles, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 182,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 183,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 184,
+     "text": "Workshops"
+    },
+    {
+     "role": "eyebrow",
+     "order": 185,
+     "text": "Mon–Sun · 7am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 186,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 187,
+     "text": "Fréscopa Silver Lake"
+    },
+    {
+     "role": "eyebrow",
+     "order": 188,
+     "text": "Los Angeles, CA"
+    },
+    {
+     "role": "body",
+     "order": 189,
+     "text": "2909 Sunset Blvd, Los Angeles, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 190,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 191,
+     "text": "Mon–Sun · 6:30am–8pm"
+    },
+    {
+     "role": "cta",
+     "order": 192,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 193,
+     "text": "Fréscopa Little Italy"
+    },
+    {
+     "role": "eyebrow",
+     "order": 194,
+     "text": "San Diego, CA"
+    },
+    {
+     "role": "body",
+     "order": 195,
+     "text": "1660 India St, San Diego, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 196,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 197,
+     "text": "Showroom"
+    },
+    {
+     "role": "eyebrow",
+     "order": 198,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 199,
+     "text": "Directions →",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 200,
+     "text": "Fréscopa Roosevelt Row"
+    },
+    {
+     "role": "eyebrow",
+     "order": 201,
+     "text": "Phoenix, AZ"
+    },
+    {
+     "role": "body",
+     "order": 202,
+     "text": "814 N 2nd St, Phoenix, AZ"
+    },
+    {
+     "role": "eyebrow",
+     "order": 203,
+     "text": "Café"
+    },
+    {
+     "role": "eyebrow",
+     "order": 204,
+     "text": "Mon–Sun · 7am–7pm"
+    },
+    {
+     "role": "cta",
+     "order": 205,
+     "text": "Directions →",
+     "href": "#"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 57,
+   "repeats": [
+    {
+     "unitSelector": "DIV.stat",
+     "count": 4,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 2
+     },
+     "uniform": true
+    },
+    {
+     "unitSelector": "ARTICLE.loc",
+     "count": 26,
+     "unit": {
+      "headings": 1,
+      "ctas": 1,
+      "imgs": 0,
+      "textRuns": 8
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "cafe-sec",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Book an Atelier tour"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "A guided hour with the machine that learns you."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Book a free, 45-minute private tour at any showroom café. A specialist walks you through the Atelier line, dials a shot to your taste, and answers everything a spec sheet can't. No obligation to buy."
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "→"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "45 minutes, one-to-one with a specialist"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "→"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "Taste the full range, dialled to your palate"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "→"
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "Free, and yours to book whenever suits"
+    },
+    {
+     "role": "heading",
+     "order": 9,
+     "text": "Reserve your tour"
+    },
+    {
+     "role": "eyebrow",
+     "order": 10,
+     "text": "Café"
+    },
+    {
+     "role": "body",
+     "order": 11,
+     "text": "Choose a showroom café"
+    },
+    {
+     "role": "body",
+     "order": 12,
+     "text": "Fréscopa SoHo, Flagship — New York, NY"
+    },
+    {
+     "role": "body",
+     "order": 13,
+     "text": "Fréscopa Williamsburg — Brooklyn, NY"
+    },
+    {
+     "role": "body",
+     "order": 14,
+     "text": "Fréscopa Seaport — Boston, MA"
+    },
+    {
+     "role": "body",
+     "order": 15,
+     "text": "Fréscopa Georgetown — Washington, DC"
+    },
+    {
+     "role": "body",
+     "order": 16,
+     "text": "Fréscopa Ponce City Market — Atlanta, GA"
+    },
+    {
+     "role": "body",
+     "order": 17,
+     "text": "Fréscopa West Loop — Chicago, IL"
+    },
+    {
+     "role": "body",
+     "order": 18,
+     "text": "Fréscopa RiNo — Denver, CO"
+    },
+    {
+     "role": "body",
+     "order": 19,
+     "text": "Fréscopa The Domain — Austin, TX"
+    },
+    {
+     "role": "body",
+     "order": 20,
+     "text": "Fréscopa Deep Ellum — Dallas, TX"
+    },
+    {
+     "role": "body",
+     "order": 21,
+     "text": "Fréscopa Wynwood — Miami, FL"
+    },
+    {
+     "role": "body",
+     "order": 22,
+     "text": "Fréscopa Ferry Building — San Francisco, CA"
+    },
+    {
+     "role": "body",
+     "order": 23,
+     "text": "Fréscopa Ballard — Seattle, WA"
+    },
+    {
+     "role": "body",
+     "order": 24,
+     "text": "Fréscopa Arts District — Los Angeles, CA"
+    },
+    {
+     "role": "body",
+     "order": 25,
+     "text": "Fréscopa Little Italy — San Diego, CA"
+    },
+    {
+     "role": "eyebrow",
+     "order": 26,
+     "text": "Date"
+    },
+    {
+     "role": "eyebrow",
+     "order": 27,
+     "text": "Time"
+    },
+    {
+     "role": "body",
+     "order": 28,
+     "text": "Pick a slot"
+    },
+    {
+     "role": "body",
+     "order": 29,
+     "text": "9:00 AM"
+    },
+    {
+     "role": "body",
+     "order": 30,
+     "text": "10:30 AM"
+    },
+    {
+     "role": "body",
+     "order": 31,
+     "text": "12:00 PM"
+    },
+    {
+     "role": "body",
+     "order": 32,
+     "text": "1:30 PM"
+    },
+    {
+     "role": "body",
+     "order": 33,
+     "text": "3:00 PM"
+    },
+    {
+     "role": "body",
+     "order": 34,
+     "text": "4:30 PM"
+    },
+    {
+     "role": "eyebrow",
+     "order": 35,
+     "text": "Guests"
+    },
+    {
+     "role": "body",
+     "order": 36,
+     "text": "Just me"
+    },
+    {
+     "role": "body",
+     "order": 37,
+     "text": "2 guests"
+    },
+    {
+     "role": "body",
+     "order": 38,
+     "text": "3 guests"
+    },
+    {
+     "role": "body",
+     "order": 39,
+     "text": "4 guests"
+    },
+    {
+     "role": "body",
+     "order": 40,
+     "text": "5+ guests"
+    },
+    {
+     "role": "eyebrow",
+     "order": 41,
+     "text": "Name"
+    },
+    {
+     "role": "eyebrow",
+     "order": 42,
+     "text": "Email"
+    },
+    {
+     "role": "eyebrow",
+     "order": 43,
+     "text": "Phone"
+    },
+    {
+     "role": "body",
+     "order": 44,
+     "text": "(optional)"
+    },
+    {
+     "role": "eyebrow",
+     "order": 45,
+     "text": "I'd most like to see"
+    },
+    {
+     "role": "body",
+     "order": 46,
+     "text": "(optional)"
+    },
+    {
+     "role": "body",
+     "order": 47,
+     "text": "The Atelier line"
+    },
+    {
+     "role": "body",
+     "order": 48,
+     "text": "Espresso & milk"
+    },
+    {
+     "role": "body",
+     "order": 49,
+     "text": "Cold brew & tea"
+    },
+    {
+     "role": "body",
+     "order": 50,
+     "text": "Bean subscriptions"
+    },
+    {
+     "role": "body",
+     "order": 51,
+     "text": "Request this tour"
+    },
+    {
+     "role": "body",
+     "order": 52,
+     "text": "→"
+    },
+    {
+     "role": "body",
+     "order": 53,
+     "text": "We'll confirm by email within one business day. No payment needed to book."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 5,
+   "repeats": [
+    {
+     "unitSelector": "LI.",
+     "count": 3,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 2
+     },
+     "uniform": true
+    },
+    {
+     "unitSelector": "LABEL.field",
+     "count": 3,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 16
+     },
+     "uniform": false
+    },
+    {
+     "unitSelector": "DIV.field-row",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 9
+     },
+     "uniform": false
+    },
+    {
+     "unitSelector": "LABEL.field",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    },
+    {
+     "unitSelector": "LABEL.field",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "cafe-cta",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Come say hello"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "The kettle's on. The door's open."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "No appointment, no pressure — just a good cup and a warm room. We'd love to see you."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "Find a café →",
+     "href": "#locations"
+    },
+    {
+     "role": "cta",
+     "order": 4,
+     "text": "Book an Atelier tour",
+     "href": "#tour"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": [
+    {
+     "unitSelector": "A.btn",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    }
+   ]
+  }
+ ]
+}

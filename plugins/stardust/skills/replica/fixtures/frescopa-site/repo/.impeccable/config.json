@@ -1,0 +1,9 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "stardust/prototypes/**"
+    ],
+    "ignoreValues": []
+  }
+}

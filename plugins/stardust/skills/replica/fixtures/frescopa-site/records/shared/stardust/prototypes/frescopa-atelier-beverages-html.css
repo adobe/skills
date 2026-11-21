@@ -1,0 +1,92 @@
+/* ============================================================
+   Fréscopa — category-overview (beverages.html). Page modules only;
+   chrome, tokens, buttons come from shared/canon.css. Values lifted
+   from the live React template's inline styles.
+   ============================================================ */
+
+/* Live React types: html, body, #dc-root { height: 100% } (same as journal-index). */
+html, body { height: 100%; }
+.page { height: 100%; font-family: var(--font-body); color: var(--ink); background: var(--paper); }
+
+/* ---------- Category hero ---------- */
+.bev-hero {
+  background: var(--paper-2);
+  padding: calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0 clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+.bev-hero__eyebrow {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.72rem; color: var(--terracotta);
+}
+.bev-hero__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem); color: var(--burgundy);
+  margin: 0.6rem 0 0; max-width: 18ch;
+}
+.bev-hero__lede { color: var(--ink-soft); font-size: 1.125rem; margin-top: 1rem; line-height: 1.6; max-width: 56ch; }
+
+/* ---------- Range rows (media + copy split; alternating backgrounds) ---------- */
+.range { background: var(--paper); padding: clamp(2.8rem, 2rem + 3vw, 4.5rem) 0; }
+.range--alt { background: var(--paper-2); }
+.range__grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: clamp(1.8rem, 1rem + 3vw, 3.8rem); align-items: center;
+}
+.range__media {
+  border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow-md); aspect-ratio: 5 / 4; background: var(--paper-3);
+}
+.range__media img { width: 100%; height: 100%; object-fit: cover; }
+.range__body { display: flex; flex-direction: column; gap: 0.9rem; }
+.range__eyebrow {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.72rem; color: var(--terracotta);
+}
+.range__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.7rem); color: var(--burgundy); line-height: 1.08; margin: 0;
+}
+.range__text { color: var(--ink-soft); font-size: 1.06rem; line-height: 1.65; margin: 0; }
+.range__picks { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.4rem; }
+.range__picks-label {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.66rem; color: var(--ink-soft);
+}
+.range__pick-list { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.range__pick {
+  font-size: 0.9rem; color: var(--ink); background: var(--surface-card);
+  border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.42rem 0.9rem;
+}
+.range__foot { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 1rem; }
+.range__meta {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 0.68rem; color: var(--ink-soft);
+}
+
+/* ---------- Café CTA band (dark, amber glow) ---------- */
+.bev-cta {
+  position: relative; background: var(--charcoal); overflow: hidden;
+  padding: clamp(3.5rem, 2.5rem + 4vw, 6rem) 0;
+}
+.bev-cta__glow {
+  position: absolute; top: -20%; right: -10%; width: 55%; height: 140%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in oklch, var(--amber) 24%, transparent) 0%, transparent 62%);
+}
+.bev-cta__inner { position: relative; text-align: center; }
+.bev-cta__eyebrow {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.16em;
+  font-size: 0.74rem; color: var(--amber);
+}
+.bev-cta__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(1.9rem, 1.4rem + 2.4vw, 3rem); color: var(--cream);
+  margin: 1rem auto 0; max-width: 20ch; line-height: 1.06;
+}
+.bev-cta__text { color: rgba(255, 248, 240, 0.82); font-size: 1.08rem; line-height: 1.6; margin: 1rem auto 0; max-width: 44ch; }
+.bev-cta__action { margin-top: 1.7rem; }
+
+/* ---------- Observed hover (motion-observe, live .fr-btn--terracotta / --cream) ----------
+   Live React base (_ds tokens/base.css L36): `a:hover { color: var(--terracotta-deep) }`
+   outranks .fr-btn's own colour, so a link-button's label turns terracotta-deep on hover
+   (on the terracotta button that equals its hover background — replicated as observed).
+   Page-local while canon is frozen; canon back-port candidate: `:where(.page--app) a.btn:hover`. */
+main a.btn:hover { color: var(--terracotta-deep); }

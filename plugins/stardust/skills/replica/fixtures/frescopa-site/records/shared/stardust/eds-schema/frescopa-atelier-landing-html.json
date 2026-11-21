@@ -1,0 +1,639 @@
+{
+ "source": "http://localhost:8792/frescopa-atelier-landing-html-proposed.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "lp-hero",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Meet the Atelier"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Every morning, perfected."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "A machine that pays attention. It senses every cup, learns what you love, reads the shape of your morning, and pours accordingly — no dials, no guesswork."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "Order the Atelier →",
+     "href": "atelier.html"
+    },
+    {
+     "role": "cta",
+     "order": 4,
+     "text": "See how it works",
+     "href": "#how"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "4.8 · loved by 214 owners"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "From $2,199, or $184/mo. Free delivery, expert setup, and a two-year guarantee."
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 4,
+   "repeats": [
+    {
+     "unitSelector": "A.btn",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "lp-pillars",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Ritual, meet intelligence"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Barista craft, with a mind of its own."
+    },
+    {
+     "role": "heading",
+     "order": 2,
+     "text": "It learns you"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "A cup or two in, it starts to memorise your taste. Soon the first pour of the day simply arrives the way you like it."
+    },
+    {
+     "role": "heading",
+     "order": 4,
+     "text": "It reads the room"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "A slow Sunday and a full calendar call for different cups. The Atelier adjusts to the shape of your day."
+    },
+    {
+     "role": "heading",
+     "order": 6,
+     "text": "Nothing wasted"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "It reorders beans before you run out and sends the grounds back to soil. Care, right down to the last cup."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 8,
+   "repeats": [
+    {
+     "unitSelector": "DIV.lp-card",
+     "count": 3,
+     "unit": {
+      "headings": 1,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 2
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "lp-steps",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "How it actually works"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "It learns your taste. Here's how."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Not a preset menu, and not a guess. The Atelier works the way a good barista does — it pays attention, remembers, and adjusts. Four quiet steps, running every morning."
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "1"
+    },
+    {
+     "role": "heading",
+     "order": 4,
+     "text": "It tastes every cup"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Sensors read the grind, the flow, the strength and the temperature of every pour — the same things a barista would notice."
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "2"
+    },
+    {
+     "role": "heading",
+     "order": 7,
+     "text": "It builds your flavour DNA"
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "Those readings become a profile for each person in the house, refined a little more with every cup you pour."
+    },
+    {
+     "role": "body",
+     "order": 9,
+     "text": "3"
+    },
+    {
+     "role": "heading",
+     "order": 10,
+     "text": "It reads the morning"
+    },
+    {
+     "role": "body",
+     "order": 11,
+     "text": "The time, your calendar, the weather, and who's awake all shape what it suggests — before you've asked for anything."
+    },
+    {
+     "role": "body",
+     "order": 12,
+     "text": "4"
+    },
+    {
+     "role": "heading",
+     "order": 13,
+     "text": "It acts on its own"
+    },
+    {
+     "role": "body",
+     "order": 14,
+     "text": "It warms up before your alarm, adjusts the pour to match, and reorders beans before you run low. You just lift the cup."
+    },
+    {
+     "role": "body",
+     "order": 15,
+     "text": "Your flavour DNA and morning routines stay on your machine and your account. You can review what it has learned, correct it, or wipe it clean, any time."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 5,
+   "repeats": [
+    {
+     "unitSelector": "LI.lp-step",
+     "count": 4,
+     "unit": {
+      "headings": 1,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 3
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "lp-dna",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "How it learns you"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Your taste, drawn one cup at a time."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "We call the picture the Atelier builds your flavour DNA. Watch it shift as the day, and your mood, changes."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "See the full machine →",
+     "href": "atelier.html"
+    },
+    {
+     "role": "eyebrow",
+     "order": 4,
+     "text": "Strength"
+    },
+    {
+     "role": "eyebrow",
+     "order": 5,
+     "text": "Body"
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "Sweetness"
+    },
+    {
+     "role": "eyebrow",
+     "order": 7,
+     "text": "Smoothness"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "Warmth"
+    },
+    {
+     "role": "eyebrow",
+     "order": 9,
+     "text": "Crema"
+    },
+    {
+     "role": "heading",
+     "order": 10,
+     "text": "The weekday cup"
+    },
+    {
+     "role": "body",
+     "order": 11,
+     "text": "Brisk and a little bolder. Enough to meet the day, never so much it rushes you."
+    },
+    {
+     "role": "eyebrow",
+     "order": 12,
+     "text": "Weekday"
+    },
+    {
+     "role": "eyebrow",
+     "order": 13,
+     "text": "Slow Sunday"
+    },
+    {
+     "role": "eyebrow",
+     "order": 14,
+     "text": "After dinner"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 5,
+   "repeats": [
+    {
+     "unitSelector": "g.[object",
+     "count": 3,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 0
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "lp-film",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "See it in the morning"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Two minutes in a real kitchen."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "2:14"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "A short film is in production. Drop your own reel in here when it's ready."
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 3,
+   "repeats": []
+  },
+  {
+   "section": "lp-quote",
+   "items": [
+    {
+     "role": "body",
+     "order": 0,
+     "text": "It simply what I wanted, before I did."
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "knew"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Priya — three weeks with the Atelier"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 2,
+   "repeats": []
+  },
+  {
+   "section": "lp-reviews",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "What owners say"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "The verdict, three months in."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "4.8"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "from 214 verified owners"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "It simply knew what I wanted, before I did. The first machine I've owned that got better the longer I had it."
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Priya M. · London · 3 months in"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "I was sceptical at the price. Then it started reordering beans before I noticed, and warming up before my alarm. Now the counter feels bare without it."
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "Daniel R. · Bristol · 5 months in"
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "Every person in our house gets their own cup, exactly right, without touching a single dial. Worth every penny."
+    },
+    {
+     "role": "body",
+     "order": 9,
+     "text": "Sana K. · Leeds · 2 months in"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 6,
+   "repeats": [
+    {
+     "unitSelector": "FIGURE.review",
+     "count": 3,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 2
+     },
+     "uniform": true
+    }
+   ]
+  },
+  {
+   "section": "lp-details",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "In the details"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Everything considered, nothing fussy."
+    },
+    {
+     "role": "eyebrow",
+     "order": 2,
+     "text": "Learns your taste"
+    },
+    {
+     "role": "eyebrow",
+     "order": 3,
+     "text": "Reorders itself"
+    },
+    {
+     "role": "eyebrow",
+     "order": 4,
+     "text": "Compostable pods"
+    },
+    {
+     "role": "eyebrow",
+     "order": 5,
+     "text": "Whisper-quiet grind"
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "Two-year guarantee"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 3,
+   "repeats": []
+  },
+  {
+   "section": "lp-bundles",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Ways to buy"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Start with the machine, or the whole ritual."
+    },
+    {
+     "role": "heading",
+     "order": 2,
+     "text": "The Atelier"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "The machine, delivered and set up in your kitchen. Everything it needs to start learning you."
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "$2,199"
+    },
+    {
+     "role": "cta",
+     "order": 5,
+     "text": "Choose",
+     "href": "atelier.html"
+    },
+    {
+     "role": "eyebrow",
+     "order": 6,
+     "text": "Most loved"
+    },
+    {
+     "role": "heading",
+     "order": 7,
+     "text": "The Atelier + a year of beans"
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "The machine, plus house beans delivered as you need them for a year. It reorders; you never run dry."
+    },
+    {
+     "role": "body",
+     "order": 9,
+     "text": "$2,799"
+    },
+    {
+     "role": "body",
+     "order": 10,
+     "text": "$2,899"
+    },
+    {
+     "role": "cta",
+     "order": 11,
+     "text": "Choose →",
+     "href": "atelier.html"
+    },
+    {
+     "role": "heading",
+     "order": 12,
+     "text": "The Atelier + Barista Kit"
+    },
+    {
+     "role": "body",
+     "order": 13,
+     "text": "Adds the milk jug, tamper, and two ceramic cups — for the mornings you want to do it by hand."
+    },
+    {
+     "role": "body",
+     "order": 14,
+     "text": "$2,399"
+    },
+    {
+     "role": "body",
+     "order": 15,
+     "text": "save $110"
+    },
+    {
+     "role": "cta",
+     "order": 16,
+     "text": "Choose",
+     "href": "atelier.html"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 8,
+   "repeats": [
+    {
+     "unitSelector": "DIV.bundle",
+     "count": 3,
+     "unit": {
+      "headings": 1,
+      "ctas": 1,
+      "imgs": 0,
+      "textRuns": 4
+     },
+     "uniform": false
+    }
+   ]
+  },
+  {
+   "section": "lp-cta",
+   "items": [
+    {
+     "role": "body",
+     "order": 0,
+     "text": "Bring the Atelier"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "home."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "From $2,199, or $184/mo for 12 months. Free delivery, expert setup, and a two-year workshop guarantee."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "Order the Atelier →",
+     "href": "atelier.html"
+    },
+    {
+     "role": "cta",
+     "order": 4,
+     "text": "Compare machines",
+     "href": "machines.html"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": [
+    {
+     "unitSelector": "A.btn",
+     "count": 2,
+     "unit": {
+      "headings": 0,
+      "ctas": 0,
+      "imgs": 0,
+      "textRuns": 1
+     },
+     "uniform": false
+    }
+   ]
+  }
+ ]
+}

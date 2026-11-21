@@ -1,0 +1,91 @@
+[
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+    "file": "stardust/current/assets/media/frescopa-logo-light.svg",
+    "bytes": 6930,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-beverages-html",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html",
+      "frescopa-atelier-landing-html",
+      "frescopa-atelier-machines-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+    "file": "stardust/current/assets/media/frescopa-logo.svg",
+    "bytes": 6930,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-beverages-html",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html",
+      "frescopa-atelier-landing-html",
+      "frescopa-atelier-machines-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg",
+    "file": "stardust/current/assets/media/espresso-pour.jpg",
+    "bytes": 244380,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-beverages-html",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html",
+      "frescopa-atelier-landing-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/tea-moment.jpg",
+    "file": "stardust/current/assets/media/tea-moment.jpg",
+    "bytes": 274113,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-beverages-html",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/citrus-juice.jpg",
+    "file": "stardust/current/assets/media/citrus-juice.jpg",
+    "bytes": 215396,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-beverages-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+    "file": "stardust/current/assets/media/hero-machine.jpg",
+    "bytes": 236780,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html",
+      "frescopa-atelier-landing-html",
+      "frescopa-atelier-machines-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/cafe-interior.jpg",
+    "file": "stardust/current/assets/media/cafe-interior.jpg",
+    "bytes": 331926,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html"
+    ]
+  },
+  {
+    "source": "https://markszulc.github.io/frescopa-atelier/assets/images/sustainability.jpg",
+    "file": "stardust/current/assets/media/sustainability.jpg",
+    "bytes": 262737,
+    "pages": [
+      "frescopa-atelier",
+      "frescopa-atelier-blog-html"
+    ]
+  }
+]

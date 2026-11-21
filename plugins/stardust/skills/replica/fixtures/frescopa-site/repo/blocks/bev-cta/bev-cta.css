@@ -1,0 +1,70 @@
+/* bev-cta — dark café CTA band with amber glow (prototype section.bev-cta), mobile-first. */
+
+.bev-cta {
+  position: relative;
+  background: var(--charcoal);
+  overflow: hidden;
+  padding: clamp(3.5rem, 2.5rem + 4vw, 6rem) 0;
+}
+
+.bev-cta::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  right: -10%;
+  width: 55%;
+  height: 140%;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle,
+      color-mix(in oklch, var(--amber) 24%, transparent) 0%,
+      transparent 62%
+    );
+}
+
+.bev-cta .bev-cta-inner {
+  position: relative;
+  text-align: center;
+}
+
+/* The prototype eyebrow is an inline span on the container's line box. */
+.bev-cta .bev-cta-eyebrow {
+  display: inline;
+}
+
+.bev-cta .bev-cta-eyebrow p {
+  display: inline;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.74rem;
+  color: var(--amber);
+}
+
+.bev-cta .bev-cta-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(1.9rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--cream);
+  margin: 1rem auto 0;
+  max-width: 20ch;
+  line-height: 1.06;
+}
+
+.bev-cta .bev-cta-text p {
+  color: rgb(255 248 240 / 82%);
+  font-size: 1.08rem;
+  line-height: 1.6;
+  margin: 1rem auto 0;
+  max-width: 44ch;
+}
+
+.bev-cta .bev-cta-action {
+  margin-top: 1.7rem;
+}
+
+.bev-cta .bev-cta-action p.button-wrapper {
+  display: block;
+}

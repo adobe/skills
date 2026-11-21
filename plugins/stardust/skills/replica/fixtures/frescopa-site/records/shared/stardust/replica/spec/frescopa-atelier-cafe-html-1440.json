@@ -1,0 +1,892 @@
+{
+ "_provenance": {
+  "writtenBy": "skills/replica/scripts/source-spec.mjs",
+  "writtenAt": "2026-11-21T19:36:55.261Z",
+  "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+  "width": 1440,
+  "main": "main",
+  "locale": "en-US"
+ },
+ "page": {
+  "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+  "width": 1440,
+  "viewport": 1440,
+  "docHeight": 7355,
+  "scrollWidth": 1440,
+  "root": "body",
+  "rootFallback": true,
+  "records": [
+   "scroll",
+   "shape"
+  ],
+  "rootWrapsChrome": false,
+  "tier": "chrome"
+ },
+ "tokens": {
+  "fonts": [
+   {
+    "stack": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+    "n": 76
+   },
+   {
+    "stack": "\"Hanken Grotesk\", system-ui, sans-serif",
+    "n": 53
+   },
+   {
+    "stack": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+    "n": 33
+   },
+   {
+    "stack": "system-ui, -apple-system, sans-serif",
+    "n": 2
+   }
+  ],
+  "loadedFaces": [
+   "Hanken Grotesk 400 normal",
+   "Hanken Grotesk 500 normal",
+   "Hanken Grotesk 600 normal",
+   "Hanken Grotesk 700 normal",
+   "Schibsted Grotesk 400 normal",
+   "Schibsted Grotesk 700 normal",
+   "Schibsted Grotesk 800 normal"
+  ],
+  "textStyles": [
+   {
+    "key": "15.2/24.62 400 Hanken Grotesk",
+    "fontSize": 15.2,
+    "lineHeight": 24.62,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 16,
+    "roles": {
+     "span": 2,
+     "p": 1,
+     "link": 13
+    },
+    "sample": "112 Greene Street, New York, NY"
+   },
+   {
+    "key": "10.56/17.11 400 Hanken Grotesk uppercase",
+    "fontSize": 10.56,
+    "lineHeight": 17.11,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 16,
+    "roles": {
+     "span": 16
+    },
+    "sample": "Tuesday"
+   },
+   {
+    "key": "15/15 600 Hanken Grotesk",
+    "fontSize": 15,
+    "lineHeight": 15,
+    "fontWeight": "600",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 11,
+    "roles": {
+     "link": 8,
+     "button": 3
+    },
+    "sample": "Find your nearest café"
+   },
+   {
+    "key": "10.88/17.63 400 Hanken Grotesk uppercase",
+    "fontSize": 10.88,
+    "lineHeight": 17.63,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 8,
+    "roles": {
+     "span": 8
+    },
+    "sample": "01 · The taste bar"
+   },
+   {
+    "key": "11.52/18.66 400 Hanken Grotesk uppercase",
+    "fontSize": 11.52,
+    "lineHeight": 18.66,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 7,
+    "roles": {
+     "span": 5,
+     "p": 2
+    },
+    "sample": "Why come in"
+   },
+   {
+    "key": "10.24/16.59 400 Hanken Grotesk uppercase",
+    "fontSize": 10.24,
+    "lineHeight": 16.59,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 7,
+    "roles": {
+     "span": 7
+    },
+    "sample": "Brooklyn, NY"
+   },
+   {
+    "key": "9.6/15.55 400 Hanken Grotesk uppercase",
+    "fontSize": 9.6,
+    "lineHeight": 15.55,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 7,
+    "roles": {
+     "span": 7
+    },
+    "sample": "Café"
+   },
+   {
+    "key": "17/27.54 600 Hanken Grotesk",
+    "fontSize": 17,
+    "lineHeight": 27.54,
+    "fontWeight": "600",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 6,
+    "roles": {
+     "link": 6
+    },
+    "sample": "Browse the coffee range"
+   },
+   {
+    "key": "13.6/22.03 600 Hanken Grotesk",
+    "fontSize": 13.6,
+    "lineHeight": 22.03,
+    "fontWeight": "600",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 6,
+    "roles": {
+     "link": 6
+    },
+    "sample": "Directions"
+   },
+   {
+    "key": "14.08/22.81 500 Hanken Grotesk",
+    "fontSize": 14.08,
+    "lineHeight": 22.81,
+    "fontWeight": "500",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 5,
+    "roles": {
+     "button": 5
+    },
+    "sample": "All regions"
+   },
+   {
+    "key": "46.4/46.4 800 Schibsted Grotesk",
+    "fontSize": 46.4,
+    "lineHeight": 46.4,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "span": 4
+    },
+    "sample": "1,200+"
+   },
+   {
+    "key": "20.8/23.92 700 Schibsted Grotesk",
+    "fontSize": 20.8,
+    "lineHeight": 23.92,
+    "fontWeight": "700",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "h3": 4
+    },
+    "sample": "Origins cupping"
+   },
+   {
+    "key": "20/23 700 Schibsted Grotesk",
+    "fontSize": 20,
+    "lineHeight": 23,
+    "fontWeight": "700",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "h3": 4
+    },
+    "sample": "Taste before you commit"
+   },
+   {
+    "key": "19.2/21.5 700 Schibsted Grotesk",
+    "fontSize": 19.2,
+    "lineHeight": 21.5,
+    "fontWeight": "700",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "h3": 4
+    },
+    "sample": "Fréscopa Williamsburg"
+   },
+   {
+    "key": "16.8/27.72 400 Hanken Grotesk",
+    "fontSize": 16.8,
+    "lineHeight": 27.72,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "p": 4
+    },
+    "sample": "Sit at the bar and work through the range — espresso and slow-pour coffee, loos…"
+   },
+   {
+    "key": "16/25.92 700 Schibsted Grotesk",
+    "fontSize": 16,
+    "lineHeight": 25.92,
+    "fontWeight": "700",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "span": 4
+    },
+    "sample": "Free"
+   },
+   {
+    "key": "16/25.92 400 Hanken Grotesk",
+    "fontSize": 16,
+    "lineHeight": 25.92,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "field": 1,
+     "span": 3
+    },
+    "sample": "Search by city, neighborhood or ZIP"
+   },
+   {
+    "key": "15.68/25.4 400 Hanken Grotesk",
+    "fontSize": 15.68,
+    "lineHeight": 25.4,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "field": 4
+    },
+    "sample": ""
+   },
+   {
+    "key": "15.36/24.58 400 Hanken Grotesk",
+    "fontSize": 15.36,
+    "lineHeight": 24.58,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "p": 4
+    },
+    "sample": "Flight through the coffee, tea and cold-press range at the bar. Find the cup yo…"
+   },
+   {
+    "key": "14.72/22.82 400 Hanken Grotesk",
+    "fontSize": 14.72,
+    "lineHeight": 22.82,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "p": 4
+    },
+    "sample": "Taste three single-origin lots side by side and learn to name what you taste."
+   },
+   {
+    "key": "14.4/20.88 400 Hanken Grotesk",
+    "fontSize": 14.4,
+    "lineHeight": 20.88,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "p": 4
+    },
+    "sample": "134 N 6th St, Brooklyn, NY"
+   },
+   {
+    "key": "13.12/21.25 500 Hanken Grotesk",
+    "fontSize": 13.12,
+    "lineHeight": 21.25,
+    "fontWeight": "500",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "button": 4
+    },
+    "sample": "The Atelier line"
+   },
+   {
+    "key": "44.8/51.52 800 Schibsted Grotesk",
+    "fontSize": 44.8,
+    "lineHeight": 51.52,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "h2": 3
+    },
+    "sample": "Reasons to make the trip."
+   },
+   {
+    "key": "35.2/38.72 800 Schibsted Grotesk",
+    "fontSize": 35.2,
+    "lineHeight": 38.72,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "h3": 3
+    },
+    "sample": "Every drink we make, poured to order."
+   },
+   {
+    "key": "16/25.92 700 Hanken Grotesk",
+    "fontSize": 16,
+    "lineHeight": 25.92,
+    "fontWeight": "700",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "span": 3
+    },
+    "sample": "→"
+   },
+   {
+    "key": "15.68/normal 400 Hanken Grotesk",
+    "fontSize": 15.68,
+    "lineHeight": "normal",
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "field": 3
+    },
+    "sample": "Choose a showroom café"
+   },
+   {
+    "key": "11.52/13.25 500 Hanken Grotesk uppercase",
+    "fontSize": 11.52,
+    "lineHeight": 13.25,
+    "fontWeight": "500",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "h3": 3
+    },
+    "sample": "Shop"
+   },
+   {
+    "key": "9.92/16.07 400 Hanken Grotesk uppercase",
+    "fontSize": 9.92,
+    "lineHeight": 16.07,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "span": 3
+    },
+    "sample": "Café"
+   },
+   {
+    "key": "17.6/28.16 400 Hanken Grotesk",
+    "fontSize": 17.6,
+    "lineHeight": 28.16,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 2,
+    "roles": {
+     "p": 2
+    },
+    "sample": "From flagship showrooms to the café on the corner, we're probably closer than y…"
+   },
+   {
+    "key": "13/16.9 500 system-ui",
+    "fontSize": 13,
+    "lineHeight": 16.9,
+    "fontWeight": "500",
+    "fontFamily": "system-ui",
+    "textTransform": "none",
+    "n": 2,
+    "roles": {
+     "div": 2
+    },
+    "sample": "Fréscopa SoHo flagship"
+   },
+   {
+    "key": "70.4/71.81 800 Schibsted Grotesk",
+    "fontSize": 70.4,
+    "lineHeight": 71.81,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h1": 1
+    },
+    "sample": "Come taste the whole of Fréscopa."
+   },
+   {
+    "key": "57.6/59.9 800 Schibsted Grotesk",
+    "fontSize": 57.6,
+    "lineHeight": 59.9,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h2": 1
+    },
+    "sample": "There's a Fréscopa in your town."
+   },
+   {
+    "key": "51.2/53.76 800 Schibsted Grotesk",
+    "fontSize": 51.2,
+    "lineHeight": 53.76,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h2": 1
+    },
+    "sample": "The kettle's on. The door's open."
+   },
+   {
+    "key": "44.8/47.49 800 Schibsted Grotesk",
+    "fontSize": 44.8,
+    "lineHeight": 47.49,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h2": 1
+    },
+    "sample": "A guided hour with the machine that learns you."
+   },
+   {
+    "key": "38.4/41.47 800 Schibsted Grotesk",
+    "fontSize": 38.4,
+    "lineHeight": 41.47,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h3": 1
+    },
+    "sample": "The Fréscopa flagship"
+   },
+   {
+    "key": "24/27.6 800 Schibsted Grotesk",
+    "fontSize": 24,
+    "lineHeight": 27.6,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h3": 1
+    },
+    "sample": "Reserve your tour"
+   },
+   {
+    "key": "20.8/33.28 400 Hanken Grotesk",
+    "fontSize": 20.8,
+    "lineHeight": 33.28,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Part coffee bar, part showroom, part gathering place. Sit with a cup, get hands…"
+   },
+   {
+    "key": "19.2/31.1 400 Schibsted Grotesk",
+    "fontSize": 19.2,
+    "lineHeight": 31.1,
+    "fontWeight": "400",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "label": 1
+    },
+    "sample": "A little warmth in your inbox."
+   },
+   {
+    "key": "17/27.54 400 Hanken Grotesk",
+    "fontSize": 17,
+    "lineHeight": 27.54,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "field": 1
+    },
+    "sample": "you@example.com"
+   },
+   {
+    "key": "16.32/26.11 400 Hanken Grotesk",
+    "fontSize": 16.32,
+    "lineHeight": 26.11,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Our largest room: a full taste bar, the complete showroom, and a dedicated work…"
+   },
+   {
+    "key": "12.8/19.2 400 Hanken Grotesk",
+    "fontSize": 12.8,
+    "lineHeight": 19.2,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "We'll confirm by email within one business day. No payment needed to book."
+   },
+   {
+    "key": "12.8/20.74 400 Hanken Grotesk",
+    "fontSize": 12.8,
+    "lineHeight": 20.74,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstratio…"
+   },
+   {
+    "key": "12.48/20.22 400 Hanken Grotesk uppercase",
+    "fontSize": 12.48,
+    "lineHeight": 20.22,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 1,
+    "roles": {
+     "span": 1
+    },
+    "sample": "The café & showroom"
+   },
+   {
+    "key": "12.16/19.7 400 Hanken Grotesk uppercase",
+    "fontSize": 12.16,
+    "lineHeight": 19.7,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 1,
+    "roles": {
+     "span": 1
+    },
+    "sample": "Come say hello"
+   }
+  ],
+  "colours": [
+   {
+    "color": "oklch(0.43 0.022 52)",
+    "n": 51
+   },
+   {
+    "color": "oklch(0.605 0.116 44)",
+    "n": 32
+   },
+   {
+    "color": "oklch(0.34 0.093 25)",
+    "n": 31
+   },
+   {
+    "color": "oklch(0.262 0.021 52)",
+    "n": 25
+   },
+   {
+    "color": "oklch(0.795 0.021 78)",
+    "n": 15
+   },
+   {
+    "color": "oklch(0.945 0.016 80)",
+    "n": 10
+   },
+   {
+    "color": "oklch(0.79 0.128 74)",
+    "n": 5
+   },
+   {
+    "color": "rgba(0, 0, 0, 0.55)",
+    "n": 2
+   },
+   {
+    "color": "rgba(255, 248, 240, 0.82)",
+    "n": 1
+   },
+   {
+    "color": "rgba(255, 248, 240, 0.9)",
+    "n": 1
+   }
+  ],
+  "container": {
+   "left": 208,
+   "right": 208,
+   "content": 1024,
+   "leftCommon": {
+    "x": 208,
+    "n": 37
+   }
+  }
+ },
+ "truncated": {
+  "text": 0,
+  "image": 0
+ },
+ "sections": [
+  {"i":0,"region":"main","y":0,"h":702,"background":"none","paddingTop":0,"paddingBottom":0,"selectorHint":"section","firstText":"The café & showroom"},
+  {"i":1,"region":"main","y":702,"h":428,"background":"oklch(0.97 0.01 82)","paddingTop":75.2,"paddingBottom":75.2,"selectorHint":"section","firstText":"Why come in"},
+  {"i":2,"region":"main","y":1130,"h":1620,"background":"oklch(0.948 0.015 78)","paddingTop":75.2,"paddingBottom":75.2,"selectorHint":"section#experience","firstText":"The experience"},
+  {"i":3,"region":"main","y":2750,"h":738,"background":"oklch(0.97 0.01 82)","paddingTop":75.2,"paddingBottom":75.2,"selectorHint":"section#whatson","firstText":"What's on"},
+  {"i":4,"region":"main","y":3488,"h":1897,"background":"oklch(0.948 0.015 78)","paddingTop":75.2,"paddingBottom":75.2,"selectorHint":"section#locations","firstText":"Find us"},
+  {"i":5,"region":"main","y":5385,"h":964,"background":"oklch(0.97 0.01 82)","paddingTop":75.2,"paddingBottom":75.2,"selectorHint":"section#tour","firstText":"Book an Atelier tour"},
+  {"i":6,"region":"main","y":6349,"h":510,"background":"oklch(0.222 0.016 52)","paddingTop":105.6,"paddingBottom":105.6,"selectorHint":"section","firstText":"Come say hello"},
+  {"i":7,"region":"footer","y":6860,"h":495,"background":"oklch(0.222 0.016 52)","paddingTop":86.4,"paddingBottom":0,"selectorHint":"footer.fr-ftr","firstText":"Warm mornings, made effortless. Coffee, tea, and cold-press…"}
+ ],
+ "nodes": [
+  {"section":0,"region":"main","kind":"image","tag":"img","role":null,"text":"Inside a Fréscopa café","x":0,"y":0,"w":1440,"h":702,"fit":"cover","shape":{"pos":"50% 50%"},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/cafe-interior.jpg"},
+  {"section":0,"region":"main","kind":"text","tag":"span","role":null,"text":"The café & showroom","x":208,"y":241,"w":183,"h":16,"fontFamily":"Hanken Grotesk","fontSize":12.48,"lineHeight":20.22,"fontWeight":"400","letterSpacing":2,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":0,"region":"main","kind":"text","tag":"h1","role":"h1","text":"Come taste the whole of Fréscopa.","x":208,"y":277,"w":721,"h":144,"fontFamily":"Schibsted Grotesk","fontSize":70.4,"lineHeight":71.81,"fontWeight":"800","letterSpacing":-1.41,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":2},
+  {"section":0,"region":"main","kind":"text","tag":"p","role":null,"text":"Part coffee bar, part showroom, part gathering place. Sit with a cup, get hands…","x":208,"y":440,"w":536,"h":100,"fontFamily":"Hanken Grotesk","fontSize":20.8,"lineHeight":33.28,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgba(255, 248, 240, 0.9)","lines":3},
+  {"section":0,"region":"main","kind":"control","tag":"a","role":"link","text":"Find your nearest café","x":208,"y":569,"w":228,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1,"href":"#locations"},
+  {"section":0,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":396,"y":584,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1,"href":"#locations"},
+  {"section":0,"region":"main","kind":"control","tag":"a","role":"link","text":"See what's inside","x":450,"y":569,"w":166,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#experience"},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Why come in","x":208,"y":784,"w":93,"h":15,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Reasons to make the trip.","x":208,"y":813,"w":574,"h":52,"fontFamily":"Schibsted Grotesk","fontSize":44.8,"lineHeight":51.52,"fontWeight":"800","letterSpacing":-0.9,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":208,"y":906,"w":30,"h":30,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Taste before you commit","x":208,"y":947,"w":237,"h":23,"fontFamily":"Schibsted Grotesk","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":-0.4,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Flight through the coffee, tea and cold-press range at the bar. Find the cup yo…","x":208,"y":981,"w":237,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.36,"lineHeight":24.58,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":1,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":470,"y":906,"w":30,"h":30,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Meet the machines","x":470,"y":947,"w":237,"h":23,"fontFamily":"Schibsted Grotesk","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":-0.4,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Pull a shot on the Atelier line yourself. Feel the difference before it lands o…","x":470,"y":981,"w":237,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.36,"lineHeight":24.58,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":1,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":733,"y":906,"w":30,"h":30,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Learn from the team","x":733,"y":947,"w":237,"h":23,"fontFamily":"Schibsted Grotesk","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":-0.4,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Brewing classes, latte-art labs and cuppings led by people who do it every day.","x":733,"y":981,"w":237,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.36,"lineHeight":24.58,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":1,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":995,"y":906,"w":30,"h":30,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Somewhere to linger","x":995,"y":947,"w":237,"h":23,"fontFamily":"Schibsted Grotesk","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":-0.4,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"A warm room to meet, work, or read the morning away. Come for the coffee, stay …","x":995,"y":981,"w":237,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.36,"lineHeight":24.58,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"The experience","x":208,"y":1212,"w":113,"h":15,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Three rooms, one long morning.","x":208,"y":1241,"w":631,"h":103,"fontFamily":"Schibsted Grotesk","fontSize":44.8,"lineHeight":51.52,"fontWeight":"800","letterSpacing":-0.9,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":2},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"01 · The taste bar","x":208,"y":1443,"w":484,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Every drink we make, poured to order.","x":208,"y":1475,"w":484,"h":77,"fontFamily":"Schibsted Grotesk","fontSize":35.2,"lineHeight":38.72,"fontWeight":"800","letterSpacing":-0.7,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":2},
+  {"section":2,"region":"main","kind":"text","tag":"p","role":null,"text":"Sit at the bar and work through the range — espresso and slow-pour coffee, loos…","x":208,"y":1567,"w":484,"h":111,"fontFamily":"Hanken Grotesk","fontSize":16.8,"lineHeight":27.72,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":4},
+  {"section":2,"region":"main","kind":"control","tag":"a","role":"link","text":"Browse the coffee range","x":208,"y":1698,"w":210,"h":30,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"coffee.html"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":401,"y":1698,"w":17,"h":28,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"coffee.html"},
+  {"section":2,"region":"main","kind":"image","tag":"img","role":null,"text":"Espresso poured at the bar","x":749,"y":1393,"w":482,"h":385,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[484,387]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg"},
+  {"section":2,"region":"main","kind":"image","tag":"img","role":null,"text":"The Atelier machine on display","x":749,"y":1841,"w":482,"h":385,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[484,387]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"02 · The showroom","x":208,"y":1891,"w":484,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Get your hands on the whole line.","x":208,"y":1923,"w":484,"h":77,"fontFamily":"Schibsted Grotesk","fontSize":35.2,"lineHeight":38.72,"fontWeight":"800","letterSpacing":-0.7,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":2},
+  {"section":2,"region":"main","kind":"text","tag":"p","role":null,"text":"The full Atelier range is set up and running. Pull your own shot, watch the mac…","x":208,"y":2015,"w":484,"h":111,"fontFamily":"Hanken Grotesk","fontSize":16.8,"lineHeight":27.72,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":4},
+  {"section":2,"region":"main","kind":"control","tag":"a","role":"link","text":"Explore the machines","x":208,"y":2146,"w":190,"h":30,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"machines.html"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":381,"y":2146,"w":17,"h":28,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"machines.html"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"03 · The table","x":208,"y":2339,"w":484,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Learn something, meet someone.","x":208,"y":2371,"w":484,"h":77,"fontFamily":"Schibsted Grotesk","fontSize":35.2,"lineHeight":38.72,"fontWeight":"800","letterSpacing":-0.7,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":2},
+  {"section":2,"region":"main","kind":"text","tag":"p","role":null,"text":"Most evenings the long table hosts something — a brewing class, a latte-art lab…","x":208,"y":2463,"w":484,"h":111,"fontFamily":"Hanken Grotesk","fontSize":16.8,"lineHeight":27.72,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":4},
+  {"section":2,"region":"main","kind":"control","tag":"a","role":"link","text":"See what's on","x":208,"y":2594,"w":130,"h":30,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#whatson"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":321,"y":2594,"w":17,"h":28,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#whatson"},
+  {"section":2,"region":"main","kind":"image","tag":"img","role":null,"text":"A shared moment over tea","x":749,"y":2289,"w":482,"h":385,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[484,387]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/tea-moment.jpg"},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"What's on","x":208,"y":2832,"w":74,"h":15,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h2","role":"h2","text":"This week at the table.","x":208,"y":2861,"w":481,"h":52,"fontFamily":"Schibsted Grotesk","fontSize":44.8,"lineHeight":51.52,"fontWeight":"800","letterSpacing":-0.9,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"Free with a drink unless noted","x":1009,"y":2894,"w":223,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.15,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Tuesday","x":233,"y":2974,"w":274,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Origins cupping","x":233,"y":2999,"w":274,"h":24,"fontFamily":"Schibsted Grotesk","fontSize":20.8,"lineHeight":23.92,"fontWeight":"700","letterSpacing":-0.42,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"Taste three single-origin lots side by side and learn to name what you taste.","x":233,"y":3031,"w":274,"h":68,"fontFamily":"Hanken Grotesk","fontSize":14.72,"lineHeight":22.82,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":2},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"6:30–7:30pm","x":233,"y":3135,"w":69,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":0.84,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Free","x":472,"y":3131,"w":35,"h":26,"fontFamily":"Schibsted Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Wednesday","x":583,"y":2974,"w":274,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Latte-art lab","x":583,"y":2999,"w":274,"h":24,"fontFamily":"Schibsted Grotesk","fontSize":20.8,"lineHeight":23.92,"fontWeight":"700","letterSpacing":-0.42,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"Hands-on milk steaming and pour practice on the Atelier line. Beginners welcome.","x":583,"y":3031,"w":274,"h":68,"fontFamily":"Hanken Grotesk","fontSize":14.72,"lineHeight":22.82,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"6:00–7:30pm","x":583,"y":3135,"w":69,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":0.84,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"$15","x":831,"y":3131,"w":26,"h":26,"fontFamily":"Schibsted Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Thursday","x":933,"y":2974,"w":274,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Home brewing 101","x":933,"y":2999,"w":274,"h":24,"fontFamily":"Schibsted Grotesk","fontSize":20.8,"lineHeight":23.92,"fontWeight":"700","letterSpacing":-0.42,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"Dial in grind, dose and time for a filter cup you can repeat at home.","x":933,"y":3031,"w":274,"h":68,"fontFamily":"Hanken Grotesk","fontSize":14.72,"lineHeight":22.82,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":2},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"6:30–8:00pm","x":933,"y":3135,"w":69,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":0.84,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Free","x":1172,"y":3131,"w":35,"h":26,"fontFamily":"Schibsted Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Saturday","x":233,"y":3229,"w":274,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Slow morning cupping","x":233,"y":3254,"w":274,"h":24,"fontFamily":"Schibsted Grotesk","fontSize":20.8,"lineHeight":23.92,"fontWeight":"700","letterSpacing":-0.42,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"A relaxed community tasting over pastries. Drop in, no booking needed.","x":233,"y":3286,"w":274,"h":46,"fontFamily":"Hanken Grotesk","fontSize":14.72,"lineHeight":22.82,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":2},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"9:00–11:00am","x":233,"y":3368,"w":76,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":0.84,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Free","x":472,"y":3363,"w":35,"h":26,"fontFamily":"Schibsted Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Find us","x":208,"y":3570,"w":53,"h":15,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"h2","role":"h2","text":"There's a Fréscopa in your town.","x":208,"y":3599,"w":590,"h":120,"fontFamily":"Schibsted Grotesk","fontSize":57.6,"lineHeight":59.9,"fontWeight":"800","letterSpacing":-1.15,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":2},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"From flagship showrooms to the café on the corner, we're probably closer than y…","x":208,"y":3733,"w":532,"h":84,"fontFamily":"Hanken Grotesk","fontSize":17.6,"lineHeight":28.16,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"1,200+","x":208,"y":3885,"w":237,"h":46,"fontFamily":"Schibsted Grotesk","fontSize":46.4,"lineHeight":46.4,"fontWeight":"800","letterSpacing":-0.93,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Cafés nationwide","x":208,"y":3937,"w":237,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"190","x":470,"y":3885,"w":237,"h":46,"fontFamily":"Schibsted Grotesk","fontSize":46.4,"lineHeight":46.4,"fontWeight":"800","letterSpacing":-0.93,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Cities","x":470,"y":3937,"w":237,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"48","x":733,"y":3885,"w":237,"h":46,"fontFamily":"Schibsted Grotesk","fontSize":46.4,"lineHeight":46.4,"fontWeight":"800","letterSpacing":-0.93,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"States","x":733,"y":3937,"w":237,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"12","x":995,"y":3885,"w":237,"h":46,"fontFamily":"Schibsted Grotesk","fontSize":46.4,"lineHeight":46.4,"fontWeight":"800","letterSpacing":-0.93,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Flagship showrooms","x":995,"y":3937,"w":237,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":451,"y":4210,"w":28,"h":28,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"text","tag":"div","role":null,"text":"Fréscopa SoHo flagship","x":396,"y":4244,"w":137,"h":17,"fontFamily":"system-ui","fontSize":13,"lineHeight":16.9,"fontWeight":"500","letterSpacing":0.13,"textTransform":"none","textAlign":"center","color":"rgba(0, 0, 0, 0.55)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"New York · SoHo","x":762,"y":4065,"w":428,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.31,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"h3","role":"h3","text":"The Fréscopa flagship","x":762,"y":4092,"w":428,"h":41,"fontFamily":"Schibsted Grotesk","fontSize":38.4,"lineHeight":41.47,"fontWeight":"800","letterSpacing":-0.77,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"Our largest room: a full taste bar, the complete showroom, and a dedicated work…","x":762,"y":4146,"w":428,"h":78,"fontFamily":"Hanken Grotesk","fontSize":16.32,"lineHeight":26.11,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":762,"y":4244,"w":49,"h":25,"fontFamily":"Hanken Grotesk","fontSize":9.92,"lineHeight":16.07,"fontWeight":"400","letterSpacing":0.79,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Showroom","x":817,"y":4244,"w":85,"h":25,"fontFamily":"Hanken Grotesk","fontSize":9.92,"lineHeight":16.07,"fontWeight":"400","letterSpacing":0.79,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Workshops","x":909,"y":4244,"w":88,"h":25,"fontFamily":"Hanken Grotesk","fontSize":9.92,"lineHeight":16.07,"fontWeight":"400","letterSpacing":0.79,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"112 Greene Street, New York, NY","x":762,"y":4312,"w":223,"h":25,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Mon–Sun · 7am–8pm","x":1007,"y":4312,"w":140,"h":25,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"a","role":"link","text":"Get directions","x":762,"y":4360,"w":171,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":892,"y":4375,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":226,"y":4515,"w":20,"h":20,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"control","tag":"input","role":"field","text":"Search by city, neighborhood or ZIP","x":208,"y":4496,"w":1024,"h":58,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"button","role":"button","text":"All regions","x":208,"y":4571,"w":100,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.08,"lineHeight":22.81,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"button","role":"button","text":"East","x":316,"y":4571,"w":61,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.08,"lineHeight":22.81,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"button","role":"button","text":"Midwest","x":386,"y":4571,"w":87,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.08,"lineHeight":22.81,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"button","role":"button","text":"South","x":481,"y":4571,"w":71,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.08,"lineHeight":22.81,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"button","role":"button","text":"West","x":560,"y":4571,"w":66,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.08,"lineHeight":22.81,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":440,"y":4917,"w":28,"h":28,"fit":"fill","shape":{"pos":"50% 50%"},"scroll":"sticky 92"},
+  {"section":4,"region":"main","kind":"text","tag":"div","role":null,"text":"Map of Fréscopa cafés near you","x":361,"y":4951,"w":186,"h":17,"fontFamily":"system-ui","fontSize":13,"lineHeight":16.9,"fontWeight":"500","letterSpacing":0.13,"textTransform":"none","textAlign":"center","color":"rgba(0, 0, 0, 0.55)","lines":1,"scroll":"sticky 92"},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"26 cafés near you","x":741,"y":4635,"w":491,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.15,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":763,"y":4691,"w":22,"h":22,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Fréscopa Williamsburg","x":801,"y":4689,"w":208,"h":22,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":21.5,"fontWeight":"700","letterSpacing":-0.38,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Brooklyn, NY","x":1121,"y":4695,"w":81,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":1.02,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"134 N 6th St, Brooklyn, NY","x":801,"y":4717,"w":402,"h":21,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":20.88,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":801,"y":4745,"w":46,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Showroom","x":853,"y":4745,"w":82,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Mon–Sun · 7am–8pm","x":801,"y":4797,"w":111,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":0.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"a","role":"link","text":"Directions","x":1120,"y":4793,"w":82,"h":24,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":1189,"y":4793,"w":14,"h":22,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":763,"y":4871,"w":22,"h":22,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Fréscopa Seaport","x":801,"y":4868,"w":161,"h":22,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":21.5,"fontWeight":"700","letterSpacing":-0.38,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Boston, MA","x":1132,"y":4874,"w":70,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":1.02,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"48 Harbor Way, Boston, MA","x":801,"y":4897,"w":402,"h":21,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":20.88,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":801,"y":4925,"w":46,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Showroom","x":853,"y":4925,"w":82,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Mon–Sun · 7am–7pm","x":801,"y":4976,"w":111,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":0.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"a","role":"link","text":"Directions","x":1120,"y":4973,"w":82,"h":24,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":1189,"y":4973,"w":14,"h":22,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":763,"y":5051,"w":22,"h":22,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Fréscopa Back Bay","x":801,"y":5048,"w":172,"h":22,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":21.5,"fontWeight":"700","letterSpacing":-0.38,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Boston, MA","x":1132,"y":5054,"w":70,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":1.02,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"221 Newbury St, Boston, MA","x":801,"y":5077,"w":402,"h":21,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":20.88,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":801,"y":5105,"w":46,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Mon–Sun · 6:30am–7pm","x":801,"y":5156,"w":127,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":0.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"control","tag":"a","role":"link","text":"Directions","x":1120,"y":5153,"w":82,"h":24,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":1189,"y":5153,"w":14,"h":22,"fontFamily":"Hanken Grotesk","fontSize":13.6,"lineHeight":22.03,"fontWeight":"600","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1,"href":"#"},
+  {"section":4,"region":"main","kind":"image","tag":"svg","role":null,"text":"","x":763,"y":5231,"w":22,"h":22,"fit":"fill","shape":{"pos":"50% 50%"}},
+  {"section":4,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Fréscopa Rittenhouse","x":801,"y":5228,"w":197,"h":22,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":21.5,"fontWeight":"700","letterSpacing":-0.38,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Philadelphia, PA","x":1103,"y":5234,"w":99,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.24,"lineHeight":16.59,"fontWeight":"400","letterSpacing":1.02,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"1820 Walnut St, Philadelphia, PA","x":801,"y":5256,"w":402,"h":21,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":20.88,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":801,"y":5285,"w":46,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Workshops","x":853,"y":5285,"w":84,"h":24,"fontFamily":"Hanken Grotesk","fontSize":9.6,"lineHeight":15.55,"fontWeight":"400","letterSpacing":0.77,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Book an Atelier tour","x":208,"y":5460,"w":480,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"h2","role":"h2","text":"A guided hour with the machine that learns you.","x":208,"y":5495,"w":480,"h":142,"fontFamily":"Schibsted Grotesk","fontSize":44.8,"lineHeight":47.49,"fontWeight":"800","letterSpacing":-0.9,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":3},
+  {"section":5,"region":"main","kind":"text","tag":"p","role":null,"text":"Book a free, 45-minute private tour at any showroom café. A specialist walks yo…","x":208,"y":5657,"w":432,"h":111,"fontFamily":"Hanken Grotesk","fontSize":16.8,"lineHeight":27.72,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":4},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"→","x":208,"y":5793,"w":16,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"45 minutes, one-to-one with a specialist","x":235,"y":5793,"w":282,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"→","x":208,"y":5830,"w":16,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Taste the full range, dialled to your palate","x":235,"y":5830,"w":297,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"→","x":208,"y":5867,"w":16,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Free, and yours to book whenever suits","x":235,"y":5867,"w":281,"h":26,"fontFamily":"Hanken Grotesk","fontSize":16,"lineHeight":25.92,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Reserve your tour","x":791,"y":5500,"w":401,"h":28,"fontFamily":"Schibsted Grotesk","fontSize":24,"lineHeight":27.6,"fontWeight":"800","letterSpacing":-0.48,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Café","x":791,"y":5545,"w":401,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"select","role":"field","text":"Choose a showroom café","x":791,"y":5568,"w":401,"h":49,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":"normal","fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Date","x":791,"y":5635,"w":193,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"input","role":"field","text":"","x":791,"y":5658,"w":193,"h":53,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":25.4,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Time","x":999,"y":5635,"w":193,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"select","role":"field","text":"Pick a slot","x":999,"y":5658,"w":193,"h":49,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":"normal","fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Guests","x":791,"y":5729,"w":401,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"select","role":"field","text":"Just me","x":791,"y":5753,"w":401,"h":49,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":"normal","fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Name","x":791,"y":5820,"w":401,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"input","role":"field","text":"Your name","x":791,"y":5843,"w":401,"h":51,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":25.4,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Email","x":791,"y":5912,"w":193,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"input","role":"field","text":"you@email.com","x":791,"y":5936,"w":193,"h":51,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":25.4,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"Phone (optional)","x":999,"y":5912,"w":193,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"input","role":"field","text":"(555) 000-0000","x":999,"y":5936,"w":193,"h":51,"fontFamily":"Hanken Grotesk","fontSize":15.68,"lineHeight":25.4,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":null,"text":"I'd most like to see (optional)","x":791,"y":6005,"w":401,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.06,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"button","role":"button","text":"The Atelier line","x":791,"y":6030,"w":117,"h":37,"fontFamily":"Hanken Grotesk","fontSize":13.12,"lineHeight":21.25,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"button","role":"button","text":"Espresso & milk","x":917,"y":6030,"w":123,"h":37,"fontFamily":"Hanken Grotesk","fontSize":13.12,"lineHeight":21.25,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"button","role":"button","text":"Cold brew & tea","x":1048,"y":6030,"w":125,"h":37,"fontFamily":"Hanken Grotesk","fontSize":13.12,"lineHeight":21.25,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"button","role":"button","text":"Bean subscriptions","x":791,"y":6074,"w":141,"h":37,"fontFamily":"Hanken Grotesk","fontSize":13.12,"lineHeight":21.25,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":5,"region":"main","kind":"control","tag":"button","role":"button","text":"Request this tour","x":791,"y":6133,"w":191,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"span","role":"button","text":"→","x":942,"y":6149,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":5,"region":"main","kind":"text","tag":"p","role":null,"text":"We'll confirm by email within one business day. No payment needed to book.","x":791,"y":6197,"w":401,"h":38,"fontFamily":"Hanken Grotesk","fontSize":12.8,"lineHeight":19.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":2},
+  {"section":6,"region":"main","kind":"text","tag":"span","role":null,"text":"Come say hello","x":657,"y":6462,"w":125,"h":16,"fontFamily":"Hanken Grotesk","fontSize":12.16,"lineHeight":19.7,"fontWeight":"400","letterSpacing":1.95,"textTransform":"uppercase","textAlign":"center","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":6,"region":"main","kind":"text","tag":"h2","role":"h2","text":"The kettle's on. The door's open.","x":425,"y":6499,"w":590,"h":108,"fontFamily":"Schibsted Grotesk","fontSize":51.2,"lineHeight":53.76,"fontWeight":"800","letterSpacing":-1.02,"textTransform":"none","textAlign":"center","color":"oklch(0.945 0.016 80)","lines":2},
+  {"section":6,"region":"main","kind":"text","tag":"p","role":null,"text":"No appointment, no pressure — just a good cup and a warm room. We'd love to see…","x":503,"y":6624,"w":434,"h":56,"fontFamily":"Hanken Grotesk","fontSize":17.6,"lineHeight":28.16,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"rgba(255, 248, 240, 0.82)","lines":2},
+  {"section":6,"region":"main","kind":"control","tag":"a","role":"link","text":"Find a café","x":545,"y":6709,"w":149,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1,"href":"#locations"},
+  {"section":6,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":653,"y":6724,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1,"href":"#locations"},
+  {"section":6,"region":"main","kind":"control","tag":"a","role":"link","text":"Book an Atelier tour","x":708,"y":6709,"w":188,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.262 0.021 52)","lines":1,"href":"#tour"},
+  {"section":7,"region":"footer","kind":"image","tag":"img","role":null,"text":"Fréscopa","x":208,"y":6946,"w":140,"h":38,"fit":"fill","shape":{"pos":"50% 50%"},"natural":[1391,378],"src":"https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg"},
+  {"section":7,"region":"footer","kind":"text","tag":"p","role":null,"text":"Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the ma…","x":208,"y":7005,"w":357,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":3},
+  {"section":7,"region":"footer","kind":"text","tag":"label","role":null,"text":"A little warmth in your inbox.","x":208,"y":7109,"w":372,"h":31,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":31.1,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":7,"region":"footer","kind":"control","tag":"input","role":"field","text":"you@example.com","x":208,"y":7153,"w":262,"h":58,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":7,"region":"footer","kind":"control","tag":"button","role":"button","text":"Sign up","x":480,"y":7153,"w":100,"h":58,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":7,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Shop","x":660,"y":6946,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Coffee","x":660,"y":6976,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Tea","x":660,"y":7012,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Cold-pressed juice","x":660,"y":7048,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Machines","x":660,"y":7084,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Accessories","x":660,"y":7120,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Company","x":859,"y":6946,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Our story","x":859,"y":6976,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Sustainability","x":859,"y":7012,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Fréscopa Café","x":859,"y":7048,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Careers","x":859,"y":7084,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Support","x":1057,"y":6946,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Contact us","x":1057,"y":6976,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Delivery & returns","x":1057,"y":7012,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Register your Atelier","x":1057,"y":7048,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"control","tag":"a","role":"link","text":"Help centre","x":1057,"y":7084,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":7,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":218,"y":7295,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":7,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":267,"y":7295,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":7,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":316,"y":7295,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":7,"region":"footer","kind":"text","tag":"p","role":null,"text":"© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstratio…","x":769,"y":7293,"w":463,"h":21,"fontFamily":"Hanken Grotesk","fontSize":12.8,"lineHeight":20.74,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1}
+ ]
+}

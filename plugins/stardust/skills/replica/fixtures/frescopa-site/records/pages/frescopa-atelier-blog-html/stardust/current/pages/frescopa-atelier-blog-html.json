@@ -1,0 +1,533 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-21T18:16:35.082Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "frescopa-atelier-blog-html",
+  "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-21T18:16:35.082Z",
+  "finalUrl": "https://markszulc.github.io/frescopa-atelier/blog.html",
+  "title": null,
+  "description": null,
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Notes on the morning ritual."
+    },
+    {
+      "tag": "h2",
+      "text": "How the Atelier learns your taste"
+    },
+    {
+      "tag": "h3",
+      "text": "In praise of the slow pour"
+    },
+    {
+      "tag": "h3",
+      "text": "A morning in our SoHo café"
+    },
+    {
+      "tag": "h3",
+      "text": "Single origin, explained"
+    },
+    {
+      "tag": "h3",
+      "text": "Tea, and the quiet hour"
+    },
+    {
+      "tag": "h3",
+      "text": "Nothing wasted, right down to the grounds"
+    },
+    {
+      "tag": "h3",
+      "text": "Dialling in your first espresso"
+    },
+    {
+      "tag": "h3",
+      "text": "Shop"
+    },
+    {
+      "tag": "h3",
+      "text": "Company"
+    },
+    {
+      "tag": "h3",
+      "text": "Support"
+    }
+  ],
+  "body": [
+    "Brewing guides, origin stories, and small thoughts on doing mornings well — from the people who make the coffee and the machines.",
+    "It doesn’t guess, and it doesn’t need a questionnaire. Here’s what actually happens in the first two weeks on your counter — and why your cup keeps getting better.",
+    "Why the unhurried cup rewards your patience — and how to get the water right.",
+    "Doors at seven, the first grind at 7:02. A few hours behind the bar at the flagship.",
+    "What “traceable to a single farm” really means, and why it changes the cup.",
+    "A small case for slowing down in the afternoon, one loose-leaf pot at a time.",
+    "Where your spent coffee goes after the cup — and how the Atelier keeps track.",
+    "Grind, dose, time. The three dials that turn a decent shot into a great one.",
+    "Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.",
+    "© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration."
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "The Atelier",
+      "href": "landing.html"
+    },
+    {
+      "label": "Machines",
+      "href": "machines.html"
+    },
+    {
+      "label": "Beverages",
+      "href": "beverages.html"
+    },
+    {
+      "label": "Café",
+      "href": "cafe.html"
+    },
+    {
+      "label": "Journal",
+      "href": "blog.html"
+    },
+    {
+      "label": "Featured The Atelier How the Atelier learns your taste It doesn’t guess, and it doesn’t need a questionnaire. Here’s what actually happens in the first two weeks on your counter — and why your cup keeps getting better. June 2026 · 6 min read Read the story→",
+      "href": "article.html"
+    },
+    {
+      "label": "Read the story→",
+      "href": "article.html"
+    },
+    {
+      "label": "All posts",
+      "href": null
+    },
+    {
+      "label": "The Atelier",
+      "href": null
+    },
+    {
+      "label": "Brewing",
+      "href": null
+    },
+    {
+      "label": "Origins",
+      "href": null
+    },
+    {
+      "label": "Café life",
+      "href": null
+    },
+    {
+      "label": "Sustainability",
+      "href": null
+    },
+    {
+      "label": "Brewing In praise of the slow pour Why the unhurried cup rewards your patience — and how to get the water right. May 2026 · 4 min",
+      "href": "#"
+    },
+    {
+      "label": "Café life A morning in our SoHo café Doors at seven, the first grind at 7:02. A few hours behind the bar at the flagship. May 2026 · 3 min",
+      "href": "#"
+    },
+    {
+      "label": "Origins Single origin, explained What “traceable to a single farm” really means, and why it changes the cup. Apr 2026 · 5 min",
+      "href": "#"
+    },
+    {
+      "label": "Café life Tea, and the quiet hour A small case for slowing down in the afternoon, one loose-leaf pot at a time. Apr 2026 · 3 min",
+      "href": "#"
+    },
+    {
+      "label": "Sustainability Nothing wasted, right down to the grounds Where your spent coffee goes after the cup — and how the Atelier keeps track. Mar 2026 · 4 min",
+      "href": "#"
+    },
+    {
+      "label": "Brewing Dialling in your first espresso Grind, dose, time. The three dials that turn a decent shot into a great one. Mar 2026 · 5 min",
+      "href": "#"
+    },
+    {
+      "label": "Sign up",
+      "href": null
+    },
+    {
+      "label": "Coffee",
+      "href": "#"
+    },
+    {
+      "label": "Tea",
+      "href": "#"
+    },
+    {
+      "label": "Cold-pressed juice",
+      "href": "#"
+    },
+    {
+      "label": "Machines",
+      "href": "#"
+    },
+    {
+      "label": "Accessories",
+      "href": "#"
+    },
+    {
+      "label": "Our story",
+      "href": "#"
+    },
+    {
+      "label": "Sustainability",
+      "href": "#"
+    },
+    {
+      "label": "Fréscopa Café",
+      "href": "#"
+    },
+    {
+      "label": "Careers",
+      "href": "#"
+    },
+    {
+      "label": "Contact us",
+      "href": "#"
+    },
+    {
+      "label": "Delivery & returns",
+      "href": "#"
+    },
+    {
+      "label": "Register your Atelier",
+      "href": "#"
+    },
+    {
+      "label": "Help centre",
+      "href": "#"
+    }
+  ],
+  "links": [
+    "https://markszulc.github.io/frescopa-atelier/index.html",
+    "https://markszulc.github.io/frescopa-atelier/landing.html",
+    "https://markszulc.github.io/frescopa-atelier/machines.html",
+    "https://markszulc.github.io/frescopa-atelier/beverages.html",
+    "https://markszulc.github.io/frescopa-atelier/cafe.html",
+    "https://markszulc.github.io/frescopa-atelier/blog.html",
+    "https://markszulc.github.io/frescopa-atelier/article.html",
+    "https://markszulc.github.io/frescopa-atelier/blog.html#"
+  ],
+  "media": {
+    "imgs": [
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+        "alt": "",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+        "alt": "How the Atelier learns your taste",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg",
+        "alt": "In praise of the slow pour",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/cafe-interior.jpg",
+        "alt": "A morning in our SoHo café",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/tea-moment.jpg",
+        "alt": "Tea, and the quiet hour",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/sustainability.jpg",
+        "alt": "Nothing wasted, right down to the grounds",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      }
+    ],
+    "allImgCount": 8,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--burgundy": "oklch(0.34 0.093 25)",
+    "--burgundy-deep": "oklch(0.275 0.082 26)",
+    "--terracotta": "oklch(0.605 0.116 44)",
+    "--terracotta-deep": "oklch(0.515 0.108 40)",
+    "--amber": "oklch(0.79 0.128 74)",
+    "--amber-soft": "oklch(0.865 0.083 80)",
+    "--teal": "oklch(0.55 0.05 205)",
+    "--paper": "oklch(0.970 0.010 82)",
+    "--paper-2": "oklch(0.948 0.015 78)",
+    "--paper-3": "oklch(0.918 0.020 74)",
+    "--sand": "oklch(0.884 0.025 71)",
+    "--line": "oklch(0.855 0.018 68)",
+    "--ink": "oklch(0.262 0.021 52)",
+    "--ink-soft": "oklch(0.430 0.022 52)",
+    "--charcoal": "oklch(0.222 0.016 52)",
+    "--charcoal-2": "oklch(0.282 0.020 50)",
+    "--line-dark": "oklch(0.400 0.020 55)",
+    "--cream": "oklch(0.945 0.016 80)",
+    "--cream-soft": "oklch(0.795 0.021 78)",
+    "--bg": "oklch(0.970 0.010 82)",
+    "--surface-raised": "oklch(0.948 0.015 78)",
+    "--surface-card": "oklch(0.970 0.010 82)",
+    "--surface-dark": "oklch(0.222 0.016 52)",
+    "--fg": "oklch(0.262 0.021 52)",
+    "--text-body": "oklch(0.262 0.021 52)",
+    "--text-muted": "oklch(0.430 0.022 52)",
+    "--text-heading": "oklch(0.34 0.093 25)",
+    "--text-on-dark": "oklch(0.945 0.016 80)",
+    "--accent": "oklch(0.605 0.116 44)",
+    "--accent-hover": "oklch(0.515 0.108 40)",
+    "--detail": "oklch(0.79 0.128 74)",
+    "--border": "oklch(0.855 0.018 68)",
+    "--focus": "oklch(0.605 0.116 44)",
+    "--font-display": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-body": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-mono": "\"Hanken Grotesk\", system-ui, sans-serif",
+    "--fs-eyebrow": "0.75rem",
+    "--fs-sm": "0.9375rem",
+    "--fs-body": "1.0625rem",
+    "--fs-body-lg": "clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem)",
+    "--fs-h4": "clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem)",
+    "--fs-h3": "clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem)",
+    "--fs-h2": "clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem)",
+    "--fs-h1": "clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem)",
+    "--fs-display": "clamp(3.4rem, 1.1rem + 8.4vw, 8rem)",
+    "--lh-tight": "1.03",
+    "--lh-snug": "1.15",
+    "--lh-body": "1.62",
+    "--fw-regular": "400",
+    "--fw-medium": "500",
+    "--fw-semibold": "600",
+    "--fw-bold": "700",
+    "--fw-black": "800",
+    "--tracking-eyebrow": "0.2em",
+    "--tracking-tight": "-0.02em",
+    "--space-3xs": "0.25rem",
+    "--space-2xs": "0.5rem",
+    "--space-xs": "0.75rem",
+    "--space-sm": "1rem",
+    "--space-md": "1.5rem",
+    "--space-lg": "2.5rem",
+    "--space-xl": "4rem",
+    "--space-2xl": "6rem",
+    "--section-y": "clamp(4.5rem, 3rem + 6vw, 9.5rem)",
+    "--content": "1120px",
+    "--content-wide": "1320px",
+    "--content-narrow": "760px",
+    "--gutter": "clamp(1.25rem, 0.4rem + 3vw, 3rem)",
+    "--r-sm": "8px",
+    "--r-md": "14px",
+    "--r-lg": "22px",
+    "--r-xl": "32px",
+    "--r-pill": "999px",
+    "--shadow-sm": "0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05)",
+    "--shadow-md": "0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08)",
+    "--shadow-lg": "0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13)",
+    "--ease-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "--ease-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "--dur-1": "0.35s",
+    "--dur-2": "0.6s",
+    "--dur-3": "0.9s"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 11,
+    "mainTextLen": 5353,
+    "realImageCount": 8,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 2478
+    }
+  },
+  "dynamic": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/blog.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "status": 200,
+        "bytes": 3559,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/blog.html",
+        "sameSite": true
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/image-slot.js",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "application/javascript",
+        "status": 200,
+        "bytes": 21163,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js",
+        "sameSite": true
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/.image-slots.state.json",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "status": 404,
+        "bytes": 5254,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json",
+        "sameSite": true
+      }
+    ],
+    "thirdPartyScriptHosts": [
+      {
+        "host": "unpkg.com",
+        "count": 2
+      }
+    ],
+    "truncated": false,
+    "inlineData": [],
+    "globalState": [],
+    "frameworkHints": [],
+    "forms": [
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/blog.html",
+        "hasAction": false,
+        "method": "get",
+        "sameOrigin": true,
+        "fieldCount": 1,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "search": false
+      }
+    ],
+    "ariaLiveRegions": 0,
+    "triggers": [],
+    "mediaIds": [],
+    "summary": {
+      "sameSiteEndpoints": 3,
+      "thirdPartyEndpoints": 0,
+      "thirdPartyScriptHosts": 1,
+      "inlineDataBlobs": 0,
+      "forms": 1,
+      "searchForms": 0,
+      "hydrated": false
+    }
+  },
+  "screenshot": "assets/screenshots/frescopa-atelier-blog-html.png",
+  "renderedHtml": "pages/frescopa-atelier-blog-html.html",
+  "slots": {
+    "pageType": "journal-index",
+    "inferredShape": "listing",
+    "source": "stardust:extract --prep §4 (rendered HTML selectors)",
+    "slots": [
+      {
+        "name": "site-header",
+        "type": "module",
+        "module": "candidate-site-header",
+        "selector": "header.fr-hdr"
+      },
+      {
+        "name": "index-headline",
+        "type": "module",
+        "module": "candidate-page-intro",
+        "selector": "#dc-root > div > div > section:nth-of-type(1)",
+        "headline": "Notes on the morning ritual.",
+        "eyebrow": "The Journal"
+      },
+      {
+        "name": "featured-post",
+        "type": "card",
+        "module": "candidate-media-card",
+        "selector": "#dc-root > div > div > section:nth-of-type(2) > div > a",
+        "headline": "How the Atelier learns your taste",
+        "subSlots": [
+          "image",
+          "badge",
+          "category",
+          "title",
+          "deck",
+          "meta",
+          "cta"
+        ]
+      },
+      {
+        "name": "filter-controls",
+        "type": "module",
+        "module": "candidate-filter-pills",
+        "selector": "#dc-root > div > div > section:nth-of-type(3) > div > div:nth-of-type(1)",
+        "options": [
+          "All posts",
+          "The Atelier",
+          "Brewing",
+          "Origins",
+          "Café life",
+          "Sustainability"
+        ]
+      },
+      {
+        "name": "card-grid",
+        "type": "card-grid",
+        "module": "candidate-media-card",
+        "selector": "#dc-root > div > div > section:nth-of-type(3) > div > div:nth-of-type(2)",
+        "cards": {
+          "selector": "a",
+          "count": 6,
+          "subSlots": [
+            "image|image-slot",
+            "category",
+            "title",
+            "deck",
+            "meta"
+          ],
+          "note": "2 of 6 show <image-slot> placeholders on the source"
+        }
+      },
+      {
+        "name": "site-footer",
+        "type": "module",
+        "module": "candidate-site-footer",
+        "selector": "footer.fr-ftr"
+      }
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+/* ============================================================
+   FRÉSCOPA — Typography tokens
+   Schibsted Grotesk for display; Hanken Grotesk for body, labels,
+   and the "mono" role (used uppercase + tracked as eyebrows/meta).
+   Fluid scale, ratio ~1.28.
+   ============================================================ */
+
+:root {
+  /* ---------- Type families ---------- */
+  --font-display: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
+  --font-body:    "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --font-mono:    "Hanken Grotesk", system-ui, sans-serif; /* used uppercase + tracked, not monospaced */
+
+  /* ---------- Type scale (fluid) ---------- */
+  --fs-eyebrow: 0.75rem;                                     /* @kind font */
+  --fs-sm:      0.9375rem;                                   /* @kind font */
+  --fs-body:    1.0625rem;                                   /* @kind font */
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem); /* @kind other */
+  --fs-h4:      clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);     /* @kind other */
+  --fs-h3:      clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);      /* @kind other */
+  --fs-h2:      clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);      /* @kind other */
+  --fs-h1:      clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);       /* @kind other */
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);         /* @kind other */
+
+  /* ---------- Line height ---------- */
+  --lh-tight: 1.03; /* @kind font */
+  --lh-snug:  1.15; /* @kind font */
+  --lh-body:  1.62; /* @kind font */
+
+  /* ---------- Weights ---------- */
+  --fw-regular:  400; /* @kind font */
+  --fw-medium:   500; /* @kind font */
+  --fw-semibold: 600; /* @kind font */
+  --fw-bold:     700; /* @kind font */
+  --fw-black:    800; /* @kind font */
+
+  /* ---------- Tracking ---------- */
+  --tracking-eyebrow: 0.2em;   /* @kind font */
+  --tracking-tight:  -0.02em;  /* @kind font */
+}

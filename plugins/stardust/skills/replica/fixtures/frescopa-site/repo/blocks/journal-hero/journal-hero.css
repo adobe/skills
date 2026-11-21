@@ -1,0 +1,39 @@
+/* journal-hero — journal index hero band (prototype section.journal-hero), mobile-first. */
+
+.journal-hero {
+  background: var(--paper-2);
+  padding:
+    calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0
+    clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+
+/* The prototype eyebrow is an inline span on the container's line box. */
+.journal-hero .journal-hero-eyebrow {
+  display: inline;
+}
+
+.journal-hero .journal-hero-eyebrow p {
+  display: inline;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--terracotta);
+}
+
+.journal-hero .journal-hero-title h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem);
+  color: var(--burgundy);
+  margin: 0.6rem 0 0;
+}
+
+.journal-hero .journal-hero-lede p {
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+  margin-top: 1rem;
+  line-height: 1.6;
+  max-width: 54ch;
+}

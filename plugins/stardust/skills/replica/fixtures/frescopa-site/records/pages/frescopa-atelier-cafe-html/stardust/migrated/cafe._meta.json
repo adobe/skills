@@ -1,0 +1,79 @@
+{
+  "slug": "frescopa-atelier-cafe-html",
+  "type": "cafe",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "cafe-hero",
+    "cafe-sec",
+    "cafe-cta"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "cafe-hero",
+    "cafe-sec",
+    "cafe-sec",
+    "cafe-sec",
+    "cafe-sec",
+    "cafe-sec",
+    "cafe-cta"
+  ],
+  "canonShas": {
+    "header": "4a8f369e8fef",
+    "footer": "b671270abc23",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa — Café",
+    "description": null,
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa — Café",
+    "url": "https://markszulc.github.io/frescopa-atelier/cafe.html"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "91ed5790ed36",
+  "sourceProposedSha": "1e3b23d1cbb9",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "FAIL: units off 31 hidden 0 missing 7 — 0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "FAIL: units off 30 hidden 0 missing 7 — 0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: none — content + roles match — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 30 (owner 0, auto 30) · advisory 0 (frescopa-atelier-cafe-html-360-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier/cafe.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier/cafe)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 12,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "coffee.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/cafe.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/cafe._meta.json",
+  "driverVersion": "1"
+}

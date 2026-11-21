@@ -1,0 +1,71 @@
+/* learn — copy column + flavour-DNA radar (prototype section.learn), mobile-first.
+   The radar's own paint lives in styles/widgets.css (shared with the landing page). */
+
+.learn {
+  background: var(--paper-2);
+  padding-block: clamp(3rem, 2rem + 4vw, 6rem);
+}
+
+.learn .learn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: center;
+}
+
+.learn .learn-viz {
+  order: -1;
+}
+
+.learn .learn-title {
+  margin-top: 1rem;
+}
+
+.learn .learn-title :is(h2, h3) {
+  font-size: var(--fs-h2);
+}
+
+.learn .learn-points ul {
+  list-style: none;
+  padding: 0;
+  margin: 2.2rem 0 0;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.learn .learn-points li {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+  align-items: baseline;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.learn .learn-points strong {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+
+@media (width > 560px) {
+  .learn .learn-points li {
+    grid-template-columns: minmax(120px, 0.4fr) 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (width > 900px) {
+  .learn .learn-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .learn .learn-viz {
+    order: 0;
+  }
+}

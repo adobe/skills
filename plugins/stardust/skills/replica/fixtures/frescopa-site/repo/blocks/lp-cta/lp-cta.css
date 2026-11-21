@@ -1,0 +1,56 @@
+/* lp-cta — closing dark band with a bottom glow (prototype .lp-cta). */
+
+.lp-cta {
+  position: relative;
+  background: var(--charcoal);
+  color: var(--cream);
+  text-align: center;
+  padding: clamp(5rem, 3rem + 6vw, 8rem) 0;
+  overflow: hidden;
+}
+
+.lp-cta .lp-cta-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      60% 80% at 50% 120%,
+      color-mix(in oklch, var(--amber) 20%, transparent),
+      transparent 70%
+    );
+}
+
+.lp-cta .lp-cta-inner {
+  position: relative;
+}
+
+.lp-cta .lp-cta-title p {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 1.4rem + 3.4vw, 4rem);
+  line-height: 1.08;
+  color: var(--cream);
+  max-width: 18ch;
+  margin-inline: auto;
+}
+
+.lp-cta .lp-cta-title em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--amber);
+}
+
+.lp-cta .lp-cta-text p {
+  color: var(--cream-soft);
+  margin: 1.4rem auto 0.4rem;
+  max-width: 42ch;
+  line-height: 1.6;
+}
+
+.lp-cta .lp-cta-actions {
+  display: flex;
+  gap: 0.9rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}

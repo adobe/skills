@@ -1,0 +1,81 @@
+{
+  "slug": "frescopa-atelier",
+  "type": "home",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "hero",
+    "intro",
+    "learn",
+    "mood",
+    "feed",
+    "sustain",
+    "voices",
+    "cafe",
+    "cta"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "hero",
+    "intro",
+    "learn",
+    "mood",
+    "feed",
+    "sustain",
+    "voices",
+    "cafe",
+    "cta"
+  ],
+  "canonShas": {
+    "header": "9d76f654eb17",
+    "footer": "474ee458d691",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa Atelier — Every morning, perfected.",
+    "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa Atelier — Every morning, perfected.",
+    "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "url": "https://markszulc.github.io/frescopa-atelier/"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "22772794dcec",
+  "sourceProposedSha": "64c3e5e6cf8b",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: none — content + roles match — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0 (home-360-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 22,
+  "missingAssets": [],
+  "brokenInternalLinks": [],
+  "outputPath": "frescopa-atelier/index.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/_meta.json",
+  "driverVersion": "1"
+}

@@ -1,0 +1,221 @@
+{
+ "source": "http://localhost:8792/frescopa-atelier-beverages-html-proposed.html",
+ "width": 1440,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "bev-hero",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Beverages"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Three ways to fill a cup."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Coffee, tea, and cold-pressed juice — each sourced carefully, made in small batches, and built for a particular kind of morning. Start with what you're pouring today."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": []
+  },
+  {
+   "section": "range",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Coffee"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Roasted for your ritual"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "House blends built for consistency, traceable single origins for the days you want to taste a place, and premium instant for when you're in a hurry. Ground, whole bean, or pods."
+    },
+    {
+     "role": "eyebrow",
+     "order": 3,
+     "text": "Worth starting with"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Morning Blend"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Single Origin Ethiopian"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "Espresso Blend"
+    },
+    {
+     "role": "cta",
+     "order": 7,
+     "text": "Shop all coffee →",
+     "href": "coffee.html"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "From $10 · 10 blends"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 3,
+   "repeats": []
+  },
+  {
+   "section": "range",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Tea"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "A quieter kind of cup"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Eight blends across black, green and herbal, plus a small reserve of rare leaf. Loose or in bags, in three sizes — chosen for the slow afternoon hour."
+    },
+    {
+     "role": "eyebrow",
+     "order": 3,
+     "text": "Worth starting with"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "English Breakfast"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Green Sencha"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "Darjeeling First Flush"
+    },
+    {
+     "role": "cta",
+     "order": 7,
+     "text": "Shop all tea →",
+     "href": "#"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "From $9 · 10 blends"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 3,
+   "repeats": []
+  },
+  {
+   "section": "range",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Cold-press juice"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Bottled bright"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Cold-pressed singles and blends, plus concentrates to mix your own. No added sugar, nothing from concentrate — just fruit and veg, pressed slow and kept cold."
+    },
+    {
+     "role": "eyebrow",
+     "order": 3,
+     "text": "Worth starting with"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Orange"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Green Revival"
+    },
+    {
+     "role": "body",
+     "order": 6,
+     "text": "Beetroot & Berry"
+    },
+    {
+     "role": "cta",
+     "order": 7,
+     "text": "Shop all juice →",
+     "href": "#"
+    },
+    {
+     "role": "eyebrow",
+     "order": 8,
+     "text": "From $5.50 · 25 pressings"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 3,
+   "repeats": []
+  },
+  {
+   "section": "bev-cta",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Can't decide?"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Taste the whole range at a café."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Sit at the bar and work through coffee, tea and juice with our team. It's the fastest way to find your everyday cup."
+    },
+    {
+     "role": "cta",
+     "order": 3,
+     "text": "Find a café →",
+     "href": "cafe.html"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": []
+  }
+ ]
+}

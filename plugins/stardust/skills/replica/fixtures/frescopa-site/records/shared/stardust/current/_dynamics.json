@@ -1,0 +1,686 @@
+{
+ "_provenance": {
+  "writtenBy": "stardust:dynamics detect",
+  "writtenAt": "2026-11-21T18:33:18.771Z",
+  "settleMs": 5000,
+  "width": 1440,
+  "urls": [
+   "https://markszulc.github.io/frescopa-atelier/",
+   "https://markszulc.github.io/frescopa-atelier/landing.html",
+   "https://markszulc.github.io/frescopa-atelier/beverages.html",
+   "https://markszulc.github.io/frescopa-atelier/machines.html",
+   "https://markszulc.github.io/frescopa-atelier/blog.html",
+   "https://markszulc.github.io/frescopa-atelier/cafe.html"
+  ],
+  "reachSource": "stardust/current/pages"
+ },
+ "pages": {
+  "/frescopa-atelier/": {
+   "url": "https://markszulc.github.io/frescopa-atelier/",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "Fréscopa Atelier — Every morning, perfected.",
+   "forms": [
+    {
+     "name": "signup",
+     "action": "https://markszulc.github.io/frescopa-atelier/#",
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": true
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 3
+   },
+   "locale": {
+    "lang": "en",
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 0,
+   "inlineFetch": false,
+   "mainText": 3375,
+   "domAddedAfterLoad": 5,
+   "hosts": {
+    "markszulc.github.io": 15,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 2
+   },
+   "thirdPartyHosts": [
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/shared/app.js",
+    "https://markszulc.github.io/frescopa-atelier/shared/flavor-dna.js",
+    "https://markszulc.github.io/frescopa-atelier/shared/hero.js"
+   ],
+   "firstPartyApi": [],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 3395,
+   "mainEmptyAtLoad": false
+  },
+  "/frescopa-atelier/landing.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "",
+   "forms": [
+    {
+     "name": "fr-ftr__signup",
+     "action": null,
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:fr-ftr-email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": false
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 9
+   },
+   "locale": {
+    "lang": null,
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 1,
+   "inlineFetch": false,
+   "mainText": 4093,
+   "domAddedAfterLoad": 0,
+   "hosts": {
+    "markszulc.github.io": 16,
+    "unpkg.com": 2,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 7
+   },
+   "thirdPartyHosts": [
+    "unpkg.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/support.js",
+    "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+   ],
+   "firstPartyApi": [
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/landing.html",
+     "query": [],
+     "status": 200,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/landing.html"
+    }
+   ],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 0,
+   "mainEmptyAtLoad": true
+  },
+  "/frescopa-atelier/beverages.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "",
+   "forms": [
+    {
+     "name": "fr-ftr__signup",
+     "action": null,
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:fr-ftr-email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": false
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 3
+   },
+   "locale": {
+    "lang": null,
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 1,
+   "inlineFetch": false,
+   "mainText": 1734,
+   "domAddedAfterLoad": 0,
+   "hosts": {
+    "markszulc.github.io": 17,
+    "unpkg.com": 2,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 5
+   },
+   "thirdPartyHosts": [
+    "unpkg.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js",
+    "https://markszulc.github.io/frescopa-atelier/support.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+   ],
+   "firstPartyApi": [
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/beverages.html",
+     "query": [],
+     "status": 200,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/beverages.html"
+    }
+   ],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 0,
+   "mainEmptyAtLoad": true
+  },
+  "/frescopa-atelier/machines.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/machines.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "",
+   "forms": [
+    {
+     "name": "fr-ftr__signup",
+     "action": null,
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:fr-ftr-email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": false
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 6
+   },
+   "locale": {
+    "lang": null,
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 1,
+   "inlineFetch": false,
+   "mainText": 2467,
+   "domAddedAfterLoad": 0,
+   "hosts": {
+    "markszulc.github.io": 20,
+    "unpkg.com": 2,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 7
+   },
+   "thirdPartyHosts": [
+    "unpkg.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js",
+    "https://markszulc.github.io/frescopa-atelier/support.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+   ],
+   "firstPartyApi": [
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/machines.html",
+     "query": [],
+     "status": 200,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/machines.html"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/image-slot.js",
+     "query": [],
+     "status": 200,
+     "contentType": "application/javascript",
+     "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/.image-slots.state.json",
+     "query": [],
+     "status": 404,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json"
+    }
+   ],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 0,
+   "mainEmptyAtLoad": true
+  },
+  "/frescopa-atelier/blog.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "",
+   "forms": [
+    {
+     "name": "fr-ftr__signup",
+     "action": null,
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:fr-ftr-email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": false
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 0
+   },
+   "locale": {
+    "lang": null,
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 1,
+   "inlineFetch": false,
+   "mainText": 1757,
+   "domAddedAfterLoad": 0,
+   "hosts": {
+    "markszulc.github.io": 23,
+    "unpkg.com": 2,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 6
+   },
+   "thirdPartyHosts": [
+    "unpkg.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/support.js",
+    "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+   ],
+   "firstPartyApi": [
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/blog.html",
+     "query": [],
+     "status": 200,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/blog.html"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/image-slot.js",
+     "query": [],
+     "status": 200,
+     "contentType": "application/javascript",
+     "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/.image-slots.state.json",
+     "query": [],
+     "status": 404,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json"
+    }
+   ],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 0,
+   "mainEmptyAtLoad": true
+  },
+  "/frescopa-atelier/cafe.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "",
+   "forms": [
+    {
+     "name": "fr-ftr__signup",
+     "action": null,
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:fr-ftr-email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": false
+    }
+   ],
+   "controlGroups": [
+    {
+     "container": "section.",
+     "controls": 8,
+     "names": [],
+     "submit": "Request this tour→"
+    }
+   ],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 1
+   },
+   "locale": {
+    "lang": null,
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 1,
+   "inlineFetch": false,
+   "mainText": 7674,
+   "domAddedAfterLoad": 47,
+   "hosts": {
+    "markszulc.github.io": 20,
+    "unpkg.com": 2,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 7
+   },
+   "thirdPartyHosts": [
+    "unpkg.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/support.js",
+    "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+   ],
+   "firstPartyApi": [
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/cafe.html",
+     "query": [],
+     "status": 200,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/cafe.html"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/image-slot.js",
+     "query": [],
+     "status": 200,
+     "contentType": "application/javascript",
+     "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js"
+    },
+    {
+     "method": "GET",
+     "host": "markszulc.github.io",
+     "path": "/frescopa-atelier/.image-slots.state.json",
+     "query": [],
+     "status": 404,
+     "contentType": "text/html",
+     "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json"
+    }
+   ],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 0,
+   "mainEmptyAtLoad": true
+  }
+ },
+ "findings": [
+  {
+   "id": "cr-main-empty-at-load-filled-after-client-rendered-page",
+   "class": "CR",
+   "feature": "main empty at load, filled after (client-rendered page)",
+   "hint": "client-rendered-page",
+   "evidence": [
+    "text at load 0 → settled 4093",
+    "text at load 0 → settled 1734",
+    "text at load 0 → settled 2467",
+    "text at load 0 → settled 1757",
+    "text at load 0 → settled 7674"
+   ],
+   "pages": [
+    "/frescopa-atelier/landing.html",
+    "/frescopa-atelier/beverages.html",
+    "/frescopa-atelier/machines.html",
+    "/frescopa-atelier/blog.html",
+    "/frescopa-atelier/cafe.html"
+   ]
+  },
+  {
+   "id": "f-form-fr-ftr-signup-no-action-js-wired-1-fields",
+   "class": "F",
+   "feature": "form \"fr-ftr__signup\" → no action (JS-wired) (1 fields)",
+   "signature": [
+    "email:fr-ftr-email"
+   ],
+   "hint": "client-compute?",
+   "evidence": [
+    "email:fr-ftr-email"
+   ],
+   "pages": [
+    "/frescopa-atelier/landing.html",
+    "/frescopa-atelier/beverages.html",
+    "/frescopa-atelier/machines.html",
+    "/frescopa-atelier/blog.html",
+    "/frescopa-atelier/cafe.html"
+   ]
+  },
+  {
+   "id": "f-form-signup-origin-frescopa-atelier-1-fields",
+   "class": "F",
+   "feature": "form \"signup\" → origin /frescopa-atelier/ (1 fields)",
+   "signature": [
+    "email:email"
+   ],
+   "hint": "forms",
+   "evidence": [
+    "email:email"
+   ],
+   "pages": [
+    "/frescopa-atelier/"
+   ]
+  },
+  {
+   "id": "f-form-less-control-group-in-section-8-controls-submit-reque",
+   "class": "F",
+   "feature": "form-less control group in section. (8 controls, submit \"Request this tour→\")",
+   "hint": "client-compute?",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/cafe.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-3",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 3)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/",
+    "/frescopa-atelier/beverages.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-9",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 9)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/landing.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-6",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 6)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/machines.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-0",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 0)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/blog.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-1",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 1)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/cafe.html"
+   ]
+  }
+ ],
+ "reach": {
+  "pagesWithEvidence": 6,
+  "of": 6,
+  "endpoints": {
+   "GET markszulc.github.io/frescopa-atelier/beverages.html": 1,
+   "GET markszulc.github.io/frescopa-atelier/blog.html": 1,
+   "GET markszulc.github.io/frescopa-atelier/image-slot.js": 3,
+   "GET markszulc.github.io/frescopa-atelier/.image-slots.state.json": 3,
+   "GET markszulc.github.io/frescopa-atelier/cafe.html": 1,
+   "GET markszulc.github.io/frescopa-atelier/landing.html": 1,
+   "GET markszulc.github.io/frescopa-atelier/machines.html": 1
+  },
+  "searchFormPages": 0,
+  "formPages": 6,
+  "triggerPages": {}
+ }
+}

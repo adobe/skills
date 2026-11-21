@@ -1,0 +1,10 @@
+source	destination
+/	/frescopa-atelier/
+/index.html	/frescopa-atelier/
+/frescopa-atelier	/frescopa-atelier/
+/frescopa-atelier/index.html	/frescopa-atelier/
+/frescopa-atelier/beverages.html	/frescopa-atelier/beverages
+/frescopa-atelier/blog.html	/frescopa-atelier/blog
+/frescopa-atelier/cafe.html	/frescopa-atelier/cafe
+/frescopa-atelier/landing.html	/frescopa-atelier/landing
+/frescopa-atelier/machines.html	/frescopa-atelier/machines

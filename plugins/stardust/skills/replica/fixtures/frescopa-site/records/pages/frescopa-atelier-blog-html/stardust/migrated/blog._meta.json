@@ -1,0 +1,81 @@
+{
+  "slug": "frescopa-atelier-blog-html",
+  "type": "journal-index",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "journal-hero",
+    "journal-feature",
+    "journal-list"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "journal-hero",
+    "journal-feature",
+    "journal-list"
+  ],
+  "canonShas": {
+    "header": "b10a10f8092a",
+    "footer": "b671270abc23",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa — The Journal",
+    "description": null,
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa — The Journal",
+    "url": "https://markszulc.github.io/frescopa-atelier/blog.html"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "aee95df7f68f",
+  "sourceProposedSha": "cec0ae3d197d",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: none — content + roles match — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 7 (owner 0, auto 7) · advisory 0 (blog-360-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier/blog.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier/blog)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 13,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "article.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "article.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/blog.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/blog._meta.json",
+  "driverVersion": "1"
+}

@@ -1,0 +1,30 @@
+{
+  "round": "blogcanon2",
+  "width": 1440,
+  "stage": "prototype",
+  "pixel": {
+    "rc": 0,
+    "diff": "stardust/replica/gates/frescopa-atelier-1440/diff-blogcanon2.png",
+    "json": "stardust/replica/gates/frescopa-atelier-1440/pixel-blogcanon2.json",
+    "pct": 0,
+    "alignedPct": 0,
+    "alignedUsed": false,
+    "totalShift": 0,
+    "steps": [],
+    "offsetBound": null,
+    "maskedRows": 0,
+    "noiseFloor": 0,
+    "reason": null
+  },
+  "reference": {
+    "origin": "frozen",
+    "capturedAt": "2026-11-21T18:45:35.538Z",
+    "primed": true,
+    "stable": true,
+    "maskArg": ""
+  },
+  "probes": {},
+  "structural": 0,
+  "nothingLost": 0,
+  "at": "2026-11-21T19:17:50.361Z"
+}

@@ -1,0 +1,11 @@
+{
+  "writtenBy": "gate.sh --gate-against-baseline",
+  "origin": "baseline",
+  "url": "https://markszulc.github.io/frescopa-atelier/machines.html",
+  "width": 1440,
+  "at": "2026-11-21T19:26:02.546Z",
+  "originBaseline": {
+    "capturedAt": "2026-11-21T19:26:02.546Z",
+    "height": 4234
+  }
+}

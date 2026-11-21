@@ -1,0 +1,68 @@
+/* sustain — photo + copy with chips (prototype section.sustain), mobile-first. */
+
+.sustain {
+  background: var(--paper);
+  padding-block: clamp(3rem, 2rem + 4vw, 6rem);
+}
+
+.sustain .sustain-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: center;
+}
+
+.sustain .sustain-media {
+  order: -1;
+}
+
+.sustain .sustain-media picture {
+  display: block;
+}
+
+.sustain .sustain-media img {
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  object-fit: cover;
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.sustain .sustain-title {
+  margin-top: 1rem;
+}
+
+.sustain .sustain-title :is(h2, h3) {
+  font-size: var(--fs-h2);
+}
+
+.sustain .chips ul {
+  list-style: none;
+  padding: 0;
+  margin: 1.8rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.sustain .chips li {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--burgundy);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  padding: 0.55em 0.95em;
+  border-radius: var(--r-pill);
+}
+
+@media (width > 900px) {
+  .sustain .sustain-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sustain .sustain-media {
+    order: 0;
+  }
+}

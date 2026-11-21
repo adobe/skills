@@ -1,0 +1,40 @@
+/* ============================================================
+   Fréscopa — shared widgets (replica). Cross-archetype client
+   widgets, styled once: the flavour-DNA radar (home .dna, live
+   home flavor-dna.js / React FlavourDNA → live .fr-dna; both share
+   one stylesheet). Behaviour lives in shared/widgets.js.
+   ============================================================ */
+
+/* ---------- Flavour DNA radar ---------- */
+.dna {
+  --dna-grid: color-mix(in oklch, var(--burgundy) 12%, transparent);
+  --dna-axis: color-mix(in oklch, var(--burgundy) 16%, transparent);
+  --dna-label: var(--ink-soft);
+  --dna-fill: color-mix(in oklch, var(--terracotta) 22%, transparent);
+  --dna-stroke: var(--terracotta);
+  --dna-dot: var(--burgundy);
+  --dna-dot-ring: var(--paper);
+}
+.dna__frame {
+  position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-xl);
+  padding: clamp(1.2rem, 3vw, 2rem) clamp(1.2rem, 3vw, 2rem) 1.4rem; box-shadow: var(--shadow-md);
+}
+.dna__frame::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklch, var(--amber) 12%, transparent), transparent 60%);
+}
+.dna svg { width: 100%; height: auto; max-width: 460px; margin-inline: auto; display: block; position: relative; }
+.dna text.dna-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.dna__readout { text-align: center; margin-top: 0.3rem; min-height: 4.6rem; }
+.dna__readout h4 { color: var(--burgundy); font-size: var(--fs-h4); }
+.dna__readout p { color: var(--ink-soft); font-size: 0.92rem; max-width: 34ch; margin: 0.4rem auto 0; }
+.dna__controls { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 1.2rem; }
+.dna__btn {
+  font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.6em 1.05em; border-radius: var(--r-pill); border: 1px solid var(--line);
+  color: var(--ink-soft); background: var(--paper);
+  transition: color var(--dur-2) var(--ease-quint), background-color var(--dur-2) var(--ease-quint),
+    border-color var(--dur-2) var(--ease-quint);
+}
+.dna__btn:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.dna__btn.is-active { background: var(--burgundy); color: var(--cream); border-color: var(--burgundy); }

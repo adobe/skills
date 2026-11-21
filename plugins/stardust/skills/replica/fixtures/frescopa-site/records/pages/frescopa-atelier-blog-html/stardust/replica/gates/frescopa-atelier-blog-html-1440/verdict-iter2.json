@@ -1,0 +1,55 @@
+{
+  "round": "iter2",
+  "width": 1440,
+  "stage": "prototype",
+  "pixel": {
+    "rc": 0,
+    "diff": "stardust/replica/gates/frescopa-atelier-blog-html-1440/diff-iter2.png",
+    "json": "stardust/replica/gates/frescopa-atelier-blog-html-1440/pixel-iter2.json",
+    "pct": 0,
+    "alignedPct": 0,
+    "alignedUsed": false,
+    "totalShift": 0,
+    "steps": [],
+    "offsetBound": null,
+    "maskedRows": 0,
+    "noiseFloor": 0,
+    "reason": null
+  },
+  "reference": {
+    "origin": "frozen",
+    "capturedAt": "2026-11-21T19:07:33.220Z",
+    "primed": true,
+    "stable": true,
+    "maskArg": ""
+  },
+  "probes": {
+    "content-diff": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/content-diff-iter2.txt"
+    },
+    "visual-diff": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/visual-diff-iter2.txt"
+    },
+    "chrome-parity": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/chrome-parity-iter2.txt"
+    },
+    "clip-probe": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/clip-iter2.txt"
+    },
+    "unit-geometry": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/units-iter2.txt"
+    },
+    "header-contract": {
+      "rc": 2,
+      "evidence": "stardust/replica/gates/frescopa-atelier-blog-html-1440/header-contract-iter2.txt"
+    }
+  },
+  "structural": 0,
+  "nothingLost": 0,
+  "at": "2026-11-21T19:09:45.228Z"
+}

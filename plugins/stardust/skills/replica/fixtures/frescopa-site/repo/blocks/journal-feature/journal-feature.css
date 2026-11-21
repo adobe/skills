@@ -1,0 +1,102 @@
+/* journal-feature — featured story card (prototype section.journal-feature), mobile-first. */
+
+.journal-feature {
+  background: var(--paper);
+  padding: clamp(2.5rem, 2rem + 2vw, 4rem) 0 clamp(1.5rem, 1rem + 2vw, 2.5rem);
+}
+
+.journal-feature .feature-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  color: inherit;
+}
+
+.journal-feature .feature-card-media {
+  position: relative;
+  min-height: 340px;
+  overflow: hidden;
+  background: var(--paper-3);
+}
+
+.journal-feature .feature-card-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.journal-feature .feature-card-badge {
+  position: absolute;
+  top: 1.1rem;
+  left: 1.1rem;
+}
+
+.journal-feature .feature-card-body {
+  padding: clamp(1.6rem, 1rem + 2vw, 2.8rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  justify-content: center;
+}
+
+.journal-feature .feature-card-cat {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
+  color: var(--terracotta);
+}
+
+.journal-feature .feature-card-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.7rem);
+  color: var(--burgundy);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.journal-feature .feature-card-excerpt {
+  color: var(--ink-soft);
+  font-size: 1.08rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.journal-feature .feature-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.6rem;
+}
+
+.journal-feature .feature-card-meta {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+/* The prototype link is the flex item itself: wrapper and authored <p> step out of the box tree. */
+.journal-feature .feature-card-link,
+.journal-feature .feature-card-link p {
+  display: contents;
+}
+
+.journal-feature .feature-card-link a {
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+  transition:
+    background-size var(--dur-2) var(--ease-quint),
+    color var(--dur-1) var(--ease-quint);
+}

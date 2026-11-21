@@ -1,0 +1,654 @@
+<!DOCTYPE html><html><head><style>
+    .sc-placeholder{background:color-mix(in srgb,currentColor 8%,transparent);
+      border:1px solid color-mix(in srgb,currentColor 50%,transparent);
+      border-radius:2px;box-sizing:border-box;overflow:hidden}
+    @keyframes sc-shine{0%{background-position:100% 50%}100%{background-position:0% 50%}}
+    html.sc-dc-streaming .sc-placeholder,
+    html.sc-dc-streaming .sc-interp.sc-missing{position:relative;
+      background:color-mix(in srgb,currentColor 5%,transparent);
+      border-color:transparent}
+    html.sc-dc-streaming .sc-placeholder::before,
+    html.sc-dc-streaming .sc-interp.sc-missing::before{content:'';
+      position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(217,119,87,0) 25%,rgba(247,225,211,.95) 37%,rgba(217,119,87,0) 63%);
+      background-size:400% 100%;animation:sc-shine 1.4s ease infinite}
+    html.sc-dc-streaming .sc-placeholder:nth-child(n+9 of .sc-placeholder)::before,
+    html.sc-dc-streaming .sc-interp.sc-missing:nth-child(n+9 of .sc-interp.sc-missing)::before{animation:none;
+      background:color-mix(in srgb,currentColor 8%,transparent)}
+    .sc-placeholder-error{padding:4px 8px;font:11px/1.4 ui-monospace,monospace;
+      color:color-mix(in srgb,currentColor 70%,transparent);word-break:break-word}
+    .sc-interp.sc-missing{display:inline-block;width:2em;height:1em;overflow:hidden;
+      vertical-align:text-bottom;background:rgba(255,255,255,.3);border:1px solid rgba(0,0,0,.5);
+      border-radius:2px;box-sizing:border-box;color:transparent;
+      user-select:none}
+    .sc-interp.sc-unresolved{font-family:ui-monospace,monospace;font-size:.85em;
+      color:color-mix(in srgb,currentColor 50%,transparent);
+      background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;
+      padding:0 3px}
+    .sc-host.sc-has-error{position:relative}
+    .sc-logic-error{position:absolute;top:8px;left:8px;z-index:2147483647;max-width:60ch;
+      padding:6px 10px;background:#b00020;color:#fff;font:12px/1.4 ui-monospace,monospace;
+      border-radius:4px;white-space:pre-wrap;pointer-events:none}
+    /* Mirrors PRINT_BASELINE_CSS in apps/web deck-stage-export.ts — keep both
+       in sync until dc-runtime regains a build step. */
+    @media print {
+      @page { margin: 0.5cm; }
+      figure, table { break-inside: avoid; }
+      #dc-root, #dc-root > .sc-host { height: auto; }
+      *, *::before, *::after {
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+        animation-delay: -99s !important; animation-duration: .001s !important;
+        animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+        animation-play-state: running !important; transition-duration: 0s !important;
+      }
+    }
+  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script><style>x-dc{display:none!important}</style><script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script><script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<style>html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}</style><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/fonts.css" data-dc-tpl="1"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/colors.css" data-dc-tpl="2"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/typography.css" data-dc-tpl="3"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/spacing.css" data-dc-tpl="4"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/effects.css" data-dc-tpl="5"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/base.css" data-dc-tpl="6"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/styles.css" data-dc-tpl="7"><link rel="stylesheet" href="shared/view-transitions.css" data-dc-tpl="8"><script src="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js" data-dc-tpl="9"></script><style data-dc-tpl="10">
+  body { margin: 0; }
+  a { color: var(--terracotta); text-decoration: none; }
+  a:hover { color: var(--terracotta-deep); }
+</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-eyebrow); font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow); text-transform: uppercase;
+  color: var(--terracotta); display: inline-flex; align-items: center; gap: 0.7em;
+}
+.fr-eyebrow::before {
+  content: ""; width: 1.6em; height: 1px; background: currentColor; opacity: 0.5;
+}
+.fr-eyebrow--plain::before { display: none; }
+.fr-eyebrow--light { color: var(--amber); }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-dna {
+  --dna-grid: color-mix(in oklch, var(--burgundy) 12%, transparent);
+  --dna-axis: color-mix(in oklch, var(--burgundy) 16%, transparent);
+  --dna-label: var(--ink-soft);
+  --dna-fill: color-mix(in oklch, var(--terracotta) 22%, transparent);
+  --dna-stroke: var(--terracotta);
+  --dna-dot: var(--burgundy);
+  --dna-dot-ring: var(--paper);
+}
+.fr-dna__frame {
+  position: relative; background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r-xl); padding: clamp(1.2rem,3vw,2rem) clamp(1.2rem,3vw,2rem) 1.4rem;
+  box-shadow: var(--shadow-md);
+}
+.fr-dna__frame::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklch, var(--amber) 12%, transparent), transparent 60%);
+}
+.fr-dna svg { width: 100%; height: auto; max-width: 460px; margin-inline: auto; display: block; position: relative; }
+.fr-dna text.fr-dna__label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.fr-dna__readout { text-align: center; margin-top: 0.3rem; min-height: 4.6rem; }
+.fr-dna__readout h4 { color: var(--burgundy); font-size: var(--fs-h4); font-family: var(--font-display); }
+.fr-dna__readout p { color: var(--ink-soft); font-size: 0.92rem; max-width: 34ch; margin: 0.4rem auto 0; }
+.fr-dna__controls { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 1.2rem; }
+.fr-dna__btn {
+  font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.6em 1.05em; border-radius: var(--r-pill); border: 1px solid var(--line);
+  color: var(--ink-soft); background: var(--paper); cursor: pointer;
+  transition: color var(--dur-2) var(--ease-quint), background-color var(--dur-2) var(--ease-quint), border-color var(--dur-2) var(--ease-quint);
+}
+.fr-dna__btn:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.fr-dna__btn.is-active { background: var(--burgundy); color: var(--cream); border-color: var(--burgundy); }</style><style>
+.fr-chip {
+  font-family: var(--font-mono); font-size: 0.74rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--burgundy);
+  background: var(--paper-2); border: 1px solid var(--line);
+  padding: 0.55em 0.95em; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center;
+}
+.fr-chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.6rem; }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-eyebrow); font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow); text-transform: uppercase;
+  color: var(--terracotta); display: inline-flex; align-items: center; gap: 0.7em;
+}
+.fr-eyebrow::before {
+  content: ""; width: 1.6em; height: 1px; background: currentColor; opacity: 0.5;
+}
+.fr-eyebrow--plain::before { display: none; }
+.fr-eyebrow--light { color: var(--amber); }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-dna {
+  --dna-grid: color-mix(in oklch, var(--burgundy) 12%, transparent);
+  --dna-axis: color-mix(in oklch, var(--burgundy) 16%, transparent);
+  --dna-label: var(--ink-soft);
+  --dna-fill: color-mix(in oklch, var(--terracotta) 22%, transparent);
+  --dna-stroke: var(--terracotta);
+  --dna-dot: var(--burgundy);
+  --dna-dot-ring: var(--paper);
+}
+.fr-dna__frame {
+  position: relative; background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r-xl); padding: clamp(1.2rem,3vw,2rem) clamp(1.2rem,3vw,2rem) 1.4rem;
+  box-shadow: var(--shadow-md);
+}
+.fr-dna__frame::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklch, var(--amber) 12%, transparent), transparent 60%);
+}
+.fr-dna svg { width: 100%; height: auto; max-width: 460px; margin-inline: auto; display: block; position: relative; }
+.fr-dna text.fr-dna__label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.fr-dna__readout { text-align: center; margin-top: 0.3rem; min-height: 4.6rem; }
+.fr-dna__readout h4 { color: var(--burgundy); font-size: var(--fs-h4); font-family: var(--font-display); }
+.fr-dna__readout p { color: var(--ink-soft); font-size: 0.92rem; max-width: 34ch; margin: 0.4rem auto 0; }
+.fr-dna__controls { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 1.2rem; }
+.fr-dna__btn {
+  font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.6em 1.05em; border-radius: var(--r-pill); border: 1px solid var(--line);
+  color: var(--ink-soft); background: var(--paper); cursor: pointer;
+  transition: color var(--dur-2) var(--ease-quint), background-color var(--dur-2) var(--ease-quint), border-color var(--dur-2) var(--ease-quint);
+}
+.fr-dna__btn:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.fr-dna__btn.is-active { background: var(--burgundy); color: var(--cream); border-color: var(--burgundy); }</style><style>
+.fr-chip {
+  font-family: var(--font-mono); font-size: 0.74rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--burgundy);
+  background: var(--paper-2); border: 1px solid var(--line);
+  padding: 0.55em 0.95em; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center;
+}
+.fr-chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.6rem; }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-ftr { background: var(--charcoal); color: var(--cream-soft); padding-top: clamp(3.5rem, 6vw, 5.5rem); }
+.fr-ftr__inner, .fr-ftr__legal { width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-ftr__inner { display: grid; grid-template-columns: 1.3fr 2fr; gap: clamp(2rem, 6vw, 5rem); padding-bottom: 3rem; }
+.fr-ftr__logo { height: 38px; width: auto; margin-bottom: 1.3rem; }
+.fr-ftr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; color: var(--cream); display: block; margin-bottom: 1.1rem; }
+.fr-ftr__tag { color: var(--cream-soft); font-size: 0.95rem; max-width: 42ch; }
+.fr-ftr__signup { margin-top: 1.9rem; }
+.fr-ftr__signup-label { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--cream); margin-bottom: 0.8rem; }
+.fr-ftr__signup-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.fr-ftr__signup-row > :first-child { flex: 1; min-width: 190px; }
+.fr-ftr__cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.fr-ftr__col h3 { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--amber); margin-bottom: 1rem; font-weight: 500; }
+.fr-ftr__col a { display: block; color: var(--cream-soft); padding: 0.36rem 0; font-size: 0.95rem; transition: color var(--dur-1); }
+.fr-ftr__col a:hover { color: var(--cream); }
+.fr-ftr__legal { border-top: 1px solid var(--line-dark); padding-block: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.fr-ftr__social { display: flex; gap: 0.7rem; }
+.fr-ftr__social a { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--cream-soft); border: 1px solid var(--line-dark); transition: color var(--dur-1), border-color var(--dur-1); }
+.fr-ftr__social a:hover { color: var(--amber); border-color: var(--amber); }
+.fr-ftr__meta { font-size: 0.8rem; color: var(--cream-soft); opacity: 0.85; }
+@media (max-width: 980px) { .fr-ftr__inner { grid-template-columns: 1fr; gap: 2.5rem; } }
+@media (max-width: 560px) { .fr-ftr__cols { grid-template-columns: 1fr 1fr; } }</style><style>
+.fr-input {
+  width: 100%; border-radius: var(--r-pill);
+  padding: 0.85em 1.25em; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  transition: border-color var(--dur-1) var(--ease-quint), box-shadow var(--dur-1) var(--ease-quint);
+}
+.fr-input::placeholder { color: color-mix(in oklch, var(--ink-soft) 65%, transparent); }
+.fr-input:focus-visible { outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px color-mix(in oklch, var(--terracotta) 22%, transparent); }
+.fr-input--dark { background: var(--charcoal-2); border-color: var(--line-dark); color: var(--cream); }
+.fr-input--dark::placeholder { color: color-mix(in oklch, var(--cream-soft) 70%, transparent); }
+.fr-input--dark:focus-visible { border-color: var(--amber); box-shadow: 0 0 0 3px color-mix(in oklch, var(--amber) 28%, transparent); }</style></head>
+<body>
+<div id="dc-root"><div class="sc-host" data-sc-name="landing"><div data-dc-tpl="11" style="font-family: var(--font-body); color: var(--ink); background: var(--paper);">
+
+  <div class="sc-host-x" data-dc-tpl="12" style="display: contents;"><header class="fr-hdr" data-vt="site-header"><div class="fr-hdr__inner"><a class="fr-hdr__brand" href="index.html" aria-label="Fréscopa home"><img class="fr-hdr__logo fr-hdr__logo--light" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="150" height="40"><img class="fr-hdr__logo fr-hdr__logo--dark" src="assets/frescopa-logo.svg" alt="" aria-hidden="true" width="150" height="40"></a><nav class="fr-hdr__nav " aria-label="Primary"><a href="landing.html" class="is-active">The Atelier</a><a href="machines.html" class="">Machines</a><a href="beverages.html" class="">Beverages</a><a href="cafe.html" class="">Café</a><a href="blog.html" class="">Journal</a></nav><div class="fr-hdr__utils"><button class="fr-iconbtn" aria-label="Search"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2" stroke-linecap="round"></path></svg></button><button class="fr-iconbtn" aria-label="Account"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"></path></svg></button><div class="fr-hdr__cart-wrap"><button class="fr-iconbtn" aria-label="Cart, 0 items"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"></path><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"></path></svg></button></div><button class="fr-hdr__toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span></button></div></div></header></div>
+
+  
+  <section data-dc-tpl="13" style="position: relative; min-height: 94vh; display: flex; align-items: flex-end; overflow: hidden;">
+    <img data-dc-tpl="14" src="assets/images/hero-machine.jpg" alt="The Fréscopa Atelier on a sunlit kitchen counter." style="position: absolute; inset: 0px; width: 100%; height: 100%; object-fit: cover; object-position: center 42%;">
+    <div data-dc-tpl="15" style="position: absolute; inset: 0px; background: linear-gradient(92deg, oklch(0.18 0.02 45 / 0.84) 0%, oklch(0.18 0.02 45 / 0.5) 34%, transparent 64%), linear-gradient(0deg, oklch(0.16 0.02 45 / 0.62) 0%, transparent 42%);"></div>
+    <div data-dc-tpl="16" style="position: relative; z-index: 1; max-width: var(--content); margin-inline: auto; width: 100%; padding: 0 var(--gutter) clamp(3rem, 2rem + 4vw, 6rem);">
+      <div data-dc-tpl="17" style="max-width: 580px;">
+        <div class="sc-host-x" data-dc-tpl="18" style="display: contents;"><p class="fr-eyebrow fr-eyebrow--light">Meet the Atelier</p></div>
+        <h1 data-dc-tpl="19" style="font-family: var(--font-display); font-weight: 800; font-size: clamp(2.8rem, 1.6rem + 5vw, 5rem); line-height: 1; letter-spacing: -0.02em; color: var(--cream); margin-top: 1.1rem; text-shadow: oklch(0.15 0.02 40 / 0.35) 0px 2px 30px;">Every morning,<br data-dc-tpl="20">perfected.</h1>
+        <p data-dc-tpl="21" style="color: var(--cream); opacity: 0.92; margin-top: 1.4rem; line-height: 1.55; font-size: 1.1875rem; max-width: 46ch;">A machine that pays attention. It senses every cup, learns what you love, reads the shape of your morning, and pours accordingly — no dials, no guesswork.</p>
+        <div data-dc-tpl="22" style="display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 2.2rem;">
+          <div class="sc-host-x" data-dc-tpl="23" style="display: contents;"><a class="fr-btn fr-btn--terracotta" href="atelier.html">Order the Atelier<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+          <div class="sc-host-x" data-dc-tpl="24" style="display: contents;"><a class="fr-btn fr-btn--ghost" href="#how">See how it works</a></div>
+        </div>
+        <div data-dc-tpl="25" style="display: flex; align-items: center; gap: 0.6rem; margin-top: 1.6rem;">
+          <span data-dc-tpl="26" style="display: inline-flex; gap: 2px;"><svg data-dc-tpl="27" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="28" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="29" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="30" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="31" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="32" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="33" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="34" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="35" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="36" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg></span>
+          <span data-dc-tpl="37" style="color: var(--cream); font-size: 0.95rem;">4.8 · loved by 214 owners</span>
+        </div>
+        <p data-dc-tpl="38" style="color: var(--cream-soft); margin-top: 1.2rem; font-size: 0.95rem;">From $2,199, or $184/mo. Free delivery, expert setup, and a two-year guarantee.</p>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="39" id="learn" style="background: var(--paper); padding: var(--section-y) 0;">
+    <div data-dc-tpl="40" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="41" style="max-width: 44ch;">
+        <div class="sc-host-x" data-dc-tpl="42" style="display: contents;"><p class="fr-eyebrow">Ritual, meet intelligence</p></div>
+        <h2 data-dc-tpl="43" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--burgundy); margin-top: 1rem;">Barista craft, with a mind of its own.</h2>
+      </div>
+      <div data-dc-tpl="44" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 1.8rem; margin-top: 3rem;">
+        <div data-dc-tpl="45" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-md);">
+          <h3 data-dc-tpl="46" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">It learns you</h3>
+          <p data-dc-tpl="47" style="color: var(--ink-soft); margin-top: 0.7rem; line-height: 1.6;">A cup or two in, it starts to memorise your taste. Soon the first pour of the day simply arrives the way you like it.</p>
+        </div>
+        <div data-dc-tpl="48" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-md);">
+          <h3 data-dc-tpl="49" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">It reads the room</h3>
+          <p data-dc-tpl="50" style="color: var(--ink-soft); margin-top: 0.7rem; line-height: 1.6;">A slow Sunday and a full calendar call for different cups. The Atelier adjusts to the shape of your day.</p>
+        </div>
+        <div data-dc-tpl="51" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-md);">
+          <h3 data-dc-tpl="52" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">Nothing wasted</h3>
+          <p data-dc-tpl="53" style="color: var(--ink-soft); margin-top: 0.7rem; line-height: 1.6;">It reorders beans before you run out and sends the grounds back to soil. Care, right down to the last cup.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="54" id="how" style="background: var(--paper-2); padding: var(--section-y) 0;">
+    <div data-dc-tpl="55" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="56" style="max-width: 52ch;">
+        <div class="sc-host-x" data-dc-tpl="57" style="display: contents;"><p class="fr-eyebrow">How it actually works</p></div>
+        <h2 data-dc-tpl="58" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--burgundy); margin-top: 1rem;">It learns your taste. Here's how.</h2>
+        <p data-dc-tpl="59" style="color: var(--ink-soft); font-size: 1.125rem; margin-top: 1.1rem; line-height: 1.6;">Not a preset menu, and not a guess. The Atelier works the way a good barista does — it pays attention, remembers, and adjusts. Four quiet steps, running every morning.</p>
+      </div>
+      <div data-dc-tpl="60" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.6rem; margin-top: 3rem;">
+        <div data-dc-tpl="61" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md);">
+          <div data-dc-tpl="62" style="width: 46px; height: 46px; border-radius: 50%; background: var(--terracotta); color: var(--cream); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem;">1</div>
+          <h3 data-dc-tpl="63" style="font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--burgundy); margin-top: 1.1rem;">It tastes every cup</h3>
+          <p data-dc-tpl="64" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6;">Sensors read the grind, the flow, the strength and the temperature of every pour — the same things a barista would notice.</p>
+        </div>
+        <div data-dc-tpl="65" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md);">
+          <div data-dc-tpl="66" style="width: 46px; height: 46px; border-radius: 50%; background: var(--terracotta); color: var(--cream); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem;">2</div>
+          <h3 data-dc-tpl="67" style="font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--burgundy); margin-top: 1.1rem;">It builds your flavour DNA</h3>
+          <p data-dc-tpl="68" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6;">Those readings become a profile for each person in the house, refined a little more with every cup you pour.</p>
+        </div>
+        <div data-dc-tpl="69" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md);">
+          <div data-dc-tpl="70" style="width: 46px; height: 46px; border-radius: 50%; background: var(--terracotta); color: var(--cream); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem;">3</div>
+          <h3 data-dc-tpl="71" style="font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--burgundy); margin-top: 1.1rem;">It reads the morning</h3>
+          <p data-dc-tpl="72" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6;">The time, your calendar, the weather, and who's awake all shape what it suggests — before you've asked for anything.</p>
+        </div>
+        <div data-dc-tpl="73" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md);">
+          <div data-dc-tpl="74" style="width: 46px; height: 46px; border-radius: 50%; background: var(--terracotta); color: var(--cream); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem;">4</div>
+          <h3 data-dc-tpl="75" style="font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--burgundy); margin-top: 1.1rem;">It acts on its own</h3>
+          <p data-dc-tpl="76" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6;">It warms up before your alarm, adjusts the pour to match, and reorders beans before you run low. You just lift the cup.</p>
+        </div>
+      </div>
+      <p data-dc-tpl="77" style="color: var(--ink-soft); font-size: 0.95rem; margin-top: 1.8rem; max-width: 60ch;">Your flavour DNA and morning routines stay on your machine and your account. You can review what it has learned, correct it, or wipe it clean, any time.</p>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="78" style="background: var(--paper); padding: var(--section-y) 0;">
+    <div data-dc-tpl="79" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 1rem + 4vw, 4rem); align-items: center;">
+      <div data-dc-tpl="80">
+        <div class="sc-host-x" data-dc-tpl="81" style="display: contents;"><p class="fr-eyebrow">How it learns you</p></div>
+        <h2 data-dc-tpl="82" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--burgundy); margin-top: 1rem;">Your taste, drawn one cup at a time.</h2>
+        <p data-dc-tpl="83" style="color: var(--ink-soft); font-size: 1.125rem; margin-top: 1.2rem; line-height: 1.6; max-width: 46ch;">We call the picture the Atelier builds your flavour DNA. Watch it shift as the day, and your mood, changes.</p>
+        <div data-dc-tpl="84" style="margin-top: 2rem;">
+          <div class="sc-host-x" data-dc-tpl="85" style="display: contents;"><a class="fr-link" href="atelier.html">See the full machine<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+        </div>
+      </div>
+      <div data-dc-tpl="86" style="max-width: 460px; width: 100%; margin-inline: auto;">
+        <div class="sc-host-x" data-dc-tpl="87" style="display: contents;"><div class="fr-dna"><div class="fr-dna__frame"><svg viewBox="0 0 420 420" role="img" aria-label="Flavour profile radar showing six taste dimensions."><g><polygon points="210.0,171.5 239.9,188.8 239.9,223.3 210.0,240.5 180.1,223.3 180.1,188.8" fill="none" stroke="var(--dna-grid)" stroke-width="1"></polygon><polygon points="210.0,137.0 269.8,171.5 269.8,240.5 210.0,275.0 150.2,240.5 150.2,171.5" fill="none" stroke="var(--dna-grid)" stroke-width="1"></polygon><polygon points="210.0,102.5 299.6,154.3 299.6,257.8 210.0,309.5 120.4,257.8 120.4,154.3" fill="none" stroke="var(--dna-grid)" stroke-width="1"></polygon><polygon points="210.0,68.0 329.5,137.0 329.5,275.0 210.0,344.0 90.5,275.0 90.5,137.0" fill="none" stroke="var(--dna-grid)" stroke-width="1.4"></polygon></g><g><g><line x1="210" y1="206" x2="210.0" y2="68.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="210.0" y="42.0" text-anchor="middle" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Strength</text></g><g><line x1="210" y1="206" x2="329.5" y2="137.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="352.0" y="124.0" text-anchor="start" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Body</text></g><g><line x1="210" y1="206" x2="329.5" y2="275.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="352.0" y="288.0" text-anchor="start" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Sweetness</text></g><g><line x1="210" y1="206" x2="210.0" y2="344.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="210.0" y="370.0" text-anchor="middle" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Smoothness</text></g><g><line x1="210" y1="206" x2="90.5" y2="275.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="68.0" y="288.0" text-anchor="end" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Warmth</text></g><g><line x1="210" y1="206" x2="90.5" y2="137.0" stroke="var(--dna-axis)" stroke-width="1"></line><text x="68.0" y="124.0" text-anchor="end" dominant-baseline="middle" class="fr-dna__label" fill="var(--dna-label)">Crema</text></g></g><path d="M210.00 79.04 L284.10 163.22 L250.63 229.46 L210.00 275.00 L131.12 251.54 L112.00 149.42 Z" fill="var(--dna-fill)" stroke="var(--dna-stroke)" stroke-width="2" stroke-linejoin="round"></path><circle r="3.6" cx="210.00" cy="79.04" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle><circle r="3.6" cx="284.10" cy="163.22" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle><circle r="3.6" cx="250.63" cy="229.46" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle><circle r="3.6" cx="210.00" cy="275.00" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle><circle r="3.6" cx="131.12" cy="251.54" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle><circle r="3.6" cx="112.00" cy="149.42" fill="var(--dna-dot)" stroke="var(--dna-dot-ring)" stroke-width="2"></circle></svg><div class="fr-dna__readout"><h4>The weekday cup</h4><p>Brisk and a little bolder. Enough to meet the day, never so much it rushes you.</p></div></div><div class="fr-dna__controls" role="group" aria-label="Choose a taste profile"><button type="button" class="fr-dna__btn is-active" aria-pressed="true">Weekday</button><button type="button" class="fr-dna__btn " aria-pressed="false">Slow Sunday</button><button type="button" class="fr-dna__btn " aria-pressed="false">After dinner</button></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="88" style="position: relative; background: var(--charcoal); color: var(--cream); padding: var(--section-y) 0; overflow: hidden;">
+    <div data-dc-tpl="89" style="position: absolute; inset: 0px; background: radial-gradient(70% 90% at 50% -10%, color-mix(in oklch, var(--amber) 14%, transparent), transparent 60%); pointer-events: none;"></div>
+    <div data-dc-tpl="90" style="position: relative; max-width: 960px; margin-inline: auto; padding-inline: var(--gutter); text-align: center;">
+      <div class="sc-host-x" data-dc-tpl="91" style="display: contents;"><p class="fr-eyebrow fr-eyebrow--light">See it in the morning</p></div>
+      <h2 data-dc-tpl="92" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--cream); margin: 1rem auto 0px; max-width: 20ch;">Two minutes in a real kitchen.</h2>
+      <div data-dc-tpl="93" style="position: relative; margin-top: 2.4rem; border-radius: var(--r-xl); overflow: hidden; aspect-ratio: 16 / 9; box-shadow: var(--shadow-lg);">
+        <img data-dc-tpl="94" src="assets/images/hero-machine.jpg" alt="A morning with the Atelier." style="width: 100%; height: 100%; object-fit: cover; object-position: center 42%;">
+        <div data-dc-tpl="95" style="position: absolute; inset: 0px; background: linear-gradient(0deg, oklch(0.16 0.02 45 / 0.5), oklch(0.16 0.02 45 / 0.15));"></div>
+        <button data-dc-tpl="96" type="button" aria-label="Play the film" style="position: absolute; inset: 0px; margin: auto; width: 88px; height: 88px; border-radius: 50%; background: var(--paper); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; cursor: pointer; display: grid; place-items: center; box-shadow: var(--shadow-lg);">
+          <svg data-dc-tpl="97" viewBox="0 0 24 24" width="32" height="32" fill="var(--terracotta)" aria-hidden="true"><path data-dc-tpl="98" d="M8 5v14l11-7z"></path></svg>
+        </button>
+        <span data-dc-tpl="99" style="position: absolute; bottom: 1rem; right: 1rem; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; color: var(--cream); background: oklch(0.16 0.02 45 / 0.55); padding: 0.35rem 0.7rem; border-radius: var(--r-pill); backdrop-filter: blur(6px);">2:14</span>
+      </div>
+      <p data-dc-tpl="100" style="color: var(--cream-soft); font-size: 0.95rem; margin-top: 1.2rem;">A short film is in production. Drop your own reel in here when it's ready.</p>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="101" style="position: relative; min-height: 72vh; display: flex; align-items: center; overflow: hidden;">
+    <img data-dc-tpl="102" src="assets/images/espresso-pour.jpg" alt="Espresso pouring into a warm glass." style="position: absolute; inset: 0px; width: 100%; height: 100%; object-fit: cover; object-position: center 55%;">
+    <div data-dc-tpl="103" style="position: absolute; inset: 0px; background: linear-gradient(90deg, oklch(0.18 0.02 45 / 0.8) 0%, oklch(0.18 0.02 45 / 0.42) 46%, transparent 74%);"></div>
+    <div data-dc-tpl="104" style="position: relative; z-index: 1; max-width: var(--content); margin-inline: auto; width: 100%; padding-inline: var(--gutter);">
+      <p data-dc-tpl="105" style="font-family: var(--font-display); font-weight: 700; font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.2rem); line-height: 1.12; color: var(--cream); max-width: 18ch;">It simply <em data-dc-tpl="106" style="font-style: normal; color: var(--amber);">knew</em> what I wanted, before I did.</p>
+      <p data-dc-tpl="107" style="color: var(--cream-soft); margin-top: 1.2rem; font-size: 1rem; letter-spacing: 0.02em;">Priya — three weeks with the Atelier</p>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="108" id="reviews" style="background: var(--paper); padding: var(--section-y) 0;">
+    <div data-dc-tpl="109" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="110" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; flex-wrap: wrap;">
+        <div data-dc-tpl="111" style="max-width: 30ch;">
+          <div class="sc-host-x" data-dc-tpl="112" style="display: contents;"><p class="fr-eyebrow">What owners say</p></div>
+          <h2 data-dc-tpl="113" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--burgundy); margin-top: 1rem;">The verdict, three months in.</h2>
+        </div>
+        <div data-dc-tpl="114" style="text-align: right;">
+          <div data-dc-tpl="115" style="font-family: var(--font-display); font-weight: 800; font-size: 3rem; color: var(--burgundy); line-height: 1;">4.8</div>
+          <span data-dc-tpl="116" style="display: inline-flex; gap: 2px; margin-top: 0.4rem;"><svg data-dc-tpl="117" viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="118" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="119" viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="120" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="121" viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="122" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="123" viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="124" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="125" viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="126" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg></span>
+          <p data-dc-tpl="127" style="color: var(--ink-soft); font-size: 0.9rem; margin-top: 0.4rem;">from 214 verified owners</p>
+        </div>
+      </div>
+      <div data-dc-tpl="128" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 3rem;">
+        <figure data-dc-tpl="129" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md); margin: 0px; display: flex; flex-direction: column;">
+          <span data-dc-tpl="130" style="display: inline-flex; gap: 2px;"><svg data-dc-tpl="131" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="132" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="133" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="134" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="135" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="136" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="137" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="138" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="139" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="140" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg></span>
+          <blockquote data-dc-tpl="141" style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: var(--ink); line-height: 1.4; margin: 1rem 0px 0px; flex: 1 1 0%;">It simply knew what I wanted, before I did. The first machine I've owned that got better the longer I had it.</blockquote>
+          <figcaption data-dc-tpl="142" style="color: var(--ink-soft); font-size: 0.9rem; margin-top: 1.2rem;">Priya M. · London · 3 months in</figcaption>
+        </figure>
+        <figure data-dc-tpl="143" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md); margin: 0px; display: flex; flex-direction: column;">
+          <span data-dc-tpl="144" style="display: inline-flex; gap: 2px;"><svg data-dc-tpl="145" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="146" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="147" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="148" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="149" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="150" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="151" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="152" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="153" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="154" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg></span>
+          <blockquote data-dc-tpl="155" style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: var(--ink); line-height: 1.4; margin: 1rem 0px 0px; flex: 1 1 0%;">I was sceptical at the price. Then it started reordering beans before I noticed, and warming up before my alarm. Now the counter feels bare without it.</blockquote>
+          <figcaption data-dc-tpl="156" style="color: var(--ink-soft); font-size: 0.9rem; margin-top: 1.2rem;">Daniel R. · Bristol · 5 months in</figcaption>
+        </figure>
+        <figure data-dc-tpl="157" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.8rem; box-shadow: var(--shadow-md); margin: 0px; display: flex; flex-direction: column;">
+          <span data-dc-tpl="158" style="display: inline-flex; gap: 2px;"><svg data-dc-tpl="159" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="160" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="161" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="162" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="163" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="164" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="165" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="166" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg><svg data-dc-tpl="167" viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path data-dc-tpl="168" d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"></path></svg></span>
+          <blockquote data-dc-tpl="169" style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: var(--ink); line-height: 1.4; margin: 1rem 0px 0px; flex: 1 1 0%;">Every person in our house gets their own cup, exactly right, without touching a single dial. Worth every penny.</blockquote>
+          <figcaption data-dc-tpl="170" style="color: var(--ink-soft); font-size: 0.9rem; margin-top: 1.2rem;">Sana K. · Leeds · 2 months in</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="171" style="background: var(--paper); padding: var(--section-y) 0;">
+    <div data-dc-tpl="172" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); text-align: center;">
+      <div class="sc-host-x" data-dc-tpl="173" style="display: contents;"><p class="fr-eyebrow fr-eyebrow--plain">In the details</p></div>
+      <h2 data-dc-tpl="174" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.8rem, 1.3rem + 2vw, 2.6rem); color: var(--burgundy); margin: 1rem auto 0px; max-width: 20ch;">Everything considered, nothing fussy.</h2>
+      <div data-dc-tpl="175" style="display: flex; justify-content: center; margin-top: 2rem;">
+        <div class="sc-host-x" data-dc-tpl="176" style="display: contents;"><ul class="fr-chips">
+          <div class="sc-host-x" data-dc-tpl="177" style="display: contents;"><li class="fr-chip">Learns your taste</li></div>
+          <div class="sc-host-x" data-dc-tpl="178" style="display: contents;"><li class="fr-chip">Reorders itself</li></div>
+          <div class="sc-host-x" data-dc-tpl="179" style="display: contents;"><li class="fr-chip">Compostable pods</li></div>
+          <div class="sc-host-x" data-dc-tpl="180" style="display: contents;"><li class="fr-chip">Whisper-quiet grind</li></div>
+          <div class="sc-host-x" data-dc-tpl="181" style="display: contents;"><li class="fr-chip">Two-year guarantee</li></div>
+        </ul></div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="182" id="bundles" style="background: var(--paper-2); padding: var(--section-y) 0;">
+    <div data-dc-tpl="183" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="184" style="max-width: 44ch;">
+        <div class="sc-host-x" data-dc-tpl="185" style="display: contents;"><p class="fr-eyebrow">Ways to buy</p></div>
+        <h2 data-dc-tpl="186" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); color: var(--burgundy); margin-top: 1rem;">Start with the machine, or the whole ritual.</h2>
+      </div>
+      <div data-dc-tpl="187" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 3rem; align-items: stretch;">
+        <div data-dc-tpl="188" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-md); display: flex; flex-direction: column;">
+          <h3 data-dc-tpl="189" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">The Atelier</h3>
+          <p data-dc-tpl="190" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6; flex: 1 1 0%;">The machine, delivered and set up in your kitchen. Everything it needs to start learning you.</p>
+          <div data-dc-tpl="191" style="font-family: var(--font-display); font-weight: 800; font-size: 1.8rem; color: var(--ink); margin-top: 1.2rem;">$2,199</div>
+          <div data-dc-tpl="192" style="margin-top: 1.2rem;"><div class="sc-host-x" data-dc-tpl="193" style="width: 100%;"><a class="fr-btn fr-btn--ghost" href="atelier.html">Choose</a></div></div>
+        </div>
+        <div data-dc-tpl="194" style="background: var(--surface-card); border: 2px solid var(--terracotta); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; position: relative;">
+          <div data-dc-tpl="195" style="position: absolute; top: -0.8rem; left: 2rem;"><div class="sc-host-x" data-dc-tpl="196" style="display: contents;"><span class="fr-badge fr-badge--burgundy">Most loved</span></div></div>
+          <h3 data-dc-tpl="197" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">The Atelier + a year of beans</h3>
+          <p data-dc-tpl="198" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6; flex: 1 1 0%;">The machine, plus house beans delivered as you need them for a year. It reorders; you never run dry.</p>
+          <div data-dc-tpl="199" style="display: flex; align-items: baseline; gap: 0.6rem; margin-top: 1.2rem;"><span data-dc-tpl="200" style="font-family: var(--font-display); font-weight: 800; font-size: 1.8rem; color: var(--ink);">$2,799</span><span data-dc-tpl="201" style="color: var(--ink-soft); font-size: 0.9rem; text-decoration: line-through;">$2,899</span></div>
+          <div data-dc-tpl="202" style="margin-top: 1.2rem;"><div class="sc-host-x" data-dc-tpl="203" style="width: 100%;"><a class="fr-btn fr-btn--terracotta" href="atelier.html">Choose<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div></div>
+        </div>
+        <div data-dc-tpl="204" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 2rem; box-shadow: var(--shadow-md); display: flex; flex-direction: column;">
+          <h3 data-dc-tpl="205" style="font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; color: var(--burgundy);">The Atelier + Barista Kit</h3>
+          <p data-dc-tpl="206" style="color: var(--ink-soft); margin-top: 0.6rem; line-height: 1.6; flex: 1 1 0%;">Adds the milk jug, tamper, and two ceramic cups — for the mornings you want to do it by hand.</p>
+          <div data-dc-tpl="207" style="display: flex; align-items: baseline; gap: 0.6rem; margin-top: 1.2rem;"><span data-dc-tpl="208" style="font-family: var(--font-display); font-weight: 800; font-size: 1.8rem; color: var(--ink);">$2,399</span><span data-dc-tpl="209" style="color: var(--ink-soft); font-size: 0.9rem;">save $110</span></div>
+          <div data-dc-tpl="210" style="margin-top: 1.2rem;"><div class="sc-host-x" data-dc-tpl="211" style="width: 100%;"><a class="fr-btn fr-btn--ghost" href="atelier.html">Choose</a></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="212" style="position: relative; background: var(--charcoal); color: var(--cream); text-align: center; padding: clamp(5rem, 3rem + 6vw, 8rem) 0px; overflow: hidden;">
+    <div data-dc-tpl="213" style="position: absolute; inset: 0px; background: radial-gradient(60% 80% at 50% 120%, color-mix(in oklch, var(--amber) 20%, transparent), transparent 70%);"></div>
+    <div data-dc-tpl="214" style="position: relative; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <p data-dc-tpl="215" style="font-family: var(--font-display); font-weight: 700; font-size: clamp(2.2rem, 1.4rem + 3.4vw, 4rem); line-height: 1.08; color: var(--cream); max-width: 18ch; margin-inline: auto;">Bring the Atelier <em data-dc-tpl="216" style="font-style: normal; font-weight: 800; color: var(--amber);">home.</em></p>
+      <p data-dc-tpl="217" style="color: var(--cream-soft); margin: 1.4rem auto 0.4rem; max-width: 42ch; line-height: 1.6;">From $2,199, or $184/mo for 12 months. Free delivery, expert setup, and a two-year workshop guarantee.</p>
+      <div data-dc-tpl="218" style="display: flex; gap: 0.9rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;">
+        <div class="sc-host-x" data-dc-tpl="219" style="display: contents;"><a class="fr-btn fr-btn--terracotta" href="atelier.html">Order the Atelier<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+        <div class="sc-host-x" data-dc-tpl="220" style="display: contents;"><a class="fr-btn fr-btn--ghost" href="machines.html">Compare machines</a></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sc-host-x" data-dc-tpl="221" style="display: contents;"><footer class="fr-ftr"><div class="fr-ftr__inner"><div class="fr-ftr__brand"><img class="fr-ftr__logo" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="168" height="45"><p class="fr-ftr__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p><form class="fr-ftr__signup"><label class="fr-ftr__signup-label" for="fr-ftr-email">A little warmth in your inbox.</label><div class="fr-ftr__signup-row"><input type="email" class="fr-input fr-input--dark" id="fr-ftr-email" placeholder="you@example.com" autocomplete="email" value=""><button class="fr-btn fr-btn--cream" type="submit">Sign up</button></div></form></div><nav class="fr-ftr__cols" aria-label="Footer"><div class="fr-ftr__col"><h3>Shop</h3><a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a></div><div class="fr-ftr__col"><h3>Company</h3><a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a></div><div class="fr-ftr__col"><h3>Support</h3><a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a></div></nav></div><div class="fr-ftr__legal"><div class="fr-ftr__social"><a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"></circle></svg></a><a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"></circle><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"></path></svg></a><a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"></rect><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"></path></svg></a></div><p class="fr-ftr__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p></div></footer></div></div></div></div>
+<script type="text/x-dc" data-dc-script="">
+class Component extends DCLogic {
+  state = { cart: 0 };
+  componentDidMount() {
+    let c = 0;
+    try { c = parseInt(localStorage.getItem('frescopa_cart') || '0', 10) || 0; } catch (e) {}
+    this.setState({ cart: c });
+    this._sync = (e) => { if (e.key === 'frescopa_cart') this.setState({ cart: parseInt(e.newValue || '0', 10) || 0 }); };
+    window.addEventListener('storage', this._sync);
+  }
+  componentWillUnmount() { if (this._sync) window.removeEventListener('storage', this._sync); }
+  addToCart = (n) => {
+    const inc = (typeof n === 'number' && n > 0) ? n : 1;
+    this.setState((s) => {
+      const cart = s.cart + inc;
+      try { localStorage.setItem('frescopa_cart', String(cart)); } catch (e) {}
+      return { cart };
+    });
+  };
+  renderVals() {
+    const nav = [
+      { label: 'The Atelier', href: 'landing.html' },
+      { label: 'Machines', href: 'machines.html' },
+      { label: 'Beverages', href: 'beverages.html' },
+      { label: 'Café', href: 'cafe.html' },
+      { label: 'Journal', href: 'blog.html' },
+    ];
+    return { nav, cart: this.state.cart, addToCart: this.addToCart, goAccount: () => { window.location.href = 'myatelier.html'; } };
+  }
+}
+</script>
+
+
+</body></html>

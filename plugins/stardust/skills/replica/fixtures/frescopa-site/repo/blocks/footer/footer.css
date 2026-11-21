@@ -1,0 +1,160 @@
+/* footer — the canon site footer (live .footer / .fr-ftr), mobile-first.
+   The host <footer> carries the ground and top padding (#31). */
+
+body > footer.site-footer {
+  background: var(--charcoal);
+  color: var(--cream-soft);
+  padding-top: clamp(3.5rem, 6vw, 5.5rem);
+}
+
+footer .footer .footer-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.5rem;
+  padding-bottom: 3rem;
+}
+
+footer .footer .footer-logo {
+  height: 40px;
+  width: auto;
+  margin-bottom: 1.3rem;
+}
+
+body.app footer .footer .footer-logo {
+  height: 38px;
+}
+
+footer .footer .footer-tag {
+  color: var(--cream-soft);
+  font-size: 0.95rem;
+  max-width: 42ch;
+}
+
+/* ---------- Signup (client-only form) ---------- */
+footer .footer .signup {
+  margin-top: 1.9rem;
+}
+
+footer .footer .signup-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--cream);
+  margin-bottom: 0.8rem;
+}
+
+footer .footer .signup-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+footer .footer .signup-input {
+  flex: 1;
+  min-width: 190px;
+  background: var(--charcoal-2);
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-pill);
+  padding: 0.85em 1.25em;
+  color: var(--cream);
+  transition: border-color var(--dur-1);
+}
+
+footer .footer .signup-input::placeholder {
+  color: color-mix(in oklch, var(--cream-soft) 70%, transparent);
+}
+
+footer .footer .signup-input:focus-visible {
+  border-color: var(--amber);
+  outline: none;
+}
+
+/* ---------- Link columns ---------- */
+footer .footer .footer-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+footer .footer .footer-col :is(h2, h3, h4) {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  margin-bottom: 1rem;
+  font-weight: 500;
+  line-height: var(--lh-snug);
+}
+
+footer .footer .footer-col a {
+  display: block;
+  color: var(--cream-soft);
+  padding: 0.36rem 0;
+  font-size: 0.95rem;
+  transition: color var(--dur-1);
+}
+
+footer .footer .footer-col a:hover {
+  color: var(--cream);
+}
+
+/* ---------- Legal row ---------- */
+footer .footer .footer-legal {
+  border-top: 1px solid var(--line-dark);
+  padding-block: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+footer .footer .footer-social {
+  display: flex;
+  gap: 0.7rem;
+}
+
+footer .footer .footer-social a:any-link {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--cream-soft);
+  border: 1px solid var(--line-dark);
+  transition:
+    color var(--dur-1),
+    border-color var(--dur-1);
+}
+
+footer .footer .footer-social a:hover {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+footer .footer .footer-meta {
+  font-size: 0.8rem;
+  color: var(--cream-soft);
+  opacity: 0.85;
+}
+
+@media (width > 560px) {
+  footer .footer .footer-cols {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (width > 900px) {
+  footer .footer .footer-legal {
+    justify-content: space-between;
+  }
+}
+
+@media (width > 980px) {
+  footer .footer .footer-inner {
+    grid-template-columns: 1.3fr 2fr;
+    gap: clamp(2rem, 6vw, 5rem);
+  }
+}

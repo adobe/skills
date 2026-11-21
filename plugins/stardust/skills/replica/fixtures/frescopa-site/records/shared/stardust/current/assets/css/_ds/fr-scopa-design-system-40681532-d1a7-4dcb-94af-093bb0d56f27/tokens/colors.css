@@ -1,0 +1,49 @@
+/* ============================================================
+   FRÉSCOPA — Colour tokens
+   Warm, crafted, intelligent. Colours in OKLCH; neutrals tinted
+   toward the brand hue. Grounded in the real brand palette:
+     Burgundy · Amber · Terracotta · Cream · Charcoal
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- Brand colour ---------- */
+  --burgundy:        oklch(0.34 0.093 25);    /* ~#5b1c22  brand core, headlines, logo   */
+  --burgundy-deep:   oklch(0.275 0.082 26);   /* ~#431217  pressed / deep fills          */
+  --terracotta:      oklch(0.605 0.116 44);   /* ~#b7613e  lead accent                   */
+  --terracotta-deep: oklch(0.515 0.108 40);   /* ~#96482a  hover                         */
+  --amber:           oklch(0.79 0.128 74);    /* ~#eaa33a  the beans — detail, never body*/
+  --amber-soft:      oklch(0.865 0.083 80);   /* ~#f4cd93  glow / wash                   */
+  --teal:            oklch(0.55 0.05 205);    /* ~#3f787f  B2B nod, used sparingly       */
+
+  /* ---------- Warm neutrals ---------- */
+  --paper:      oklch(0.970 0.010 82);   /* ~#f8f2e8  page canvas          */
+  --paper-2:    oklch(0.948 0.015 78);   /* ~#f1e8d8  raised panel         */
+  --paper-3:    oklch(0.918 0.020 74);   /* ~#e7d9c3  deeper sand          */
+  --sand:       oklch(0.884 0.025 71);   /* ~#dccbb0  strongest light tone */
+  --line:       oklch(0.855 0.018 68);   /* ~#d3c6b2  hairline on light    */
+  --ink:        oklch(0.262 0.021 52);   /* ~#2f271f  body text            */
+  --ink-soft:   oklch(0.430 0.022 52);   /* ~#5b4f42  secondary text       */
+  --charcoal:   oklch(0.222 0.016 52);   /* ~#241d17  dark section canvas  */
+  --charcoal-2: oklch(0.282 0.020 50);   /* ~#312820  dark raised panel    */
+  --line-dark:  oklch(0.400 0.020 55);   /* hairline on dark               */
+  --cream:      oklch(0.945 0.016 80);   /* ~#f1e9db  text on dark         */
+  --cream-soft: oklch(0.795 0.021 78);   /* ~#c8bba6  secondary on dark    */
+
+  /* ---------- Semantic aliases ---------- */
+  --bg:            var(--paper);
+  --surface-raised: var(--paper-2);
+  --surface-card:  var(--paper);
+  --surface-dark:  var(--charcoal);
+  --fg:            var(--ink);
+  --text-body:     var(--ink);
+  --text-muted:    var(--ink-soft);
+  --text-heading:  var(--burgundy);
+  --text-on-dark:  var(--cream);
+  --accent:        var(--terracotta);
+  --accent-hover:  var(--terracotta-deep);
+  --detail:        var(--amber);
+  --border:        var(--line);
+  --focus:         var(--terracotta);
+}

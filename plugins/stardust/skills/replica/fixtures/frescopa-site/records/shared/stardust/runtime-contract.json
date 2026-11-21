@@ -1,0 +1,21 @@
+{
+  "runtime": "vanilla-eds",
+  "probedFrom": ["scripts/scripts.js", "scripts/aem.js"],
+  "probedAt": "2026-11-21",
+  "blockWrapperClass": "block",
+  "blockDom": "div.section > div.<name>-wrapper > div.<name>.block[data-block-name][data-block-status]; section gains .<name>-container; default content in div.default-content-wrapper",
+  "buttonClasses": ".button / .button.primary / .button.secondary / .button.accent, in p.button-wrapper",
+  "buttonization": "formatted-only",
+  "buttonMapping": {
+    "strong>a": "a.button.primary (prototype .btn--terracotta)",
+    "em>a": "a.button.secondary (prototype .btn--ghost; .on-media / .on-dark wrapper variants)",
+    "em>strong>a": "a.button.accent (prototype .btn--cream)",
+    "bare a alone in p": "plain link; blocks wrap it in .link-wrap (prototype .link)"
+  },
+  "wrapTextNodes": true,
+  "sectionMetadata": "server-side (pipeline folds style -> section classes); aem.js has no client-side fold",
+  "templateClass": "metadata Template -> body class (decorateTemplateAndTheme); React page types use Template | app",
+  "fragmentScriptPolicy": "inert-innerHTML",
+  "emptySectionCollapse": true,
+  "chrome": "header/footer blocks fetch /nav and /footer (loadFragment); header is a fixed overlay, --nav-height 0"
+}

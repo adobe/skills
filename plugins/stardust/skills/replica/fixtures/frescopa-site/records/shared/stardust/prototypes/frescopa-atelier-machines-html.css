@@ -1,0 +1,182 @@
+/* ============================================================
+   Fréscopa — product-catalog (machines.html). Page modules only;
+   chrome, tokens, buttons, link and badge come from shared/canon.css.
+   Values lifted from the live React template's inline styles
+   (data-dc-tpl 13–98) and the image-slot element's own stylesheet.
+   ============================================================ */
+
+/* Live React types: html, body, #dc-root { height: 100% }. */
+html, body { height: 100%; }
+.page { height: 100%; font-family: var(--font-body); color: var(--ink); background: var(--paper); }
+
+/* ---------- Hero with breadcrumb (tpl 13–20) ---------- */
+.machines-hero {
+  background: var(--paper-2);
+  padding: calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0 clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+.breadcrumb {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.72rem; color: var(--ink-soft); display: flex; gap: 0.5rem; align-items: center;
+}
+.breadcrumb a { color: var(--ink-soft); }
+.breadcrumb [aria-current] { color: var(--ink); }
+.machines-hero__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem); color: var(--burgundy); margin-top: 1rem;
+}
+.machines-hero__lede { color: var(--ink-soft); font-size: 1.125rem; margin-top: 1rem; line-height: 1.6; max-width: 52ch; }
+
+/* ---------- Sticky family filter (tpl 21–24) ---------- */
+.machines-filter {
+  background: var(--paper); position: sticky; top: 72px; z-index: 20;
+  border-bottom: 1px solid var(--line); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.machines-filter__inner { padding-block: 1rem; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.filter-pill {
+  font-family: var(--font-body); font-size: 0.9rem; font-weight: 500;
+  padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer;
+  transition: all 0.25s var(--ease-quint);
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+}
+.filter-pill.is-active { background: var(--burgundy); color: var(--cream); border: 1px solid var(--burgundy); }
+
+/* ---------- Family band (tpl 26–35); backgrounds alternate by visible index ---------- */
+.machine-band { background: var(--paper); padding: clamp(2.6rem, 2rem + 2vw, 4rem) 0; }
+.machine-band--alt { background: var(--paper-2); }
+.machine-band[hidden] { display: none; }
+/* Bands without a multi-card grid still render the template's empty grid (margin-top 2.2rem). */
+.machine-band--tail > .container::after { content: ""; display: block; margin-top: 2.2rem; }
+.band-head {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 3rem;
+  align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 1.6rem;
+}
+.band-head__eyebrow {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.72rem; color: var(--terracotta);
+}
+.band-head__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem); color: var(--burgundy); margin: 0.5rem 0 0;
+}
+.band-head__value { color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.8rem 0 0; max-width: 48ch; }
+.band-head__note { border-left: 2px solid var(--amber); padding-left: 1.1rem; }
+.band-head__note-label {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.68rem; color: var(--ink-soft);
+}
+.band-head__note p { color: var(--ink); font-size: 0.98rem; line-height: 1.55; margin: 0.5rem 0 0; }
+
+/* Shared card atoms */
+.machine-feature__media, .companion-card__media, .machine-card__media, .machine-solo__media {
+  position: relative; overflow: hidden; background: var(--paper-3);
+}
+.machine-feature__tagline, .machine-card__cat, .machine-solo__cat {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.68rem; color: var(--terracotta);
+}
+
+/* ---------- Featured machine (tpl 37–54) ---------- */
+.machine-feature {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl);
+  overflow: hidden; box-shadow: var(--shadow-md); margin-top: 2.5rem;
+}
+.machine-feature__media { min-height: 340px; }
+.machine-feature__media img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 42%;
+}
+.machine-feature__badge { position: absolute; top: 1.1rem; left: 1.1rem; }
+.machine-feature__body { padding: clamp(1.6rem, 1rem + 2vw, 2.6rem); display: flex; flex-direction: column; gap: 0.7rem; }
+.machine-feature__name {
+  font-family: var(--font-display); font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem); color: var(--burgundy);
+  font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; margin: 0;
+}
+.machine-feature__blurb { color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.2rem 0 0; }
+.machine-feature__list {
+  list-style: none; padding: 0; margin: 0.4rem 0 0; display: flex; flex-direction: column; gap: 0.55rem;
+}
+.machine-feature__list li {
+  display: flex; gap: 0.6rem; align-items: baseline; color: var(--ink); font-size: 0.98rem; line-height: 1.5;
+}
+.machine-feature__arrow { color: var(--terracotta); font-weight: 700; }
+.machine-feature__foot {
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--line);
+}
+.machine-feature__price { font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; color: var(--ink); }
+
+/* ---------- Companions: "Also in this family" (tpl 56–72) ---------- */
+.companions { margin-top: 2.2rem; display: flex; flex-direction: column; gap: 1rem; }
+.companions__label {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.68rem; color: var(--ink-soft);
+}
+.companion-card {
+  display: grid; grid-template-columns: minmax(0, 190px) 1fr;
+  background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
+}
+.companion-card__media { min-height: 150px; }
+.companion-card__body { padding: 1.2rem 1.4rem; display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.companion-card__text { flex: 1 1 0%; min-width: 200px; display: flex; flex-direction: column; gap: 0.35rem; }
+.companion-card__cat {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.66rem; color: var(--terracotta);
+}
+.companion-card__name {
+  font-family: var(--font-display); font-size: 1.35rem; color: var(--burgundy);
+  font-weight: 700; line-height: 1.12; margin: 0;
+}
+.companion-card__blurb { color: var(--ink-soft); font-size: 0.94rem; line-height: 1.5; margin: 0; }
+.companion-card__buy { display: flex; align-items: center; gap: 1.1rem; }
+.companion-card__price { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--ink); }
+
+/* ---------- Machine grid cards (tpl 84–98) ---------- */
+.machine-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 2.2rem;
+}
+.machine-card {
+  background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.machine-card__media { aspect-ratio: 4 / 3; }
+.machine-card__body { padding: 1.3rem 1.4rem 1.4rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 0%; }
+.machine-card__name {
+  font-family: var(--font-display); font-size: 1.5rem; color: var(--burgundy); font-weight: 700; line-height: 1.15;
+}
+.machine-card__blurb { color: var(--ink-soft); font-size: 0.94rem; flex: 1 1 0%; line-height: 1.55; }
+.machine-card__foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 0.7rem; padding-top: 0.9rem; border-top: 1px solid var(--line);
+}
+.machine-card__price { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--ink); }
+
+/* ---------- Solo machine (tpl 74–83) ---------- */
+.machine-solo {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl);
+  overflow: hidden; box-shadow: var(--shadow-sm); margin-top: 2.2rem;
+}
+.machine-solo__media { min-height: 300px; }
+.machine-solo__body {
+  padding: clamp(1.6rem, 1rem + 2vw, 2.4rem); display: flex; flex-direction: column; gap: 0.6rem; justify-content: center;
+}
+.machine-solo__name {
+  font-family: var(--font-display); font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.2rem); color: var(--burgundy);
+  font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0;
+}
+.machine-solo__blurb { color: var(--ink-soft); font-size: 1.02rem; line-height: 1.6; margin: 0.2rem 0 0; max-width: 42ch; }
+.machine-solo__foot {
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line);
+}
+.machine-solo__price { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--ink); }
+
+/* Empty image slot: the live <image-slot> placeholder (an unfilled authoring slot), rebuilt
+   as a declarative shadow root carrying the element's own shadow stylesheet (inline in the HTML). */
+image-slot { display: block; width: 100%; height: 100%; }
+
+/* Live React base (_ds tokens/base.css): `a:hover { color: var(--terracotta-deep) }` outranks
+   .fr-btn's own colour (0,1,1 > 0,1,0), so a link-button's label turns terracotta-deep on hover
+   (observed: motion-observe hover on .fr-btn--terracotta / --cream). Page-local until the canon
+   carries it for every React page type (back-port candidate: `:where(.page--app) a:hover`). */
+.machine-band a.btn:hover { color: var(--terracotta-deep); }

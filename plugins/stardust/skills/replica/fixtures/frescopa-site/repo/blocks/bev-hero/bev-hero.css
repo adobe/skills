@@ -1,0 +1,40 @@
+/* bev-hero — category hero band (prototype section.bev-hero), mobile-first. */
+
+.bev-hero {
+  background: var(--paper-2);
+  padding:
+    calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0
+    clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+
+/* The prototype eyebrow is an inline span on the container's line box. */
+.bev-hero .bev-hero-eyebrow {
+  display: inline;
+}
+
+.bev-hero .bev-hero-eyebrow p {
+  display: inline;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--terracotta);
+}
+
+.bev-hero .bev-hero-title h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem);
+  color: var(--burgundy);
+  margin: 0.6rem 0 0;
+  max-width: 18ch;
+}
+
+.bev-hero .bev-hero-lede p {
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+  margin-top: 1rem;
+  line-height: 1.6;
+  max-width: 56ch;
+}

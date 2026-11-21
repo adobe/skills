@@ -1,0 +1,69 @@
+/* cafe — "Come say hello" photo band (prototype section.cafe), mobile-first. */
+
+.cafe {
+  position: relative;
+  min-height: 64vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.cafe .cafe-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.cafe .cafe-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cafe .cafe-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 55%;
+  transform: scale(1.06);
+}
+
+.cafe .cafe-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      92deg,
+      oklch(16% 0.02 40deg / 80%) 0%,
+      oklch(16% 0.02 40deg / 42%) 46%,
+      transparent 78%
+    );
+}
+
+.cafe .cafe-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 620px;
+  color: var(--cream);
+  padding-block: 4rem;
+}
+
+.cafe .cafe-title {
+  margin-top: 1rem;
+}
+
+.cafe .cafe-title :is(h2, h3) {
+  color: var(--cream);
+  font-size: var(--fs-h2);
+}
+
+.cafe .cafe-body {
+  color: var(--cream);
+  opacity: 0.9;
+  margin: 1.1rem 0 1.9rem;
+  max-width: 46ch;
+}
+
+.cafe .cafe-actions {
+  display: flex;
+}

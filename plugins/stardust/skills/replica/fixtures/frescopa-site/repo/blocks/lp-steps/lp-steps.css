@@ -1,0 +1,78 @@
+/* lp-steps — head, numbered step cards and note (prototype .lp-steps, no media queries). */
+
+.lp-steps {
+  background: var(--paper-2);
+  padding: var(--section-y) 0;
+}
+
+.lp-steps .lp-head-steps {
+  max-width: 52ch;
+}
+
+.lp-steps .lp-h2 :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--burgundy);
+  margin-top: 1rem;
+}
+
+.lp-steps .lp-head-lede p {
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+  margin-top: 1.1rem;
+  line-height: 1.6;
+}
+
+.lp-steps .lp-steps-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.6rem;
+  margin-top: 3rem;
+}
+
+.lp-steps .lp-step {
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 1.8rem;
+}
+
+/* the circle is painted on the authored <p> (its box is the unit the gate measures) */
+.lp-steps .lp-step-num p {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  color: var(--cream);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.lp-steps .lp-step-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.35rem;
+  color: var(--burgundy);
+  margin-top: 1.1rem;
+}
+
+.lp-steps .lp-step-text p {
+  color: var(--ink-soft);
+  margin-top: 0.6rem;
+  line-height: 1.6;
+}
+
+.lp-steps .lp-steps-note p {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin-top: 1.8rem;
+  max-width: 60ch;
+}

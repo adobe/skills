@@ -1,5 +1,0 @@
-[live-session] waiting to pace live navigations to {{BRANCH}}--{{SITE}}--{{ORG}}.aem.page (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 810 ms
-clip-probe https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/ @ 1440px — docH 6474, 124 text nodes, 43 controls (HTTP 200, chrome)
-  (none)
-Clipped: 0 (text clipped 0, text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0, collapsed 0, scroll-hidden 0, horizontal 0)
-json → stardust/replica/gates/frescopa-atelier-index-html-1440/clip-pub3.json

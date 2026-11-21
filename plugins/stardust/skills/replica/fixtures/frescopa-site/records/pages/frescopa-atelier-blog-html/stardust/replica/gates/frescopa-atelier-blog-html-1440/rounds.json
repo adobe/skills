@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "stages": {
+    "prototype": {
+      "rounds": [
+        {
+          "label": "iter1",
+          "at": "2026-11-21T19:08:36.959Z",
+          "verdict": "fail",
+          "kind": "first"
+        },
+        {
+          "label": "iter2",
+          "at": "2026-11-21T19:09:45.284Z",
+          "verdict": "fail",
+          "kind": "fix"
+        },
+        {
+          "label": "iter3",
+          "at": "2026-11-21T19:16:23.708Z",
+          "verdict": "fail",
+          "kind": "fix"
+        },
+        {
+          "label": "landingcanon",
+          "at": "2026-11-21T19:42:02.041Z",
+          "verdict": "pass",
+          "kind": "fix"
+        }
+      ],
+      "decisions": [
+        {
+          "decision": "extend",
+          "reason": "stardust/replica/gates/frescopa-atelier-blog-html-1440/verdict-iter3.json: pixel 0.00% and every probe rc 0; the FAIL came only from the header-contract probe (stardust/chrome/header-contract.json not recorded — site-level, instrument state, logged in progress.json journal-index justified[]). One extra round = shared-layer re-check after the landing archetype's additive canon.css/canon.js edits.",
+          "at": "2026-11-21T19:41:43.112Z",
+          "counted": 3
+        }
+      ]
+    },
+    "all-pages": {
+      "rounds": [
+        {
+          "label": "all-2026-11-21T21-08-08-686Z",
+          "at": "2026-11-21T21:08:08.687Z",
+          "verdict": "fail",
+          "kind": "first"
+        },
+        {
+          "label": "all-2026-11-21T21-10-11-734Z",
+          "at": "2026-11-21T21:10:11.735Z",
+          "verdict": "pass",
+          "kind": "fix"
+        },
+        {
+          "label": "all-2026-11-21T22-02-22-897Z",
+          "at": "2026-11-21T22:02:22.900Z",
+          "verdict": "pass",
+          "kind": "confirm"
+        }
+      ],
+      "decisions": []
+    }
+  }
+}

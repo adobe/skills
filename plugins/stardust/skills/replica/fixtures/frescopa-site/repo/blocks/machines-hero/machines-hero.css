@@ -1,0 +1,60 @@
+/* machines-hero — product-catalog hero with breadcrumb (prototype .machines-hero). */
+
+.machines-hero {
+  background: var(--paper-2);
+  padding:
+    calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0
+    clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+
+.machines-hero .breadcrumb {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.machines-hero .breadcrumb :is(ul, ol) {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.machines-hero .breadcrumb li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--ink);
+}
+
+.machines-hero .breadcrumb .breadcrumb-sep {
+  color: var(--ink-soft);
+}
+
+.machines-hero .breadcrumb a {
+  color: var(--ink-soft);
+}
+
+.machines-hero .machines-hero-title {
+  margin-top: 1rem;
+}
+
+.machines-hero .machines-hero-title :is(h1, h2) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem);
+  color: var(--burgundy);
+}
+
+.machines-hero .machines-hero-lede {
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+  margin-top: 1rem;
+  line-height: 1.6;
+  max-width: 52ch;
+}

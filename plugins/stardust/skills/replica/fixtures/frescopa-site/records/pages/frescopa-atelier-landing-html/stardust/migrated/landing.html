@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-11-21T20:05:25Z
+  page:             frescopa-atelier-landing-html
+  slug:             frescopa-atelier-landing-html
+  pagePath:         migrated/landing.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/frescopa-atelier-landing-html-proposed.html
+  sourceCurrent:    stardust/current/pages/frescopa-atelier-landing-html.json
+  againstDirection: stardust/direction.md (Active)
+  designMd:         DESIGN.md (sha: 2b3e154a30bc)
+  designJson:       DESIGN.json (sha: a3e828d436de)
+  canonShas:        header:4e70e2c2f74d footer:b671270abc23 css:b989c60f9f0c
+  decisionTrace:    landing._meta.json
+  brokenInternalLinks: 7
+  stardustVersion:  local
+-->
+<style>
+:root {
+  color-scheme: light;
+  --burgundy: oklch(0.34 0.093 25);
+  --burgundy-deep: oklch(0.275 0.082 26);
+  --terracotta: oklch(0.605 0.116 44);
+  --terracotta-deep: oklch(0.515 0.108 40);
+  --amber: oklch(0.79 0.128 74);
+  --amber-soft: oklch(0.865 0.083 80);
+  --teal: oklch(0.55 0.05 205);
+  --paper: oklch(0.970 0.010 82);
+  --paper-2: oklch(0.948 0.015 78);
+  --paper-3: oklch(0.918 0.020 74);
+  --sand: oklch(0.884 0.025 71);
+  --line: oklch(0.855 0.018 68);
+  --ink: oklch(0.262 0.021 52);
+  --ink-soft: oklch(0.430 0.022 52);
+  --charcoal: oklch(0.222 0.016 52);
+  --charcoal-2: oklch(0.282 0.020 50);
+  --line-dark: oklch(0.400 0.020 55);
+  --cream: oklch(0.945 0.016 80);
+  --cream-soft: oklch(0.795 0.021 78);
+  --bg: var(--paper);
+  --fg: var(--ink);
+  /* Semantic aliases (_ds tokens/colors.css), used by React page types. */
+  --surface-raised: var(--paper-2);
+  --surface-card: var(--paper);
+  --surface-dark: var(--charcoal);
+  --text-body: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-heading: var(--burgundy);
+  --text-on-dark: var(--cream);
+  --accent: var(--terracotta);
+  --focus: var(--terracotta);
+  /* Families: the source's rendered faces (atelier.css `.atelier` override). */
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "Hanken Grotesk", system-ui, sans-serif;
+  --fs-eyebrow: 0.75rem;
+  --fs-sm: 0.9375rem;
+  --fs-body: 1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4: clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h3: clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);
+  --fs-h2: clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --fs-h1: clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);
+  --lh-tight: 1.03;
+  --lh-snug: 1.15;
+  --lh-body: 1.62;
+  --tracking-eyebrow: 0.2em;
+  --tracking-tight: -0.02em;
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem);
+  --content: 1120px;
+  --content-wide: 1320px;
+  --content-narrow: 760px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+}
+</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Fréscopa — The Atelier","url":"https://markszulc.github.io/frescopa-atelier/landing.html"}</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fréscopa — The Atelier</title>
+  <link rel="preload" href="../assets/shared/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/shared/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../assets/shared/canon.css">
+  <link rel="stylesheet" href="../assets/shared/widgets.css">
+  <link rel="stylesheet" href="../assets/frescopa-atelier-landing-html.css">
+  <script defer src="../assets/shared/canon.js"></script>
+  <script defer src="../assets/shared/widgets.js"></script>
+</head>
+<body>
+<div class="page page--app">
+
+  <header class="header header--app" data-header>
+    <div class="container header__inner">
+      <a class="header__brand" href="../frescopa-atelier/index.html" aria-label="Fréscopa home" data-broken-link="true">
+        <img class="header__logo header__logo--light" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="110" height="30">
+        <img class="header__logo header__logo--dark" src="../assets/media/frescopa-logo.svg" alt="" width="110" height="30">
+      </a>
+      <nav class="nav" id="primary-nav" data-nav aria-label="Primary">
+        <a href="../frescopa-atelier/landing.html" aria-current="page">The Atelier</a>
+        <a href="../frescopa-atelier/machines.html">Machines</a>
+        <a href="../frescopa-atelier/beverages.html">Beverages</a>
+        <a href="../frescopa-atelier/cafe.html">Café</a>
+        <a href="../frescopa-atelier/blog.html">Journal</a>
+      </nav>
+      <div class="header__utils">
+        <button class="iconbtn" aria-label="Search">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Account">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn iconbtn--cart" aria-label="Cart, 0 items">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"/></svg>
+        </button>
+        <button class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false" aria-controls="primary-nav"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+
+  <main id="main" data-template="frescopa-atelier-landing-html">
+    <section class="lp-hero" data-section="1">
+      <img class="lp-hero__img" src="../assets/media/hero-machine.jpg" alt="The Fréscopa Atelier on a sunlit kitchen counter." width="1408" height="768" fetchpriority="high">
+      <div class="lp-hero__scrim"></div>
+      <div class="container lp-hero__inner">
+        <div class="lp-hero__copy">
+          <p class="eyebrow eyebrow--light">Meet the Atelier</p>
+          <h1 class="lp-hero__title">Every morning,<br>perfected.</h1>
+          <p class="lp-hero__lead">A machine that pays attention. It senses every cup, learns what you love, reads the shape of your morning, and pours accordingly — no dials, no guesswork.</p>
+          <div class="lp-hero__actions">
+            <a class="btn btn--terracotta" href="../frescopa-atelier/atelier.html" data-broken-link="true">Order the Atelier<span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn--ghost" href="#how">See how it works</a>
+          </div>
+          <div class="lp-hero__rating"><span class="stars"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg></span><span>4.8 · loved by 214 owners</span></div>
+          <p class="lp-hero__price">From $2,199, or $184/mo. Free delivery, expert setup, and a two-year guarantee.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-pillars" id="learn" data-section="2">
+      <div class="container">
+        <div class="lp-head lp-head--narrow">
+          <p class="eyebrow">Ritual, meet intelligence</p>
+          <h2 class="lp-h2">Barista craft, with a mind of its own.</h2>
+        </div>
+        <div class="lp-pillars__grid">
+          <div class="lp-card">
+            <h3 class="lp-card__title">It learns you</h3>
+            <p class="lp-card__text">A cup or two in, it starts to memorise your taste. Soon the first pour of the day simply arrives the way you like it.</p>
+          </div>
+          <div class="lp-card">
+            <h3 class="lp-card__title">It reads the room</h3>
+            <p class="lp-card__text">A slow Sunday and a full calendar call for different cups. The Atelier adjusts to the shape of your day.</p>
+          </div>
+          <div class="lp-card">
+            <h3 class="lp-card__title">Nothing wasted</h3>
+            <p class="lp-card__text">It reorders beans before you run out and sends the grounds back to soil. Care, right down to the last cup.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-steps" id="how" data-section="3">
+      <div class="container">
+        <div class="lp-head lp-head--steps">
+          <p class="eyebrow">How it actually works</p>
+          <h2 class="lp-h2">It learns your taste. Here's how.</h2>
+          <p class="lp-head__lede">Not a preset menu, and not a guess. The Atelier works the way a good barista does — it pays attention, remembers, and adjusts. Four quiet steps, running every morning.</p>
+        </div>
+        <ol class="lp-steps__grid">
+          <li class="lp-step">
+            <div class="lp-step__num">1</div>
+            <h3 class="lp-step__title">It tastes every cup</h3>
+            <p class="lp-step__text">Sensors read the grind, the flow, the strength and the temperature of every pour — the same things a barista would notice.</p>
+          </li>
+          <li class="lp-step">
+            <div class="lp-step__num">2</div>
+            <h3 class="lp-step__title">It builds your flavour DNA</h3>
+            <p class="lp-step__text">Those readings become a profile for each person in the house, refined a little more with every cup you pour.</p>
+          </li>
+          <li class="lp-step">
+            <div class="lp-step__num">3</div>
+            <h3 class="lp-step__title">It reads the morning</h3>
+            <p class="lp-step__text">The time, your calendar, the weather, and who's awake all shape what it suggests — before you've asked for anything.</p>
+          </li>
+          <li class="lp-step">
+            <div class="lp-step__num">4</div>
+            <h3 class="lp-step__title">It acts on its own</h3>
+            <p class="lp-step__text">It warms up before your alarm, adjusts the pour to match, and reorders beans before you run low. You just lift the cup.</p>
+          </li>
+        </ol>
+        <p class="lp-steps__note">Your flavour DNA and morning routines stay on your machine and your account. You can review what it has learned, correct it, or wipe it clean, any time.</p>
+      </div>
+    </section>
+
+    <section class="lp-dna" data-section="4">
+      <div class="container lp-dna__grid">
+        <div class="lp-dna__copy">
+          <p class="eyebrow">How it learns you</p>
+          <h2 class="lp-h2">Your taste, drawn one cup at a time.</h2>
+          <p class="lp-dna__lede">We call the picture the Atelier builds your flavour DNA. Watch it shift as the day, and your mood, changes.</p>
+          <div class="lp-dna__more"><a class="link" href="../frescopa-atelier/atelier.html" data-broken-link="true">See the full machine<span class="arrow" aria-hidden="true">→</span></a></div>
+        </div>
+        <div class="lp-dna__viz">
+          <div class="dna" data-flavor-dna data-default="weekday" data-autocycle data-dna-intro="mount">
+            <div class="dna__frame">
+              <svg data-dna-svg viewBox="0 0 420 420" role="img" aria-label="Flavour profile radar showing six taste dimensions."></svg>
+              <div class="dna__readout">
+                <h4 data-flavor-title>The weekday cup</h4>
+                <p data-flavor-note>Brisk and a little bolder. Enough to meet the day, never so much it rushes you.</p>
+              </div>
+            </div>
+            <div class="dna__controls" role="group" aria-label="Choose a taste profile">
+              <button class="dna__btn is-active" type="button" data-profile="weekday" aria-pressed="true">Weekday</button>
+              <button class="dna__btn" type="button" data-profile="sunday" aria-pressed="false">Slow Sunday</button>
+              <button class="dna__btn" type="button" data-profile="evening" aria-pressed="false">After dinner</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-film" data-section="5">
+      <div class="lp-film__glow"></div>
+      <div class="lp-film__inner">
+        <p class="eyebrow eyebrow--light">See it in the morning</p>
+        <h2 class="lp-h2 lp-film__title">Two minutes in a real kitchen.</h2>
+        <div class="lp-film__frame">
+          <img src="../assets/media/hero-machine.jpg" alt="A morning with the Atelier." width="1408" height="768" loading="lazy">
+          <div class="lp-film__scrim"></div>
+          <button class="lp-film__play" type="button" aria-label="Play the film">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="var(--terracotta)" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <span class="lp-film__time">2:14</span>
+        </div>
+        <p class="lp-film__note">A short film is in production. Drop your own reel in here when it's ready.</p>
+      </div>
+    </section>
+
+    <section class="lp-quote" data-section="6">
+      <img class="lp-quote__img" src="../assets/media/espresso-pour.jpg" alt="Espresso pouring into a warm glass." width="1408" height="768" loading="lazy">
+      <div class="lp-quote__scrim"></div>
+      <div class="container lp-quote__inner">
+        <p class="lp-quote__text">It simply <em>knew</em> what I wanted, before I did.</p>
+        <p class="lp-quote__cite">Priya — three weeks with the Atelier</p>
+      </div>
+    </section>
+
+    <section class="lp-reviews" id="reviews" data-section="7">
+      <div class="container">
+        <div class="lp-reviews__head">
+          <div class="lp-head lp-head--short">
+            <p class="eyebrow">What owners say</p>
+            <h2 class="lp-h2">The verdict, three months in.</h2>
+          </div>
+          <div class="lp-reviews__score">
+            <div class="lp-reviews__num">4.8</div>
+            <span class="stars stars--lg"><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg></span>
+            <p class="lp-reviews__count">from 214 verified owners</p>
+          </div>
+        </div>
+        <div class="lp-reviews__grid">
+          <figure class="review">
+            <span class="stars"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg></span>
+            <blockquote class="review__quote">It simply knew what I wanted, before I did. The first machine I've owned that got better the longer I had it.</blockquote>
+            <figcaption class="review__by">Priya M. · London · 3 months in</figcaption>
+          </figure>
+          <figure class="review">
+            <span class="stars"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg></span>
+            <blockquote class="review__quote">I was sceptical at the price. Then it started reordering beans before I noticed, and warming up before my alarm. Now the counter feels bare without it.</blockquote>
+            <figcaption class="review__by">Daniel R. · Bristol · 5 months in</figcaption>
+          </figure>
+          <figure class="review">
+            <span class="stars"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--amber)" aria-hidden="true"><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.4l6-.9z"/></svg></span>
+            <blockquote class="review__quote">Every person in our house gets their own cup, exactly right, without touching a single dial. Worth every penny.</blockquote>
+            <figcaption class="review__by">Sana K. · Leeds · 2 months in</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-details" data-section="8">
+      <div class="container lp-details__inner">
+        <p class="eyebrow eyebrow--plain">In the details</p>
+        <h2 class="lp-details__title">Everything considered, nothing fussy.</h2>
+        <div class="lp-details__chips">
+          <ul class="lp-chips">
+            <li>Learns your taste</li>
+            <li>Reorders itself</li>
+            <li>Compostable pods</li>
+            <li>Whisper-quiet grind</li>
+            <li>Two-year guarantee</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-bundles" id="bundles" data-section="9">
+      <div class="container">
+        <div class="lp-head lp-head--narrow">
+          <p class="eyebrow">Ways to buy</p>
+          <h2 class="lp-h2">Start with the machine, or the whole ritual.</h2>
+        </div>
+        <div class="lp-bundles__grid">
+          <div class="bundle">
+            <h3 class="bundle__title">The Atelier</h3>
+            <p class="bundle__text">The machine, delivered and set up in your kitchen. Everything it needs to start learning you.</p>
+            <div class="bundle__price"><span class="bundle__amount">$2,199</span></div>
+            <div class="bundle__cta"><a class="btn btn--ghost" href="../frescopa-atelier/atelier.html" data-broken-link="true">Choose</a></div>
+          </div>
+          <div class="bundle bundle--featured">
+            <div class="bundle__badge"><span class="badge badge--burgundy">Most loved</span></div>
+            <h3 class="bundle__title">The Atelier + a year of beans</h3>
+            <p class="bundle__text">The machine, plus house beans delivered as you need them for a year. It reorders; you never run dry.</p>
+            <div class="bundle__price"><span class="bundle__amount">$2,799</span><span class="bundle__was">$2,899</span></div>
+            <div class="bundle__cta"><a class="btn btn--terracotta" href="../frescopa-atelier/atelier.html" data-broken-link="true">Choose<span class="arrow" aria-hidden="true">→</span></a></div>
+          </div>
+          <div class="bundle">
+            <h3 class="bundle__title">The Atelier + Barista Kit</h3>
+            <p class="bundle__text">Adds the milk jug, tamper, and two ceramic cups — for the mornings you want to do it by hand.</p>
+            <div class="bundle__price"><span class="bundle__amount">$2,399</span><span class="bundle__save">save $110</span></div>
+            <div class="bundle__cta"><a class="btn btn--ghost" href="../frescopa-atelier/atelier.html" data-broken-link="true">Choose</a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-cta" data-section="10">
+      <div class="lp-cta__glow"></div>
+      <div class="container lp-cta__inner">
+        <p class="lp-cta__title">Bring the Atelier <em>home.</em></p>
+        <p class="lp-cta__text">From $2,199, or $184/mo for 12 months. Free delivery, expert setup, and a two-year workshop guarantee.</p>
+        <div class="lp-cta__actions">
+          <a class="btn btn--terracotta" href="../frescopa-atelier/atelier.html" data-broken-link="true">Order the Atelier<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="../frescopa-atelier/machines.html">Compare machines</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer footer--app">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="140" height="38">
+        <p class="footer__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p>
+        <form class="signup" action="#" onsubmit="return false">
+          <label class="signup__label" for="fr-ftr-email">A little warmth in your inbox.</label>
+          <div class="signup__row">
+            <input id="fr-ftr-email" class="signup__input" type="email" placeholder="you@example.com" autocomplete="email">
+            <button class="btn btn--cream" type="submit">Sign up</button>
+          </div>
+        </form>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div class="footer__col">
+          <h3>Shop</h3>
+          <a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a>
+        </div>
+        <div class="footer__col">
+          <h3>Company</h3>
+          <a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a>
+        </div>
+        <div class="footer__col">
+          <h3>Support</h3>
+          <a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a>
+        </div>
+      </nav>
+    </div>
+    <div class="container footer__legal">
+      <div class="footer__social">
+        <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"/></svg></a>
+        <a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"/></svg></a>
+        <a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"/><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"/></svg></a>
+      </div>
+      <p class="footer__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

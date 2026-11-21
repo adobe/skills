@@ -1,0 +1,286 @@
+{
+  "discovery": {
+    "fetchTechnique": "chrome",
+    "count": 8,
+    "concurrency": 2
+  },
+  "consent": {
+    "method": "auto"
+  },
+  "favicon": {
+    "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235b1c22'/%3E%3Cpath d='M11 9c4 0 8 3 8 8s-4 6-8 6' fill='none' stroke='%23eaa33a' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E",
+    "file": "assets/favicon.svg"
+  },
+  "crawl": {
+    "failures": [
+      {
+        "url": "https://markszulc.github.io/frescopa-atelier/%7B%7B%20featured.href%20%7D%7D",
+        "slug": "frescopa-atelier-7b-7b-20featured-href-20-7d-7d",
+        "errorClass": "HTTPError",
+        "message": "HTTP 404",
+        "at": "2026-11-21T18:16:24.066Z"
+      },
+      {
+        "url": "https://markszulc.github.io/frescopa-atelier/%7B%7B%20post.href%20%7D%7D",
+        "slug": "frescopa-atelier-7b-7b-20post-href-20-7d-7d",
+        "errorClass": "HTTPError",
+        "message": "HTTP 404",
+        "at": "2026-11-21T18:16:26.110Z"
+      }
+    ],
+    "degraded": [],
+    "pageTimeoutMs": 60000
+  },
+  "captureGaps": {
+    "roots": [],
+    "detail": "uncaptured first-level targets: none (no locale root captured)"
+  },
+  "dynamicSurface": {
+    "pages": 6,
+    "pagesWithSameSiteData": 5,
+    "pagesWithSearchForm": 0,
+    "pagesHydrated": 0,
+    "truncatedPages": 0,
+    "endpoints": [
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/image-slot.js",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "application/javascript",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js",
+        "pages": 3,
+        "examples": [
+          "frescopa-atelier-blog-html",
+          "frescopa-atelier-cafe-html",
+          "frescopa-atelier-machines-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/.image-slots.state.json",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json",
+        "pages": 3,
+        "examples": [
+          "frescopa-atelier-blog-html",
+          "frescopa-atelier-cafe-html",
+          "frescopa-atelier-machines-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/beverages.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-beverages-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/blog.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/blog.html",
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-blog-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/cafe.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-cafe-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/landing.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/landing.html",
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-landing-html"
+        ]
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/machines.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "sameSite": true,
+        "example": "https://markszulc.github.io/frescopa-atelier/machines.html",
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-machines-html"
+        ]
+      }
+    ],
+    "thirdPartyScriptHosts": [
+      {
+        "host": "unpkg.com",
+        "pages": 5,
+        "examples": [
+          "frescopa-atelier-beverages-html",
+          "frescopa-atelier-blog-html",
+          "frescopa-atelier-cafe-html"
+        ]
+      }
+    ],
+    "frameworkHints": [],
+    "globalState": [],
+    "formTargets": [
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier"
+        ]
+      },
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-beverages-html"
+        ]
+      },
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/blog.html",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-blog-html"
+        ]
+      },
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-cafe-html"
+        ]
+      },
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/landing.html",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-landing-html"
+        ]
+      },
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/machines.html",
+        "method": "get",
+        "sameOrigin": true,
+        "search": false,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "pages": 1,
+        "examples": [
+          "frescopa-atelier-machines-html"
+        ]
+      }
+    ]
+  },
+  "visionCheck": [
+    {
+      "slug": "frescopa-atelier",
+      "verdict": "ok",
+      "notes": "Full home page rendered: photo hero, intro, flavour-DNA, mood calendar, product feed, sustainability, voices, café band, CTA band, footer.",
+      "screenshot": "assets/screenshots/frescopa-atelier.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    },
+    {
+      "slug": "frescopa-atelier-landing-html",
+      "verdict": "ok",
+      "notes": "Real Atelier product landing rendered by the design-system bundle: photo hero through bundles, CTA band and footer.",
+      "screenshot": "assets/screenshots/frescopa-atelier-landing-html.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    },
+    {
+      "slug": "frescopa-atelier-machines-html",
+      "verdict": "ok",
+      "notes": "Real catalogue rendered; grey placeholder image tiles for 5 machines are <image-slot> elements on the source design, not a capture failure.",
+      "screenshot": "assets/screenshots/frescopa-atelier-machines-html.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    },
+    {
+      "slug": "frescopa-atelier-beverages-html",
+      "verdict": "ok",
+      "notes": "Real page rendered: intro, coffee/tea/juice split rows with photography, café CTA band, footer.",
+      "screenshot": "assets/screenshots/frescopa-atelier-beverages-html.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    },
+    {
+      "slug": "frescopa-atelier-cafe-html",
+      "verdict": "ok",
+      "notes": "Real café page rendered: photo hero, reasons, rooms, events, 27 location cards (image-slot placeholders on source), tour, CTA band, footer.",
+      "screenshot": "assets/screenshots/frescopa-atelier-cafe-html.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    },
+    {
+      "slug": "frescopa-atelier-blog-html",
+      "verdict": "ok",
+      "notes": "Real journal index rendered; 2 placeholder tiles are <image-slot> elements on the source design, not a capture failure.",
+      "screenshot": "assets/screenshots/frescopa-atelier-blog-html.png",
+      "checkedAt": "2026-11-21T18:30:26.447Z"
+    }
+  ]
+}

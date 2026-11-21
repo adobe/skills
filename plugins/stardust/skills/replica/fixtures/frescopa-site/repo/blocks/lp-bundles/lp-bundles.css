@@ -1,0 +1,119 @@
+/* lp-bundles — head + intrinsic bundle grid (prototype .lp-bundles, no media queries). */
+
+.lp-bundles {
+  background: var(--paper-2);
+  padding: var(--section-y) 0;
+}
+
+.lp-bundles .lp-head-narrow {
+  max-width: 44ch;
+}
+
+.lp-bundles .lp-h2 :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--burgundy);
+  margin-top: 1rem;
+}
+
+.lp-bundles .lp-bundles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.8rem;
+  margin-top: 3rem;
+  align-items: stretch;
+}
+
+.lp-bundles .bundle {
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-bundles .bundle.bundle-featured {
+  border: 2px solid var(--terracotta);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+
+.lp-bundles .bundle-badge {
+  position: absolute;
+  top: -0.8rem;
+  left: 2rem;
+}
+
+/* the badge pill is painted on the authored <p> (live .fr-badge / canon .badge-burgundy) */
+.lp-bundles .bundle-badge p {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.4em 0.75em;
+  border-radius: var(--r-pill);
+  background: var(--burgundy);
+  color: var(--cream);
+}
+
+.lp-bundles .bundle-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--burgundy);
+}
+
+.lp-bundles .bundle-text {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-bundles .bundle-text p {
+  color: var(--ink-soft);
+  margin-top: 0.6rem;
+  line-height: 1.6;
+  flex: 1 1 auto;
+}
+
+.lp-bundles .bundle-price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.lp-bundles .bundle-amount p {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.8rem;
+  color: var(--ink);
+}
+
+/* live: a lone amount is a block div, full row width */
+.lp-bundles .bundle-amount:only-child {
+  flex: 1 1 auto;
+}
+
+.lp-bundles :is(.bundle-was, .bundle-save) p {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.lp-bundles .bundle-was p {
+  text-decoration: line-through;
+}
+
+.lp-bundles .bundle-was :is(del, s) {
+  display: block;
+}
+
+.lp-bundles .bundle-cta {
+  margin-top: 1.2rem;
+}

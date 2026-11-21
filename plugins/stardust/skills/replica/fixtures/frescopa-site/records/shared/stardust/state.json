@@ -1,0 +1,342 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:migrate",
+    "writtenAt": "2026-11-21T20:05:48Z",
+    "stardustVersion": "0.46.0"
+  },
+  "site": {
+    "originUrl": "https://markszulc.github.io/frescopa-atelier/",
+    "deployUrl": null,
+    "extractedAt": "2026-11-21T18:19:46.057Z",
+    "pageCap": 10,
+    "totalDiscovered": 8,
+    "crawled": 6,
+    "captureGaps": [],
+    "sourceNotFound": [
+      "https://markszulc.github.io/frescopa-atelier/%7B%7B%20featured.href%20%7D%7D",
+      "https://markszulc.github.io/frescopa-atelier/%7B%7B%20post.href%20%7D%7D"
+    ]
+  },
+  "direction": {
+    "resolvedAt": "2026-11-21T18:19:46.057Z",
+    "phrase": "replica --hands-off (same-design migration)",
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "preserved"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-21T18:19:46.057Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "frescopa-atelier",
+      "url": "https://markszulc.github.io/frescopa-atelier/",
+      "title": "Fréscopa Atelier — Every morning, perfected.",
+      "type": "home",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T18:58:00Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T18:58:02Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-proposed.html",
+      "migratedPath": "stardust/migrated/index.html"
+    },
+    {
+      "slug": "frescopa-atelier-landing-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+      "title": null,
+      "type": "product-landing",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T19:42:22Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T19:42:22Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-landing-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-landing-html-proposed.html",
+      "migratedPath": "stardust/migrated/landing.html"
+    },
+    {
+      "slug": "frescopa-atelier-beverages-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+      "title": null,
+      "type": "category-overview",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T19:36:39Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T19:36:41Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-beverages-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-beverages-html-proposed.html",
+      "migratedPath": "stardust/migrated/beverages.html"
+    },
+    {
+      "slug": "frescopa-atelier-machines-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/machines.html",
+      "title": null,
+      "type": "product-catalog",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T19:35:36Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T19:35:36Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-machines-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-machines-html-proposed.html",
+      "migratedPath": "stardust/migrated/machines.html"
+    },
+    {
+      "slug": "frescopa-atelier-blog-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+      "title": null,
+      "type": "journal-index",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T19:18:12Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T19:18:13Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-blog-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-blog-html-proposed.html",
+      "migratedPath": "stardust/migrated/blog.html"
+    },
+    {
+      "slug": "frescopa-atelier-cafe-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+      "title": null,
+      "type": "cafe",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T18:19:46.057Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T19:56:09Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T19:56:09Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T20:05:48Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-cafe-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-cafe-html-proposed.html",
+      "migratedPath": "stardust/migrated/cafe.html"
+    }
+  ],
+  "migrate": {
+    "at": "2026-11-21T20:05:25Z",
+    "outputDir": "stardust/migrated/",
+    "selfContained": true,
+    "pageMap": [
+      {
+        "sourceUrl": "/frescopa-atelier/",
+        "outputPath": "frescopa-atelier/index.html",
+        "slug": "frescopa-atelier",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/frescopa-atelier/landing.html",
+        "outputPath": "frescopa-atelier/landing.html",
+        "slug": "frescopa-atelier-landing-html",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/frescopa-atelier/beverages.html",
+        "outputPath": "frescopa-atelier/beverages.html",
+        "slug": "frescopa-atelier-beverages-html",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/frescopa-atelier/machines.html",
+        "outputPath": "frescopa-atelier/machines.html",
+        "slug": "frescopa-atelier-machines-html",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/frescopa-atelier/blog.html",
+        "outputPath": "frescopa-atelier/blog.html",
+        "slug": "frescopa-atelier-blog-html",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/frescopa-atelier/cafe.html",
+        "outputPath": "frescopa-atelier/cafe.html",
+        "slug": "frescopa-atelier-cafe-html",
+        "outputPathDefault": null
+      }
+    ],
+    "totalAssetsBundled": 30,
+    "bundledAssets": [
+      "frescopa-atelier-beverages-html.css",
+      "frescopa-atelier-blog-html.css",
+      "frescopa-atelier-blog-html.js",
+      "frescopa-atelier-cafe-html.css",
+      "frescopa-atelier-cafe-html.js",
+      "frescopa-atelier-landing-html.css",
+      "frescopa-atelier-machines-html.css",
+      "frescopa-atelier-machines-html.js",
+      "frescopa-atelier.css",
+      "frescopa-atelier.js",
+      "media/cafe-interior.jpg",
+      "media/citrus-juice.jpg",
+      "media/espresso-pour.jpg",
+      "media/frescopa-logo-light.svg",
+      "media/frescopa-logo.svg",
+      "media/hero-machine.jpg",
+      "media/sustainability.jpg",
+      "media/tea-moment.jpg",
+      "shared/canon.css",
+      "shared/canon.js",
+      "shared/fonts/hanken-grotesk-italic-latin-ext.woff2",
+      "shared/fonts/hanken-grotesk-italic-latin.woff2",
+      "shared/fonts/hanken-grotesk-latin-ext.woff2",
+      "shared/fonts/hanken-grotesk-latin.woff2",
+      "shared/fonts/schibsted-grotesk-italic-latin-ext.woff2",
+      "shared/fonts/schibsted-grotesk-italic-latin.woff2",
+      "shared/fonts/schibsted-grotesk-latin-ext.woff2",
+      "shared/fonts/schibsted-grotesk-latin.woff2",
+      "shared/widgets.css",
+      "shared/widgets.js"
+    ],
+    "pages": [
+      {
+        "slug": "frescopa-atelier",
+        "file": "stardust/migrated/index.html",
+        "assetsBundled": 22
+      },
+      {
+        "slug": "frescopa-atelier-landing-html",
+        "file": "stardust/migrated/landing.html",
+        "assetsBundled": 11
+      },
+      {
+        "slug": "frescopa-atelier-beverages-html",
+        "file": "stardust/migrated/beverages.html",
+        "assetsBundled": 10
+      },
+      {
+        "slug": "frescopa-atelier-machines-html",
+        "file": "stardust/migrated/machines.html",
+        "assetsBundled": 9
+      },
+      {
+        "slug": "frescopa-atelier-blog-html",
+        "file": "stardust/migrated/blog.html",
+        "assetsBundled": 13
+      },
+      {
+        "slug": "frescopa-atelier-cafe-html",
+        "file": "stardust/migrated/cafe.html",
+        "assetsBundled": 12
+      }
+    ],
+    "missingAssets": [],
+    "cleanedAssets": [],
+    "lastRun": {
+      "at": "2026-11-21T20:05:25Z",
+      "rendered": [
+        "frescopa-atelier",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-beverages-html",
+        "frescopa-atelier-machines-html",
+        "frescopa-atelier-blog-html",
+        "frescopa-atelier-cafe-html"
+      ],
+      "unchanged": [],
+      "refused": [],
+      "passthrough": []
+    }
+  }
+}

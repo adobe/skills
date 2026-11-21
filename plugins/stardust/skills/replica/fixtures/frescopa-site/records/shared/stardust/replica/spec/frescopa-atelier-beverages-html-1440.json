@@ -1,0 +1,396 @@
+{
+ "_provenance": {
+  "writtenBy": "skills/replica/scripts/source-spec.mjs",
+  "writtenAt": "2026-11-21T19:21:48.036Z",
+  "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+  "width": 1440,
+  "main": "main",
+  "locale": "en-US"
+ },
+ "page": {
+  "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+  "width": 1440,
+  "viewport": 1440,
+  "docHeight": 2986,
+  "scrollWidth": 1440,
+  "root": "body",
+  "rootFallback": true,
+  "records": [
+   "scroll",
+   "shape"
+  ],
+  "rootWrapsChrome": false,
+  "tier": "chrome"
+ },
+ "tokens": {
+  "fonts": [
+   {
+    "stack": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+    "n": 38
+   },
+   {
+    "stack": "\"Hanken Grotesk\", system-ui, sans-serif",
+    "n": 14
+   },
+   {
+    "stack": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+    "n": 6
+   }
+  ],
+  "loadedFaces": [
+   "Hanken Grotesk 400 normal",
+   "Hanken Grotesk 500 normal",
+   "Hanken Grotesk 600 normal",
+   "Schibsted Grotesk 400 normal",
+   "Schibsted Grotesk 800 normal"
+  ],
+  "textStyles": [
+   {
+    "key": "15.2/24.62 400 Hanken Grotesk",
+    "fontSize": 15.2,
+    "lineHeight": 24.62,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 14,
+    "roles": {
+     "p": 1,
+     "link": 13
+    },
+    "sample": "Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the ma…"
+   },
+   {
+    "key": "15/15 600 Hanken Grotesk",
+    "fontSize": 15,
+    "lineHeight": 15,
+    "fontWeight": "600",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 9,
+    "roles": {
+     "link": 8,
+     "button": 1
+    },
+    "sample": "Shop all coffee"
+   },
+   {
+    "key": "14.4/23.33 400 Hanken Grotesk",
+    "fontSize": 14.4,
+    "lineHeight": 23.33,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 9,
+    "roles": {
+     "span": 9
+    },
+    "sample": "Morning Blend"
+   },
+   {
+    "key": "11.52/18.66 400 Hanken Grotesk uppercase",
+    "fontSize": 11.52,
+    "lineHeight": 18.66,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 4,
+    "roles": {
+     "span": 4
+    },
+    "sample": "Beverages"
+   },
+   {
+    "key": "43.2/46.66 800 Schibsted Grotesk",
+    "fontSize": 43.2,
+    "lineHeight": 46.66,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "h2": 3
+    },
+    "sample": "Roasted for your ritual"
+   },
+   {
+    "key": "16.96/27.98 400 Hanken Grotesk",
+    "fontSize": 16.96,
+    "lineHeight": 27.98,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "p": 3
+    },
+    "sample": "House blends built for consistency, traceable single origins for the days you w…"
+   },
+   {
+    "key": "11.52/13.25 500 Hanken Grotesk uppercase",
+    "fontSize": 11.52,
+    "lineHeight": 13.25,
+    "fontWeight": "500",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "h3": 3
+    },
+    "sample": "Shop"
+   },
+   {
+    "key": "10.88/17.63 400 Hanken Grotesk uppercase",
+    "fontSize": 10.88,
+    "lineHeight": 17.63,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "span": 3
+    },
+    "sample": "From $10 · 10 blends"
+   },
+   {
+    "key": "10.56/17.11 400 Hanken Grotesk uppercase",
+    "fontSize": 10.56,
+    "lineHeight": 17.11,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "span": 3
+    },
+    "sample": "Worth starting with"
+   },
+   {
+    "key": "57.6/66.24 800 Schibsted Grotesk",
+    "fontSize": 57.6,
+    "lineHeight": 66.24,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h1": 1
+    },
+    "sample": "Three ways to fill a cup."
+   },
+   {
+    "key": "48/50.88 800 Schibsted Grotesk",
+    "fontSize": 48,
+    "lineHeight": 50.88,
+    "fontWeight": "800",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h2": 1
+    },
+    "sample": "Taste the whole range at a café."
+   },
+   {
+    "key": "19.2/31.1 400 Schibsted Grotesk",
+    "fontSize": 19.2,
+    "lineHeight": 31.1,
+    "fontWeight": "400",
+    "fontFamily": "Schibsted Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "label": 1
+    },
+    "sample": "A little warmth in your inbox."
+   },
+   {
+    "key": "18/28.8 400 Hanken Grotesk",
+    "fontSize": 18,
+    "lineHeight": 28.8,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Coffee, tea, and cold-pressed juice — each sourced carefully, made in small bat…"
+   },
+   {
+    "key": "17.28/27.65 400 Hanken Grotesk",
+    "fontSize": 17.28,
+    "lineHeight": 27.65,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Sit at the bar and work through coffee, tea and juice with our team. It's the f…"
+   },
+   {
+    "key": "17/27.54 400 Hanken Grotesk",
+    "fontSize": 17,
+    "lineHeight": 27.54,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "field": 1
+    },
+    "sample": "you@example.com"
+   },
+   {
+    "key": "12.8/20.74 400 Hanken Grotesk",
+    "fontSize": 12.8,
+    "lineHeight": 20.74,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstratio…"
+   },
+   {
+    "key": "11.84/19.18 400 Hanken Grotesk uppercase",
+    "fontSize": 11.84,
+    "lineHeight": 19.18,
+    "fontWeight": "400",
+    "fontFamily": "Hanken Grotesk",
+    "textTransform": "uppercase",
+    "n": 1,
+    "roles": {
+     "span": 1
+    },
+    "sample": "Can't decide?"
+   }
+  ],
+  "colours": [
+   {
+    "color": "oklch(0.795 0.021 78)",
+    "n": 15
+   },
+   {
+    "color": "oklch(0.43 0.022 52)",
+    "n": 10
+   },
+   {
+    "color": "oklch(0.262 0.021 52)",
+    "n": 9
+   },
+   {
+    "color": "oklch(0.945 0.016 80)",
+    "n": 9
+   },
+   {
+    "color": "oklch(0.34 0.093 25)",
+    "n": 7
+   },
+   {
+    "color": "oklch(0.605 0.116 44)",
+    "n": 4
+   },
+   {
+    "color": "oklch(0.79 0.128 74)",
+    "n": 4
+   },
+   {
+    "color": "rgba(255, 248, 240, 0.82)",
+    "n": 1
+   }
+  ],
+  "container": {
+   "left": 208,
+   "right": 208,
+   "content": 1024,
+   "leftCommon": {
+    "x": 750,
+    "n": 12
+   }
+  }
+ },
+ "truncated": {
+  "text": 0,
+  "image": 0
+ },
+ "sections": [
+  {"i":0,"region":"main","y":0,"h":393,"background":"oklch(0.948 0.015 78)","paddingTop":139.2,"paddingBottom":48,"selectorHint":"section","firstText":"Beverages"},
+  {"i":1,"region":"main","y":393,"h":530,"background":"oklch(0.97 0.01 82)","paddingTop":72,"paddingBottom":72,"selectorHint":"section","firstText":"Coffee"},
+  {"i":2,"region":"main","y":923,"h":530,"background":"oklch(0.948 0.015 78)","paddingTop":72,"paddingBottom":72,"selectorHint":"section","firstText":"Tea"},
+  {"i":3,"region":"main","y":1453,"h":530,"background":"oklch(0.97 0.01 82)","paddingTop":72,"paddingBottom":72,"selectorHint":"section","firstText":"Cold-press juice"},
+  {"i":4,"region":"main","y":1983,"h":509,"background":"oklch(0.222 0.016 52)","paddingTop":96,"paddingBottom":96,"selectorHint":"section","firstText":"Can't decide?"},
+  {"i":5,"region":"footer","y":2492,"h":495,"background":"oklch(0.222 0.016 52)","paddingTop":86.4,"paddingBottom":0,"selectorHint":"footer.fr-ftr","firstText":"Warm mornings, made effortless. Coffee, tea, and cold-press…"}
+ ],
+ "nodes": [
+  {"section":0,"region":"main","kind":"text","tag":"span","role":null,"text":"Beverages","x":208,"y":146,"w":78,"h":15,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":0,"region":"main","kind":"text","tag":"h1","role":"h1","text":"Three ways to fill a cup.","x":208,"y":176,"w":664,"h":66,"fontFamily":"Schibsted Grotesk","fontSize":57.6,"lineHeight":66.24,"fontWeight":"800","letterSpacing":-1.15,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":0,"region":"main","kind":"text","tag":"p","role":null,"text":"Coffee, tea, and cold-pressed juice — each sourced carefully, made in small bat…","x":208,"y":259,"w":564,"h":86,"fontFamily":"Hanken Grotesk","fontSize":18,"lineHeight":28.8,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":1,"region":"main","kind":"image","tag":"img","role":null,"text":"Coffee","x":209,"y":466,"w":480,"h":384,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[482,386]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg"},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Coffee","x":750,"y":488,"w":482,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Roasted for your ritual","x":750,"y":521,"w":482,"h":47,"fontFamily":"Schibsted Grotesk","fontSize":43.2,"lineHeight":46.66,"fontWeight":"800","letterSpacing":-0.86,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"House blends built for consistency, traceable single origins for the days you w…","x":750,"y":582,"w":482,"h":84,"fontFamily":"Hanken Grotesk","fontSize":16.96,"lineHeight":27.98,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Worth starting with","x":750,"y":687,"w":482,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.27,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Morning Blend","x":750,"y":713,"w":124,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Single Origin Ethiopian","x":881,"y":713,"w":175,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"Espresso Blend","x":1064,"y":713,"w":130,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":1,"region":"main","kind":"control","tag":"a","role":"link","text":"Shop all coffee","x":750,"y":782,"w":175,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"coffee.html"},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":885,"y":798,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"coffee.html"},
+  {"section":1,"region":"main","kind":"text","tag":"span","role":null,"text":"From $10 · 10 blends","x":944,"y":796,"w":136,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.09,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"Tea","x":208,"y":1018,"w":482,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"h2","role":"h2","text":"A quieter kind of cup","x":208,"y":1051,"w":482,"h":47,"fontFamily":"Schibsted Grotesk","fontSize":43.2,"lineHeight":46.66,"fontWeight":"800","letterSpacing":-0.86,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"p","role":null,"text":"Eight blends across black, green and herbal, plus a small reserve of rare leaf.…","x":208,"y":1112,"w":482,"h":84,"fontFamily":"Hanken Grotesk","fontSize":16.96,"lineHeight":27.98,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"Worth starting with","x":208,"y":1217,"w":482,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.27,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"English Breakfast","x":208,"y":1243,"w":142,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"Green Sencha","x":358,"y":1243,"w":121,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"Darjeeling First Flush","x":486,"y":1243,"w":166,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":2,"region":"main","kind":"control","tag":"a","role":"link","text":"Shop all tea","x":208,"y":1312,"w":155,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":323,"y":1328,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":2,"region":"main","kind":"text","tag":"span","role":null,"text":"From $9 · 10 blends","x":382,"y":1326,"w":129,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.09,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":2,"region":"main","kind":"image","tag":"img","role":null,"text":"Tea","x":751,"y":996,"w":480,"h":384,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[482,386]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/tea-moment.jpg"},
+  {"section":3,"region":"main","kind":"image","tag":"img","role":null,"text":"Cold-press juice","x":209,"y":1526,"w":480,"h":384,"fit":"cover","shape":{"pos":"50% 50%","r":"32px","by":[482,386]},"natural":[1408,768],"src":"https://markszulc.github.io/frescopa-atelier/assets/images/citrus-juice.jpg"},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Cold-press juice","x":750,"y":1548,"w":482,"h":19,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":18.66,"fontWeight":"400","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.605 0.116 44)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Bottled bright","x":750,"y":1581,"w":482,"h":47,"fontFamily":"Schibsted Grotesk","fontSize":43.2,"lineHeight":46.66,"fontWeight":"800","letterSpacing":-0.86,"textTransform":"none","textAlign":"start","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"p","role":null,"text":"Cold-pressed singles and blends, plus concentrates to mix your own. No added su…","x":750,"y":1642,"w":482,"h":84,"fontFamily":"Hanken Grotesk","fontSize":16.96,"lineHeight":27.98,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":3},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Worth starting with","x":750,"y":1746,"w":482,"h":17,"fontFamily":"Hanken Grotesk","fontSize":10.56,"lineHeight":17.11,"fontWeight":"400","letterSpacing":1.27,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Orange","x":750,"y":1773,"w":78,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Green Revival","x":836,"y":1773,"w":120,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"Beetroot & Berry","x":963,"y":1773,"w":140,"h":39,"fontFamily":"Hanken Grotesk","fontSize":14.4,"lineHeight":23.33,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.262 0.021 52)","lines":1},
+  {"section":3,"region":"main","kind":"control","tag":"a","role":"link","text":"Shop all juice","x":750,"y":1842,"w":165,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":875,"y":1858,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1,"href":"#"},
+  {"section":3,"region":"main","kind":"text","tag":"span","role":null,"text":"From $5.50 · 25 pressings","x":934,"y":1856,"w":166,"h":18,"fontFamily":"Hanken Grotesk","fontSize":10.88,"lineHeight":17.63,"fontWeight":"400","letterSpacing":1.09,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.43 0.022 52)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":null,"text":"Can't decide?","x":666,"y":2086,"w":108,"h":16,"fontFamily":"Hanken Grotesk","fontSize":11.84,"lineHeight":19.18,"fontWeight":"400","letterSpacing":1.89,"textTransform":"uppercase","textAlign":"center","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":4,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Taste the whole range at a café.","x":413,"y":2122,"w":615,"h":102,"fontFamily":"Schibsted Grotesk","fontSize":48,"lineHeight":50.88,"fontWeight":"800","letterSpacing":-0.96,"textTransform":"none","textAlign":"center","color":"oklch(0.945 0.016 80)","lines":2},
+  {"section":4,"region":"main","kind":"text","tag":"p","role":null,"text":"Sit at the bar and work through coffee, tea and juice with our team. It's the f…","x":507,"y":2240,"w":425,"h":83,"fontFamily":"Hanken Grotesk","fontSize":17.28,"lineHeight":27.65,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"center","color":"rgba(255, 248, 240, 0.82)","lines":3},
+  {"section":4,"region":"main","kind":"control","tag":"a","role":"link","text":"Find a café","x":646,"y":2350,"w":149,"h":46,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1,"href":"cafe.html"},
+  {"section":4,"region":"main","kind":"text","tag":"span","role":"link","text":"→","x":754,"y":2365,"w":15,"h":15,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1,"href":"cafe.html"},
+  {"section":5,"region":"footer","kind":"image","tag":"img","role":null,"text":"Fréscopa","x":208,"y":2578,"w":140,"h":38,"fit":"fill","shape":{"pos":"50% 50%"},"natural":[1391,378],"src":"https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg"},
+  {"section":5,"region":"footer","kind":"text","tag":"p","role":null,"text":"Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the ma…","x":208,"y":2637,"w":357,"h":74,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":3},
+  {"section":5,"region":"footer","kind":"text","tag":"label","role":null,"text":"A little warmth in your inbox.","x":208,"y":2741,"w":372,"h":31,"fontFamily":"Schibsted Grotesk","fontSize":19.2,"lineHeight":31.1,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":5,"region":"footer","kind":"control","tag":"input","role":"field","text":"you@example.com","x":208,"y":2785,"w":262,"h":58,"fontFamily":"Hanken Grotesk","fontSize":17,"lineHeight":27.54,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.945 0.016 80)","lines":1},
+  {"section":5,"region":"footer","kind":"control","tag":"button","role":"button","text":"Sign up","x":480,"y":2785,"w":100,"h":58,"fontFamily":"Hanken Grotesk","fontSize":15,"lineHeight":15,"fontWeight":"600","letterSpacing":0.08,"textTransform":"none","textAlign":"center","color":"oklch(0.34 0.093 25)","lines":1},
+  {"section":5,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Shop","x":660,"y":2578,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Coffee","x":660,"y":2607,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Tea","x":660,"y":2643,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Cold-pressed juice","x":660,"y":2679,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Machines","x":660,"y":2716,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Accessories","x":660,"y":2752,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Company","x":859,"y":2578,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Our story","x":859,"y":2607,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Sustainability","x":859,"y":2643,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Fréscopa Café","x":859,"y":2679,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Careers","x":859,"y":2716,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"text","tag":"h3","role":"h3","text":"Support","x":1057,"y":2578,"w":175,"h":13,"fontFamily":"Hanken Grotesk","fontSize":11.52,"lineHeight":13.25,"fontWeight":"500","letterSpacing":1.61,"textTransform":"uppercase","textAlign":"start","color":"oklch(0.79 0.128 74)","lines":1},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Contact us","x":1057,"y":2607,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Delivery & returns","x":1057,"y":2643,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Register your Atelier","x":1057,"y":2679,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"control","tag":"a","role":"link","text":"Help centre","x":1057,"y":2716,"w":175,"h":36,"fontFamily":"Hanken Grotesk","fontSize":15.2,"lineHeight":24.62,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1,"href":"#"},
+  {"section":5,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":218,"y":2926,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":5,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":267,"y":2926,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":5,"region":"footer","kind":"image","tag":"svg","role":"link","text":"","x":316,"y":2926,"w":18,"h":18,"fit":"fill","shape":{"pos":"50% 50%"},"href":"#"},
+  {"section":5,"region":"footer","kind":"text","tag":"p","role":null,"text":"© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstratio…","x":769,"y":2925,"w":463,"h":21,"fontFamily":"Hanken Grotesk","fontSize":12.8,"lineHeight":20.74,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"oklch(0.795 0.021 78)","lines":1}
+ ]
+}

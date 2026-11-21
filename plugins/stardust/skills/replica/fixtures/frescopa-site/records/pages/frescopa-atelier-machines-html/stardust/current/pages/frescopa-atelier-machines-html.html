@@ -1,0 +1,710 @@
+<!DOCTYPE html><html><head><style>
+    .sc-placeholder{background:color-mix(in srgb,currentColor 8%,transparent);
+      border:1px solid color-mix(in srgb,currentColor 50%,transparent);
+      border-radius:2px;box-sizing:border-box;overflow:hidden}
+    @keyframes sc-shine{0%{background-position:100% 50%}100%{background-position:0% 50%}}
+    html.sc-dc-streaming .sc-placeholder,
+    html.sc-dc-streaming .sc-interp.sc-missing{position:relative;
+      background:color-mix(in srgb,currentColor 5%,transparent);
+      border-color:transparent}
+    html.sc-dc-streaming .sc-placeholder::before,
+    html.sc-dc-streaming .sc-interp.sc-missing::before{content:'';
+      position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(217,119,87,0) 25%,rgba(247,225,211,.95) 37%,rgba(217,119,87,0) 63%);
+      background-size:400% 100%;animation:sc-shine 1.4s ease infinite}
+    html.sc-dc-streaming .sc-placeholder:nth-child(n+9 of .sc-placeholder)::before,
+    html.sc-dc-streaming .sc-interp.sc-missing:nth-child(n+9 of .sc-interp.sc-missing)::before{animation:none;
+      background:color-mix(in srgb,currentColor 8%,transparent)}
+    .sc-placeholder-error{padding:4px 8px;font:11px/1.4 ui-monospace,monospace;
+      color:color-mix(in srgb,currentColor 70%,transparent);word-break:break-word}
+    .sc-interp.sc-missing{display:inline-block;width:2em;height:1em;overflow:hidden;
+      vertical-align:text-bottom;background:rgba(255,255,255,.3);border:1px solid rgba(0,0,0,.5);
+      border-radius:2px;box-sizing:border-box;color:transparent;
+      user-select:none}
+    .sc-interp.sc-unresolved{font-family:ui-monospace,monospace;font-size:.85em;
+      color:color-mix(in srgb,currentColor 50%,transparent);
+      background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;
+      padding:0 3px}
+    .sc-host.sc-has-error{position:relative}
+    .sc-logic-error{position:absolute;top:8px;left:8px;z-index:2147483647;max-width:60ch;
+      padding:6px 10px;background:#b00020;color:#fff;font:12px/1.4 ui-monospace,monospace;
+      border-radius:4px;white-space:pre-wrap;pointer-events:none}
+    /* Mirrors PRINT_BASELINE_CSS in apps/web deck-stage-export.ts — keep both
+       in sync until dc-runtime regains a build step. */
+    @media print {
+      @page { margin: 0.5cm; }
+      figure, table { break-inside: avoid; }
+      #dc-root, #dc-root > .sc-host { height: auto; }
+      *, *::before, *::after {
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+        animation-delay: -99s !important; animation-duration: .001s !important;
+        animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+        animation-play-state: running !important; transition-duration: 0s !important;
+      }
+    }
+  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script><style>x-dc{display:none!important}</style><script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script><script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<style>html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}</style><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/fonts.css" data-dc-tpl="1"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/colors.css" data-dc-tpl="2"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/typography.css" data-dc-tpl="3"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/spacing.css" data-dc-tpl="4"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/effects.css" data-dc-tpl="5"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/base.css" data-dc-tpl="6"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/styles.css" data-dc-tpl="7"><link rel="stylesheet" href="shared/view-transitions.css" data-dc-tpl="8"><script src="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js" data-dc-tpl="9"></script><style data-dc-tpl="10">
+  body { margin: 0; }
+  a { color: var(--terracotta); text-decoration: none; }
+  a:hover { color: var(--terracotta-deep); }
+</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-ftr { background: var(--charcoal); color: var(--cream-soft); padding-top: clamp(3.5rem, 6vw, 5.5rem); }
+.fr-ftr__inner, .fr-ftr__legal { width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-ftr__inner { display: grid; grid-template-columns: 1.3fr 2fr; gap: clamp(2rem, 6vw, 5rem); padding-bottom: 3rem; }
+.fr-ftr__logo { height: 38px; width: auto; margin-bottom: 1.3rem; }
+.fr-ftr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; color: var(--cream); display: block; margin-bottom: 1.1rem; }
+.fr-ftr__tag { color: var(--cream-soft); font-size: 0.95rem; max-width: 42ch; }
+.fr-ftr__signup { margin-top: 1.9rem; }
+.fr-ftr__signup-label { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--cream); margin-bottom: 0.8rem; }
+.fr-ftr__signup-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.fr-ftr__signup-row > :first-child { flex: 1; min-width: 190px; }
+.fr-ftr__cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.fr-ftr__col h3 { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--amber); margin-bottom: 1rem; font-weight: 500; }
+.fr-ftr__col a { display: block; color: var(--cream-soft); padding: 0.36rem 0; font-size: 0.95rem; transition: color var(--dur-1); }
+.fr-ftr__col a:hover { color: var(--cream); }
+.fr-ftr__legal { border-top: 1px solid var(--line-dark); padding-block: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.fr-ftr__social { display: flex; gap: 0.7rem; }
+.fr-ftr__social a { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--cream-soft); border: 1px solid var(--line-dark); transition: color var(--dur-1), border-color var(--dur-1); }
+.fr-ftr__social a:hover { color: var(--amber); border-color: var(--amber); }
+.fr-ftr__meta { font-size: 0.8rem; color: var(--cream-soft); opacity: 0.85; }
+@media (max-width: 980px) { .fr-ftr__inner { grid-template-columns: 1fr; gap: 2.5rem; } }
+@media (max-width: 560px) { .fr-ftr__cols { grid-template-columns: 1fr 1fr; } }</style><style>
+.fr-input {
+  width: 100%; border-radius: var(--r-pill);
+  padding: 0.85em 1.25em; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  transition: border-color var(--dur-1) var(--ease-quint), box-shadow var(--dur-1) var(--ease-quint);
+}
+.fr-input::placeholder { color: color-mix(in oklch, var(--ink-soft) 65%, transparent); }
+.fr-input:focus-visible { outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px color-mix(in oklch, var(--terracotta) 22%, transparent); }
+.fr-input--dark { background: var(--charcoal-2); border-color: var(--line-dark); color: var(--cream); }
+.fr-input--dark::placeholder { color: color-mix(in oklch, var(--cream-soft) 70%, transparent); }
+.fr-input--dark:focus-visible { border-color: var(--amber); box-shadow: 0 0 0 3px color-mix(in oklch, var(--amber) 28%, transparent); }</style></head>
+<body>
+<div id="dc-root"><div class="sc-host" data-sc-name="machines"><div data-dc-tpl="11" style="font-family: var(--font-body); color: var(--ink); background: var(--paper);">
+
+  <div class="sc-host-x" data-dc-tpl="12" style="display: contents;"><header class="fr-hdr is-scrolled" data-vt="site-header"><div class="fr-hdr__inner"><a class="fr-hdr__brand" href="index.html" aria-label="Fréscopa home"><img class="fr-hdr__logo fr-hdr__logo--light" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="150" height="40"><img class="fr-hdr__logo fr-hdr__logo--dark" src="assets/frescopa-logo.svg" alt="" aria-hidden="true" width="150" height="40"></a><nav class="fr-hdr__nav " aria-label="Primary"><a href="landing.html" class="">The Atelier</a><a href="machines.html" class="is-active">Machines</a><a href="beverages.html" class="">Beverages</a><a href="cafe.html" class="">Café</a><a href="blog.html" class="">Journal</a></nav><div class="fr-hdr__utils"><button class="fr-iconbtn" aria-label="Search"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2" stroke-linecap="round"></path></svg></button><button class="fr-iconbtn" aria-label="Account"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"></path></svg></button><div class="fr-hdr__cart-wrap"><button class="fr-iconbtn" aria-label="Cart, 0 items"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"></path><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"></path></svg></button></div><button class="fr-hdr__toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span></button></div></div></header></div>
+
+  
+  <section data-dc-tpl="13" style="background: var(--paper-2); padding: calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0px clamp(2rem, 1.5rem + 2vw, 3rem);">
+    <div data-dc-tpl="14" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <nav data-dc-tpl="15" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; color: var(--ink-soft); display: flex; gap: 0.5rem; align-items: center;">
+        <a data-dc-tpl="16" href="index.html" style="color: var(--ink-soft);">Home</a>
+        <span data-dc-tpl="17" aria-hidden="true">/</span>
+        <span data-dc-tpl="18" style="color: var(--ink);">Machines</span>
+      </nav>
+      <h1 data-dc-tpl="19" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem); color: var(--burgundy); margin-top: 1rem;">Made in the workshop.</h1>
+      <p data-dc-tpl="20" style="color: var(--ink-soft); font-size: 1.125rem; margin-top: 1rem; line-height: 1.6; max-width: 52ch;">Four families of machine, each tuned by hand for a different kind of morning. Start with how you like to make it — we'll help you find the rest.</p>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="21" style="background: var(--paper); position: sticky; top: 72px; z-index: 20; border-bottom: 1px solid var(--line); backdrop-filter: blur(10px);">
+    <div data-dc-tpl="22" style="max-width: var(--content); margin-inline: auto; padding: 1rem var(--gutter); display: flex; flex-wrap: wrap; gap: 0.6rem;">
+      
+        <button data-dc-tpl="24" type="button" style="font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: var(--burgundy); color: var(--cream); border: 1px solid var(--burgundy);"><span class="sc-interp">All machines</span></button>
+      
+        <button data-dc-tpl="24" type="button" style="font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Bean-to-cup</span></button>
+      
+        <button data-dc-tpl="24" type="button" style="font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Espresso</span></button>
+      
+        <button data-dc-tpl="24" type="button" style="font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Filter</span></button>
+      
+        <button data-dc-tpl="24" type="button" style="font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Cold brew</span></button>
+      
+    </div>
+  </section>
+
+  
+  
+    <section data-dc-tpl="26" style="background: var(--paper); padding: clamp(2.6rem, 2rem + 2vw, 4rem) 0px;">
+      <div data-dc-tpl="27" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+
+        
+        <div data-dc-tpl="28" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 3rem; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 1.6rem;">
+          <div data-dc-tpl="29">
+            <span data-dc-tpl="30" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);"><span class="sc-interp">Bean-to-cup · Premium</span></span>
+            <h2 data-dc-tpl="31" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem); color: var(--burgundy); margin: 0.5rem 0px 0px;"><span class="sc-interp">The thinking machines</span></h2>
+            <p data-dc-tpl="32" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.8rem 0px 0px; max-width: 48ch;"><span class="sc-interp">Whole beans in, a finished cup out — milk, timing and all. The most hands-off way to drink well, and the only machines that actually learn your taste.</span></p>
+          </div>
+          <div data-dc-tpl="33" style="border-left: 2px solid var(--amber); padding-left: 1.1rem;">
+            <span data-dc-tpl="34" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.68rem; color: var(--ink-soft);">How they differ</span>
+            <p data-dc-tpl="35" style="color: var(--ink); font-size: 0.98rem; line-height: 1.55; margin: 0.5rem 0px 0px;"><span class="sc-interp">The Atelier learns and adapts on its own; the Mini carries the same brain to a smaller counter.</span></p>
+          </div>
+        </div>
+
+        
+        
+          <article data-dc-tpl="37" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-md); margin-top: 2.5rem;">
+            <div data-dc-tpl="38" data-vt="atelier-hero" style="position: relative; min-height: 340px; overflow: hidden; background: var(--paper-3);">
+              
+                <img data-dc-tpl="40" src="assets/images/hero-machine.jpg" alt="The Atelier" style="position: absolute; inset: 0px; width: 100%; height: 100%; object-fit: cover; object-position: center 42%;">
+              
+              <div data-dc-tpl="41" style="position: absolute; top: 1.1rem; left: 1.1rem;">
+                <div class="sc-host-x" data-dc-tpl="42" style="display: contents;"><span class="fr-badge fr-badge--burgundy"><span class="sc-interp">New</span></span></div>
+              </div>
+            </div>
+            <div data-dc-tpl="43" style="padding: clamp(1.6rem, 1rem + 2vw, 2.6rem); display: flex; flex-direction: column; gap: 0.7rem;">
+              <span data-dc-tpl="44" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);"><span class="sc-interp">The flagship</span></span>
+              <h3 data-dc-tpl="45" style="font-family: var(--font-display); font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem); color: var(--burgundy); font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; margin: 0px;"><span class="sc-interp">The Atelier</span></h3>
+              <p data-dc-tpl="46" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.2rem 0px 0px;"><span class="sc-interp">It senses what you like, builds a taste profile, reads the day ahead and pours accordingly — quietly taking care of the rest.</span></p>
+              <ul data-dc-tpl="47" style="list-style: none; padding: 0px; margin: 0.4rem 0px 0px; display: flex; flex-direction: column; gap: 0.55rem;">
+                
+                  <li data-dc-tpl="49" style="display: flex; gap: 0.6rem; align-items: baseline; color: var(--ink); font-size: 0.98rem; line-height: 1.5;">
+                    <span data-dc-tpl="50" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span>
+                    <span data-dc-tpl="51"><span class="sc-interp">Learns your taste cup by cup, no dialing-in</span></span>
+                  </li>
+                
+                  <li data-dc-tpl="49" style="display: flex; gap: 0.6rem; align-items: baseline; color: var(--ink); font-size: 0.98rem; line-height: 1.5;">
+                    <span data-dc-tpl="50" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span>
+                    <span data-dc-tpl="51"><span class="sc-interp">Reads your calendar and mood to pace the morning</span></span>
+                  </li>
+                
+                  <li data-dc-tpl="49" style="display: flex; gap: 0.6rem; align-items: baseline; color: var(--ink); font-size: 0.98rem; line-height: 1.5;">
+                    <span data-dc-tpl="50" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span>
+                    <span data-dc-tpl="51"><span class="sc-interp">Reorders beans before you run out</span></span>
+                  </li>
+                
+              </ul>
+              <div data-dc-tpl="52" style="display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--line);">
+                <span data-dc-tpl="53" style="font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; color: var(--ink);"><span class="sc-interp">$2,199</span></span>
+                <div class="sc-host-x" data-dc-tpl="54" style="display: contents;"><a class="fr-btn fr-btn--terracotta" href="atelier.html"><span class="sc-interp">View the Atelier</span><span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+              </div>
+            </div>
+          </article>
+        
+
+        
+        
+          <div data-dc-tpl="56" style="margin-top: 2.2rem; display: flex; flex-direction: column; gap: 1rem;">
+            <span data-dc-tpl="57" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.68rem; color: var(--ink-soft);">Also in this family</span>
+            
+              <article data-dc-tpl="59" style="display: grid; grid-template-columns: minmax(0px, 190px) 1fr; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;">
+                <div data-dc-tpl="60" style="position: relative; min-height: 150px; overflow: hidden; background: var(--paper-3);">
+                  
+                  
+                    <div class="sc-host-x" data-dc-tpl="64" style="display: contents;"><image-slot id="m-mini" shape="rect" placeholder="The Atelier Mini"></image-slot></div>
+                  
+                </div>
+                <div data-dc-tpl="65" style="padding: 1.2rem 1.4rem; display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;">
+                  <div data-dc-tpl="66" style="flex: 1 1 0%; min-width: 200px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <span data-dc-tpl="67" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.66rem; color: var(--terracotta);"><span class="sc-interp">Bean-to-cup</span></span>
+                    <h3 data-dc-tpl="68" style="font-family: var(--font-display); font-size: 1.35rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">The Atelier Mini</span></h3>
+                    <p data-dc-tpl="69" style="color: var(--ink-soft); font-size: 0.94rem; line-height: 1.5; margin: 0px;"><span class="sc-interp">The same clever heart, sized for smaller kitchens.</span></p>
+                  </div>
+                  <div data-dc-tpl="70" style="display: flex; align-items: center; gap: 1.1rem;">
+                    <span data-dc-tpl="71" style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">$799</span></span>
+                    <div class="sc-host-x" data-dc-tpl="72" style="display: contents;"><a class="fr-link fr-link--sm" href="#"><span class="sc-interp">Join the list</span><span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                  </div>
+                </div>
+              </article>
+            
+          </div>
+        
+
+        
+        
+
+        
+        <div data-dc-tpl="84" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 2.2rem;">
+          
+        </div>
+
+      </div>
+    </section>
+  
+    <section data-dc-tpl="26" style="background: var(--paper-2); padding: clamp(2.6rem, 2rem + 2vw, 4rem) 0px;">
+      <div data-dc-tpl="27" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+
+        
+        <div data-dc-tpl="28" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 3rem; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 1.6rem;">
+          <div data-dc-tpl="29">
+            <span data-dc-tpl="30" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);"><span class="sc-interp">Espresso</span></span>
+            <h2 data-dc-tpl="31" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem); color: var(--burgundy); margin: 0.5rem 0px 0px;"><span class="sc-interp">For the hands-on ritual</span></h2>
+            <p data-dc-tpl="32" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.8rem 0px 0px; max-width: 48ch;"><span class="sc-interp">Grind, tamp, pull. Machines for people who want to be the barista — precise, tactile, and built to reward practice.</span></p>
+          </div>
+          <div data-dc-tpl="33" style="border-left: 2px solid var(--amber); padding-left: 1.1rem;">
+            <span data-dc-tpl="34" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.68rem; color: var(--ink-soft);">How they differ</span>
+            <p data-dc-tpl="35" style="color: var(--ink); font-size: 0.98rem; line-height: 1.55; margin: 0.5rem 0px 0px;"><span class="sc-interp">The Barista gives you full manual control; the Everyday keeps it simple for a reliable shot each morning.</span></p>
+          </div>
+        </div>
+
+        
+        
+
+        
+        
+
+        
+        
+
+        
+        <div data-dc-tpl="84" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 2.2rem;">
+          
+            <article data-dc-tpl="86" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column;">
+              <div data-dc-tpl="87" style="position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--paper-3);">
+                
+                
+                  <div class="sc-host-x" data-dc-tpl="91" style="display: contents;"><image-slot id="m-barista" shape="rect" placeholder="The Barista"></image-slot></div>
+                
+              </div>
+              <div data-dc-tpl="92" style="padding: 1.3rem 1.4rem 1.4rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 0%;">
+                <span data-dc-tpl="93" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);"><span class="sc-interp">Espresso</span></span>
+                <h3 data-dc-tpl="94" style="font-family: var(--font-display); font-size: 1.5rem; color: var(--burgundy); font-weight: 700; line-height: 1.15;"><span class="sc-interp">The Barista</span></h3>
+                <p data-dc-tpl="95" style="color: var(--ink-soft); font-size: 0.94rem; flex: 1 1 0%; line-height: 1.55;"><span class="sc-interp">A hands-on machine for the morning ritualist.</span></p>
+                <div data-dc-tpl="96" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.7rem; padding-top: 0.9rem; border-top: 1px solid var(--line);">
+                  <span data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">$899</span></span>
+                  <div class="sc-host-x" data-dc-tpl="98" style="display: contents;"><a class="fr-link fr-link--sm" href="#"><span class="sc-interp">Join the list</span><span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                </div>
+              </div>
+            </article>
+          
+            <article data-dc-tpl="86" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column;">
+              <div data-dc-tpl="87" style="position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--paper-3);">
+                
+                
+                  <div class="sc-host-x" data-dc-tpl="91" style="display: contents;"><image-slot id="m-everyday" shape="rect" placeholder="The Everyday"></image-slot></div>
+                
+              </div>
+              <div data-dc-tpl="92" style="padding: 1.3rem 1.4rem 1.4rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 0%;">
+                <span data-dc-tpl="93" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);"><span class="sc-interp">Espresso</span></span>
+                <h3 data-dc-tpl="94" style="font-family: var(--font-display); font-size: 1.5rem; color: var(--burgundy); font-weight: 700; line-height: 1.15;"><span class="sc-interp">The Everyday</span></h3>
+                <p data-dc-tpl="95" style="color: var(--ink-soft); font-size: 0.94rem; flex: 1 1 0%; line-height: 1.55;"><span class="sc-interp">Honest espresso, every single morning.</span></p>
+                <div data-dc-tpl="96" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.7rem; padding-top: 0.9rem; border-top: 1px solid var(--line);">
+                  <span data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">$499</span></span>
+                  <div class="sc-host-x" data-dc-tpl="98" style="display: contents;"><a class="fr-link fr-link--sm" href="#"><span class="sc-interp">Join the list</span><span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                </div>
+              </div>
+            </article>
+          
+        </div>
+
+      </div>
+    </section>
+  
+    <section data-dc-tpl="26" style="background: var(--paper); padding: clamp(2.6rem, 2rem + 2vw, 4rem) 0px;">
+      <div data-dc-tpl="27" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+
+        
+        <div data-dc-tpl="28" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 3rem; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 1.6rem;">
+          <div data-dc-tpl="29">
+            <span data-dc-tpl="30" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);"><span class="sc-interp">Filter</span></span>
+            <h2 data-dc-tpl="31" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem); color: var(--burgundy); margin: 0.5rem 0px 0px;"><span class="sc-interp">Slow and even</span></h2>
+            <p data-dc-tpl="32" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.8rem 0px 0px; max-width: 48ch;"><span class="sc-interp">Clean, balanced filter coffee for the unhurried cup — the kind you sip through a quiet morning.</span></p>
+          </div>
+          <div data-dc-tpl="33" style="border-left: 2px solid var(--amber); padding-left: 1.1rem;">
+            <span data-dc-tpl="34" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.68rem; color: var(--ink-soft);">How they differ</span>
+            <p data-dc-tpl="35" style="color: var(--ink); font-size: 0.98rem; line-height: 1.55; margin: 0.5rem 0px 0px;"><span class="sc-interp">One machine, perfected: even saturation and gentle timing, so every batch tastes the same.</span></p>
+          </div>
+        </div>
+
+        
+        
+
+        
+        
+
+        
+        
+          <article data-dc-tpl="74" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-sm); margin-top: 2.2rem;">
+            <div data-dc-tpl="75" style="position: relative; min-height: 300px; overflow: hidden; background: var(--paper-3);">
+              <div class="sc-host-x" data-dc-tpl="76" style="display: contents;"><image-slot id="m-slowpour" shape="rect" placeholder="The Slow Pour"></image-slot></div>
+            </div>
+            <div data-dc-tpl="77" style="padding: clamp(1.6rem, 1rem + 2vw, 2.4rem); display: flex; flex-direction: column; gap: 0.6rem; justify-content: center;">
+              <span data-dc-tpl="78" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);"><span class="sc-interp">Filter</span></span>
+              <h3 data-dc-tpl="79" style="font-family: var(--font-display); font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.2rem); color: var(--burgundy); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0px;"><span class="sc-interp">The Slow Pour</span></h3>
+              <p data-dc-tpl="80" style="color: var(--ink-soft); font-size: 1.02rem; line-height: 1.6; margin: 0.2rem 0px 0px; max-width: 42ch;"><span class="sc-interp">Filter coffee, unhurried and beautifully even.</span></p>
+              <div data-dc-tpl="81" style="display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line);">
+                <span data-dc-tpl="82" style="font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--ink);"><span class="sc-interp">$279</span></span>
+                <div class="sc-host-x" data-dc-tpl="83" style="display: contents;"><a class="fr-btn fr-btn--cream" href="#"><span class="sc-interp">Join the list</span><span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+              </div>
+            </div>
+          </article>
+        
+
+        
+        <div data-dc-tpl="84" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 2.2rem;">
+          
+        </div>
+
+      </div>
+    </section>
+  
+    <section data-dc-tpl="26" style="background: var(--paper-2); padding: clamp(2.6rem, 2rem + 2vw, 4rem) 0px;">
+      <div data-dc-tpl="27" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+
+        
+        <div data-dc-tpl="28" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 3rem; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 1.6rem;">
+          <div data-dc-tpl="29">
+            <span data-dc-tpl="30" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);"><span class="sc-interp">Cold brew</span></span>
+            <h2 data-dc-tpl="31" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem); color: var(--burgundy); margin: 0.5rem 0px 0px;"><span class="sc-interp">Ready by morning</span></h2>
+            <p data-dc-tpl="32" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.6; margin: 0.8rem 0px 0px; max-width: 48ch;"><span class="sc-interp">Smooth, low-acid cold brew steeped overnight — poured cold straight from the fridge.</span></p>
+          </div>
+          <div data-dc-tpl="33" style="border-left: 2px solid var(--amber); padding-left: 1.1rem;">
+            <span data-dc-tpl="34" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.68rem; color: var(--ink-soft);">How they differ</span>
+            <p data-dc-tpl="35" style="color: var(--ink); font-size: 0.98rem; line-height: 1.55; margin: 0.5rem 0px 0px;"><span class="sc-interp">Set it before bed; the Carafe does the steeping while you sleep.</span></p>
+          </div>
+        </div>
+
+        
+        
+
+        
+        
+
+        
+        
+          <article data-dc-tpl="74" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-sm); margin-top: 2.2rem;">
+            <div data-dc-tpl="75" style="position: relative; min-height: 300px; overflow: hidden; background: var(--paper-3);">
+              <div class="sc-host-x" data-dc-tpl="76" style="display: contents;"><image-slot id="m-carafe" shape="rect" placeholder="The Carafe"></image-slot></div>
+            </div>
+            <div data-dc-tpl="77" style="padding: clamp(1.6rem, 1rem + 2vw, 2.4rem); display: flex; flex-direction: column; gap: 0.6rem; justify-content: center;">
+              <span data-dc-tpl="78" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);"><span class="sc-interp">Cold brew</span></span>
+              <h3 data-dc-tpl="79" style="font-family: var(--font-display); font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.2rem); color: var(--burgundy); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0px;"><span class="sc-interp">The Carafe</span></h3>
+              <p data-dc-tpl="80" style="color: var(--ink-soft); font-size: 1.02rem; line-height: 1.6; margin: 0.2rem 0px 0px; max-width: 42ch;"><span class="sc-interp">Smooth cold brew, ready and waiting by morning.</span></p>
+              <div data-dc-tpl="81" style="display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line);">
+                <span data-dc-tpl="82" style="font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--ink);"><span class="sc-interp">$179</span></span>
+                <div class="sc-host-x" data-dc-tpl="83" style="display: contents;"><a class="fr-btn fr-btn--cream" href="#"><span class="sc-interp">Join the list</span><span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+              </div>
+            </div>
+          </article>
+        
+
+        
+        <div data-dc-tpl="84" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.8rem; margin-top: 2.2rem;">
+          
+        </div>
+
+      </div>
+    </section>
+  
+
+  <div class="sc-host-x" data-dc-tpl="99" style="display: contents;"><footer class="fr-ftr"><div class="fr-ftr__inner"><div class="fr-ftr__brand"><img class="fr-ftr__logo" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="168" height="45"><p class="fr-ftr__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p><form class="fr-ftr__signup"><label class="fr-ftr__signup-label" for="fr-ftr-email">A little warmth in your inbox.</label><div class="fr-ftr__signup-row"><input type="email" class="fr-input fr-input--dark" id="fr-ftr-email" placeholder="you@example.com" autocomplete="email" value=""><button class="fr-btn fr-btn--cream" type="submit">Sign up</button></div></form></div><nav class="fr-ftr__cols" aria-label="Footer"><div class="fr-ftr__col"><h3>Shop</h3><a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a></div><div class="fr-ftr__col"><h3>Company</h3><a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a></div><div class="fr-ftr__col"><h3>Support</h3><a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a></div></nav></div><div class="fr-ftr__legal"><div class="fr-ftr__social"><a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"></circle></svg></a><a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"></circle><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"></path></svg></a><a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"></rect><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"></path></svg></a></div><p class="fr-ftr__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p></div></footer></div></div></div></div>
+<script type="text/x-dc" data-dc-script="">
+class Component extends DCLogic {
+  state = { cart: 0, filter: 'all' };
+  componentDidMount() {
+    let c = 0;
+    try { c = parseInt(localStorage.getItem('frescopa_cart') || '0', 10) || 0; } catch (e) {}
+    this.setState({ cart: c });
+    this._sync = (e) => { if (e.key === 'frescopa_cart') this.setState({ cart: parseInt(e.newValue || '0', 10) || 0 }); };
+    window.addEventListener('storage', this._sync);
+  }
+  componentWillUnmount() { if (this._sync) window.removeEventListener('storage', this._sync); }
+  setFilter = (f) => this.setState({ filter: f });
+  renderVals() {
+    const nav = [
+      { label: 'The Atelier', href: 'landing.html' },
+      { label: 'Machines', href: 'machines.html' },
+      { label: 'Beverages', href: 'beverages.html' },
+      { label: 'Café', href: 'cafe.html' },
+      { label: 'Journal', href: 'blog.html' },
+    ];
+
+    const allBands = [
+      {
+        key: 'bean',
+        eyebrow: 'Bean-to-cup · Premium',
+        title: 'The thinking machines',
+        value: 'Whole beans in, a finished cup out — milk, timing and all. The most hands-off way to drink well, and the only machines that actually learn your taste.',
+        separator: 'The Atelier learns and adapts on its own; the Mini carries the same brain to a smaller counter.',
+        feature: {
+          id: 'm-atelier', name: 'The Atelier', tagline: 'The flagship', badge: 'New',
+          image: 'assets/images/hero-machine.jpg', price: '$2,199',
+          blurb: 'It senses what you like, builds a taste profile, reads the day ahead and pours accordingly — quietly taking care of the rest.',
+          features: [
+            'Learns your taste cup by cup, no dialing-in',
+            'Reads your calendar and mood to pace the morning',
+            'Reorders beans before you run out',
+          ],
+          href: 'atelier.html', action: 'View the Atelier',
+        },
+        machines: [
+          { id: 'm-mini', name: 'The Atelier Mini', catLabel: 'Bean-to-cup', price: '$799', blurb: 'The same clever heart, sized for smaller kitchens.', image: '', noImage: true, slotLabel: 'The Atelier Mini', href: '#', action: 'Join the list' },
+        ],
+      },
+      {
+        key: 'espresso',
+        eyebrow: 'Espresso',
+        title: 'For the hands-on ritual',
+        value: 'Grind, tamp, pull. Machines for people who want to be the barista — precise, tactile, and built to reward practice.',
+        separator: 'The Barista gives you full manual control; the Everyday keeps it simple for a reliable shot each morning.',
+        feature: null,
+        machines: [
+          { id: 'm-barista', name: 'The Barista', catLabel: 'Espresso', price: '$899', blurb: 'A hands-on machine for the morning ritualist.', image: '', noImage: true, slotLabel: 'The Barista', href: '#', action: 'Join the list' },
+          { id: 'm-everyday', name: 'The Everyday', catLabel: 'Espresso', price: '$499', blurb: 'Honest espresso, every single morning.', image: '', noImage: true, slotLabel: 'The Everyday', href: '#', action: 'Join the list' },
+        ],
+      },
+      {
+        key: 'filter',
+        eyebrow: 'Filter',
+        title: 'Slow and even',
+        value: 'Clean, balanced filter coffee for the unhurried cup — the kind you sip through a quiet morning.',
+        separator: 'One machine, perfected: even saturation and gentle timing, so every batch tastes the same.',
+        feature: null,
+        machines: [
+          { id: 'm-slowpour', name: 'The Slow Pour', catLabel: 'Filter', price: '$279', blurb: 'Filter coffee, unhurried and beautifully even.', image: '', noImage: true, slotLabel: 'The Slow Pour', href: '#', action: 'Join the list' },
+        ],
+      },
+      {
+        key: 'cold',
+        eyebrow: 'Cold brew',
+        title: 'Ready by morning',
+        value: 'Smooth, low-acid cold brew steeped overnight — poured cold straight from the fridge.',
+        separator: 'Set it before bed; the Carafe does the steeping while you sleep.',
+        feature: null,
+        machines: [
+          { id: 'm-carafe', name: 'The Carafe', catLabel: 'Cold brew', price: '$179', blurb: 'Smooth cold brew, ready and waiting by morning.', image: '', noImage: true, slotLabel: 'The Carafe', href: '#', action: 'Join the list' },
+        ],
+      },
+    ];
+
+    const filter = this.state.filter;
+    const bands = (filter === 'all' ? allBands : allBands.filter((b) => b.key === filter))
+      .map((b, i) => ({
+        ...b,
+        solo: (!b.feature && b.machines.length === 1) ? b.machines[0] : null,
+        companions: b.feature ? b.machines : [],
+        hasCompanions: b.feature && b.machines.length > 0,
+        machines: (!b.feature && b.machines.length > 1) ? b.machines : [],
+        sectionStyle: {
+          background: i % 2 === 0 ? 'var(--paper)' : 'var(--paper-2)',
+          padding: 'clamp(2.6rem, 2rem + 2vw, 4rem) 0',
+        },
+      }));
+
+    const defs = [
+      { key: 'all', label: 'All machines' },
+      { key: 'bean', label: 'Bean-to-cup' },
+      { key: 'espresso', label: 'Espresso' },
+      { key: 'filter', label: 'Filter' },
+      { key: 'cold', label: 'Cold brew' },
+    ];
+    const base = { fontFamily: 'var(--font-body)', fontSize: '0.9rem', fontWeight: 500, padding: '0.5rem 1.1rem', borderRadius: 'var(--r-pill)', cursor: 'pointer', transition: 'all 0.25s var(--ease-quint)' };
+    const filterPills = defs.map((d) => ({
+      label: d.label,
+      onClick: () => this.setFilter(d.key),
+      style: d.key === filter
+        ? { ...base, background: 'var(--burgundy)', color: 'var(--cream)', border: '1px solid var(--burgundy)' }
+        : { ...base, background: 'transparent', color: 'var(--ink)', border: '1px solid var(--line)' },
+    }));
+
+    return { nav, cart: this.state.cart, bands, filterPills, goAccount: () => { window.location.href = 'myatelier.html'; } };
+  }
+}
+</script>
+
+
+</body></html>

@@ -1,0 +1,215 @@
+{
+ "source": "http://localhost:8792/frescopa-atelier-blog-html-proposed.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "journal-hero",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "The Journal"
+    },
+    {
+     "role": "heading",
+     "order": 1,
+     "text": "Notes on the morning ritual."
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Brewing guides, origin stories, and small thoughts on doing mornings well — from the people who make the coffee and the machines."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": []
+  },
+  {
+   "section": "journal-feature",
+   "items": [
+    {
+     "role": "eyebrow",
+     "order": 0,
+     "text": "Featured"
+    },
+    {
+     "role": "eyebrow",
+     "order": 1,
+     "text": "The Atelier"
+    },
+    {
+     "role": "heading",
+     "order": 2,
+     "text": "How the Atelier learns your taste"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "It doesn’t guess, and it doesn’t need a questionnaire. Here’s what actually happens in the first two weeks on your counter — and why your cup keeps getting better."
+    },
+    {
+     "role": "eyebrow",
+     "order": 4,
+     "text": "June 2026 · 6 min read"
+    },
+    {
+     "role": "cta",
+     "order": 5,
+     "text": "Read the story →",
+     "href": "article.html"
+    }
+   ],
+   "imgCount": 1,
+   "editableTexts": 2,
+   "repeats": []
+  },
+  {
+   "section": "journal-list",
+   "items": [
+    {
+     "role": "body",
+     "order": 0,
+     "text": "All posts"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "The Atelier"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Brewing"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "Origins"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Café life"
+    },
+    {
+     "role": "body",
+     "order": 5,
+     "text": "Sustainability"
+    },
+    {
+     "role": "cta",
+     "order": 6,
+     "text": "Brewing May 2026 · 4 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 7,
+     "text": "In praise of the slow pour"
+    },
+    {
+     "role": "body",
+     "order": 8,
+     "text": "Why the unhurried cup rewards your patience — and how to get the water right."
+    },
+    {
+     "role": "cta",
+     "order": 9,
+     "text": "Café life May 2026 · 3 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 10,
+     "text": "A morning in our SoHo café"
+    },
+    {
+     "role": "body",
+     "order": 11,
+     "text": "Doors at seven, the first grind at 7:02. A few hours behind the bar at the flagship."
+    },
+    {
+     "role": "cta",
+     "order": 12,
+     "text": "Origins Apr 2026 · 5 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 13,
+     "text": "Single origin, explained"
+    },
+    {
+     "role": "body",
+     "order": 14,
+     "text": "What “traceable to a single farm” really means, and why it changes the cup."
+    },
+    {
+     "role": "cta",
+     "order": 15,
+     "text": "Café life Apr 2026 · 3 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 16,
+     "text": "Tea, and the quiet hour"
+    },
+    {
+     "role": "body",
+     "order": 17,
+     "text": "A small case for slowing down in the afternoon, one loose-leaf pot at a time."
+    },
+    {
+     "role": "cta",
+     "order": 18,
+     "text": "Sustainability Mar 2026 · 4 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 19,
+     "text": "Nothing wasted, right down to the grounds"
+    },
+    {
+     "role": "body",
+     "order": 20,
+     "text": "Where your spent coffee goes after the cup — and how the Atelier keeps track."
+    },
+    {
+     "role": "cta",
+     "order": 21,
+     "text": "Brewing Mar 2026 · 5 min",
+     "href": "#"
+    },
+    {
+     "role": "heading",
+     "order": 22,
+     "text": "Dialling in your first espresso"
+    },
+    {
+     "role": "body",
+     "order": 23,
+     "text": "Grind, dose, time. The three dials that turn a decent shot into a great one."
+    }
+   ],
+   "imgCount": 4,
+   "editableTexts": 12,
+   "repeats": [
+    {
+     "unitSelector": "A.post-card",
+     "count": 6,
+     "unit": {
+      "headings": 1,
+      "ctas": 0,
+      "imgs": 1,
+      "textRuns": 4
+     },
+     "uniform": false
+    }
+   ]
+  }
+ ]
+}

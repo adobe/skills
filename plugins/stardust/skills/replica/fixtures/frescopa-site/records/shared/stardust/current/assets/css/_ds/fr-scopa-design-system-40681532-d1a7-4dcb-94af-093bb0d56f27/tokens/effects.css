@@ -1,0 +1,19 @@
+/* ============================================================
+   FRÉSCOPA — Elevation & motion tokens
+   Warm, soft shadows (tinted, never neutral grey). Long, eased
+   motion — quintic & expo curves, generous fades, no bounce.
+   ============================================================ */
+
+:root {
+  /* ---------- Elevation (warm, soft) ---------- */
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+
+  /* ---------- Motion ---------- */
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1); /* @kind other */
+  --ease-expo:  cubic-bezier(0.16, 1, 0.3, 1);  /* @kind other */
+  --dur-1: 0.35s; /* @kind other */
+  --dur-2: 0.6s;  /* @kind other */
+  --dur-3: 0.9s;  /* @kind other */
+}

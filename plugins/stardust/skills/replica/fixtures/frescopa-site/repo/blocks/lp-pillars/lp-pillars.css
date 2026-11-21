@@ -1,0 +1,47 @@
+/* lp-pillars — section head + intrinsic card grid (prototype .lp-pillars, no media queries). */
+
+.lp-pillars {
+  background: var(--paper);
+  padding: var(--section-y) 0;
+}
+
+.lp-pillars .lp-head-narrow {
+  max-width: 44ch;
+}
+
+.lp-pillars .lp-h2 :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--burgundy);
+  margin-top: 1rem;
+}
+
+.lp-pillars .lp-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: 1.8rem;
+  margin-top: 3rem;
+}
+
+.lp-pillars .lp-card {
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+}
+
+.lp-pillars .lp-card-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--burgundy);
+}
+
+.lp-pillars .lp-card-text p {
+  color: var(--ink-soft);
+  margin-top: 0.7rem;
+  line-height: 1.6;
+}

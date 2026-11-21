@@ -1,0 +1,835 @@
+/* cafe-sec — the café page's content sections (prototype section.cafe-sec ×5).
+   Variants: reasons · rooms · events · locations · tour; `alt` = paper-2 ground.
+   Values verbatim from the prototype (frescopa-atelier-cafe-html.css). Authored elements are
+   styled through their wrappers (EW2). No media queries: auto-fit grids, as the source. */
+
+.cafe-sec {
+  background: var(--paper);
+  padding: clamp(3rem, 2rem + 3vw, 5rem) 0;
+}
+
+.cafe-sec.alt {
+  background: var(--paper-2);
+}
+
+/* ---------- Head: inline eyebrow span + title ---------- */
+.cafe-sec .cafe-sec-eyebrow,
+.cafe-sec .cafe-sec-eyebrow p {
+  display: inline;
+}
+
+.cafe-sec .cafe-sec-eyebrow p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--terracotta);
+}
+
+.cafe-sec .cafe-sec-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(1.9rem, 1.4rem + 2vw, 2.8rem);
+  color: var(--burgundy);
+  margin: 0.5rem 0 0;
+}
+
+.cafe-sec .cafe-sec-title.w18 :is(h2, h3) {
+  max-width: 18ch;
+  margin: 0;
+  line-height: 1.06;
+}
+
+.cafe-sec .cafe-sec-title.w20 :is(h2, h3) {
+  max-width: 20ch;
+}
+
+.cafe-sec .cafe-sec-title.w22 :is(h2, h3) {
+  max-width: 22ch;
+}
+
+.cafe-sec .cafe-sec-title.xl :is(h2, h3) {
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem);
+  max-width: 16ch;
+  line-height: 1.04;
+}
+
+/* ---------- Reasons ---------- */
+.cafe-sec .reasons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.6rem;
+  margin-top: 2.6rem;
+}
+
+.cafe-sec .reason {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.cafe-sec .reason-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  margin: 0;
+}
+
+.cafe-sec .reason-text p {
+  color: var(--ink-soft);
+  font-size: 0.96rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ---------- Rooms: split media rows ---------- */
+.cafe-sec .room {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: clamp(1.6rem, 1rem + 3vw, 3.5rem);
+  align-items: center;
+  margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);
+}
+
+.cafe-sec .cafe-sec-title + .room {
+  margin-top: 3rem;
+}
+
+.cafe-sec .room-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.cafe-sec .room-eyebrow p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
+  color: var(--terracotta);
+}
+
+.cafe-sec .room-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.2rem);
+  color: var(--burgundy);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cafe-sec .room-text p {
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.cafe-sec .room-cta {
+  margin-top: 0.4rem;
+}
+
+.cafe-sec .room-media {
+  position: relative;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  aspect-ratio: 5 / 4;
+}
+
+.cafe-sec .room-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+.cafe-sec .room.flip .room-media {
+  order: 2;
+}
+
+.cafe-sec .room.flip .room-body {
+  order: 1;
+}
+
+/* ---------- Events ---------- */
+.cafe-sec .whatson-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.cafe-sec .whatson-note p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.cafe-sec .events {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1.6rem;
+  margin-top: 2.4rem;
+}
+
+.cafe-sec .event {
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 1.4rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cafe-sec .event-day {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.66rem;
+  color: var(--terracotta);
+}
+
+.cafe-sec .event-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.cafe-sec .event-text {
+  flex: 1 1 0%;
+  text-wrap: pretty;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.cafe-sec .event-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.6rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.cafe-sec .event-time {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+
+.cafe-sec .event-price {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ---------- Locations: lede, stats, flagship ---------- */
+.cafe-sec .locations-lede p {
+  color: var(--ink-soft);
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin: 0.9rem 0 0;
+  max-width: 54ch;
+}
+
+.cafe-sec .stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.6rem;
+  margin-top: 2.4rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 1.8rem 0;
+}
+
+.cafe-sec .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cafe-sec .stat-num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem);
+  color: var(--burgundy);
+  line-height: 1;
+}
+
+.cafe-sec .stat-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+.cafe-sec .flagship {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  margin-top: 2.4rem;
+}
+
+.cafe-sec .flagship-media {
+  position: relative;
+  min-height: 320px;
+  background: var(--paper-3);
+}
+
+.cafe-sec .flagship-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+.cafe-sec .flagship-badge {
+  position: absolute;
+  top: 1.1rem;
+  left: 1.1rem;
+}
+
+.cafe-sec .flagship-body {
+  padding: clamp(1.6rem, 1rem + 2vw, 2.6rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cafe-sec .flagship-eyebrow p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
+  color: var(--terracotta);
+}
+
+.cafe-sec .flagship-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.4rem);
+  color: var(--burgundy);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cafe-sec .flagship-text p {
+  color: var(--ink-soft);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  margin: 0.2rem 0 0;
+}
+
+.cafe-sec .tags :is(ul, ol) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cafe-sec .flagship-tags {
+  margin-top: 0.6rem;
+}
+
+.cafe-sec .tags li {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0.22rem 0.6rem;
+}
+
+.cafe-sec .flagship-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.4rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.cafe-sec .flagship-hours p {
+  color: var(--ink-soft);
+}
+
+.cafe-sec .flagship-cta {
+  margin-top: 0.9rem;
+}
+
+/* The prototype's inline-flex button sits on a block line box. */
+.cafe-sec :is(.flagship-cta, .tour-form-submit) p.button-wrapper {
+  display: block;
+}
+
+/* Empty image slot: the live <image-slot> placeholder (an unfilled authoring slot). */
+.cafe-sec image-slot {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- Finder: search, region pills, sticky map, scroll list ---------- */
+.cafe-sec .finder {
+  margin-top: clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+
+.cafe-sec .finder-search {
+  position: relative;
+}
+
+.cafe-sec .finder-search svg {
+  position: absolute;
+  left: 1.1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.cafe-sec .finder-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0.95rem 1.2rem 0.95rem 2.9rem;
+  outline: none;
+}
+
+.cafe-sec .finder-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cafe-sec .finder-pills .filter-pill {
+  font-size: 0.88rem;
+  padding: 0.45rem 1rem;
+}
+
+.cafe-sec .filter-pill p,
+.cafe-sec .chip p {
+  margin: 0;
+}
+
+.cafe-sec .finder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(1.6rem, 1rem + 2vw, 2.6rem);
+  margin-top: 1.6rem;
+  align-items: start;
+}
+
+.cafe-sec .finder-map {
+  position: sticky;
+  top: 92px;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper-3);
+  aspect-ratio: 4 / 5;
+  min-height: 420px;
+}
+
+.cafe-sec .finder-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cafe-sec .finder-count {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.cafe-sec .finder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-height: 640px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.cafe-sec .loc {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 1.1rem 1.3rem;
+}
+
+.cafe-sec .loc[hidden] {
+  display: none;
+}
+
+.cafe-sec .loc > svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.cafe-sec .loc-body {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cafe-sec .loc-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.cafe-sec .loc-name :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  line-height: 1.12;
+  margin: 0;
+}
+
+.cafe-sec .loc-city {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.64rem;
+  color: var(--terracotta);
+  white-space: nowrap;
+}
+
+.cafe-sec .loc-addr {
+  text-wrap: pretty;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.cafe-sec .loc-tags {
+  margin-top: 0.1rem;
+}
+
+.cafe-sec .loc-tags :is(ul, ol) {
+  gap: 0.35rem;
+}
+
+.cafe-sec .loc-tags li {
+  font-size: 0.6rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.cafe-sec .loc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.cafe-sec .loc-hours {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.64rem;
+  color: var(--ink-soft);
+}
+
+.cafe-sec .finder-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+}
+
+.cafe-sec .finder-empty-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  margin: 0;
+}
+
+.cafe-sec .finder-empty-text {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin: 0.5rem 0 0;
+}
+
+/* Live wraps each interpolated text in an inline span inside the styled element: the
+   wrapper carries the type (its line box), the authored <p> renders inline in it. */
+.cafe-sec :is(.event-day, .event-text, .event-time, .event-price) p,
+.cafe-sec :is(.stat-num, .stat-label, .loc-city, .loc-addr, .loc-hours) p {
+  display: inline;
+}
+
+/* The prototype's text link is the flex item itself (no line box around it). */
+.cafe-sec .loc-link p {
+  display: flex;
+}
+
+/* ---------- Tour request ---------- */
+.cafe-sec .tour {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(2rem, 1rem + 4vw, 4rem);
+  align-items: start;
+}
+
+.cafe-sec .tour-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cafe-sec .tour-text p {
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  margin: 0.2rem 0 0;
+  max-width: 46ch;
+}
+
+.cafe-sec .tour-list :is(ul, ol) {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.cafe-sec .tour-list li {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.cafe-sec .tour-arrow {
+  color: var(--terracotta);
+  font-weight: 700;
+}
+
+.cafe-sec .tour-card {
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+  padding: clamp(1.5rem, 1rem + 2vw, 2.4rem);
+}
+
+.cafe-sec .tour-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.cafe-sec .tour-form[hidden] {
+  display: none;
+}
+
+.cafe-sec .tour-form-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--burgundy);
+  font-weight: 800;
+  margin: 0;
+}
+
+.cafe-sec .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cafe-sec .field.field-chips {
+  gap: 0.5rem;
+}
+
+.cafe-sec .field-label p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+
+.cafe-sec .field-label em {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+.cafe-sec .field-control {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.75rem 0.95rem;
+  outline: none;
+}
+
+.cafe-sec .field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+
+.cafe-sec .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cafe-sec .chip {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.42rem 0.85rem;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-quint);
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.cafe-sec .chip.is-on {
+  background: var(--burgundy);
+  color: var(--cream);
+  border-color: var(--burgundy);
+}
+
+.cafe-sec .tour-form-submit {
+  margin-top: 0.3rem;
+}
+
+.cafe-sec .tour-form-fine p {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cafe-sec .tour-form-error {
+  color: var(--terracotta-deep);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.cafe-sec .tour-done {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
+.cafe-sec .tour-done-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-pill);
+  margin: 0 auto;
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cafe-sec .tour-done-title {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  color: var(--burgundy);
+  font-weight: 800;
+  margin: 0;
+}
+
+.cafe-sec .tour-done-text {
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.cafe-sec .tour-done-note {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.cafe-sec .tour-done-note strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cafe-sec .tour-done-cta {
+  margin-top: 0.6rem;
+}
+
+/* Inside the flex intro the eyebrow wrapper is the (blockified) flex item, as the span. */
+.cafe-sec .tour-intro .cafe-sec-eyebrow,
+.cafe-sec .tour-intro .cafe-sec-eyebrow p {
+  display: block;
+}
+
+/* The submit label is authored bold (the primary convention); the button sets its weight. */
+.cafe-sec .tour-form-submit button strong {
+  font-weight: inherit;
+}

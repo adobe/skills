@@ -1,0 +1,97 @@
+/* ============================================================
+   FRÉSCOPA — Base reset & element defaults
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 400;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-heading);
+  text-wrap: balance;
+}
+
+p { text-wrap: pretty; }
+
+img, svg, video { display: block; max-width: 100%; }
+img { height: auto; }
+
+a { color: var(--terracotta); text-decoration: none; }
+a:hover { color: var(--terracotta-deep); }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { background: none; border: none; cursor: pointer; }
+
+::selection { background: var(--amber-soft); color: var(--burgundy-deep); }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* ---------- Shared layout primitive ---------- */
+.container {
+  width: 100%;
+  max-width: var(--content);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.container--wide   { max-width: var(--content-wide); }
+.container--narrow { max-width: var(--content-narrow); }
+
+.rule { height: 1px; background: var(--line); border: 0; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- Skip link (a11y) ---------- */
+.skip-link {
+  position: absolute; left: 1rem; top: -3rem; z-index: 200;
+  background: var(--burgundy); color: var(--cream);
+  padding: 0.6rem 1rem; border-radius: var(--r-sm);
+  transition: top var(--dur-1) var(--ease-quint);
+}
+.skip-link:focus { top: 1rem; color: var(--cream); }
+
+/* ---------- Scroll reveal ----------
+   Fade + rise on scroll into view. Base state is hidden; add .is-in
+   (an IntersectionObserver toggles it) to reveal. --reveal-delay staggers
+   siblings. Reduced-motion + no-JS both fall back to fully visible. */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity var(--dur-3) var(--ease-expo),
+              transform var(--dur-3) var(--ease-expo);
+  transition-delay: var(--reveal-delay, 0s);
+}
+.reveal.is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}

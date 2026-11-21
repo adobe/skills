@@ -1,0 +1,106 @@
+/* ============================================================
+   Fréscopa — journal-index (blog.html). Page modules only; chrome,
+   tokens, badge and link come from shared/canon.css. Values lifted
+   from the live React template's inline styles (data-dc-tpl 13–49)
+   and the image-slot element's own stylesheet.
+   ============================================================ */
+
+/* Live React types: html, body, #dc-root { height: 100% }, links terracotta by default. */
+html, body { height: 100%; }
+.page { height: 100%; font-family: var(--font-body); color: var(--ink); background: var(--paper); }
+
+/* ---------- Journal hero (tpl 13–17) ---------- */
+.journal-hero {
+  background: var(--paper-2);
+  padding: calc(72px + clamp(2.5rem, 1.5rem + 3vw, 4.5rem)) 0 clamp(2rem, 1.5rem + 2vw, 3rem);
+}
+.journal-hero__eyebrow {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.72rem; color: var(--terracotta);
+}
+.journal-hero__title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem); color: var(--burgundy); margin: 0.6rem 0 0;
+}
+.journal-hero__lede { color: var(--ink-soft); font-size: 1.125rem; margin-top: 1rem; line-height: 1.6; max-width: 54ch; }
+
+/* ---------- Featured story (tpl 18–32) ---------- */
+.journal-feature {
+  background: var(--paper);
+  padding: clamp(2.5rem, 2rem + 2vw, 4rem) 0 clamp(1.5rem, 1rem + 2vw, 2.5rem);
+}
+.feature-card {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl);
+  overflow: hidden; box-shadow: var(--shadow-md); color: inherit;
+}
+.feature-card__media { position: relative; min-height: 340px; overflow: hidden; background: var(--paper-3); }
+.feature-card__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.feature-card__badge { position: absolute; top: 1.1rem; left: 1.1rem; }
+.feature-card__body {
+  padding: clamp(1.6rem, 1rem + 2vw, 2.8rem);
+  display: flex; flex-direction: column; gap: 0.8rem; justify-content: center;
+}
+.feature-card__cat {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.68rem; color: var(--terracotta);
+}
+.feature-card__title {
+  font-family: var(--font-display); font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.7rem); color: var(--burgundy);
+  font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; margin: 0;
+}
+.feature-card__excerpt { color: var(--ink-soft); font-size: 1.08rem; line-height: 1.6; margin: 0; }
+.feature-card__foot { display: flex; align-items: center; gap: 1rem; margin-top: 0.6rem; }
+.feature-card__meta {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 0.68rem; color: var(--ink-soft);
+}
+/* The live card is one link wrapping another (same href); static HTML cannot nest <a>,
+   so a cover link carries the card click and the visible link sits above it. */
+.feature-card { position: relative; }
+.feature-card__cover { position: absolute; inset: 0; z-index: 1; }
+.feature-card .link { position: relative; z-index: 2; cursor: pointer; transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint); }
+
+/* ---------- Post list: filter pills + cards (tpl 33–49) ---------- */
+.journal-list { background: var(--paper); padding: clamp(1.5rem, 1rem + 2vw, 2.5rem) 0 var(--section-y); }
+.filter-pills {
+  display: flex; flex-wrap: wrap; gap: 0.6rem;
+  border-bottom: 1px solid var(--line); padding-bottom: 1.4rem;
+}
+.filter-pill {
+  font-family: var(--font-body); font-size: 0.9rem; font-weight: 500;
+  padding: 0.5rem 1.1rem; border-radius: var(--r-pill); cursor: pointer;
+  transition: all 0.25s var(--ease-quint);
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+}
+.filter-pill.is-active { background: var(--burgundy); color: var(--cream); border: 1px solid var(--burgundy); }
+
+.post-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem 1.8rem; margin-top: 2.6rem;
+}
+.post-card { display: flex; flex-direction: column; gap: 0.9rem; color: inherit; }
+.post-card[hidden] { display: none; }
+.post-card__media {
+  position: relative; aspect-ratio: 3 / 2; overflow: hidden; border-radius: var(--r-lg);
+  border: 1px solid var(--line); background: var(--paper-3);
+}
+.post-card__media img { width: 100%; height: 100%; object-fit: cover; }
+.post-card__cat {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.66rem; color: var(--terracotta);
+}
+.post-card__title {
+  font-family: var(--font-display); font-size: 1.4rem; color: var(--burgundy);
+  font-weight: 700; line-height: 1.16; margin: 0;
+}
+.post-card__excerpt { color: var(--ink-soft); font-size: 0.96rem; line-height: 1.55; margin: 0; flex: 1 1 0%; }
+.post-card__meta {
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 0.66rem; color: var(--ink-soft);
+}
+
+/* Empty image slot: the live <image-slot> placeholder (an unfilled authoring slot), rebuilt
+   as a declarative shadow root carrying the element's own shadow stylesheet (inline in the HTML). */
+image-slot { display: block; width: 100%; height: 100%; }
+.feature-card__badge-slot { display: contents; }

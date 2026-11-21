@@ -1,0 +1,23 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-11-21T20:06:11.662Z",
+    "stardustVersion": "0.0.0"
+  },
+  "target": "aem-eds",
+  "site": {
+    "sourceUrl": "https://markszulc.github.io/frescopa-atelier/",
+    "da": {
+      "org": "{{ORG}}",
+      "site": "{{SITE}}",
+      "ref": "main"
+    },
+    "liveHost": "{{BRANCH}}--{{SITE}}--{{ORG}}.aem.live"
+  },
+  "scope": {
+    "pages": 6,
+    "discovered": 8,
+    "capped": true,
+    "pageCap": 10
+  }
+}

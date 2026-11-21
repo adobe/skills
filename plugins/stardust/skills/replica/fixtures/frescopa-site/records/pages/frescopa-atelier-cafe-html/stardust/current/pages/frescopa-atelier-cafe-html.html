@@ -1,0 +1,1484 @@
+<!DOCTYPE html><html><head><style>
+    .sc-placeholder{background:color-mix(in srgb,currentColor 8%,transparent);
+      border:1px solid color-mix(in srgb,currentColor 50%,transparent);
+      border-radius:2px;box-sizing:border-box;overflow:hidden}
+    @keyframes sc-shine{0%{background-position:100% 50%}100%{background-position:0% 50%}}
+    html.sc-dc-streaming .sc-placeholder,
+    html.sc-dc-streaming .sc-interp.sc-missing{position:relative;
+      background:color-mix(in srgb,currentColor 5%,transparent);
+      border-color:transparent}
+    html.sc-dc-streaming .sc-placeholder::before,
+    html.sc-dc-streaming .sc-interp.sc-missing::before{content:'';
+      position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(217,119,87,0) 25%,rgba(247,225,211,.95) 37%,rgba(217,119,87,0) 63%);
+      background-size:400% 100%;animation:sc-shine 1.4s ease infinite}
+    html.sc-dc-streaming .sc-placeholder:nth-child(n+9 of .sc-placeholder)::before,
+    html.sc-dc-streaming .sc-interp.sc-missing:nth-child(n+9 of .sc-interp.sc-missing)::before{animation:none;
+      background:color-mix(in srgb,currentColor 8%,transparent)}
+    .sc-placeholder-error{padding:4px 8px;font:11px/1.4 ui-monospace,monospace;
+      color:color-mix(in srgb,currentColor 70%,transparent);word-break:break-word}
+    .sc-interp.sc-missing{display:inline-block;width:2em;height:1em;overflow:hidden;
+      vertical-align:text-bottom;background:rgba(255,255,255,.3);border:1px solid rgba(0,0,0,.5);
+      border-radius:2px;box-sizing:border-box;color:transparent;
+      user-select:none}
+    .sc-interp.sc-unresolved{font-family:ui-monospace,monospace;font-size:.85em;
+      color:color-mix(in srgb,currentColor 50%,transparent);
+      background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;
+      padding:0 3px}
+    .sc-host.sc-has-error{position:relative}
+    .sc-logic-error{position:absolute;top:8px;left:8px;z-index:2147483647;max-width:60ch;
+      padding:6px 10px;background:#b00020;color:#fff;font:12px/1.4 ui-monospace,monospace;
+      border-radius:4px;white-space:pre-wrap;pointer-events:none}
+    /* Mirrors PRINT_BASELINE_CSS in apps/web deck-stage-export.ts — keep both
+       in sync until dc-runtime regains a build step. */
+    @media print {
+      @page { margin: 0.5cm; }
+      figure, table { break-inside: avoid; }
+      #dc-root, #dc-root > .sc-host { height: auto; }
+      *, *::before, *::after {
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+        animation-delay: -99s !important; animation-duration: .001s !important;
+        animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+        animation-play-state: running !important; transition-duration: 0s !important;
+      }
+    }
+  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script><style>x-dc{display:none!important}</style><script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script><script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<style>html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}</style><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/fonts.css" data-dc-tpl="1"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/colors.css" data-dc-tpl="2"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/typography.css" data-dc-tpl="3"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/spacing.css" data-dc-tpl="4"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/effects.css" data-dc-tpl="5"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/base.css" data-dc-tpl="6"><link rel="stylesheet" href="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/styles.css" data-dc-tpl="7"><link rel="stylesheet" href="shared/view-transitions.css" data-dc-tpl="8"><script src="_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js" data-dc-tpl="9"></script><style data-dc-tpl="10">
+  body { margin: 0; }
+  a { color: var(--terracotta); text-decoration: none; }
+  a:hover { color: var(--terracotta-deep); }
+</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-ftr { background: var(--charcoal); color: var(--cream-soft); padding-top: clamp(3.5rem, 6vw, 5.5rem); }
+.fr-ftr__inner, .fr-ftr__legal { width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-ftr__inner { display: grid; grid-template-columns: 1.3fr 2fr; gap: clamp(2rem, 6vw, 5rem); padding-bottom: 3rem; }
+.fr-ftr__logo { height: 38px; width: auto; margin-bottom: 1.3rem; }
+.fr-ftr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; color: var(--cream); display: block; margin-bottom: 1.1rem; }
+.fr-ftr__tag { color: var(--cream-soft); font-size: 0.95rem; max-width: 42ch; }
+.fr-ftr__signup { margin-top: 1.9rem; }
+.fr-ftr__signup-label { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--cream); margin-bottom: 0.8rem; }
+.fr-ftr__signup-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.fr-ftr__signup-row > :first-child { flex: 1; min-width: 190px; }
+.fr-ftr__cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.fr-ftr__col h3 { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--amber); margin-bottom: 1rem; font-weight: 500; }
+.fr-ftr__col a { display: block; color: var(--cream-soft); padding: 0.36rem 0; font-size: 0.95rem; transition: color var(--dur-1); }
+.fr-ftr__col a:hover { color: var(--cream); }
+.fr-ftr__legal { border-top: 1px solid var(--line-dark); padding-block: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.fr-ftr__social { display: flex; gap: 0.7rem; }
+.fr-ftr__social a { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--cream-soft); border: 1px solid var(--line-dark); transition: color var(--dur-1), border-color var(--dur-1); }
+.fr-ftr__social a:hover { color: var(--amber); border-color: var(--amber); }
+.fr-ftr__meta { font-size: 0.8rem; color: var(--cream-soft); opacity: 0.85; }
+@media (max-width: 980px) { .fr-ftr__inner { grid-template-columns: 1fr; gap: 2.5rem; } }
+@media (max-width: 560px) { .fr-ftr__cols { grid-template-columns: 1fr 1fr; } }</style><style>
+.fr-input {
+  width: 100%; border-radius: var(--r-pill);
+  padding: 0.85em 1.25em; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  transition: border-color var(--dur-1) var(--ease-quint), box-shadow var(--dur-1) var(--ease-quint);
+}
+.fr-input::placeholder { color: color-mix(in oklch, var(--ink-soft) 65%, transparent); }
+.fr-input:focus-visible { outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px color-mix(in oklch, var(--terracotta) 22%, transparent); }
+.fr-input--dark { background: var(--charcoal-2); border-color: var(--line-dark); color: var(--cream); }
+.fr-input--dark::placeholder { color: color-mix(in oklch, var(--cream-soft) 70%, transparent); }
+.fr-input--dark:focus-visible { border-color: var(--amber); box-shadow: 0 0 0 3px color-mix(in oklch, var(--amber) 28%, transparent); }</style><style>
+.fr-hdr { position: fixed; top: 0; left: 0; right: 0; z-index: 100; color: var(--cream);
+  transition: background-color var(--dur-2) var(--ease-quint), color var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint); }
+.fr-hdr__inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-block: 1.1rem;
+  width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-hdr.is-scrolled { background: color-mix(in oklch, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); box-shadow: 0 1px 0 var(--line), var(--shadow-sm); }
+.fr-hdr__brand { display: block; line-height: 0; position: relative; color: inherit; }
+.fr-hdr__logo { height: 30px; width: auto; transition: opacity var(--dur-2) var(--ease-quint); }
+.fr-hdr__logo--dark { position: absolute; inset: 0; opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--light { opacity: 0; }
+.fr-hdr.is-scrolled .fr-hdr__logo--dark { opacity: 1; }
+.fr-hdr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; color: inherit; }
+.fr-hdr__nav { display: flex; align-items: center; gap: clamp(1.1rem, 2vw, 2.4rem); }
+.fr-hdr__nav a { font-size: 0.95rem; font-weight: 500; color: inherit; position: relative; padding: 0.2rem 0; }
+.fr-hdr__nav a::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 1.5px; width: 0; background: currentColor; transition: width var(--dur-2) var(--ease-quint); }
+.fr-hdr__nav a:hover::after, .fr-hdr__nav a.is-active::after { width: 100%; }
+.fr-hdr__utils { display: flex; align-items: center; gap: 0.35rem; }
+.fr-hdr__cart-wrap { display: flex; align-items: flex-start; }
+.fr-hdr__cart-count { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; background: var(--terracotta); color: var(--cream); border-radius: var(--r-pill); min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; margin-left: -6px; margin-top: -14px; }
+.fr-hdr__toggle { display: none; width: 42px; height: 42px; border-radius: 50%; position: relative; color: inherit; background: none; border: none; cursor: pointer; }
+.fr-hdr__toggle span { position: absolute; left: 11px; width: 20px; height: 1.8px; background: currentColor; border-radius: 2px; transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1); }
+.fr-hdr__toggle span:first-child { top: 17px; }
+.fr-hdr__toggle span:last-child { top: 24px; }
+.fr-hdr__toggle[aria-expanded="true"] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.fr-hdr__toggle[aria-expanded="true"] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+.fr-hdr.nav-is-open .fr-hdr__toggle span { background: var(--ink); }
+html.fr-nav-open { overflow: hidden; }
+@media (max-width: 900px) {
+  .fr-hdr__nav { position: fixed; inset: 0 0 0 auto; width: min(82vw, 340px); flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4rem;
+    background: var(--paper); color: var(--ink); padding: 5rem 2.2rem; transform: translateX(105%); transition: transform var(--dur-2) var(--ease-expo); box-shadow: var(--shadow-lg); z-index: 90; }
+  .fr-hdr__nav.is-open { transform: none; }
+  .fr-hdr__nav a { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--burgundy); }
+  .fr-hdr__nav a::after { display: none; }
+  .fr-hdr__toggle { display: inline-grid; place-items: center; z-index: 95; }
+}</style><style>
+.fr-iconbtn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; color: inherit; flex-shrink: 0;
+  transition: background-color var(--dur-1) var(--ease-quint);
+}
+.fr-iconbtn:hover { background: color-mix(in oklch, currentColor 12%, transparent); }
+.fr-iconbtn:disabled { opacity: 0.4; pointer-events: none; }</style><style>
+.fr-btn {
+  --_bg: var(--burgundy); --_fg: var(--cream);
+  display: inline-flex; align-items: center; gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body); font-size: var(--fs-sm); font-weight: 600;
+  letter-spacing: 0.005em; line-height: 1;
+  color: var(--_fg); background: var(--_bg);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint),
+              border-color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.fr-btn .fr-btn__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.fr-btn:hover .fr-btn__arrow { transform: translateX(3px); }
+.fr-btn:active { transform: translateY(0); }
+.fr-btn:disabled, .fr-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; box-shadow: none; }
+
+.fr-btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.fr-btn--primary:hover { --_bg: var(--burgundy-deep); }
+.fr-btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.fr-btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+.fr-btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.fr-btn--cream:hover { --_bg: #fff; }
+.fr-btn--ghost {
+  --_fg: currentColor; background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.fr-btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none; border-color: color-mix(in oklch, currentColor 55%, transparent);
+}</style><style>
+.fr-link {
+  color: var(--terracotta); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px; background-position: 0 100%; background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint), color var(--dur-1) var(--ease-quint);
+  padding-bottom: 2px; cursor: pointer;
+}
+.fr-link:hover { background-size: 100% 1.5px; color: var(--terracotta); }
+.fr-link--sm { font-size: 0.85rem; }
+.fr-link .fr-link__arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.fr-link:hover .fr-link__arrow { transform: translateX(3px); }</style><style>
+.fr-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 0.4em 0.75em; border-radius: var(--r-pill);
+}
+.fr-badge--overlay {
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--burgundy);
+}
+.fr-badge--amber {
+  background: color-mix(in oklch, var(--amber) 22%, var(--paper));
+  color: var(--terracotta-deep); letter-spacing: 0.14em;
+}
+.fr-badge--burgundy { background: var(--burgundy); color: var(--cream); }</style><style>
+.fr-ftr { background: var(--charcoal); color: var(--cream-soft); padding-top: clamp(3.5rem, 6vw, 5.5rem); }
+.fr-ftr__inner, .fr-ftr__legal { width: 100%; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); }
+.fr-ftr__inner { display: grid; grid-template-columns: 1.3fr 2fr; gap: clamp(2rem, 6vw, 5rem); padding-bottom: 3rem; }
+.fr-ftr__logo { height: 38px; width: auto; margin-bottom: 1.3rem; }
+.fr-ftr__wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; color: var(--cream); display: block; margin-bottom: 1.1rem; }
+.fr-ftr__tag { color: var(--cream-soft); font-size: 0.95rem; max-width: 42ch; }
+.fr-ftr__signup { margin-top: 1.9rem; }
+.fr-ftr__signup-label { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--cream); margin-bottom: 0.8rem; }
+.fr-ftr__signup-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.fr-ftr__signup-row > :first-child { flex: 1; min-width: 190px; }
+.fr-ftr__cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.fr-ftr__col h3 { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--amber); margin-bottom: 1rem; font-weight: 500; }
+.fr-ftr__col a { display: block; color: var(--cream-soft); padding: 0.36rem 0; font-size: 0.95rem; transition: color var(--dur-1); }
+.fr-ftr__col a:hover { color: var(--cream); }
+.fr-ftr__legal { border-top: 1px solid var(--line-dark); padding-block: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.fr-ftr__social { display: flex; gap: 0.7rem; }
+.fr-ftr__social a { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--cream-soft); border: 1px solid var(--line-dark); transition: color var(--dur-1), border-color var(--dur-1); }
+.fr-ftr__social a:hover { color: var(--amber); border-color: var(--amber); }
+.fr-ftr__meta { font-size: 0.8rem; color: var(--cream-soft); opacity: 0.85; }
+@media (max-width: 980px) { .fr-ftr__inner { grid-template-columns: 1fr; gap: 2.5rem; } }
+@media (max-width: 560px) { .fr-ftr__cols { grid-template-columns: 1fr 1fr; } }</style><style>
+.fr-input {
+  width: 100%; border-radius: var(--r-pill);
+  padding: 0.85em 1.25em; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  transition: border-color var(--dur-1) var(--ease-quint), box-shadow var(--dur-1) var(--ease-quint);
+}
+.fr-input::placeholder { color: color-mix(in oklch, var(--ink-soft) 65%, transparent); }
+.fr-input:focus-visible { outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px color-mix(in oklch, var(--terracotta) 22%, transparent); }
+.fr-input--dark { background: var(--charcoal-2); border-color: var(--line-dark); color: var(--cream); }
+.fr-input--dark::placeholder { color: color-mix(in oklch, var(--cream-soft) 70%, transparent); }
+.fr-input--dark:focus-visible { border-color: var(--amber); box-shadow: 0 0 0 3px color-mix(in oklch, var(--amber) 28%, transparent); }</style></head>
+<body>
+<div id="dc-root"><div class="sc-host" data-sc-name="cafe"><div data-dc-tpl="11" style="font-family: var(--font-body); color: var(--ink); background: var(--paper);">
+
+  <div class="sc-host-x" data-dc-tpl="12" style="display: contents;"><header class="fr-hdr" data-vt="site-header"><div class="fr-hdr__inner"><a class="fr-hdr__brand" href="index.html" aria-label="Fréscopa home"><img class="fr-hdr__logo fr-hdr__logo--light" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="150" height="40"><img class="fr-hdr__logo fr-hdr__logo--dark" src="assets/frescopa-logo.svg" alt="" aria-hidden="true" width="150" height="40"></a><nav class="fr-hdr__nav " aria-label="Primary"><a href="landing.html" class="">The Atelier</a><a href="machines.html" class="">Machines</a><a href="beverages.html" class="">Beverages</a><a href="cafe.html" class="is-active">Café</a><a href="blog.html" class="">Journal</a></nav><div class="fr-hdr__utils"><button class="fr-iconbtn" aria-label="Search"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2" stroke-linecap="round"></path></svg></button><button class="fr-iconbtn" aria-label="Account"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"></path></svg></button><div class="fr-hdr__cart-wrap"><button class="fr-iconbtn" aria-label="Cart, 0 items"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"></path><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"></path></svg></button></div><button class="fr-hdr__toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span></button></div></div></header></div>
+
+  
+  <section data-dc-tpl="13" style="position: relative; min-height: min(78vh, 720px); display: flex; align-items: flex-end; overflow: hidden;">
+    <img data-dc-tpl="14" src="assets/images/cafe-interior.jpg" alt="Inside a Fréscopa café" style="position: absolute; inset: 0px; width: 100%; height: 100%; object-fit: cover;">
+    <div data-dc-tpl="15" style="position: absolute; inset: 0px; background: linear-gradient(90deg, rgba(30, 18, 15, 0.82) 0%, rgba(30, 18, 15, 0.5) 45%, rgba(30, 18, 15, 0.15) 100%);"></div>
+    <div data-dc-tpl="16" style="position: relative; max-width: var(--content); margin-inline: auto; padding: 0 var(--gutter) clamp(3rem, 2rem + 4vw, 5.5rem); width: 100%; color: var(--cream);">
+      <span data-dc-tpl="17" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.78rem; color: var(--amber);">The café &amp; showroom</span>
+      <h1 data-dc-tpl="18" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2.4rem, 1.6rem + 4vw, 4.4rem); color: var(--cream); margin: 1rem 0px 0px; line-height: 1.02; max-width: 16ch;">Come taste the whole of Fréscopa.</h1>
+      <p data-dc-tpl="19" style="color: rgba(255, 248, 240, 0.9); font-size: clamp(1.05rem, 1rem + 0.4vw, 1.3rem); margin: 1.2rem 0px 0px; line-height: 1.6; max-width: 46ch;">Part coffee bar, part showroom, part gathering place. Sit with a cup, get hands-on with the machines, and stay for a class — no purchase, no pressure.</p>
+      <div data-dc-tpl="20" style="display: flex; gap: 0.9rem; flex-wrap: wrap; margin-top: 1.8rem;">
+        <div class="sc-host-x" data-dc-tpl="21" style="display: contents;"><a class="fr-btn fr-btn--cream" href="#locations">Find your nearest café<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+        <div class="sc-host-x" data-dc-tpl="22" style="display: contents;"><a class="fr-btn fr-btn--ghost" href="#experience">See what's inside</a></div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="23" style="background: var(--paper); padding: clamp(3rem, 2rem + 3vw, 5rem) 0px;">
+    <div data-dc-tpl="24" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <span data-dc-tpl="25" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);">Why come in</span>
+      <h2 data-dc-tpl="26" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.9rem, 1.4rem + 2vw, 2.8rem); color: var(--burgundy); margin: 0.5rem 0px 0px; max-width: 20ch;">Reasons to make the trip.</h2>
+      <div data-dc-tpl="27" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.6rem; margin-top: 2.6rem;">
+
+        <div data-dc-tpl="28" style="display: flex; flex-direction: column; gap: 0.7rem;">
+          <svg data-dc-tpl="29" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path data-dc-tpl="30" d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z"></path><path data-dc-tpl="31" d="M17 9h2a2.5 2.5 0 0 1 0 5h-2"></path><path data-dc-tpl="32" d="M7 4c0 .8-.5 1.2-.5 2M11 4c0 .8-.5 1.2-.5 2"></path></svg>
+          <h3 data-dc-tpl="33" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--burgundy); font-weight: 700; margin: 0px;">Taste before you commit</h3>
+          <p data-dc-tpl="34" style="color: var(--ink-soft); font-size: 0.96rem; line-height: 1.6; margin: 0px;">Flight through the coffee, tea and cold-press range at the bar. Find the cup you'll want at home.</p>
+        </div>
+
+        <div data-dc-tpl="35" style="display: flex; flex-direction: column; gap: 0.7rem;">
+          <svg data-dc-tpl="36" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect data-dc-tpl="37" x="4" y="4" width="16" height="16" rx="2"></rect><circle data-dc-tpl="38" cx="9" cy="9" r="2"></circle><path data-dc-tpl="39" d="M14 8h3M14 11h3M7 15h10"></path></svg>
+          <h3 data-dc-tpl="40" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--burgundy); font-weight: 700; margin: 0px;">Meet the machines</h3>
+          <p data-dc-tpl="41" style="color: var(--ink-soft); font-size: 0.96rem; line-height: 1.6; margin: 0px;">Pull a shot on the Atelier line yourself. Feel the difference before it lands on your counter.</p>
+        </div>
+
+        <div data-dc-tpl="42" style="display: flex; flex-direction: column; gap: 0.7rem;">
+          <svg data-dc-tpl="43" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path data-dc-tpl="44" d="M12 4c-3 2-6 2-7 2 0 6 2.5 10 7 12 4.5-2 7-6 7-12-1 0-4 0-7-2Z"></path><path data-dc-tpl="45" d="M9 11l2 2 4-4"></path></svg>
+          <h3 data-dc-tpl="46" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--burgundy); font-weight: 700; margin: 0px;">Learn from the team</h3>
+          <p data-dc-tpl="47" style="color: var(--ink-soft); font-size: 0.96rem; line-height: 1.6; margin: 0px;">Brewing classes, latte-art labs and cuppings led by people who do it every day.</p>
+        </div>
+
+        <div data-dc-tpl="48" style="display: flex; flex-direction: column; gap: 0.7rem;">
+          <svg data-dc-tpl="49" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle data-dc-tpl="50" cx="9" cy="8" r="3"></circle><circle data-dc-tpl="51" cx="17" cy="9" r="2.2"></circle><path data-dc-tpl="52" d="M3.5 19a5.5 5.5 0 0 1 11 0M15 19a4.5 4.5 0 0 1 6-3.9"></path></svg>
+          <h3 data-dc-tpl="53" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--burgundy); font-weight: 700; margin: 0px;">Somewhere to linger</h3>
+          <p data-dc-tpl="54" style="color: var(--ink-soft); font-size: 0.96rem; line-height: 1.6; margin: 0px;">A warm room to meet, work, or read the morning away. Come for the coffee, stay for the quiet.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="55" id="experience" style="background: var(--paper-2); padding: clamp(3rem, 2rem + 3vw, 5rem) 0px;">
+    <div data-dc-tpl="56" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <span data-dc-tpl="57" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);">The experience</span>
+      <h2 data-dc-tpl="58" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.9rem, 1.4rem + 2vw, 2.8rem); color: var(--burgundy); margin: 0.5rem 0px 0px; max-width: 22ch;">Three rooms, one long morning.</h2>
+
+      
+      <div data-dc-tpl="59" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: clamp(1.6rem, 1rem + 3vw, 3.5rem); align-items: center; margin-top: 3rem;">
+        <div data-dc-tpl="60" style="display: flex; flex-direction: column; gap: 0.9rem;">
+          <span data-dc-tpl="61" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);">01 · The taste bar</span>
+          <h3 data-dc-tpl="62" style="font-family: var(--font-display); font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.2rem); color: var(--burgundy); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0px;">Every drink we make, poured to order.</h3>
+          <p data-dc-tpl="63" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.65; margin: 0px;">Sit at the bar and work through the range — espresso and slow-pour coffee, loose-leaf tea, and cold-pressed juice. Our team talks you through each one and builds a tasting flight around what you like. It's the fastest way to find your everyday cup.</p>
+          <div data-dc-tpl="64" style="margin-top: 0.4rem;">
+            <div class="sc-host-x" data-dc-tpl="65" style="display: contents;"><a class="fr-link" href="coffee.html">Browse the coffee range<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </div>
+        <div data-dc-tpl="66" style="border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow-md); aspect-ratio: 5 / 4;">
+          <img data-dc-tpl="67" src="assets/images/espresso-pour.jpg" alt="Espresso poured at the bar" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+      </div>
+
+      
+      <div data-dc-tpl="68" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: clamp(1.6rem, 1rem + 3vw, 3.5rem); align-items: center; margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);">
+        <div data-dc-tpl="69" style="border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow-md); aspect-ratio: 5 / 4; order: 2;">
+          <img data-dc-tpl="70" src="assets/images/hero-machine.jpg" alt="The Atelier machine on display" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+        <div data-dc-tpl="71" style="display: flex; flex-direction: column; gap: 0.9rem; order: 1;">
+          <span data-dc-tpl="72" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);">02 · The showroom</span>
+          <h3 data-dc-tpl="73" style="font-family: var(--font-display); font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.2rem); color: var(--burgundy); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0px;">Get your hands on the whole line.</h3>
+          <p data-dc-tpl="74" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.65; margin: 0px;">The full Atelier range is set up and running. Pull your own shot, watch the machine learn a profile, and ask the questions a spec sheet can't answer. When you're ready, we'll help you pick the one that fits your kitchen — or arrange a home delivery.</p>
+          <div data-dc-tpl="75" style="margin-top: 0.4rem;">
+            <div class="sc-host-x" data-dc-tpl="76" style="display: contents;"><a class="fr-link" href="machines.html">Explore the machines<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </div>
+      </div>
+
+      
+      <div data-dc-tpl="77" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: clamp(1.6rem, 1rem + 3vw, 3.5rem); align-items: center; margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);">
+        <div data-dc-tpl="78" style="display: flex; flex-direction: column; gap: 0.9rem;">
+          <span data-dc-tpl="79" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);">03 · The table</span>
+          <h3 data-dc-tpl="80" style="font-family: var(--font-display); font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.2rem); color: var(--burgundy); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin: 0px;">Learn something, meet someone.</h3>
+          <p data-dc-tpl="81" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.65; margin: 0px;">Most evenings the long table hosts something — a brewing class, a latte-art lab, a cupping, or just a slow community morning. Classes are small and hands-on, and most are free with a drink. Check what's on below and save a seat.</p>
+          <div data-dc-tpl="82" style="margin-top: 0.4rem;">
+            <div class="sc-host-x" data-dc-tpl="83" style="display: contents;"><a class="fr-link" href="#whatson">See what's on<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </div>
+        <div data-dc-tpl="84" style="border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow-md); aspect-ratio: 5 / 4;">
+          <img data-dc-tpl="85" src="assets/images/tea-moment.jpg" alt="A shared moment over tea" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="86" id="whatson" style="background: var(--paper); padding: clamp(3rem, 2rem + 3vw, 5rem) 0px;">
+    <div data-dc-tpl="87" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="88" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; justify-content: space-between;">
+        <div data-dc-tpl="89">
+          <span data-dc-tpl="90" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);">What's on</span>
+          <h2 data-dc-tpl="91" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.9rem, 1.4rem + 2vw, 2.8rem); color: var(--burgundy); margin: 0.5rem 0px 0px;">This week at the table.</h2>
+        </div>
+        <p data-dc-tpl="92" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.72rem; color: var(--ink-soft);">Free with a drink unless noted</p>
+      </div>
+      <div data-dc-tpl="93" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1.6rem; margin-top: 2.4rem;">
+        
+          <article data-dc-tpl="95" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <span data-dc-tpl="96" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--terracotta);"><span class="sc-interp">Tuesday</span></span>
+            <h3 data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.3rem; color: var(--burgundy); font-weight: 700; line-height: 1.15; margin: 0px;"><span class="sc-interp">Origins cupping</span></h3>
+            <p data-dc-tpl="98" style="color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0px; flex: 1 1 0%;"><span class="sc-interp">Taste three single-origin lots side by side and learn to name what you taste.</span></p>
+            <div data-dc-tpl="99" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.6rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
+              <span data-dc-tpl="100" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.66rem; color: var(--ink-soft);"><span class="sc-interp">6:30–7:30pm</span></span>
+              <span data-dc-tpl="101" style="font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">Free</span></span>
+            </div>
+          </article>
+        
+          <article data-dc-tpl="95" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <span data-dc-tpl="96" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--terracotta);"><span class="sc-interp">Wednesday</span></span>
+            <h3 data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.3rem; color: var(--burgundy); font-weight: 700; line-height: 1.15; margin: 0px;"><span class="sc-interp">Latte-art lab</span></h3>
+            <p data-dc-tpl="98" style="color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0px; flex: 1 1 0%;"><span class="sc-interp">Hands-on milk steaming and pour practice on the Atelier line. Beginners welcome.</span></p>
+            <div data-dc-tpl="99" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.6rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
+              <span data-dc-tpl="100" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.66rem; color: var(--ink-soft);"><span class="sc-interp">6:00–7:30pm</span></span>
+              <span data-dc-tpl="101" style="font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">$15</span></span>
+            </div>
+          </article>
+        
+          <article data-dc-tpl="95" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <span data-dc-tpl="96" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--terracotta);"><span class="sc-interp">Thursday</span></span>
+            <h3 data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.3rem; color: var(--burgundy); font-weight: 700; line-height: 1.15; margin: 0px;"><span class="sc-interp">Home brewing 101</span></h3>
+            <p data-dc-tpl="98" style="color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0px; flex: 1 1 0%;"><span class="sc-interp">Dial in grind, dose and time for a filter cup you can repeat at home.</span></p>
+            <div data-dc-tpl="99" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.6rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
+              <span data-dc-tpl="100" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.66rem; color: var(--ink-soft);"><span class="sc-interp">6:30–8:00pm</span></span>
+              <span data-dc-tpl="101" style="font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">Free</span></span>
+            </div>
+          </article>
+        
+          <article data-dc-tpl="95" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <span data-dc-tpl="96" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--terracotta);"><span class="sc-interp">Saturday</span></span>
+            <h3 data-dc-tpl="97" style="font-family: var(--font-display); font-size: 1.3rem; color: var(--burgundy); font-weight: 700; line-height: 1.15; margin: 0px;"><span class="sc-interp">Slow morning cupping</span></h3>
+            <p data-dc-tpl="98" style="color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0px; flex: 1 1 0%;"><span class="sc-interp">A relaxed community tasting over pastries. Drop in, no booking needed.</span></p>
+            <div data-dc-tpl="99" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.6rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
+              <span data-dc-tpl="100" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.66rem; color: var(--ink-soft);"><span class="sc-interp">9:00–11:00am</span></span>
+              <span data-dc-tpl="101" style="font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--ink);"><span class="sc-interp">Free</span></span>
+            </div>
+          </article>
+        
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="102" id="locations" style="background: var(--paper-2); padding: clamp(3rem, 2rem + 3vw, 5rem) 0px;">
+    <div data-dc-tpl="103" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <span data-dc-tpl="104" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);">Find us</span>
+      <h2 data-dc-tpl="105" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2.2rem, 1.5rem + 3vw, 3.6rem); color: var(--burgundy); margin: 0.5rem 0px 0px; max-width: 16ch; line-height: 1.04;">There's a Fréscopa in your town.</h2>
+      <p data-dc-tpl="106" style="color: var(--ink-soft); font-size: 1.1rem; line-height: 1.6; margin: 0.9rem 0px 0px; max-width: 54ch;">From flagship showrooms to the café on the corner, we're probably closer than you think. Every café pours the full range — showrooms and workshop tables vary by location.</p>
+
+      
+      <div data-dc-tpl="107" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.6rem; margin-top: 2.4rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1.8rem 0px;">
+        
+          <div data-dc-tpl="109" style="display: flex; flex-direction: column; gap: 0.3rem;">
+            <span data-dc-tpl="110" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem); color: var(--burgundy); line-height: 1;"><span class="sc-interp">1,200+</span></span>
+            <span data-dc-tpl="111" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--ink-soft);"><span class="sc-interp">Cafés nationwide</span></span>
+          </div>
+        
+          <div data-dc-tpl="109" style="display: flex; flex-direction: column; gap: 0.3rem;">
+            <span data-dc-tpl="110" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem); color: var(--burgundy); line-height: 1;"><span class="sc-interp">190</span></span>
+            <span data-dc-tpl="111" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--ink-soft);"><span class="sc-interp">Cities</span></span>
+          </div>
+        
+          <div data-dc-tpl="109" style="display: flex; flex-direction: column; gap: 0.3rem;">
+            <span data-dc-tpl="110" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem); color: var(--burgundy); line-height: 1;"><span class="sc-interp">48</span></span>
+            <span data-dc-tpl="111" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--ink-soft);"><span class="sc-interp">States</span></span>
+          </div>
+        
+          <div data-dc-tpl="109" style="display: flex; flex-direction: column; gap: 0.3rem;">
+            <span data-dc-tpl="110" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem); color: var(--burgundy); line-height: 1;"><span class="sc-interp">12</span></span>
+            <span data-dc-tpl="111" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--ink-soft);"><span class="sc-interp">Flagship showrooms</span></span>
+          </div>
+        
+      </div>
+
+      
+      <article data-dc-tpl="112" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-md); margin-top: 2.4rem;">
+        <div data-dc-tpl="113" style="position: relative; min-height: 320px; background: var(--paper-3);">
+          <div class="sc-host-x" data-dc-tpl="114" style="display: contents;"><image-slot id="cafe-flagship" shape="rect" placeholder="Fréscopa SoHo flagship"></image-slot></div>
+          <div data-dc-tpl="115" style="position: absolute; top: 1.1rem; left: 1.1rem;">
+            <div class="sc-host-x" data-dc-tpl="116" style="display: contents;"><span class="fr-badge fr-badge--burgundy">Flagship</span></div>
+          </div>
+        </div>
+        <div data-dc-tpl="117" style="padding: clamp(1.6rem, 1rem + 2vw, 2.6rem); display: flex; flex-direction: column; gap: 0.6rem;">
+          <span data-dc-tpl="118" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; color: var(--terracotta);">New York · SoHo</span>
+          <h3 data-dc-tpl="119" style="font-family: var(--font-display); font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.4rem); color: var(--burgundy); font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; margin: 0px;">The Fréscopa flagship</h3>
+          <p data-dc-tpl="120" style="color: var(--ink-soft); font-size: 1.02rem; line-height: 1.6; margin: 0.2rem 0px 0px;">Our largest room: a full taste bar, the complete showroom, and a dedicated workshop table upstairs. The best place to spend an unhurried afternoon in the Fréscopa world.</p>
+          <div data-dc-tpl="121" style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem;">
+            <span data-dc-tpl="122" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.62rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.22rem 0.6rem;">Café</span>
+            <span data-dc-tpl="123" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.62rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.22rem 0.6rem;">Showroom</span>
+            <span data-dc-tpl="124" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.62rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.22rem 0.6rem;">Workshops</span>
+          </div>
+          <div data-dc-tpl="125" style="display: flex; flex-wrap: wrap; gap: 0.3rem 1.4rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--ink); font-size: 0.95rem;">
+            <span data-dc-tpl="126">112 Greene Street, New York, NY</span>
+            <span data-dc-tpl="127" style="color: var(--ink-soft);">Mon–Sun · 7am–8pm</span>
+          </div>
+          <div data-dc-tpl="128" style="margin-top: 0.9rem;">
+            <div class="sc-host-x" data-dc-tpl="129" style="display: contents;"><a class="fr-btn fr-btn--terracotta" href="#">Get directions<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+          </div>
+        </div>
+      </article>
+
+      
+      <div data-dc-tpl="130" style="margin-top: clamp(2rem, 1.5rem + 2vw, 3rem);">
+        <div data-dc-tpl="131" style="position: relative;">
+          <svg data-dc-tpl="132" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; left: 1.1rem; top: 50%; transform: translateY(-50%); pointer-events: none;"><circle data-dc-tpl="133" cx="11" cy="11" r="7"></circle><path data-dc-tpl="134" d="m20 20-3.5-3.5"></path></svg>
+          <input data-dc-tpl="135" type="text" placeholder="Search by city, neighborhood or ZIP" value="" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 1rem; color: var(--ink); background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.95rem 1.2rem 0.95rem 2.9rem; outline: none;">
+        </div>
+        <div data-dc-tpl="136" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+          
+            <button data-dc-tpl="138" type="button" style="font-family: var(--font-body); font-size: 0.88rem; font-weight: 500; padding: 0.45rem 1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: var(--burgundy); color: var(--cream); border: 1px solid var(--burgundy);"><span class="sc-interp">All regions</span></button>
+          
+            <button data-dc-tpl="138" type="button" style="font-family: var(--font-body); font-size: 0.88rem; font-weight: 500; padding: 0.45rem 1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">East</span></button>
+          
+            <button data-dc-tpl="138" type="button" style="font-family: var(--font-body); font-size: 0.88rem; font-weight: 500; padding: 0.45rem 1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Midwest</span></button>
+          
+            <button data-dc-tpl="138" type="button" style="font-family: var(--font-body); font-size: 0.88rem; font-weight: 500; padding: 0.45rem 1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">South</span></button>
+          
+            <button data-dc-tpl="138" type="button" style="font-family: var(--font-body); font-size: 0.88rem; font-weight: 500; padding: 0.45rem 1rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.25s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">West</span></button>
+          
+        </div>
+
+        <div data-dc-tpl="139" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(1.6rem, 1rem + 2vw, 2.6rem); margin-top: 1.6rem; align-items: start;">
+
+          
+          <div data-dc-tpl="140" style="position: sticky; top: 92px; border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--line); background: var(--paper-3); aspect-ratio: 4 / 5; min-height: 420px;">
+            <div class="sc-host-x" data-dc-tpl="141" style="display: contents;"><image-slot id="cafe-map" shape="rect" placeholder="Map of Fréscopa cafés near you"></image-slot></div>
+          </div>
+
+          
+          <div data-dc-tpl="142" style="display: flex; flex-direction: column; gap: 1rem;">
+            <p data-dc-tpl="143" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.72rem; color: var(--ink-soft); margin: 0px;"><span class="sc-interp">26 cafés near you</span></p>
+
+            <div data-dc-tpl="144" style="display: flex; flex-direction: column; gap: 0.9rem; max-height: 640px; overflow-y: auto; padding-right: 0.5rem;">
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Williamsburg</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Brooklyn, NY</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">134 N 6th St, Brooklyn, NY</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–8pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Seaport</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Boston, MA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">48 Harbor Way, Boston, MA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Back Bay</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Boston, MA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">221 Newbury St, Boston, MA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 6:30am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Rittenhouse</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Philadelphia, PA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1820 Walnut St, Philadelphia, PA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Georgetown</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Washington, DC</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">3040 M St NW, Washington, DC</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Ponce City Market</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Atlanta, GA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">675 Ponce De Leon Ave NE, Atlanta, GA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–8pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa West Loop</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Chicago, IL</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">905 W Fulton Market, Chicago, IL</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Wicker Park</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Chicago, IL</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1547 N Milwaukee Ave, Chicago, IL</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 6:30am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa North Loop</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Minneapolis, MN</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">215 N Washington Ave, Minneapolis, MN</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–6pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Crossroads</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Kansas City, MO</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1801 Grand Blvd, Kansas City, MO</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–6pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa RiNo</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Denver, CO</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">2601 Larimer St, Denver, CO</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa South Congress</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Austin, TX</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1601 S Congress Ave, Austin, TX</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–6pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa The Domain</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Austin, TX</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">11700 Domain Blvd, Austin, TX</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–8pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Deep Ellum</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Dallas, TX</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">2822 Main St, Dallas, TX</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa The Heights</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Houston, TX</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">714 Yale St, Houston, TX</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Wynwood</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Miami, FL</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">2750 NW 3rd Ave, Miami, FL</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–9pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Warehouse District</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">New Orleans, LA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">640 Julia St, New Orleans, LA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Ferry Building</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">San Francisco, CA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1 Ferry Building, San Francisco, CA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Hayes Valley</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">San Francisco, CA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">556 Hayes St, San Francisco, CA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 6:30am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Capitol Hill</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Seattle, WA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">520 E Pine St, Seattle, WA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 6:30am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Ballard</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Seattle, WA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">5405 Ballard Ave NW, Seattle, WA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Pearl District</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Portland, OR</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1130 NW Everett St, Portland, OR</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Arts District</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Los Angeles, CA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">720 E 3rd St, Los Angeles, CA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Workshops</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–8pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Silver Lake</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Los Angeles, CA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">2909 Sunset Blvd, Los Angeles, CA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 6:30am–8pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Little Italy</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">San Diego, CA</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">1660 India St, San Diego, CA</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Showroom</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+                <article data-dc-tpl="146" style="display: flex; gap: 1rem; align-items: flex-start; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.1rem 1.3rem;">
+                  <svg data-dc-tpl="147" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 0.15rem;"><path data-dc-tpl="148" d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"></path><circle data-dc-tpl="149" cx="12" cy="11" r="2.2"></circle></svg>
+                  <div data-dc-tpl="150" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <div data-dc-tpl="151" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline;">
+                      <h3 data-dc-tpl="152" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--burgundy); font-weight: 700; line-height: 1.12; margin: 0px;"><span class="sc-interp">Fréscopa Roosevelt Row</span></h3>
+                      <span data-dc-tpl="153" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.64rem; color: var(--terracotta); white-space: nowrap;"><span class="sc-interp">Phoenix, AZ</span></span>
+                    </div>
+                    <p data-dc-tpl="154" style="color: var(--ink-soft); font-size: 0.9rem; line-height: 1.45; margin: 0px;"><span class="sc-interp">814 N 2nd St, Phoenix, AZ</span></p>
+                    <div data-dc-tpl="155" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem;">
+                      
+                        <span data-dc-tpl="157" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.6rem; color: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.2rem 0.55rem;"><span class="sc-interp">Café</span></span>
+                      
+                    </div>
+                    <div data-dc-tpl="158" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--line);">
+                      <span data-dc-tpl="159" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; color: var(--ink-soft);"><span class="sc-interp">Mon–Sun · 7am–7pm</span></span>
+                      <div class="sc-host-x" data-dc-tpl="160" style="display: contents;"><a class="fr-link fr-link--sm" href="#">Directions<span class="fr-link__arrow" aria-hidden="true">→</span></a></div>
+                    </div>
+                  </div>
+                </article>
+              
+
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="165" id="tour" style="background: var(--paper); padding: clamp(3rem, 2rem + 3vw, 5rem) 0px;">
+    <div data-dc-tpl="166" style="max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter);">
+      <div data-dc-tpl="167" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(2rem, 1rem + 4vw, 4rem); align-items: start;">
+
+        
+        <div data-dc-tpl="168" style="display: flex; flex-direction: column; gap: 1rem;">
+          <span data-dc-tpl="169" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--terracotta);">Book an Atelier tour</span>
+          <h2 data-dc-tpl="170" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(1.9rem, 1.4rem + 2vw, 2.8rem); color: var(--burgundy); margin: 0px; line-height: 1.06; max-width: 18ch;">A guided hour with the machine that learns you.</h2>
+          <p data-dc-tpl="171" style="color: var(--ink-soft); font-size: 1.05rem; line-height: 1.65; margin: 0.2rem 0px 0px; max-width: 46ch;">Book a free, 45-minute private tour at any showroom café. A specialist walks you through the Atelier line, dials a shot to your taste, and answers everything a spec sheet can't. No obligation to buy.</p>
+          <ul data-dc-tpl="172" style="list-style: none; padding: 0px; margin: 0.6rem 0px 0px; display: flex; flex-direction: column; gap: 0.7rem;">
+            <li data-dc-tpl="173" style="display: flex; gap: 0.7rem; align-items: baseline; color: var(--ink); font-size: 1rem;"><span data-dc-tpl="174" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span><span data-dc-tpl="175">45 minutes, one-to-one with a specialist</span></li>
+            <li data-dc-tpl="176" style="display: flex; gap: 0.7rem; align-items: baseline; color: var(--ink); font-size: 1rem;"><span data-dc-tpl="177" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span><span data-dc-tpl="178">Taste the full range, dialled to your palate</span></li>
+            <li data-dc-tpl="179" style="display: flex; gap: 0.7rem; align-items: baseline; color: var(--ink); font-size: 1rem;"><span data-dc-tpl="180" aria-hidden="true" style="color: var(--terracotta); font-weight: 700;">→</span><span data-dc-tpl="181">Free, and yours to book whenever suits</span></li>
+          </ul>
+        </div>
+
+        
+        <div data-dc-tpl="182" style="background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--shadow-md); padding: clamp(1.5rem, 1rem + 2vw, 2.4rem);">
+
+          
+            <div data-dc-tpl="184" style="display: flex; flex-direction: column; gap: 1.1rem;">
+              <h3 data-dc-tpl="185" style="font-family: var(--font-display); font-size: 1.5rem; color: var(--burgundy); font-weight: 800; margin: 0px;">Reserve your tour</h3>
+
+              <label data-dc-tpl="186" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <span data-dc-tpl="187" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Café</span>
+                <select data-dc-tpl="188" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                  <option data-dc-tpl="189" value="">Choose a showroom café</option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa SoHo, Flagship — New York, NY"><span class="sc-interp">Fréscopa SoHo, Flagship — New York, NY</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Williamsburg — Brooklyn, NY"><span class="sc-interp">Fréscopa Williamsburg — Brooklyn, NY</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Seaport — Boston, MA"><span class="sc-interp">Fréscopa Seaport — Boston, MA</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Georgetown — Washington, DC"><span class="sc-interp">Fréscopa Georgetown — Washington, DC</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Ponce City Market — Atlanta, GA"><span class="sc-interp">Fréscopa Ponce City Market — Atlanta, GA</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa West Loop — Chicago, IL"><span class="sc-interp">Fréscopa West Loop — Chicago, IL</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa RiNo — Denver, CO"><span class="sc-interp">Fréscopa RiNo — Denver, CO</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa The Domain — Austin, TX"><span class="sc-interp">Fréscopa The Domain — Austin, TX</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Deep Ellum — Dallas, TX"><span class="sc-interp">Fréscopa Deep Ellum — Dallas, TX</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Wynwood — Miami, FL"><span class="sc-interp">Fréscopa Wynwood — Miami, FL</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Ferry Building — San Francisco, CA"><span class="sc-interp">Fréscopa Ferry Building — San Francisco, CA</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Ballard — Seattle, WA"><span class="sc-interp">Fréscopa Ballard — Seattle, WA</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Arts District — Los Angeles, CA"><span class="sc-interp">Fréscopa Arts District — Los Angeles, CA</span></option>
+                  
+                    <option data-dc-tpl="191" value="Fréscopa Little Italy — San Diego, CA"><span class="sc-interp">Fréscopa Little Italy — San Diego, CA</span></option>
+                  
+                </select>
+              </label>
+
+              <div data-dc-tpl="192" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem;">
+                <label data-dc-tpl="193" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                  <span data-dc-tpl="194" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Date</span>
+                  <input data-dc-tpl="195" type="date" value="" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                </label>
+                <label data-dc-tpl="196" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                  <span data-dc-tpl="197" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Time</span>
+                  <select data-dc-tpl="198" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                    <option data-dc-tpl="199" value="">Pick a slot</option>
+                    
+                      <option data-dc-tpl="201" value="9:00 AM"><span class="sc-interp">9:00 AM</span></option>
+                    
+                      <option data-dc-tpl="201" value="10:30 AM"><span class="sc-interp">10:30 AM</span></option>
+                    
+                      <option data-dc-tpl="201" value="12:00 PM"><span class="sc-interp">12:00 PM</span></option>
+                    
+                      <option data-dc-tpl="201" value="1:30 PM"><span class="sc-interp">1:30 PM</span></option>
+                    
+                      <option data-dc-tpl="201" value="3:00 PM"><span class="sc-interp">3:00 PM</span></option>
+                    
+                      <option data-dc-tpl="201" value="4:30 PM"><span class="sc-interp">4:30 PM</span></option>
+                    
+                  </select>
+                </label>
+              </div>
+
+              <label data-dc-tpl="202" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <span data-dc-tpl="203" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Guests</span>
+                <select data-dc-tpl="204" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                  
+                    <option data-dc-tpl="206" value="Just me"><span class="sc-interp">Just me</span></option>
+                  
+                    <option data-dc-tpl="206" value="2 guests"><span class="sc-interp">2 guests</span></option>
+                  
+                    <option data-dc-tpl="206" value="3 guests"><span class="sc-interp">3 guests</span></option>
+                  
+                    <option data-dc-tpl="206" value="4 guests"><span class="sc-interp">4 guests</span></option>
+                  
+                    <option data-dc-tpl="206" value="5+ guests"><span class="sc-interp">5+ guests</span></option>
+                  
+                </select>
+              </label>
+
+              <label data-dc-tpl="207" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <span data-dc-tpl="208" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Name</span>
+                <input data-dc-tpl="209" type="text" placeholder="Your name" value="" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+              </label>
+
+              <div data-dc-tpl="210" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem;">
+                <label data-dc-tpl="211" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                  <span data-dc-tpl="212" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Email</span>
+                  <input data-dc-tpl="213" type="email" placeholder="you@email.com" value="" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                </label>
+                <label data-dc-tpl="214" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                  <span data-dc-tpl="215" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">Phone <span data-dc-tpl="216" style="text-transform: none; letter-spacing: 0px; color: var(--ink-soft); opacity: 0.7;">(optional)</span></span>
+                  <input data-dc-tpl="217" type="tel" placeholder="(555) 000-0000" value="" style="width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.98rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 0.75rem 0.95rem; outline: none;">
+                </label>
+              </div>
+
+              <div data-dc-tpl="218" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <span data-dc-tpl="219" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.66rem; color: var(--ink-soft);">I'd most like to see <span data-dc-tpl="220" style="text-transform: none; letter-spacing: 0px; opacity: 0.7;">(optional)</span></span>
+                <div data-dc-tpl="221" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                  
+                    <button data-dc-tpl="223" type="button" style="font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; padding: 0.42rem 0.85rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.2s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">The Atelier line</span></button>
+                  
+                    <button data-dc-tpl="223" type="button" style="font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; padding: 0.42rem 0.85rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.2s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Espresso &amp; milk</span></button>
+                  
+                    <button data-dc-tpl="223" type="button" style="font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; padding: 0.42rem 0.85rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.2s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Cold brew &amp; tea</span></button>
+                  
+                    <button data-dc-tpl="223" type="button" style="font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; padding: 0.42rem 0.85rem; border-radius: var(--r-pill); cursor: pointer; transition: all 0.2s var(--ease-quint); background: transparent; color: var(--ink); border: 1px solid var(--line);"><span class="sc-interp">Bean subscriptions</span></button>
+                  
+                </div>
+              </div>
+
+              
+
+              <div data-dc-tpl="226" style="margin-top: 0.3rem;">
+                <div class="sc-host-x" data-dc-tpl="227" style="display: contents;"><button class="fr-btn fr-btn--terracotta">Request this tour<span class="fr-btn__arrow" aria-hidden="true">→</span></button></div>
+              </div>
+              <p data-dc-tpl="228" style="color: var(--ink-soft); font-size: 0.8rem; line-height: 1.5; margin: 0px;">We'll confirm by email within one business day. No payment needed to book.</p>
+            </div>
+          
+
+          
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section data-dc-tpl="240" style="position: relative; background: var(--charcoal); overflow: hidden; padding: clamp(4rem, 3rem + 4vw, 7rem) 0px;">
+    <div data-dc-tpl="241" style="position: absolute; top: -20%; right: -10%; width: 60%; height: 140%; background: radial-gradient(circle, color-mix(in oklch, var(--amber) 26%, transparent) 0%, transparent 62%); pointer-events: none;"></div>
+    <div data-dc-tpl="242" style="position: relative; max-width: var(--content); margin-inline: auto; padding-inline: var(--gutter); text-align: center;">
+      <span data-dc-tpl="243" style="font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.76rem; color: var(--amber);">Come say hello</span>
+      <h2 data-dc-tpl="244" style="font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(2rem, 1.4rem + 2.6vw, 3.2rem); color: var(--cream); margin: 1rem auto 0px; max-width: 18ch; line-height: 1.05;">The kettle's on. The door's open.</h2>
+      <p data-dc-tpl="245" style="color: rgba(255, 248, 240, 0.82); font-size: 1.1rem; line-height: 1.6; margin: 1.1rem auto 0px; max-width: 44ch;">No appointment, no pressure — just a good cup and a warm room. We'd love to see you.</p>
+      <div data-dc-tpl="246" style="display: flex; gap: 0.9rem; flex-wrap: wrap; justify-content: center; margin-top: 1.8rem;">
+        <div class="sc-host-x" data-dc-tpl="247" style="display: contents;"><a class="fr-btn fr-btn--cream" href="#locations">Find a café<span class="fr-btn__arrow" aria-hidden="true">→</span></a></div>
+        <div class="sc-host-x" data-dc-tpl="248" style="display: contents;"><a class="fr-btn fr-btn--ghost" href="#tour">Book an Atelier tour</a></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sc-host-x" data-dc-tpl="249" style="display: contents;"><footer class="fr-ftr"><div class="fr-ftr__inner"><div class="fr-ftr__brand"><img class="fr-ftr__logo" src="assets/frescopa-logo-light.svg" alt="Fréscopa" width="168" height="45"><p class="fr-ftr__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p><form class="fr-ftr__signup"><label class="fr-ftr__signup-label" for="fr-ftr-email">A little warmth in your inbox.</label><div class="fr-ftr__signup-row"><input type="email" class="fr-input fr-input--dark" id="fr-ftr-email" placeholder="you@example.com" autocomplete="email" value=""><button class="fr-btn fr-btn--cream" type="submit">Sign up</button></div></form></div><nav class="fr-ftr__cols" aria-label="Footer"><div class="fr-ftr__col"><h3>Shop</h3><a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a></div><div class="fr-ftr__col"><h3>Company</h3><a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a></div><div class="fr-ftr__col"><h3>Support</h3><a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a></div></nav></div><div class="fr-ftr__legal"><div class="fr-ftr__social"><a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"></circle></svg></a><a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"></circle><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"></path></svg></a><a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"></rect><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"></path></svg></a></div><p class="fr-ftr__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p></div></footer></div></div></div></div>
+<script type="text/x-dc" data-dc-script="">
+class Component extends DCLogic {
+  state = {
+    cart: 0, region: 'all', query: '',
+    form: { location: '', date: '', time: '', party: 'Just me', name: '', email: '', phone: '', interests: [] },
+    tourError: '', tourDone: false, confirm: null,
+  };
+  componentDidMount() {
+    let c = 0;
+    try { c = parseInt(localStorage.getItem('frescopa_cart') || '0', 10) || 0; } catch (e) {}
+    this.setState({ cart: c });
+    this._sync = (e) => { if (e.key === 'frescopa_cart') this.setState({ cart: parseInt(e.newValue || '0', 10) || 0 }); };
+    window.addEventListener('storage', this._sync);
+  }
+  componentWillUnmount() { if (this._sync) window.removeEventListener('storage', this._sync); }
+  setRegion = (r) => this.setState({ region: r });
+  onSearch = (e) => this.setState({ query: e.target.value });
+  setField = (k, v) => this.setState((s) => ({ form: { ...s.form, [k]: v }, tourError: '' }));
+  toggleInterest = (label) => this.setState((s) => {
+    const has = s.form.interests.includes(label);
+    const interests = has ? s.form.interests.filter((x) => x !== label) : [...s.form.interests, label];
+    return { form: { ...s.form, interests } };
+  });
+  submitTour = () => {
+    const f = this.state.form;
+    if (!f.location) return this.setState({ tourError: 'Please choose which café you\u2019d like to visit.' });
+    if (!f.date) return this.setState({ tourError: 'Please pick a date for your tour.' });
+    if (!f.time) return this.setState({ tourError: 'Please choose a time slot.' });
+    if (!f.name.trim()) return this.setState({ tourError: 'Please add your name.' });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) return this.setState({ tourError: 'Please enter a valid email address.' });
+    this.setState({ tourDone: true, tourError: '', confirm: { ...f } });
+  };
+  resetTour = () => this.setState({
+    form: { location: '', date: '', time: '', party: 'Just me', name: '', email: '', phone: '', interests: [] },
+    tourError: '', tourDone: false, confirm: null,
+  });
+  renderVals() {
+    const nav = [
+      { label: 'The Atelier', href: 'landing.html' },
+      { label: 'Machines', href: 'machines.html' },
+      { label: 'Beverages', href: 'beverages.html' },
+      { label: 'Café', href: 'cafe.html' },
+      { label: 'Journal', href: 'blog.html' },
+    ];
+
+    const events = [
+      { day: 'Tuesday', name: 'Origins cupping', blurb: 'Taste three single-origin lots side by side and learn to name what you taste.', time: '6:30–7:30pm', price: 'Free' },
+      { day: 'Wednesday', name: 'Latte-art lab', blurb: 'Hands-on milk steaming and pour practice on the Atelier line. Beginners welcome.', time: '6:00–7:30pm', price: '$15' },
+      { day: 'Thursday', name: 'Home brewing 101', blurb: 'Dial in grind, dose and time for a filter cup you can repeat at home.', time: '6:30–8:00pm', price: 'Free' },
+      { day: 'Saturday', name: 'Slow morning cupping', blurb: 'A relaxed community tasting over pastries. Drop in, no booking needed.', time: '9:00–11:00am', price: 'Free' },
+    ];
+
+    const stats = [
+      { value: '1,200+', label: 'Cafés nationwide' },
+      { value: '190', label: 'Cities' },
+      { value: '48', label: 'States' },
+      { value: '12', label: 'Flagship showrooms' },
+    ];
+
+    const allLocations = [
+      { id: 'nyc-williamsburg', city: 'Brooklyn', state: 'NY', area: 'Williamsburg', region: 'east', name: 'Fréscopa Williamsburg', address: '134 N 6th St, Brooklyn, NY', hours: 'Mon–Sun · 7am–8pm', tags: ['Café', 'Showroom'] },
+      { id: 'boston-seaport', city: 'Boston', state: 'MA', area: 'Seaport', region: 'east', name: 'Fréscopa Seaport', address: '48 Harbor Way, Boston, MA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'boston-backbay', city: 'Boston', state: 'MA', area: 'Back Bay', region: 'east', name: 'Fréscopa Back Bay', address: '221 Newbury St, Boston, MA', hours: 'Mon–Sun · 6:30am–7pm', tags: ['Café'] },
+      { id: 'philly', city: 'Philadelphia', state: 'PA', area: 'Rittenhouse', region: 'east', name: 'Fréscopa Rittenhouse', address: '1820 Walnut St, Philadelphia, PA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Workshops'] },
+      { id: 'dc', city: 'Washington', state: 'DC', area: 'Georgetown', region: 'east', name: 'Fréscopa Georgetown', address: '3040 M St NW, Washington, DC', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'atlanta', city: 'Atlanta', state: 'GA', area: 'Ponce City', region: 'east', name: 'Fréscopa Ponce City Market', address: '675 Ponce De Leon Ave NE, Atlanta, GA', hours: 'Mon–Sun · 7am–8pm', tags: ['Café', 'Showroom', 'Workshops'] },
+      { id: 'chicago-westloop', city: 'Chicago', state: 'IL', area: 'West Loop', region: 'central', name: 'Fréscopa West Loop', address: '905 W Fulton Market, Chicago, IL', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom', 'Workshops'] },
+      { id: 'chicago-wicker', city: 'Chicago', state: 'IL', area: 'Wicker Park', region: 'central', name: 'Fréscopa Wicker Park', address: '1547 N Milwaukee Ave, Chicago, IL', hours: 'Mon–Sun · 6:30am–7pm', tags: ['Café'] },
+      { id: 'minneapolis', city: 'Minneapolis', state: 'MN', area: 'North Loop', region: 'central', name: 'Fréscopa North Loop', address: '215 N Washington Ave, Minneapolis, MN', hours: 'Mon–Sun · 7am–6pm', tags: ['Café', 'Workshops'] },
+      { id: 'kansascity', city: 'Kansas City', state: 'MO', area: 'Crossroads', region: 'central', name: 'Fréscopa Crossroads', address: '1801 Grand Blvd, Kansas City, MO', hours: 'Mon–Sun · 7am–6pm', tags: ['Café'] },
+      { id: 'denver', city: 'Denver', state: 'CO', area: 'RiNo', region: 'central', name: 'Fréscopa RiNo', address: '2601 Larimer St, Denver, CO', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'austin-congress', city: 'Austin', state: 'TX', area: 'South Congress', region: 'south', name: 'Fréscopa South Congress', address: '1601 S Congress Ave, Austin, TX', hours: 'Mon–Sun · 7am–6pm', tags: ['Café', 'Workshops'] },
+      { id: 'austin-domain', city: 'Austin', state: 'TX', area: 'The Domain', region: 'south', name: 'Fréscopa The Domain', address: '11700 Domain Blvd, Austin, TX', hours: 'Mon–Sun · 7am–8pm', tags: ['Café', 'Showroom'] },
+      { id: 'dallas', city: 'Dallas', state: 'TX', area: 'Deep Ellum', region: 'south', name: 'Fréscopa Deep Ellum', address: '2822 Main St, Dallas, TX', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'houston', city: 'Houston', state: 'TX', area: 'The Heights', region: 'south', name: 'Fréscopa The Heights', address: '714 Yale St, Houston, TX', hours: 'Mon–Sun · 7am–7pm', tags: ['Café'] },
+      { id: 'miami', city: 'Miami', state: 'FL', area: 'Wynwood', region: 'south', name: 'Fréscopa Wynwood', address: '2750 NW 3rd Ave, Miami, FL', hours: 'Mon–Sun · 7am–9pm', tags: ['Café', 'Showroom', 'Workshops'] },
+      { id: 'neworleans', city: 'New Orleans', state: 'LA', area: 'Warehouse District', region: 'south', name: 'Fréscopa Warehouse District', address: '640 Julia St, New Orleans, LA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Workshops'] },
+      { id: 'sf-ferry', city: 'San Francisco', state: 'CA', area: 'Ferry Building', region: 'west', name: 'Fréscopa Ferry Building', address: '1 Ferry Building, San Francisco, CA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'sf-hayes', city: 'San Francisco', state: 'CA', area: 'Hayes Valley', region: 'west', name: 'Fréscopa Hayes Valley', address: '556 Hayes St, San Francisco, CA', hours: 'Mon–Sun · 6:30am–7pm', tags: ['Café'] },
+      { id: 'seattle-caphill', city: 'Seattle', state: 'WA', area: 'Capitol Hill', region: 'west', name: 'Fréscopa Capitol Hill', address: '520 E Pine St, Seattle, WA', hours: 'Mon–Sun · 6:30am–7pm', tags: ['Café', 'Workshops'] },
+      { id: 'seattle-ballard', city: 'Seattle', state: 'WA', area: 'Ballard', region: 'west', name: 'Fréscopa Ballard', address: '5405 Ballard Ave NW, Seattle, WA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'portland', city: 'Portland', state: 'OR', area: 'Pearl District', region: 'west', name: 'Fréscopa Pearl District', address: '1130 NW Everett St, Portland, OR', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Workshops'] },
+      { id: 'la-arts', city: 'Los Angeles', state: 'CA', area: 'Arts District', region: 'west', name: 'Fréscopa Arts District', address: '720 E 3rd St, Los Angeles, CA', hours: 'Mon–Sun · 7am–8pm', tags: ['Café', 'Showroom', 'Workshops'] },
+      { id: 'la-silverlake', city: 'Los Angeles', state: 'CA', area: 'Silver Lake', region: 'west', name: 'Fréscopa Silver Lake', address: '2909 Sunset Blvd, Los Angeles, CA', hours: 'Mon–Sun · 6:30am–8pm', tags: ['Café'] },
+      { id: 'sandiego', city: 'San Diego', state: 'CA', area: 'Little Italy', region: 'west', name: 'Fréscopa Little Italy', address: '1660 India St, San Diego, CA', hours: 'Mon–Sun · 7am–7pm', tags: ['Café', 'Showroom'] },
+      { id: 'phoenix', city: 'Phoenix', state: 'AZ', area: 'Roosevelt Row', region: 'west', name: 'Fréscopa Roosevelt Row', address: '814 N 2nd St, Phoenix, AZ', hours: 'Mon–Sun · 7am–7pm', tags: ['Café'] },
+    ];
+
+    const region = this.state.region;
+    const q = this.state.query.trim().toLowerCase();
+    const filtered = allLocations.filter((l) => {
+      if (region !== 'all' && l.region !== region) return false;
+      if (!q) return true;
+      return [l.name, l.city, l.area, l.state, l.address].some((f) => f.toLowerCase().includes(q));
+    });
+    const locations = filtered.map((l) => ({ ...l, cityState: l.city + ', ' + l.state }));
+    const noResults = filtered.length === 0;
+    const countLabel = noResults
+      ? 'No matches'
+      : filtered.length + (filtered.length === 1 ? ' café near you' : ' cafés near you');
+
+    const defs = [
+      { key: 'all', label: 'All regions' },
+      { key: 'east', label: 'East' },
+      { key: 'central', label: 'Midwest' },
+      { key: 'south', label: 'South' },
+      { key: 'west', label: 'West' },
+    ];
+    const base = { fontFamily: 'var(--font-body)', fontSize: '0.88rem', fontWeight: 500, padding: '0.45rem 1rem', borderRadius: 'var(--r-pill)', cursor: 'pointer', transition: 'all 0.25s var(--ease-quint)' };
+    const regionPills = defs.map((d) => ({
+      label: d.label,
+      onClick: () => this.setRegion(d.key),
+      style: d.key === region
+        ? { ...base, background: 'var(--burgundy)', color: 'var(--cream)', border: '1px solid var(--burgundy)' }
+        : { ...base, background: 'transparent', color: 'var(--ink)', border: '1px solid var(--line)' },
+    }));
+
+    // ---- Atelier tour form ----
+    const form = this.state.form;
+    const mk = (k) => ({ v: form[k], on: (e) => this.setField(k, e.target.value) });
+    const fld = { location: mk('location'), date: mk('date'), time: mk('time'), party: mk('party'), name: mk('name'), email: mk('email'), phone: mk('phone') };
+    const showrooms = allLocations.filter((l) => l.tags.includes('Showroom')).map((l) => l.name + ' — ' + l.city + ', ' + l.state);
+    const tourLocations = ['Fréscopa SoHo, Flagship — New York, NY', ...showrooms];
+    const timeSlots = ['9:00 AM', '10:30 AM', '12:00 PM', '1:30 PM', '3:00 PM', '4:30 PM'];
+    const partySizes = ['Just me', '2 guests', '3 guests', '4 guests', '5+ guests'];
+    const chipBase = { fontFamily: 'var(--font-body)', fontSize: '0.82rem', fontWeight: 500, padding: '0.42rem 0.85rem', borderRadius: 'var(--r-pill)', cursor: 'pointer', transition: 'all 0.2s var(--ease-quint)' };
+    const interestChips = ['The Atelier line', 'Espresso & milk', 'Cold brew & tea', 'Bean subscriptions'].map((label) => {
+      const active = form.interests.includes(label);
+      return {
+        label, onClick: () => this.toggleInterest(label),
+        style: active
+          ? { ...chipBase, background: 'var(--burgundy)', color: 'var(--cream)', border: '1px solid var(--burgundy)' }
+          : { ...chipBase, background: 'transparent', color: 'var(--ink)', border: '1px solid var(--line)' },
+      };
+    });
+    const inputStyle = { width: '100%', boxSizing: 'border-box', fontFamily: 'var(--font-body)', fontSize: '0.98rem', color: 'var(--ink)', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: '14px', padding: '0.75rem 0.95rem', outline: 'none' };
+
+    const c = this.state.confirm;
+    let confirmSummary = '', confirmName = '', confirmEmail = '';
+    if (c) {
+      confirmName = (c.name.trim().split(/\s+/)[0]) || 'there';
+      confirmEmail = c.email;
+      let dateStr = c.date;
+      try { dateStr = new Date(c.date + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); } catch (e) {}
+      const cafe = c.location.split(' — ')[0];
+      confirmSummary = 'Your Atelier tour at ' + cafe + ' is requested for ' + dateStr + ' at ' + c.time + ', for ' + c.party.toLowerCase() + '.';
+    }
+
+    return {
+      nav, cart: this.state.cart, events, stats, locations, noResults, query: this.state.query, onSearch: this.onSearch, countLabel, regionPills,
+      fld, tourLocations, timeSlots, partySizes, interestChips, inputStyle,
+      tourError: this.state.tourError, tourOpen: !this.state.tourDone, tourDone: this.state.tourDone,
+      submitTour: this.submitTour, resetTour: this.resetTour,
+      confirmSummary, confirmName, confirmEmail,
+      goAccount: () => { window.location.href = 'myatelier.html'; },
+    };
+  }
+}
+</script>
+
+
+</body></html>

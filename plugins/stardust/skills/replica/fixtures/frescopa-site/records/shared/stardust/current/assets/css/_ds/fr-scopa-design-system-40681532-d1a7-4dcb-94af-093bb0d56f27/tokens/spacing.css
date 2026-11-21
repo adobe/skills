@@ -1,0 +1,29 @@
+/* ============================================================
+   FRÉSCOPA — Spacing, layout & radius tokens
+   ============================================================ */
+
+:root {
+  /* ---------- Spacing scale ---------- */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs:  0.75rem;
+  --space-sm:  1rem;
+  --space-md:  1.5rem;
+  --space-lg:  2.5rem;
+  --space-xl:  4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem); /* @kind spacing */
+
+  /* ---------- Layout widths ---------- */
+  --content:        1120px; /* @kind spacing */
+  --content-wide:   1320px; /* @kind spacing */
+  --content-narrow: 760px;  /* @kind spacing */
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem); /* @kind spacing */
+
+  /* ---------- Radius ---------- */
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   22px;
+  --r-xl:   32px;
+  --r-pill: 999px;
+}

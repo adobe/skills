@@ -1,0 +1,84 @@
+{
+  "slug": "frescopa-atelier-machines-html",
+  "type": "product-catalog",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "machines-hero",
+    "machines-filter",
+    "machine-band"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "machines-hero",
+    "machines-filter",
+    "machine-band",
+    "machine-band",
+    "machine-band",
+    "machine-band"
+  ],
+  "canonShas": {
+    "header": "6be0b6f81a6f",
+    "footer": "b671270abc23",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa — Machines",
+    "description": null,
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa — Machines",
+    "url": "https://markszulc.github.io/frescopa-atelier/machines.html"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "d991aae3c7dd",
+  "sourceProposedSha": "ea1bc361a281",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: none — content + roles match — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 10 (owner 0, auto 10) · advisory 0 (frescopa-atelier-machines-html-360-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier/machines.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier/machines)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 9,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/machines.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/machines._meta.json",
+  "driverVersion": "1"
+}

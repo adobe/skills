@@ -1,0 +1,102 @@
+/* lp-film — dark band with a 16:9 poster frame (prototype .lp-film, no media queries). */
+
+.lp-film {
+  position: relative;
+  background: var(--charcoal);
+  color: var(--cream);
+  padding: var(--section-y) 0;
+  overflow: hidden;
+}
+
+.lp-film .lp-film-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      70% 90% at 50% -10%,
+      color-mix(in oklch, var(--amber) 14%, transparent),
+      transparent 60%
+    );
+}
+
+.lp-film .lp-film-inner {
+  position: relative;
+  max-width: 960px;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  text-align: center;
+}
+
+.lp-film .lp-film-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  color: var(--cream);
+  margin: 1rem auto 0;
+  max-width: 20ch;
+}
+
+.lp-film .lp-film-frame {
+  position: relative;
+  margin-top: 2.4rem;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  box-shadow: var(--shadow-lg);
+}
+
+.lp-film .lp-film-frame picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lp-film .lp-film-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+}
+
+.lp-film .lp-film-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, oklch(16% 0.02 45deg / 50%), oklch(16% 0.02 45deg / 15%));
+}
+
+.lp-film .lp-film-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-lg);
+}
+
+.lp-film .lp-film-time {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--cream);
+  background: oklch(16% 0.02 45deg / 55%);
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--r-pill);
+  backdrop-filter: blur(6px);
+}
+
+.lp-film .lp-film-note p {
+  color: var(--cream-soft);
+  font-size: 0.95rem;
+  margin-top: 1.2rem;
+}

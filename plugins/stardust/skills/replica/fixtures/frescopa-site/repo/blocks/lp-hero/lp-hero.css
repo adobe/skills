@@ -1,0 +1,104 @@
+/* lp-hero — product-landing photo hero (prototype .lp-hero). The live React template has
+   no media queries: one layout at every width. */
+
+.lp-hero {
+  position: relative;
+  min-height: 94vh;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.lp-hero .lp-hero-media {
+  position: absolute;
+  inset: 0;
+}
+
+.lp-hero .lp-hero-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lp-hero .lp-hero-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+}
+
+.lp-hero .lp-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      92deg,
+      oklch(18% 0.02 45deg / 84%) 0%,
+      oklch(18% 0.02 45deg / 50%) 34%,
+      transparent 64%
+    ),
+    linear-gradient(0deg, oklch(16% 0.02 45deg / 62%) 0%, transparent 42%);
+}
+
+.lp-hero .lp-hero-inner {
+  position: relative;
+  z-index: 1;
+  padding-bottom: clamp(3rem, 2rem + 4vw, 6rem);
+}
+
+.lp-hero .lp-hero-copy {
+  max-width: 580px;
+}
+
+.lp-hero .lp-hero-title {
+  margin-top: 1.1rem;
+}
+
+.lp-hero .lp-hero-title :is(h1, h2) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.8rem, 1.6rem + 5vw, 5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--cream);
+  text-shadow: oklch(15% 0.02 40deg / 35%) 0 2px 30px;
+}
+
+.lp-hero .lp-hero-lead p {
+  color: var(--cream);
+  opacity: 0.92;
+  margin-top: 1.4rem;
+  line-height: 1.55;
+  font-size: 1.1875rem;
+  max-width: 46ch;
+}
+
+.lp-hero .lp-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 2.2rem;
+}
+
+.lp-hero .stars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.lp-hero .lp-hero-rating {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.6rem;
+}
+
+.lp-hero .lp-hero-rating p {
+  color: var(--cream);
+  font-size: 0.95rem;
+}
+
+.lp-hero .lp-hero-price p {
+  color: var(--cream-soft);
+  margin-top: 1.2rem;
+  font-size: 0.95rem;
+}

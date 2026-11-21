@@ -1,0 +1,98 @@
+/* journal-list — filter pills + post cards (prototype section.journal-list), mobile-first.
+   The pill itself is the foundation .filter-pill (scripts/widgets.js initFilterPills). */
+
+.journal-list {
+  background: var(--paper);
+  padding: clamp(1.5rem, 1rem + 2vw, 2.5rem) 0 var(--section-y);
+}
+
+.journal-list .filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1.4rem;
+}
+
+.journal-list .filter-pill p {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.journal-list .post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem 1.8rem;
+  margin-top: 2.6rem;
+}
+
+.journal-list .post-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  color: inherit;
+}
+
+.journal-list .post-card[hidden] {
+  display: none;
+}
+
+.journal-list .post-card-media {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--paper-3);
+}
+
+.journal-list .post-card-media picture {
+  display: block;
+  height: 100%;
+}
+
+.journal-list .post-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.journal-list .post-card-slot {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.journal-list .post-card-cat {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.66rem;
+  color: var(--terracotta);
+}
+
+.journal-list .post-card-title :is(h2, h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  line-height: 1.16;
+  margin: 0;
+}
+
+.journal-list .post-card-excerpt {
+  color: var(--ink-soft);
+  font-size: 0.96rem;
+  line-height: 1.55;
+  margin: 0;
+  flex: 1 1 0%;
+}
+
+.journal-list .post-card-meta {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}

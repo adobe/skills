@@ -1,0 +1,111 @@
+{
+  "slug": "frescopa-atelier-landing-html",
+  "type": "product-landing",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "lp-hero",
+    "lp-pillars",
+    "lp-steps",
+    "lp-dna",
+    "lp-film",
+    "lp-quote",
+    "lp-reviews",
+    "lp-details",
+    "lp-bundles",
+    "lp-cta"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "lp-hero",
+    "lp-pillars",
+    "lp-steps",
+    "lp-dna",
+    "lp-film",
+    "lp-quote",
+    "lp-reviews",
+    "lp-details",
+    "lp-bundles",
+    "lp-cta"
+  ],
+  "canonShas": {
+    "header": "4e70e2c2f74d",
+    "footer": "b671270abc23",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa — The Atelier",
+    "description": null,
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa — The Atelier",
+    "url": "https://markszulc.github.io/frescopa-atelier/landing.html"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "fd026616d797",
+  "sourceProposedSha": "b563b49df620",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: 1 (0 structural 🔴) — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 1 (frescopa-atelier-landing-html-1440-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier/landing.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier/landing)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 11,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "atelier.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/landing.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/landing._meta.json",
+  "driverVersion": "1"
+}

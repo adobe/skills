@@ -1,0 +1,118 @@
+/* range — product-range row: photo + copy split (prototype section.range), mobile-first.
+   Variant .alt = prototype .range--alt (paper-2 band). */
+
+.range {
+  background: var(--paper);
+  padding: clamp(2.8rem, 2rem + 3vw, 4.5rem) 0;
+}
+
+.range.alt {
+  background: var(--paper-2);
+}
+
+.range .range-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: clamp(1.8rem, 1rem + 3vw, 3.8rem);
+  align-items: center;
+}
+
+.range .range-media {
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  aspect-ratio: 5 / 4;
+  background: var(--paper-3);
+}
+
+.range .range-media picture {
+  display: block;
+  height: 100%;
+}
+
+.range .range-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.range .range-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.range .range-eyebrow p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--terracotta);
+}
+
+.range .range-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.7rem);
+  color: var(--burgundy);
+  line-height: 1.08;
+  margin: 0;
+}
+
+.range .range-text p {
+  color: var(--ink-soft);
+  font-size: 1.06rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.range .range-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.range .range-picks-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+
+.range .range-picks ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.range .range-picks li {
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0.42rem 0.9rem;
+}
+
+.range .range-foot {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.range .range-meta {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}

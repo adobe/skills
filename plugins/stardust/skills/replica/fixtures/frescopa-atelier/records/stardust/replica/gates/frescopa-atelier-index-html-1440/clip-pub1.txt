@@ -1,4 +1,0 @@
-clip-probe https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/ @ 1440px — docH 6474, 117 text nodes, 43 controls (HTTP 200, chrome)
-  (none)
-Clipped: 0 (text clipped 0, text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0, collapsed 0, scroll-hidden 0, horizontal 0)
-json → stardust/replica/gates/frescopa-atelier-index-html-1440/clip-pub1.json

@@ -1,0 +1,526 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-21T18:16:49.837Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "frescopa-atelier-machines-html",
+  "url": "https://markszulc.github.io/frescopa-atelier/machines.html",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-21T18:16:49.837Z",
+  "finalUrl": "https://markszulc.github.io/frescopa-atelier/machines.html",
+  "title": null,
+  "description": null,
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Made in the workshop."
+    },
+    {
+      "tag": "h2",
+      "text": "The thinking machines"
+    },
+    {
+      "tag": "h3",
+      "text": "The Atelier"
+    },
+    {
+      "tag": "h3",
+      "text": "The Atelier Mini"
+    },
+    {
+      "tag": "h2",
+      "text": "For the hands-on ritual"
+    },
+    {
+      "tag": "h3",
+      "text": "The Barista"
+    },
+    {
+      "tag": "h3",
+      "text": "The Everyday"
+    },
+    {
+      "tag": "h2",
+      "text": "Slow and even"
+    },
+    {
+      "tag": "h3",
+      "text": "The Slow Pour"
+    },
+    {
+      "tag": "h2",
+      "text": "Ready by morning"
+    },
+    {
+      "tag": "h3",
+      "text": "The Carafe"
+    },
+    {
+      "tag": "h3",
+      "text": "Shop"
+    },
+    {
+      "tag": "h3",
+      "text": "Company"
+    },
+    {
+      "tag": "h3",
+      "text": "Support"
+    }
+  ],
+  "body": [
+    "Four families of machine, each tuned by hand for a different kind of morning. Start with how you like to make it — we'll help you find the rest.",
+    "Whole beans in, a finished cup out — milk, timing and all. The most hands-off way to drink well, and the only machines that actually learn your taste.",
+    "The Atelier learns and adapts on its own; the Mini carries the same brain to a smaller counter.",
+    "It senses what you like, builds a taste profile, reads the day ahead and pours accordingly — quietly taking care of the rest.",
+    "→ Learns your taste cup by cup, no dialing-in",
+    "→ Reads your calendar and mood to pace the morning",
+    "→ Reorders beans before you run out",
+    "The same clever heart, sized for smaller kitchens.",
+    "Grind, tamp, pull. Machines for people who want to be the barista — precise, tactile, and built to reward practice.",
+    "The Barista gives you full manual control; the Everyday keeps it simple for a reliable shot each morning.",
+    "A hands-on machine for the morning ritualist.",
+    "Honest espresso, every single morning.",
+    "Clean, balanced filter coffee for the unhurried cup — the kind you sip through a quiet morning.",
+    "One machine, perfected: even saturation and gentle timing, so every batch tastes the same.",
+    "Filter coffee, unhurried and beautifully even.",
+    "Smooth, low-acid cold brew steeped overnight — poured cold straight from the fridge.",
+    "Set it before bed; the Carafe does the steeping while you sleep.",
+    "Smooth cold brew, ready and waiting by morning.",
+    "Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.",
+    "© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration."
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "The Atelier",
+      "href": "landing.html"
+    },
+    {
+      "label": "Machines",
+      "href": "machines.html"
+    },
+    {
+      "label": "Beverages",
+      "href": "beverages.html"
+    },
+    {
+      "label": "Café",
+      "href": "cafe.html"
+    },
+    {
+      "label": "Journal",
+      "href": "blog.html"
+    },
+    {
+      "label": "Home",
+      "href": "index.html"
+    },
+    {
+      "label": "All machines",
+      "href": null
+    },
+    {
+      "label": "Bean-to-cup",
+      "href": null
+    },
+    {
+      "label": "Espresso",
+      "href": null
+    },
+    {
+      "label": "Filter",
+      "href": null
+    },
+    {
+      "label": "Cold brew",
+      "href": null
+    },
+    {
+      "label": "View the Atelier→",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Join the list→",
+      "href": "#"
+    },
+    {
+      "label": "Join the list→",
+      "href": "#"
+    },
+    {
+      "label": "Join the list→",
+      "href": "#"
+    },
+    {
+      "label": "Join the list→",
+      "href": "#"
+    },
+    {
+      "label": "Join the list→",
+      "href": "#"
+    },
+    {
+      "label": "Sign up",
+      "href": null
+    },
+    {
+      "label": "Coffee",
+      "href": "#"
+    },
+    {
+      "label": "Tea",
+      "href": "#"
+    },
+    {
+      "label": "Cold-pressed juice",
+      "href": "#"
+    },
+    {
+      "label": "Machines",
+      "href": "#"
+    },
+    {
+      "label": "Accessories",
+      "href": "#"
+    },
+    {
+      "label": "Our story",
+      "href": "#"
+    },
+    {
+      "label": "Sustainability",
+      "href": "#"
+    },
+    {
+      "label": "Fréscopa Café",
+      "href": "#"
+    },
+    {
+      "label": "Careers",
+      "href": "#"
+    },
+    {
+      "label": "Contact us",
+      "href": "#"
+    },
+    {
+      "label": "Delivery & returns",
+      "href": "#"
+    },
+    {
+      "label": "Register your Atelier",
+      "href": "#"
+    },
+    {
+      "label": "Help centre",
+      "href": "#"
+    }
+  ],
+  "links": [
+    "https://markszulc.github.io/frescopa-atelier/index.html",
+    "https://markszulc.github.io/frescopa-atelier/landing.html",
+    "https://markszulc.github.io/frescopa-atelier/machines.html",
+    "https://markszulc.github.io/frescopa-atelier/beverages.html",
+    "https://markszulc.github.io/frescopa-atelier/cafe.html",
+    "https://markszulc.github.io/frescopa-atelier/blog.html",
+    "https://markszulc.github.io/frescopa-atelier/atelier.html",
+    "https://markszulc.github.io/frescopa-atelier/machines.html#"
+  ],
+  "media": {
+    "imgs": [
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+        "alt": "",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+        "alt": "The Atelier",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      }
+    ],
+    "allImgCount": 4,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--burgundy": "oklch(0.34 0.093 25)",
+    "--burgundy-deep": "oklch(0.275 0.082 26)",
+    "--terracotta": "oklch(0.605 0.116 44)",
+    "--terracotta-deep": "oklch(0.515 0.108 40)",
+    "--amber": "oklch(0.79 0.128 74)",
+    "--amber-soft": "oklch(0.865 0.083 80)",
+    "--teal": "oklch(0.55 0.05 205)",
+    "--paper": "oklch(0.970 0.010 82)",
+    "--paper-2": "oklch(0.948 0.015 78)",
+    "--paper-3": "oklch(0.918 0.020 74)",
+    "--sand": "oklch(0.884 0.025 71)",
+    "--line": "oklch(0.855 0.018 68)",
+    "--ink": "oklch(0.262 0.021 52)",
+    "--ink-soft": "oklch(0.430 0.022 52)",
+    "--charcoal": "oklch(0.222 0.016 52)",
+    "--charcoal-2": "oklch(0.282 0.020 50)",
+    "--line-dark": "oklch(0.400 0.020 55)",
+    "--cream": "oklch(0.945 0.016 80)",
+    "--cream-soft": "oklch(0.795 0.021 78)",
+    "--bg": "oklch(0.970 0.010 82)",
+    "--surface-raised": "oklch(0.948 0.015 78)",
+    "--surface-card": "oklch(0.970 0.010 82)",
+    "--surface-dark": "oklch(0.222 0.016 52)",
+    "--fg": "oklch(0.262 0.021 52)",
+    "--text-body": "oklch(0.262 0.021 52)",
+    "--text-muted": "oklch(0.430 0.022 52)",
+    "--text-heading": "oklch(0.34 0.093 25)",
+    "--text-on-dark": "oklch(0.945 0.016 80)",
+    "--accent": "oklch(0.605 0.116 44)",
+    "--accent-hover": "oklch(0.515 0.108 40)",
+    "--detail": "oklch(0.79 0.128 74)",
+    "--border": "oklch(0.855 0.018 68)",
+    "--focus": "oklch(0.605 0.116 44)",
+    "--font-display": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-body": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-mono": "\"Hanken Grotesk\", system-ui, sans-serif",
+    "--fs-eyebrow": "0.75rem",
+    "--fs-sm": "0.9375rem",
+    "--fs-body": "1.0625rem",
+    "--fs-body-lg": "clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem)",
+    "--fs-h4": "clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem)",
+    "--fs-h3": "clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem)",
+    "--fs-h2": "clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem)",
+    "--fs-h1": "clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem)",
+    "--fs-display": "clamp(3.4rem, 1.1rem + 8.4vw, 8rem)",
+    "--lh-tight": "1.03",
+    "--lh-snug": "1.15",
+    "--lh-body": "1.62",
+    "--fw-regular": "400",
+    "--fw-medium": "500",
+    "--fw-semibold": "600",
+    "--fw-bold": "700",
+    "--fw-black": "800",
+    "--tracking-eyebrow": "0.2em",
+    "--tracking-tight": "-0.02em",
+    "--space-3xs": "0.25rem",
+    "--space-2xs": "0.5rem",
+    "--space-xs": "0.75rem",
+    "--space-sm": "1rem",
+    "--space-md": "1.5rem",
+    "--space-lg": "2.5rem",
+    "--space-xl": "4rem",
+    "--space-2xl": "6rem",
+    "--section-y": "clamp(4.5rem, 3rem + 6vw, 9.5rem)",
+    "--content": "1120px",
+    "--content-wide": "1320px",
+    "--content-narrow": "760px",
+    "--gutter": "clamp(1.25rem, 0.4rem + 3vw, 3rem)",
+    "--r-sm": "8px",
+    "--r-md": "14px",
+    "--r-lg": "22px",
+    "--r-xl": "32px",
+    "--r-pill": "999px",
+    "--shadow-sm": "0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05)",
+    "--shadow-md": "0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08)",
+    "--shadow-lg": "0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13)",
+    "--ease-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "--ease-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "--dur-1": "0.35s",
+    "--dur-2": "0.6s",
+    "--dur-3": "0.9s"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 14,
+    "mainTextLen": 7528,
+    "realImageCount": 4,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 4234
+    }
+  },
+  "dynamic": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/image-slot.js",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "application/javascript",
+        "status": 200,
+        "bytes": 21163,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/image-slot.js",
+        "sameSite": true
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/machines.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "status": 200,
+        "bytes": 5110,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/machines.html",
+        "sameSite": true
+      },
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/.image-slots.state.json",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "status": 404,
+        "bytes": 5254,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/.image-slots.state.json",
+        "sameSite": true
+      }
+    ],
+    "thirdPartyScriptHosts": [
+      {
+        "host": "unpkg.com",
+        "count": 2
+      }
+    ],
+    "truncated": false,
+    "inlineData": [],
+    "globalState": [],
+    "frameworkHints": [],
+    "forms": [
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/machines.html",
+        "hasAction": false,
+        "method": "get",
+        "sameOrigin": true,
+        "fieldCount": 1,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "search": false
+      }
+    ],
+    "ariaLiveRegions": 0,
+    "triggers": [],
+    "mediaIds": [],
+    "summary": {
+      "sameSiteEndpoints": 3,
+      "thirdPartyEndpoints": 0,
+      "thirdPartyScriptHosts": 1,
+      "inlineDataBlobs": 0,
+      "forms": 1,
+      "searchForms": 0,
+      "hydrated": false
+    }
+  },
+  "screenshot": "assets/screenshots/frescopa-atelier-machines-html.png",
+  "renderedHtml": "pages/frescopa-atelier-machines-html.html",
+  "slots": {
+    "pageType": "product-catalog",
+    "inferredShape": "listing",
+    "source": "stardust:extract --prep §4 (rendered HTML selectors)",
+    "slots": [
+      {
+        "name": "site-header",
+        "type": "module",
+        "module": "candidate-site-header",
+        "selector": "header.fr-hdr"
+      },
+      {
+        "name": "index-headline",
+        "type": "module",
+        "module": "candidate-page-intro",
+        "selector": "#dc-root > div > div > section:nth-of-type(1)",
+        "headline": "Made in the workshop.",
+        "breadcrumb": [
+          "Home",
+          "Machines"
+        ]
+      },
+      {
+        "name": "filter-controls",
+        "type": "module",
+        "module": "candidate-filter-pills",
+        "selector": "#dc-root > div > div > section:nth-of-type(2) > div",
+        "options": [
+          "All machines",
+          "Bean-to-cup",
+          "Espresso",
+          "Filter",
+          "Cold brew"
+        ]
+      },
+      {
+        "name": "card-grid",
+        "type": "card-grid",
+        "module": "candidate-media-card",
+        "selector": "#dc-root > div > div > section:nth-of-type(3), #dc-root > div > div > section:nth-of-type(4), #dc-root > div > div > section:nth-of-type(5), #dc-root > div > div > section:nth-of-type(6)",
+        "groups": [
+          "The thinking machines",
+          "For the hands-on ritual",
+          "Slow and even",
+          "Ready by morning"
+        ],
+        "cards": {
+          "selector": "article",
+          "count": 6,
+          "titles": [
+            "The Atelier",
+            "The Atelier Mini",
+            "The Barista",
+            "The Everyday",
+            "The Slow Pour",
+            "The Carafe"
+          ],
+          "subSlots": [
+            "image|image-slot",
+            "badge",
+            "category",
+            "title",
+            "body",
+            "features",
+            "price",
+            "cta"
+          ],
+          "note": "5 of 6 cards show <image-slot> placeholders on the source"
+        }
+      },
+      {
+        "name": "site-footer",
+        "type": "module",
+        "module": "candidate-site-footer",
+        "selector": "footer.fr-ftr"
+      }
+    ]
+  }
+}

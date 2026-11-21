@@ -1,0 +1,1365 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-11-21T18:25:56.878Z",
+    "readArtifacts": [
+      "https://markszulc.github.io/frescopa-atelier/beverages.html",
+      "https://markszulc.github.io/frescopa-atelier/blog.html",
+      "https://markszulc.github.io/frescopa-atelier/cafe.html",
+      "https://markszulc.github.io/frescopa-atelier/landing.html",
+      "https://markszulc.github.io/frescopa-atelier/machines.html",
+      "https://markszulc.github.io/frescopa-atelier/",
+      "stardust/current/pages/frescopa-atelier-beverages-html.json",
+      "stardust/current/pages/frescopa-atelier-blog-html.json",
+      "stardust/current/pages/frescopa-atelier-cafe-html.json",
+      "stardust/current/pages/frescopa-atelier-landing-html.json",
+      "stardust/current/pages/frescopa-atelier-machines-html.json",
+      "stardust/current/pages/frescopa-atelier.json",
+      "stardust/current/_computed-styles.json",
+      "stardust/current/assets/css/",
+      "stardust/current/assets/fonts/google-fonts.css",
+      "stardust/current/assets/fonts/google-fonts-ds.css"
+    ],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.46.0",
+    "notes": [
+      "Palette aggregated from _computed-styles.json pages[*][1440].bgColors/textColors/borderColors: the census aggregate.colors only parsed rgb() values (2 entries) and missed every oklch() colour, which is how this site authors all colour. Hex values are oklch→sRGB conversions; canonical oklch kept per entry.",
+      "Palette ranking: element count, with any background colour painting ≥5% of measured background area retained (keeps --paper-2 and --charcoal). Dropped: oklch(0.262 0.021 52) (#2d221b, --ink; 93 elements, text); oklch(0.945 0.016 80) (#f3ece1, --cream; 66 elements, text); oklch(0.79 0.128 74) (#ebad54, --amber; 32 elements, text/border); oklch(0.4 0.02 55) (#51453e, --line-dark; 30 elements, border); oklch(0.918 0.02 74) (#ece2d6, --paper-3; 18 elements, background); oklch(0.282 0.02 50) (#322721, --charcoal-2; 6 elements, background); oklch(0.262 0.021 52 / 0.32) (#2d221b52; 4 elements, border); oklch(0.97 0.01 82 / 0.9) (#f8f5eee6; 3 elements, background); oklch(0.97 0.01 82 / 0.92) (#f8f5eeeb; 3 elements, background); oklch(0.74344 0.01352 72.4) (#b1aba3; 3 elements, text); rgba(255, 248, 240, 0.82) (#fff8f0d1; 2 elements, text); oklch(0.515 0.108 40) (#9a4f35, --terracotta-deep; 2 elements, text); oklch(0.945 0.016 80 / 0.32) (#f3ece152; 2 elements, border); oklch(0.9304 0.03596 80.24) (#f5e6ce; 1 elements, background); rgba(255, 248, 240, 0.9) (#fff8f0e6; 1 elements, text); oklch(0.16 0.02 45 / 0.55) (#150a068c; 1 elements, background); oklch(0.9466 0.02534 80.96) (#f6ecdb; 1 elements, background); oklch(0.945 0.016 80 / 0.34) (#f3ece157; 1 elements, border); oklch(0.945 0.016 80 / 0.42) (#f3ece16b; 1 elements, border)",
+      "Radius: home-only and cross-page modes agree (22px non-pill, 999px pill).",
+      "Two stylesheet stacks render the site: home uses shared/tokens.css + atelier.css; the 5 other pages are a React design-system build (_ds/fr-scopa-design-system-…/styles.css, fr-* classes, #dc-root) — same tokens, same computed values.",
+      "No og:image / og:* meta on any page; 5 design-system pages have an empty <title> and no meta description.",
+      "Images hero-machine.jpg (5 pages), espresso-pour.jpg (5), tea-moment.jpg (4) are reused <img> content across pages; no CSS background images exist, so no background-motif system component.",
+      "machines and blog pages render <image-slot> placeholder tiles for several products/posts on the source itself."
+    ]
+  },
+  "site": {
+    "name": "Fréscopa Atelier",
+    "brandName": "Fréscopa",
+    "tagline": "Every morning, perfected.",
+    "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "originUrl": "https://markszulc.github.io/frescopa-atelier/",
+    "titleSource": "Fréscopa Atelier — Every morning, perfected."
+  },
+  "origins": [
+    {
+      "origin": "https://markszulc.github.io",
+      "path": "/frescopa-atelier/",
+      "role": "primary",
+      "pagesCaptured": 6,
+      "contributedSignals": []
+    }
+  ],
+  "logo": {
+    "source": "img",
+    "sourceSelector": "header .header__brand img.header__logo.header__logo--light",
+    "sourceUrl": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+    "localPath": "stardust/current/assets/logo.svg",
+    "format": "svg",
+    "intrinsicWidth": 1391,
+    "intrinsicHeight": 378,
+    "renderedHeight": "32px (.header__logo, atelier.css)",
+    "synthesized": false,
+    "synthesizedBasis": null,
+    "alt": "Fréscopa",
+    "variants": [
+      {
+        "name": "light",
+        "fill": "#f3ece0",
+        "localPath": "stardust/current/assets/logo.svg",
+        "sourceUrl": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "use": "over photo hero / charcoal footer (initial header state, footer logo)"
+      },
+      {
+        "name": "dark",
+        "fill": "#58181d",
+        "localPath": "stardust/current/assets/logo-dark.svg",
+        "sourceUrl": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+        "use": "scrolled header on paper (.header.is-scrolled .header__logo--dark, opacity swap)"
+      }
+    ],
+    "favicon": {
+      "localPath": "stardust/current/assets/favicon.svg",
+      "source": "<link rel=\"icon\"> inline data:image/svg+xml on home (rounded square #5b1c22 with #eaa33a stroke)"
+    }
+  },
+  "palette": [
+    {
+      "role": "text-primary",
+      "value": "#5a4d45",
+      "canonical": "oklch(0.43 0.022 52)",
+      "token": "--ink-soft",
+      "occurrences": 227,
+      "paintedAreaPx": 0,
+      "sourceSelectors": [
+        "#dc-root > div > div > section:nth-of-type(1) > div > p",
+        "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > p",
+        "div > div > section:nth-of-type(2) > div > a > div:nth-of-type(2) > p > span"
+      ],
+      "sources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier",
+        "frescopa-atelier-landing-html"
+      ],
+      "usedAs": [
+        "text"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > p",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > p",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(1) > p",
+          "prop": "textColors"
+        }
+      ]
+    },
+    {
+      "role": "border",
+      "value": "#d8cdc3",
+      "canonical": "oklch(0.855 0.018 68)",
+      "token": "--line",
+      "occurrences": 219,
+      "paintedAreaPx": 0,
+      "sourceSelectors": [
+        "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(1)",
+        "div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > span:nth-of-type(1)",
+        "#dc-root > div > div > section:nth-of-type(2) > div > a"
+      ],
+      "sources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-machines-html"
+      ],
+      "usedAs": [
+        "border"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(1)",
+          "prop": "borderColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(2) > div > a",
+          "prop": "borderColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#experience > div > div:nth-of-type(1) > div:nth-of-type(2)",
+          "prop": "borderColors"
+        }
+      ]
+    },
+    {
+      "role": "secondary",
+      "value": "#5f201e",
+      "canonical": "oklch(0.34 0.093 25)",
+      "token": "--burgundy",
+      "occurrences": 139,
+      "paintedAreaPx": 30945,
+      "sourceSelectors": [
+        "#dc-root > div > div > section:nth-of-type(1) > div > h1",
+        "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > h2",
+        "#dc-root > div > div > section:nth-of-type(3) > div > div:nth-of-type(1) > button:nth-of-type(1)"
+      ],
+      "sources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier"
+      ],
+      "usedAs": [
+        "background",
+        "border",
+        "text"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > h1",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(3) > div > div:nth-of-type(1) > button:nth-of-type(1)",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > h1",
+          "prop": "textColors"
+        }
+      ]
+    },
+    {
+      "role": "primary",
+      "value": "#ba6945",
+      "canonical": "oklch(0.605 0.116 44)",
+      "token": "--terracotta",
+      "occurrences": 137,
+      "paintedAreaPx": 106605,
+      "sourceSelectors": [
+        "div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > div > a",
+        "div > section:nth-of-type(3) > div > div > div:nth-of-type(1) > div:nth-of-type(2) > div > a",
+        "#dc-root > div > div > section:nth-of-type(1) > div > span"
+      ],
+      "sources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier",
+        "frescopa-atelier-landing-html"
+      ],
+      "usedAs": [
+        "background",
+        "border",
+        "text"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > div > a",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > span",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > span",
+          "prop": "textColors"
+        }
+      ]
+    },
+    {
+      "role": "background",
+      "value": "#f8f5ee",
+      "canonical": "oklch(0.97 0.01 82)",
+      "token": "--paper",
+      "occurrences": 120,
+      "paintedAreaPx": 76418140,
+      "sourceSelectors": [
+        "body",
+        "#dc-root > div > div",
+        "#intro"
+      ],
+      "sources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-beverages-html"
+      ],
+      "usedAs": [
+        "background"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "body",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "body",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "body",
+          "prop": "bgColors"
+        }
+      ]
+    },
+    {
+      "role": "text-on-inverse",
+      "value": "#c4bbad",
+      "canonical": "oklch(0.795 0.021 78)",
+      "token": "--cream-soft",
+      "occurrences": 96,
+      "paintedAreaPx": 0,
+      "sourceSelectors": [
+        "footer > div:nth-of-type(1) > div > p",
+        "nav > div:nth-of-type(1) > a:nth-of-type(1)",
+        "#dc-root > div > div > section:nth-of-type(1) > div:nth-of-type(2) > div > p:nth-of-type(2)"
+      ],
+      "sources": [
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier",
+        "frescopa-atelier-beverages-html"
+      ],
+      "usedAs": [
+        "text"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "footer > div:nth-of-type(1) > div > p",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "footer > div:nth-of-type(1) > div > p",
+          "prop": "textColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "footer > div:nth-of-type(1) > div > p",
+          "prop": "textColors"
+        }
+      ]
+    },
+    {
+      "role": "surface",
+      "value": "#f3ede3",
+      "canonical": "oklch(0.948 0.015 78)",
+      "token": "--paper-2",
+      "occurrences": 22,
+      "paintedAreaPx": 16205051,
+      "sourceSelectors": [
+        "#dc-root > div > div > section:nth-of-type(1)",
+        "#dc-root > div > div > section:nth-of-type(3)",
+        "#experience"
+      ],
+      "sources": [
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier",
+        "frescopa-atelier-machines-html"
+      ],
+      "usedAs": [
+        "background"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1)",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1)",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#experience",
+          "prop": "bgColors"
+        }
+      ]
+    },
+    {
+      "role": "surface-inverse",
+      "value": "#211914",
+      "canonical": "oklch(0.222 0.016 52)",
+      "token": "--charcoal",
+      "occurrences": 11,
+      "paintedAreaPx": 8728292,
+      "sourceSelectors": [
+        "#dc-root > div > div > section:nth-of-type(5)",
+        "footer",
+        "#dc-root > div > div > section:nth-of-type(7)"
+      ],
+      "sources": [
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-beverages-html",
+        "frescopa-atelier-cafe-html"
+      ],
+      "usedAs": [
+        "background"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(5)",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+          "selector": "footer",
+          "prop": "bgColors"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(7)",
+          "prop": "bgColors"
+        }
+      ]
+    }
+  ],
+  "type": {
+    "headingFamily": {
+      "name": "Schibsted Grotesk",
+      "stack": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+      "weights": [
+        700,
+        800
+      ],
+      "sizes": [
+        "19.2px",
+        "24px",
+        "48px",
+        "22.4px",
+        "56px",
+        "35.2px",
+        "38.4px",
+        "21.6px"
+      ],
+      "lineHeights": [
+        1.15,
+        1.12,
+        1.08,
+        1.16,
+        1.1
+      ],
+      "letterSpacing": [
+        "-0.02em"
+      ],
+      "sourceSelectors": [
+        "h1",
+        "h2",
+        "h3",
+        "h4"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > h1",
+          "prop": "font-family"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > h2",
+          "prop": "font-family"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(3) > div > div > div:nth-of-type(1) > h2",
+          "prop": "font-family"
+        }
+      ],
+      "elementCount": 202
+    },
+    "bodyFamily": {
+      "name": "Hanken Grotesk",
+      "stack": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+      "weights": [
+        400,
+        500
+      ],
+      "sizes": [
+        "17px",
+        "15.36px",
+        "16.8px",
+        "14.72px",
+        "18px",
+        "12px",
+        "21px",
+        "16.96px"
+      ],
+      "lineHeights": [
+        1.6,
+        1.62,
+        1.55,
+        1.65,
+        1.5
+      ],
+      "letterSpacing": [
+        "normal",
+        "0.2em",
+        "0.1em",
+        "0.06em"
+      ],
+      "sourceSelectors": [
+        "p",
+        "li"
+      ],
+      "citations": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div > p",
+          "prop": "font-family"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(2) > div > div > div:nth-of-type(2) > p",
+          "prop": "font-family"
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(3) > div > div > div:nth-of-type(1) > p",
+          "prop": "font-family"
+        }
+      ],
+      "elementCount": 282,
+      "buttonWeights": [
+        500,
+        600
+      ],
+      "note": "Hanken Grotesk also carries buttons (116 elements, weights 500/600), eyebrows/labels (uppercase, 500) and footer column headings (h3, 11.52px uppercase) via --font-mono, which atelier.css re-points to Hanken Grotesk"
+    },
+    "monoFamily": null,
+    "declaredButUnused": {
+      "--font-display": "\"Playfair Display\", Georgia, \"Times New Roman\", serif",
+      "--font-body": "\"DM Sans\", system-ui, -apple-system, sans-serif",
+      "--font-mono": "\"DM Mono\", ui-monospace, \"SFMono-Regular\", monospace",
+      "note": "shared/tokens.css declares Playfair Display / DM Sans / DM Mono; atelier.css (home) and the _ds typography tokens override to Schibsted Grotesk / Hanken Grotesk. The computed style on every page resolves to the Grotesk pair."
+    },
+    "levels": {
+      "h1": {
+        "fontSize": "57.6px",
+        "fontWeight": 800,
+        "count": 3,
+        "score": 199.53
+      },
+      "h2": {
+        "fontSize": "48px",
+        "fontWeight": 800,
+        "count": 7,
+        "score": 253.99
+      },
+      "h3": {
+        "fontSize": "19.2px",
+        "fontWeight": 700,
+        "count": 52,
+        "score": 242.29
+      },
+      "h4": {
+        "fontSize": "25.6px",
+        "fontWeight": 800,
+        "count": 3,
+        "score": 88.68
+      }
+    },
+    "declaredScale": {
+      "--fs-eyebrow": "0.75rem",
+      "--fs-sm": "0.9375rem",
+      "--fs-body": "1.0625rem",
+      "--fs-body-lg": "clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem)",
+      "--fs-h4": "clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem)",
+      "--fs-h3": "clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem)",
+      "--fs-h2": "clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem)",
+      "--fs-h1": "clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem)",
+      "--fs-display": "clamp(3.4rem, 1.1rem + 8.4vw, 8rem)",
+      "--lh-tight": "1.03",
+      "--lh-snug": "1.15",
+      "--lh-body": "1.62",
+      "--tracking-eyebrow": "0.2em",
+      "--tracking-tight": "-0.02em"
+    },
+    "scaleRatio": null,
+    "scaleAudit": {
+      "kind": "ad-hoc",
+      "ratios": [
+        1.2,
+        1.875,
+        1.333
+      ],
+      "matchedScale": null,
+      "sizesDesc": [
+        "h1:57.6px",
+        "h2:48px",
+        "h4:25.6px",
+        "h3:19.2px"
+      ]
+    },
+    "loadStrategy": "swap",
+    "files": [
+      {
+        "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59CxCis4.woff2",
+        "family": "Hanken Grotesk",
+        "weight": "400 700",
+        "style": "normal",
+        "subset": "latin",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/hanken-grotesk-latin.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts.css (home <link>) and google-fonts-ds.css (_ds tokens/fonts.css)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpT59CxCis4UvI.woff2",
+        "family": "Hanken Grotesk",
+        "weight": "400 700",
+        "style": "normal",
+        "subset": "latin-ext",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/hanken-grotesk-latin-ext.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts.css (home <link>) and google-fonts-ds.css (_ds tokens/fonts.css)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVl2YZDLWuGJpnzaiwFXS9tYtpY19K7DQk6YvM.woff2",
+        "family": "Hanken Grotesk",
+        "weight": "400 500",
+        "style": "italic",
+        "subset": "latin",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/hanken-grotesk-italic-latin.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts-ds.css (imported by _ds tokens/fonts.css on the 5 design-system pages)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVl2YZDLWuGJpnzaiwFXS9tYtpY19y7DQk6YvNkeg.woff2",
+        "family": "Hanken Grotesk",
+        "weight": "400 500",
+        "style": "italic",
+        "subset": "latin-ext",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/hanken-grotesk-italic-latin-ext.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts-ds.css (imported by _ds tokens/fonts.css on the 5 design-system pages)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9GayojdSFO.woff2",
+        "family": "Schibsted Grotesk",
+        "weight": "400 800",
+        "style": "normal",
+        "subset": "latin",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/schibsted-grotesk-latin.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts.css (home <link>) and google-fonts-ds.css (_ds tokens/fonts.css)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9IayojdSFOd1I.woff2",
+        "family": "Schibsted Grotesk",
+        "weight": "400 800",
+        "style": "normal",
+        "subset": "latin-ext",
+        "variable": true,
+        "localPath": "stardust/current/assets/fonts/schibsted-grotesk-latin-ext.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts.css (home <link>) and google-fonts-ds.css (_ds tokens/fonts.css)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/JqzI5SSPQuCQF3t8uOwiUL-taUTtap9DcSQBg_nT9FQY6oLaDPhtdFWnPCXt4lc.woff2",
+        "family": "Schibsted Grotesk",
+        "weight": "500",
+        "style": "italic",
+        "subset": "latin",
+        "variable": false,
+        "localPath": "stardust/current/assets/fonts/schibsted-grotesk-italic-latin.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts-ds.css (imported by _ds tokens/fonts.css on the 5 design-system pages)",
+        "licensingFlag": "open"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/JqzI5SSPQuCQF3t8uOwiUL-taUTtap9DcSQBg_nT9FQY6oLaDPhjdFWnPCXt4lfiDA.woff2",
+        "family": "Schibsted Grotesk",
+        "weight": "500",
+        "style": "italic",
+        "subset": "latin-ext",
+        "variable": false,
+        "localPath": "stardust/current/assets/fonts/schibsted-grotesk-italic-latin-ext.woff2",
+        "sourceCssRule": "stardust/current/assets/fonts/google-fonts-ds.css (imported by _ds tokens/fonts.css on the 5 design-system pages)",
+        "licensingFlag": "open"
+      }
+    ],
+    "sources": [
+      "stardust/current/_computed-styles.json#aggregate.type",
+      "stardust/current/_computed-styles.json#pages[*][1440].headings|text"
+    ]
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "baseUnitBasis": "--space-3xs: 0.25rem (4px); every --space-* token is a multiple of 4px",
+    "scale": [
+      4,
+      8,
+      12,
+      16,
+      24,
+      40,
+      64,
+      96
+    ],
+    "scaleTokens": {
+      "--space-3xs": "0.25rem",
+      "--space-2xs": "0.5rem",
+      "--space-xs": "0.75rem",
+      "--space-sm": "1rem",
+      "--space-md": "1.5rem",
+      "--space-lg": "2.5rem",
+      "--space-xl": "4rem",
+      "--space-2xl": "6rem"
+    },
+    "sectionPadding": "clamp(4.5rem, 3rem + 6vw, 9.5rem)",
+    "sectionPaddingMeasured1440": [
+      "72px (#intro)",
+      "89.6px (#learn, #mood)",
+      "86.4px (footer)"
+    ],
+    "containerMaxWidth": "1120px",
+    "containerDeclared": {
+      "--content": "1120px",
+      "--content-wide": "1320px",
+      "--content-narrow": "760px",
+      "--gutter": "clamp(1.25rem, 0.4rem + 3vw, 3rem)"
+    },
+    "gridGap": "clamp(1.2rem, 2.5vw, 1.8rem) (.feed__grid, atelier.css)",
+    "sources": [
+      "pages/frescopa-atelier.json#customProps",
+      "stardust/current/_computed-styles.json#pages[home][1440].surfaces",
+      "stardust/current/assets/css/atelier.css"
+    ],
+    "containerMaxWidthSource": "cap-probe.mjs (home + cafe.html, probe 2560): contentMaxWidth 1120px (module caps), shell fluid — DESIGN.json extensions.breakpoints"
+  },
+  "motifs": {
+    "borderRadius": {
+      "primary": "22px",
+      "secondary": "32px",
+      "pill": "999px",
+      "primarySources": [
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-blog-html"
+      ],
+      "occurrences": {
+        "999px": 284,
+        "22px": 110,
+        "50%": 88,
+        "32px": 36,
+        "14px": 16,
+        "11px": 14,
+        "8px": 2
+      },
+      "circle": "50%",
+      "declared": {
+        "--r-sm": "8px",
+        "--r-md": "14px",
+        "--r-lg": "22px",
+        "--r-xl": "32px",
+        "--r-pill": "999px"
+      },
+      "note": "census mode = 22px (pill tracked separately); areaMode = 22px; 999px pill is the most frequent value by element count (284: buttons, chips, filter pills, badges) but 22px (--r-lg) is the mode of non-pill radii and of painted area"
+    },
+    "shadows": [
+      {
+        "value": "oklch(0.3 0.03 50 / 0.07) 0px 4px 14px 0px, oklch(0.3 0.03 50 / 0.08) 0px 14px 34px 0px",
+        "count": 52,
+        "token": "--shadow-md",
+        "uses": "cards / hover lift on buttons and cards",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "#learn > div > div:nth-of-type(2) > div > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "oklch(0.3 0.03 50 / 0.06) 0px 1px 2px 0px, oklch(0.3 0.03 50 / 0.05) 0px 2px 8px 0px",
+        "count": 30,
+        "token": "--shadow-sm",
+        "uses": "cream buttons, mood/filter pills",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "#mood > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2)"
+        }
+      },
+      {
+        "value": "oklch(0.26 0.03 50 / 0.1) 0px 14px 34px 0px, oklch(0.26 0.03 50 / 0.13) 0px 34px 80px 0px",
+        "count": 12,
+        "token": "--shadow-lg",
+        "uses": "scrolled header nav / card hover",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "nav"
+        }
+      }
+    ],
+    "gradients": [
+      {
+        "value": "linear-gradient(oklch(0.605 0.116 44), oklch(0.605 0.116 44))",
+        "count": 76,
+        "uses": "link underline (background-image on .link / fr-link, terracotta)",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "#intro > div > div:nth-of-type(2) > a"
+        }
+      },
+      {
+        "value": "linear-gradient(0deg, oklch(0.16 0.02 45 / 0.5), oklch(0.16 0.02 45 / 0.15))",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(2) > div"
+        }
+      },
+      {
+        "value": "linear-gradient(90deg, oklch(0.18 0.02 45 / 0.8) 0%, oklch(0.18 0.02 45 / 0.42) 46%, rgba(0, 0, 0, 0) 74%)",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(6) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "linear-gradient(90deg, rgba(30, 18, 15, 0.82) 0%, rgba(30, 18, 15, 0.5) 45%, rgba(30, 18, 15, 0.15) 100%)",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "linear-gradient(92deg, oklch(0.16 0.02 40 / 0.8) 0%, oklch(0.16 0.02 40 / 0.42) 46%, rgba(0, 0, 0, 0) 78%)",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "#cafe > div:nth-of-type(1) > div"
+        }
+      },
+      {
+        "value": "linear-gradient(92deg, oklch(0.18 0.02 45 / 0.82) 0%, oklch(0.18 0.02 45 / 0.5) 34%, rgba(0, 0, 0, 0) 64%), linear-gradient(0deg, oklch(0.16 0.02 45 / 0.6) 0%, rgba(0, 0, 0, 0) 42%), linear-gradient(oklch(0.16 0.02 45 / 0.4) 0%, rgba(0, 0,…",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/",
+          "selector": "#main > section:nth-of-type(1) > div:nth-of-type(1) > div"
+        }
+      },
+      {
+        "value": "linear-gradient(92deg, oklch(0.18 0.02 45 / 0.84) 0%, oklch(0.18 0.02 45 / 0.5) 34%, rgba(0, 0, 0, 0) 64%), linear-gradient(0deg, oklch(0.16 0.02 45 / 0.62) 0%, rgba(0, 0, 0, 0) 42%)",
+        "count": 2,
+        "uses": "photo scrim over hero / café imagery",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(1) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "radial-gradient(60% 80% at 50% 120%, oklch(0.79 0.128 74 / 0.2), rgba(0, 0, 0, 0) 70%)",
+        "count": 2,
+        "uses": "amber glow on dark charcoal bands",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(10) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "radial-gradient(70% 90% at 50% -10%, oklch(0.79 0.128 74 / 0.14), rgba(0, 0, 0, 0) 60%)",
+        "count": 2,
+        "uses": "amber glow on dark charcoal bands",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(5) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "radial-gradient(circle, oklch(0.79 0.128 74 / 0.24) 0%, rgba(0, 0, 0, 0) 62%)",
+        "count": 2,
+        "uses": "amber glow on dark charcoal bands",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(5) > div:nth-of-type(1)"
+        }
+      },
+      {
+        "value": "radial-gradient(circle, oklch(0.79 0.128 74 / 0.26) 0%, rgba(0, 0, 0, 0) 62%)",
+        "count": 2,
+        "uses": "amber glow on dark charcoal bands",
+        "source": {
+          "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+          "selector": "#dc-root > div > div > section:nth-of-type(7) > div:nth-of-type(1)"
+        }
+      }
+    ],
+    "patterns": [
+      {
+        "name": "hero-with-image",
+        "evidence": "full-bleed photo hero with dark left-to-right scrim and copy bottom-left: home section.hero, landing section 1, cafe section 1"
+      },
+      {
+        "name": "eyebrow-kicker",
+        "evidence": "uppercase tracked terracotta/amber label with a 1.6em rule before it (.eyebrow / .fr-eyebrow) above nearly every section heading"
+      },
+      {
+        "name": "pill-buttons-with-arrow",
+        "evidence": "999px pill buttons; primary CTAs end in a → glyph that nudges on hover (.btn .arrow / .fr-btn__arrow), 6 pages"
+      },
+      {
+        "name": "card-grid",
+        "evidence": "image-top cards with 22px radius: home #feed (3), blog post grid (6), machines product articles, cafe locations"
+      },
+      {
+        "name": "filter-pills",
+        "evidence": "pill toggle row, active = burgundy fill: machines (5), blog (6), cafe regions (5)"
+      },
+      {
+        "name": "split-media-copy",
+        "evidence": "alternating image/copy halves: beverages coffee/tea/juice sections, home sustain, machines families"
+      },
+      {
+        "name": "cta-band",
+        "evidence": "charcoal band with amber radial glow and centered/left CTA pair closes home (.cta), landing, beverages, cafe"
+      },
+      {
+        "name": "footer-mega",
+        "evidence": "charcoal footer: logo + tagline + newsletter signup + three link columns (Shop/Company/Support) + social + legal, 6 pages"
+      }
+    ]
+  },
+  "componentStyle": {
+    "buttons": {
+      "primary": {
+        "background": "oklch(0.605 0.116 44)",
+        "color": "oklch(0.945 0.016 80)",
+        "borderRadius": "999px",
+        "padding": "14.25px 24px",
+        "border": "1px solid rgba(0, 0, 0, 0)",
+        "fontWeight": 600,
+        "fontSize": "15px",
+        "sample": "Meet your coffee agent →",
+        "class": ".btn--terracotta / .fr-btn--terracotta",
+        "shadow": "none",
+        "hover": {
+          "background": "oklch(0.515 0.108 40)",
+          "boxShadow": "oklch(0.3 0.03 50 / 0.07) 0px 4px 14px 0px, oklch(0.3 0.03 50 / 0.08) 0px 14px 34px 0px",
+          "transform": "translateY(-2px) (shared/tokens.css .btn:hover)"
+        }
+      },
+      "cream": {
+        "background": "oklch(0.97 0.01 82)",
+        "color": "oklch(0.34 0.093 25)",
+        "borderRadius": "999px",
+        "padding": "14.25px 24px",
+        "border": "1px solid rgba(0, 0, 0, 0)",
+        "fontWeight": 600,
+        "fontSize": "15px",
+        "sample": "Find a café near you →",
+        "class": ".btn--cream / .fr-btn--cream",
+        "shadow": "oklch(0.3 0.03 50 / 0.06) 0px 1px 2px 0px, oklch(0.3 0.03 50 / 0.05) 0px 2px 8px 0px",
+        "hover": {
+          "background": "rgb(255, 255, 255)",
+          "boxShadow": "oklch(0.3 0.03 50 / 0.07) 0px 4px 14px 0px, oklch(0.3 0.03 50 / 0.08) 0px 14px 34px 0px"
+        }
+      },
+      "ghost": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.262 0.021 52)",
+        "borderRadius": "999px",
+        "padding": "14.25px 24px",
+        "border": "1px solid oklch(0.262 0.021 52 / 0.32)",
+        "fontWeight": 600,
+        "fontSize": "15px",
+        "sample": "See how it works",
+        "class": ".btn--ghost / .fr-btn--ghost",
+        "note": "border = currentColor at 32% (34–42% on dark/media variants)",
+        "hover": {
+          "background": "oklch(0.515 0.108 40 / 0.08)",
+          "borderColor": "oklch(0.515 0.108 40 / 0.55)",
+          "color": "oklch(0.515 0.108 40)"
+        }
+      },
+      "secondaryDeclared": {
+        "class": ".btn--primary",
+        "background": "var(--burgundy)",
+        "color": "var(--cream)",
+        "hover": "var(--burgundy-deep)",
+        "note": "declared in shared/tokens.css; not observed rendered on the 6 pages"
+      }
+    },
+    "dualCTAPattern": "primary-then-ghost",
+    "dualCTAEvidence": [
+      "home hero: Meet your coffee agent → + Explore taste profiles",
+      "landing hero: Order the Atelier→ + See how it works",
+      "cafe hero: Find your nearest café→ + See what's inside",
+      "home .cta / landing / cafe closing bands"
+    ],
+    "filterPill": {
+      "active": {
+        "background": "oklch(0.34 0.093 25)",
+        "color": "oklch(0.945 0.016 80)",
+        "borderRadius": "999px",
+        "padding": "8px 17.6px",
+        "border": "1px solid oklch(0.34 0.093 25)",
+        "fontWeight": 500,
+        "fontSize": "14.4px",
+        "sample": "All machines"
+      },
+      "inactive": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.262 0.021 52)",
+        "borderRadius": "999px",
+        "padding": "8px 17.6px",
+        "border": "1px solid oklch(0.855 0.018 68)",
+        "fontWeight": 500,
+        "fontSize": "14.4px",
+        "sample": "Bean-to-cup"
+      },
+      "smallVariant": {
+        "background": "oklch(0.34 0.093 25)",
+        "color": "oklch(0.945 0.016 80)",
+        "borderRadius": "999px",
+        "padding": "7.2px 16px",
+        "border": "1px solid oklch(0.34 0.093 25)",
+        "fontWeight": 500,
+        "fontSize": "14.08px",
+        "sample": "All regions"
+      },
+      "note": "active = burgundy fill + cream text; inactive = transparent with --line border, --ink text"
+    },
+    "moodToggle": {
+      "active": {
+        "background": "oklch(0.34 0.093 25)",
+        "color": "oklch(0.945 0.016 80)",
+        "borderRadius": "999px",
+        "padding": "7.104px 12.432px",
+        "border": "1px solid oklch(0.34 0.093 25)",
+        "fontWeight": 400,
+        "fontSize": "11.84px",
+        "sample": "Weekday"
+      },
+      "inactive": {
+        "background": "oklch(0.97 0.01 82)",
+        "color": "oklch(0.43 0.022 52)",
+        "borderRadius": "999px",
+        "padding": "7.104px 12.432px",
+        "border": "1px solid oklch(0.855 0.018 68)",
+        "fontWeight": 400,
+        "fontSize": "11.84px",
+        "sample": "Slow Sunday"
+      }
+    },
+    "cards": {
+      "background": "oklch(0.97 0.01 82) (--paper)",
+      "borderRadius": "22px (--r-lg)",
+      "border": "1px solid oklch(0.855 0.018 68) (--line)",
+      "padding": "1.3rem 1.4rem 1.4rem (.card__body)",
+      "shadow": null,
+      "hover": "translateY(-5px) + --shadow-lg; image scale(1.06)",
+      "source": "atelier.css .card"
+    },
+    "chips": {
+      "background": "--paper-2",
+      "color": "--burgundy",
+      "border": "1px solid --line",
+      "borderRadius": "999px",
+      "padding": "0.55em 0.95em",
+      "font": "Hanken Grotesk 0.74rem uppercase, letter-spacing 0.06em",
+      "source": "atelier.css .chips li"
+    },
+    "inputs": {
+      "borderRadius": "999px (--r-pill)",
+      "padding": "0.85em 1.25em",
+      "border": "1px solid --line-dark",
+      "background": "--charcoal-2",
+      "color": "--cream",
+      "focusRing": "border-color: --amber; outline: none",
+      "source": "atelier.css .signup__input"
+    },
+    "focus": {
+      "outline": "2px solid var(--focus) (terracotta)",
+      "outlineOffset": "3px",
+      "source": "shared/tokens.css :focus-visible"
+    },
+    "links": {
+      "color": "--terracotta",
+      "underline": "background-image linear-gradient(terracotta) animated underline (.link / .fr-link) with → arrow",
+      "navHover": [
+        {
+          "from": {
+            "color": "oklch(0.795 0.021 78)"
+          },
+          "to": {
+            "color": "oklch(0.945 0.016 80)"
+          },
+          "source": {
+            "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+            "selector": "nav > div:nth-of-type(1) > a:nth-of-type(1)"
+          }
+        },
+        {
+          "from": {
+            "color": "oklch(0.945 0.016 80)"
+          },
+          "to": {
+            "color": "oklch(0.262 0.021 52)"
+          },
+          "source": {
+            "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+            "selector": "nav > a:nth-of-type(1)"
+          }
+        }
+      ]
+    },
+    "motion": {
+      "--ease-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "--ease-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "--dur-1": "0.35s",
+      "--dur-2": "0.6s",
+      "--dur-3": "0.9s",
+      "reveal": ".reveal → .is-in scroll reveal on home",
+      "reducedMotion": "@media (prefers-reduced-motion: reduce) present in 3 stylesheets"
+    }
+  },
+  "systemComponents": [
+    {
+      "name": "site-header",
+      "kind": "header",
+      "occurrences": 6,
+      "headingSequence": [],
+      "ctaLabels": [
+        "The Atelier",
+        "Machines",
+        "Beverages",
+        "Café",
+        "Journal"
+      ],
+      "utilities": [
+        "Search",
+        "Account",
+        "Cart, 0 items",
+        "Menu"
+      ],
+      "exampleSlug": "frescopa-atelier",
+      "exampleSelector": "header.header",
+      "altSelector": "header.fr-hdr (design-system pages)",
+      "examplePages": [
+        "frescopa-atelier-beverages-html",
+        "frescopa-atelier-blog-html",
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-machines-html",
+        "frescopa-atelier"
+      ],
+      "behaviour": "position: fixed, 75px tall at 1440; transparent over photo heroes (home, landing, cafe) and paper oklch(0.97 0.01 82 / 0.9) on others; .is-scrolled swaps light→dark logo and adds shadow; active page gets .is-active on DS pages",
+      "exampleBlock": "<header class=\"header\"><div class=\"container header__inner\"><a class=\"header__brand\" href=\"#\" aria-label=\"Fréscopa home\"><img class=\"header__logo header__logo--light\" src=\"./assets/frescopa-logo-light.svg\" alt=\"Fréscopa\"><img class=\"header__logo header__logo--dark\" src=\"./assets/frescopa-logo.svg\" alt=\"\"></a><nav class=\"nav\" aria-label=\"Primary\"><a href=\"landing.html\">The Atelier</a><a href=\"machines.html\">Machines</a><a href=\"beverages.html\">Beverages</a><a href=\"cafe.html\">Café</a><a href=\"blog.html\">Journal</a></nav><div class=\"header__utils\"><button class=\"iconbtn\" aria-label=\"Search\"></button><button class=\"iconbtn\" aria-label=\"Account\"></button><button class=\"iconbtn iconbtn--cart\" aria-label=\"Cart, 0 items\"></button><button class=\"nav-toggle\" aria-label=\"Menu\"></button></div></div></header>"
+    },
+    {
+      "name": "site-footer",
+      "kind": "footer",
+      "occurrences": 6,
+      "headingSequence": [
+        "Shop",
+        "Company",
+        "Support"
+      ],
+      "ctaLabels": [
+        "Sign up",
+        "Coffee",
+        "Tea",
+        "Cold-pressed juice",
+        "Machines",
+        "Accessories",
+        "Our story",
+        "Sustainability",
+        "Fréscopa Café",
+        "Careers",
+        "Contact us",
+        "Delivery & returns",
+        "Register your Atelier",
+        "Help centre"
+      ],
+      "exampleSlug": "frescopa-atelier",
+      "exampleSelector": "footer.footer",
+      "altSelector": "footer.fr-ftr",
+      "examplePages": [
+        "frescopa-atelier-beverages-html",
+        "frescopa-atelier-blog-html",
+        "frescopa-atelier-cafe-html",
+        "frescopa-atelier-landing-html",
+        "frescopa-atelier-machines-html",
+        "frescopa-atelier"
+      ],
+      "behaviour": "charcoal oklch(0.222 0.016 52) ground, 86.4px top padding at 1440, ~495px tall; light logo, tagline, newsletter form (pill input + cream Sign up), 3 link columns, social icons, legal line",
+      "exampleBlock": "see stardust/current/pages/frescopa-atelier.html <footer class=\"footer\"> (tagline \"Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.\", label \"A little warmth in your inbox.\", legal \"© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.\")"
+    }
+  ],
+  "iconFont": null,
+  "voice": {
+    "heroHeadline": "Every morning, perfected.",
+    "heroHeadlineRaw": "Every morning,perfected.",
+    "heroHeadlineMarkup": "Every morning,<br>perfected.",
+    "heroSubcopy": "The first Fréscopa machine with a feel for your mornings. It learns what you love, softens or sharpens to match your mood, and quietly takes care of the rest. Barista craft, kept warm by a little intelligence.",
+    "heroEyebrow": "Meet the Atelier",
+    "heroImage": {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+      "alt": "The Fréscopa Atelier on a sunlit kitchen counter, steam rising from a freshly pulled cup.",
+      "source": "img",
+      "domPath": "main#main > section.hero > div.hero__media > img",
+      "localPath": "stardust/current/assets/media/hero-machine.jpg",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 828
+      },
+      "rectBasis": "section.hero rect at 1440 (census surfaces #main > section:nth-of-type(1)); img is absolute inset:0 object-fit:cover",
+      "intrinsic": {
+        "width": 1408,
+        "height": 768
+      }
+    },
+    "heroMedium": null,
+    "heroMediumNote": "hero is a still photo; shared/hero.js only art-directs copy position (--hero-copy-top / --hero-copy-max) from data-hero-* image metadata — no video/canvas/lottie",
+    "primaryCTALabel": "Meet your coffee agent →",
+    "ctaSamples": [
+      "Meet your coffee agent →",
+      "Order the Atelier→",
+      "Find a café near you →",
+      "See how it learns →"
+    ],
+    "navItems": [
+      "The Atelier",
+      "Machines",
+      "Beverages",
+      "Café",
+      "Journal"
+    ],
+    "footerHeadings": [
+      "Shop",
+      "Company",
+      "Support"
+    ],
+    "firstParagraph": "For a hundred mornings, the Atelier watches how you like your cup, then makes it that way without being asked. No apps to fuss over, no settings to memorise. Just coffee that feels like it knows you, because, cup by cup, it has come to.",
+    "tagline": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "tone": {
+      "guess": "professional-warm",
+      "evidence": "second-person, sensory and unhurried (\"Warm mornings, made effortless.\"; \"No appointment, no pressure — just a good cup and a warm room.\"), short declarative headlines ending in full stops, British spelling (flavour, centre, memorise)"
+    }
+  },
+  "voiceTable": {
+    "ctaFrequency": [
+      {
+        "label": "Directions→",
+        "total": 26,
+        "pageCount": 1,
+        "pages": [
+          "frescopa-atelier-cafe-html"
+        ]
+      },
+      {
+        "label": "Join the list→",
+        "total": 5,
+        "pageCount": 1,
+        "pages": [
+          "frescopa-atelier-machines-html"
+        ]
+      },
+      {
+        "label": "Add to cart →",
+        "total": 3,
+        "pageCount": 1,
+        "pages": [
+          "frescopa-atelier"
+        ]
+      },
+      {
+        "label": "Find a café→",
+        "total": 2,
+        "pageCount": 2,
+        "pages": [
+          "frescopa-atelier-beverages-html",
+          "frescopa-atelier-cafe-html"
+        ]
+      },
+      {
+        "label": "Weekday",
+        "total": 2,
+        "pageCount": 2,
+        "pages": [
+          "frescopa-atelier-landing-html",
+          "frescopa-atelier"
+        ]
+      },
+      {
+        "label": "Slow Sunday",
+        "total": 2,
+        "pageCount": 2,
+        "pages": [
+          "frescopa-atelier-landing-html",
+          "frescopa-atelier"
+        ]
+      },
+      {
+        "label": "After dinner",
+        "total": 2,
+        "pageCount": 2,
+        "pages": [
+          "frescopa-atelier-landing-html",
+          "frescopa-atelier"
+        ]
+      },
+      {
+        "label": "Order the Atelier→",
+        "total": 2,
+        "pageCount": 1,
+        "pages": [
+          "frescopa-atelier-landing-html"
+        ]
+      }
+    ],
+    "ctaFrequencyNote": "site-header / site-footer link labels and \"Skip to content\" excluded (system-component links, listed under systemComponents); labels >40 chars are whole-card links and excluded",
+    "headingFrequency": [
+      {
+        "text": "Shop",
+        "total": 6,
+        "pageCount": 6,
+        "level": 3
+      },
+      {
+        "text": "Company",
+        "total": 6,
+        "pageCount": 6,
+        "level": 3
+      },
+      {
+        "text": "Support",
+        "total": 6,
+        "pageCount": 6,
+        "level": 3
+      }
+    ],
+    "toneMetrics": {
+      "headingsTotal": 119,
+      "headingsUppercasePercent": 0,
+      "distinctHeadings": 99,
+      "distinctCtaLabels": 74
+    }
+  },
+  "crossPromo": {
+    "detected": true,
+    "anchorHeading": "Shop",
+    "cluster": [
+      {
+        "text": "Shop",
+        "total": 6,
+        "pageCount": 6,
+        "overlap": 6
+      },
+      {
+        "text": "Company",
+        "total": 6,
+        "pageCount": 6,
+        "overlap": 6
+      },
+      {
+        "text": "Support",
+        "total": 6,
+        "pageCount": 6,
+        "overlap": 6
+      }
+    ],
+    "pages": [
+      "frescopa-atelier-beverages-html",
+      "frescopa-atelier-blog-html",
+      "frescopa-atelier-cafe-html",
+      "frescopa-atelier-landing-html",
+      "frescopa-atelier-machines-html",
+      "frescopa-atelier"
+    ],
+    "pageCount": 6,
+    "totalPages": 6,
+    "note": "Mechanical detection fires on the footer link-column headings (Shop / Company / Support) — the cluster IS the site-footer system component, not a separate promo band."
+  },
+  "register": "brand",
+  "registerEvidence": "photo heroes with marketing copy, add-to-cart and order CTAs above the fold, pricing bundles, testimonials, no authentication; filter pills exist on catalogue pages but are secondary",
+  "embedDominated": []
+}

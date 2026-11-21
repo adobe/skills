@@ -1,0 +1,49 @@
+/* lp-details — centred head + chips (prototype .lp-details, _ds Chip). */
+
+.lp-details {
+  background: var(--paper);
+  padding: var(--section-y) 0;
+}
+
+.lp-details .lp-details-inner {
+  text-align: center;
+}
+
+.lp-details .lp-details-title :is(h2, h3) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(1.8rem, 1.3rem + 2vw, 2.6rem);
+  color: var(--burgundy);
+  margin: 1rem auto 0;
+  max-width: 20ch;
+}
+
+.lp-details .lp-details-chips {
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.lp-details .lp-details-chips ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.lp-details .lp-details-chips li {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--burgundy);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  padding: 0.55em 0.95em;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+}

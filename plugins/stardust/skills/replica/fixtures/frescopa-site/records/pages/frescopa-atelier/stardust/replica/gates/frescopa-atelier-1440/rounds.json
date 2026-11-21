@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "stages": {
+    "prototype": {
+      "rounds": [
+        {
+          "label": "iter1",
+          "at": "2026-11-21T18:47:29.913Z",
+          "verdict": "fail",
+          "kind": "first"
+        },
+        {
+          "label": "iter2",
+          "at": "2026-11-21T18:55:06.808Z",
+          "verdict": "fail",
+          "kind": "fix"
+        },
+        {
+          "label": "blogcanon",
+          "at": "2026-11-21T19:14:01.156Z",
+          "verdict": "pass",
+          "kind": "fix"
+        },
+        {
+          "label": "blogcanon2",
+          "at": "2026-11-21T19:17:50.537Z",
+          "verdict": "pass",
+          "kind": "confirm"
+        },
+        {
+          "label": "landingwidgets",
+          "at": "2026-11-21T19:41:16.919Z",
+          "verdict": "pass",
+          "kind": "confirm"
+        }
+      ],
+      "decisions": []
+    },
+    "all-pages": {
+      "rounds": [
+        {
+          "label": "all-2026-11-21T20-31-26-214Z",
+          "at": "2026-11-21T20:31:26.215Z",
+          "verdict": "fail",
+          "kind": "first"
+        },
+        {
+          "label": "all-2026-11-21T20-34-52-915Z",
+          "at": "2026-11-21T20:34:52.916Z",
+          "verdict": "fail",
+          "kind": "fix"
+        },
+        {
+          "label": "all-2026-11-21T20-37-25-831Z",
+          "at": "2026-11-21T20:37:25.831Z",
+          "verdict": "pass",
+          "kind": "fix"
+        },
+        {
+          "label": "all-2026-11-21T22-02-22-897Z",
+          "at": "2026-11-21T22:02:22.898Z",
+          "verdict": "pass",
+          "kind": "confirm"
+        }
+      ],
+      "decisions": []
+    }
+  }
+}

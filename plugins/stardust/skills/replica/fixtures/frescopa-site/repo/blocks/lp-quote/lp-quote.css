@@ -1,0 +1,65 @@
+/* lp-quote — pull quote over a photo (prototype .lp-quote, no media queries). */
+
+.lp-quote {
+  position: relative;
+  min-height: 72vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.lp-quote .lp-quote-media {
+  position: absolute;
+  inset: 0;
+}
+
+.lp-quote .lp-quote-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lp-quote .lp-quote-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 55%;
+}
+
+.lp-quote .lp-quote-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      oklch(18% 0.02 45deg / 80%) 0%,
+      oklch(18% 0.02 45deg / 42%) 46%,
+      transparent 74%
+    );
+}
+
+.lp-quote .lp-quote-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.lp-quote .lp-quote-text p {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.2rem);
+  line-height: 1.12;
+  color: var(--cream);
+  max-width: 18ch;
+}
+
+.lp-quote .lp-quote-text em {
+  font-style: normal;
+  color: var(--amber);
+}
+
+.lp-quote .lp-quote-cite p {
+  color: var(--cream-soft);
+  margin-top: 1.2rem;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}

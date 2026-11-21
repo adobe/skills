@@ -1,0 +1,28 @@
+/* machines-filter — sticky family filter pills (prototype .machines-filter).
+   The pill itself is the foundation .filter-pill; the section sticks under the
+   72px header (the block's own section is the sticky box in the EDS section model). */
+
+main > .section.machines-filter-container {
+  position: sticky;
+  top: 72px;
+  z-index: 20;
+}
+
+.machines-filter {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+
+.machines-filter .machines-filter-inner {
+  padding-block: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.machines-filter .filter-pill p {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}

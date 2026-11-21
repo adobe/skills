@@ -1,0 +1,56 @@
+/* cta — closing promise band (prototype section.cta), mobile-first. */
+
+.cta {
+  position: relative;
+  background: var(--charcoal);
+  color: var(--cream);
+  text-align: center;
+  padding-block: clamp(5rem, 9vw, 9.5rem);
+  overflow: hidden;
+}
+
+.cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      60% 80% at 50% 120%,
+      color-mix(in oklch, var(--amber) 20%, transparent),
+      transparent 70%
+    );
+}
+
+.cta .cta-inner {
+  position: relative;
+}
+
+.cta .cta-promise {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 5.4vw, 4.2rem);
+  line-height: 1.08;
+  color: var(--cream);
+  max-width: 20ch;
+  margin-inline: auto;
+}
+
+.cta .cta-promise em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--amber);
+}
+
+.cta .cta-sub {
+  color: var(--cream-soft);
+  margin: 1.4rem auto 2.3rem;
+  max-width: 42ch;
+}
+
+.cta .cta-actions {
+  display: flex;
+  gap: 0.9rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}

@@ -1,0 +1,79 @@
+{
+  "slug": "frescopa-atelier-beverages-html",
+  "type": "category-overview",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "bev-hero",
+    "range",
+    "bev-cta"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "bev-hero",
+    "range",
+    "range",
+    "range",
+    "bev-cta"
+  ],
+  "canonShas": {
+    "header": "713b354213e7",
+    "footer": "b671270abc23",
+    "css": "b989c60f9f0c"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa — Beverages",
+    "description": null,
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa — Beverages",
+    "url": "https://markszulc.github.io/frescopa-atelier/beverages.html"
+  },
+  "migratedAt": "2026-11-21T20:05:25Z",
+  "designMdSha": "2b3e154a30bc",
+  "designJsonSha": "a3e828d436de",
+  "sourceCurrentSha": "8e3ba3d6e5e6",
+  "sourceProposedSha": "190174a5f20b",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "content-fidelity",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "content-count",
+    "delivery-lint"
+  ],
+  "gateEvidence": {
+    "content-fidelity": "archetype rendered from gated prototype; content-diff 0/0 at 1440+360 (replica/progress.json)",
+    "pixel-gate-1440": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-1440/summary.md) [prototype regime]",
+    "pixel-gate-360": "0.00%, height delta 0px, clipped 0, content n/a (stardust/replica/gates/prototypes-360/summary.md) [prototype regime]",
+    "content-count": "content-diff: none — content + roles match — looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0 (frescopa-atelier-beverages-html-1440-iter2.log)",
+    "media-reconcile": "n/a: no delivered content file yet (content/frescopa-atelier/beverages.html) — media-reconcile runs in the delivery chain (row C)",
+    "delivery-lint": "0 P0 · 0 P1 · 1 P2 (delivery-lint --path /frescopa-atelier/beverages)"
+  },
+  "contentDeviations": [],
+  "assetsBundled": 10,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "index.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "coffee.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/beverages.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/beverages._meta.json",
+  "driverVersion": "1"
+}

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-11-21T20:05:25Z
+  page:             frescopa-atelier-blog-html
+  slug:             frescopa-atelier-blog-html
+  pagePath:         migrated/blog.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/frescopa-atelier-blog-html-proposed.html
+  sourceCurrent:    stardust/current/pages/frescopa-atelier-blog-html.json
+  againstDirection: stardust/direction.md (Active)
+  designMd:         DESIGN.md (sha: 2b3e154a30bc)
+  designJson:       DESIGN.json (sha: a3e828d436de)
+  canonShas:        header:b10a10f8092a footer:b671270abc23 css:b989c60f9f0c
+  decisionTrace:    blog._meta.json
+  brokenInternalLinks: 3
+  stardustVersion:  local
+-->
+<style>
+:root {
+  color-scheme: light;
+  --burgundy: oklch(0.34 0.093 25);
+  --burgundy-deep: oklch(0.275 0.082 26);
+  --terracotta: oklch(0.605 0.116 44);
+  --terracotta-deep: oklch(0.515 0.108 40);
+  --amber: oklch(0.79 0.128 74);
+  --amber-soft: oklch(0.865 0.083 80);
+  --teal: oklch(0.55 0.05 205);
+  --paper: oklch(0.970 0.010 82);
+  --paper-2: oklch(0.948 0.015 78);
+  --paper-3: oklch(0.918 0.020 74);
+  --sand: oklch(0.884 0.025 71);
+  --line: oklch(0.855 0.018 68);
+  --ink: oklch(0.262 0.021 52);
+  --ink-soft: oklch(0.430 0.022 52);
+  --charcoal: oklch(0.222 0.016 52);
+  --charcoal-2: oklch(0.282 0.020 50);
+  --line-dark: oklch(0.400 0.020 55);
+  --cream: oklch(0.945 0.016 80);
+  --cream-soft: oklch(0.795 0.021 78);
+  --bg: var(--paper);
+  --fg: var(--ink);
+  /* Semantic aliases (_ds tokens/colors.css), used by React page types. */
+  --surface-raised: var(--paper-2);
+  --surface-card: var(--paper);
+  --surface-dark: var(--charcoal);
+  --text-body: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-heading: var(--burgundy);
+  --text-on-dark: var(--cream);
+  --accent: var(--terracotta);
+  --focus: var(--terracotta);
+  /* Families: the source's rendered faces (atelier.css `.atelier` override). */
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "Hanken Grotesk", system-ui, sans-serif;
+  --fs-eyebrow: 0.75rem;
+  --fs-sm: 0.9375rem;
+  --fs-body: 1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4: clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h3: clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);
+  --fs-h2: clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --fs-h1: clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);
+  --lh-tight: 1.03;
+  --lh-snug: 1.15;
+  --lh-body: 1.62;
+  --tracking-eyebrow: 0.2em;
+  --tracking-tight: -0.02em;
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem);
+  --content: 1120px;
+  --content-wide: 1320px;
+  --content-narrow: 760px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+}
+</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Fréscopa — The Journal","url":"https://markszulc.github.io/frescopa-atelier/blog.html"}</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fréscopa — The Journal</title>
+  <link rel="preload" href="../assets/shared/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/shared/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../assets/shared/canon.css">
+  <link rel="stylesheet" href="../assets/frescopa-atelier-blog-html.css">
+  <script defer src="../assets/shared/canon.js"></script>
+  <script defer src="../assets/frescopa-atelier-blog-html.js"></script>
+</head>
+<body>
+<div class="page page--app">
+
+  <header class="header header--solid is-scrolled" data-header>
+    <div class="container header__inner">
+      <a class="header__brand" href="../frescopa-atelier/index.html" aria-label="Fréscopa home" data-broken-link="true">
+        <img class="header__logo header__logo--light" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="110" height="30">
+        <img class="header__logo header__logo--dark" src="../assets/media/frescopa-logo.svg" alt="" width="110" height="30">
+      </a>
+      <nav class="nav" id="primary-nav" data-nav aria-label="Primary">
+        <a href="../frescopa-atelier/landing.html">The Atelier</a>
+        <a href="../frescopa-atelier/machines.html">Machines</a>
+        <a href="../frescopa-atelier/beverages.html">Beverages</a>
+        <a href="../frescopa-atelier/cafe.html">Café</a>
+        <a href="../frescopa-atelier/blog.html" aria-current="page">Journal</a>
+      </nav>
+      <div class="header__utils">
+        <button class="iconbtn" aria-label="Search">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Account">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn iconbtn--cart" aria-label="Cart, 0 items">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8h12l-1 11H7L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"/></svg>
+        </button>
+        <button class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false" aria-controls="primary-nav"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" data-template="frescopa-atelier-blog-html">
+    <section class="journal-hero" data-section="1">
+      <div class="container">
+        <span class="journal-hero__eyebrow">The Journal</span>
+        <h1 class="journal-hero__title">Notes on the morning ritual.</h1>
+        <p class="journal-hero__lede">Brewing guides, origin stories, and small thoughts on doing mornings well — from the people who make the coffee and the machines.</p>
+      </div>
+    </section>
+
+    <section class="journal-feature" data-section="2">
+      <div class="container">
+        <div class="feature-card">
+          <a class="feature-card__cover" href="../frescopa-atelier/article.html" tabindex="-1" aria-hidden="true" data-broken-link="true"></a>
+          <div class="feature-card__media">
+            <img src="../assets/media/hero-machine.jpg" alt="How the Atelier learns your taste" width="1408" height="768">
+            <div class="feature-card__badge"><div class="feature-card__badge-slot"><span class="badge badge--amber">Featured</span></div></div>
+          </div>
+          <div class="feature-card__body">
+            <span class="feature-card__cat">The Atelier</span>
+            <h2 class="feature-card__title">How the Atelier learns your taste</h2>
+            <p class="feature-card__excerpt">It doesn’t guess, and it doesn’t need a questionnaire. Here’s what actually happens in the first two weeks on your counter — and why your cup keeps getting better.</p>
+            <div class="feature-card__foot">
+              <span class="feature-card__meta">June 2026 · 6 min read</span>
+              <a class="link" href="../frescopa-atelier/article.html" data-broken-link="true">Read the story<span class="arrow" aria-hidden="true">→</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="journal-list" data-section="3">
+      <div class="container">
+        <div class="filter-pills" data-filter-pills>
+          <button class="filter-pill is-active" type="button" data-filter="all" aria-pressed="true">All posts</button>
+          <button class="filter-pill" type="button" data-filter="The Atelier" aria-pressed="false">The Atelier</button>
+          <button class="filter-pill" type="button" data-filter="Brewing" aria-pressed="false">Brewing</button>
+          <button class="filter-pill" type="button" data-filter="Origins" aria-pressed="false">Origins</button>
+          <button class="filter-pill" type="button" data-filter="Café life" aria-pressed="false">Café life</button>
+          <button class="filter-pill" type="button" data-filter="Sustainability" aria-pressed="false">Sustainability</button>
+        </div>
+        <div class="post-grid" data-filter-items>
+          <a class="post-card" href="#" data-cat="Brewing">
+            <div class="post-card__media"><img src="../assets/media/espresso-pour.jpg" alt="In praise of the slow pour" width="1408" height="768" loading="lazy"></div>
+            <span class="post-card__cat">Brewing</span>
+            <h3 class="post-card__title">In praise of the slow pour</h3>
+            <p class="post-card__excerpt">Why the unhurried cup rewards your patience — and how to get the water right.</p>
+            <span class="post-card__meta">May 2026 · 4 min</span>
+          </a>
+          <a class="post-card" href="#" data-cat="Café life">
+            <div class="post-card__media"><img src="../assets/media/cafe-interior.jpg" alt="A morning in our SoHo café" width="1408" height="768" loading="lazy"></div>
+            <span class="post-card__cat">Café life</span>
+            <h3 class="post-card__title">A morning in our SoHo café</h3>
+            <p class="post-card__excerpt">Doors at seven, the first grind at 7:02. A few hours behind the bar at the flagship.</p>
+            <span class="post-card__meta">May 2026 · 3 min</span>
+          </a>
+          <a class="post-card" href="#" data-cat="Origins">
+            <div class="post-card__media">
+              <image-slot id="blog-single-origin" shape="rect" placeholder="Single origin, explained"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">Single origin, explained</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <span class="post-card__cat">Origins</span>
+            <h3 class="post-card__title">Single origin, explained</h3>
+            <p class="post-card__excerpt">What “traceable to a single farm” really means, and why it changes the cup.</p>
+            <span class="post-card__meta">Apr 2026 · 5 min</span>
+          </a>
+          <a class="post-card" href="#" data-cat="Café life">
+            <div class="post-card__media"><img src="../assets/media/tea-moment.jpg" alt="Tea, and the quiet hour" width="1408" height="768" loading="lazy"></div>
+            <span class="post-card__cat">Café life</span>
+            <h3 class="post-card__title">Tea, and the quiet hour</h3>
+            <p class="post-card__excerpt">A small case for slowing down in the afternoon, one loose-leaf pot at a time.</p>
+            <span class="post-card__meta">Apr 2026 · 3 min</span>
+          </a>
+          <a class="post-card" href="#" data-cat="Sustainability">
+            <div class="post-card__media"><img src="../assets/media/sustainability.jpg" alt="Nothing wasted, right down to the grounds" width="1408" height="768" loading="lazy"></div>
+            <span class="post-card__cat">Sustainability</span>
+            <h3 class="post-card__title">Nothing wasted, right down to the grounds</h3>
+            <p class="post-card__excerpt">Where your spent coffee goes after the cup — and how the Atelier keeps track.</p>
+            <span class="post-card__meta">Mar 2026 · 4 min</span>
+          </a>
+          <a class="post-card" href="#" data-cat="Brewing">
+            <div class="post-card__media">
+              <image-slot id="blog-espresso-dial" shape="rect" placeholder="Dialling in your first espresso"><template shadowrootmode="open"><style>:host{display:block;position:relative;font:13px/1.3 system-ui,-apple-system,sans-serif;color:rgba(0,0,0,.55);width:100%;height:100%;aspect-ratio:3/2}.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:12px;box-sizing:border-box;background:rgba(0,0,0,.04)}.empty svg{display:block;opacity:.45}.cap{max-width:90%;font-weight:500;letter-spacing:.01em}.ring{position:absolute;inset:0;pointer-events:none;border:1.5px dashed rgba(0,0,0,.25)}</style><div class="empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><div class="cap">Dialling in your first espresso</div></div><div class="ring"></div></template></image-slot>
+            </div>
+            <span class="post-card__cat">Brewing</span>
+            <h3 class="post-card__title">Dialling in your first espresso</h3>
+            <p class="post-card__excerpt">Grind, dose, time. The three dials that turn a decent shot into a great one.</p>
+            <span class="post-card__meta">Mar 2026 · 5 min</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer footer--app">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/media/frescopa-logo-light.svg" alt="Fréscopa" width="140" height="38">
+        <p class="footer__tag">Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.</p>
+        <form class="signup" action="#" onsubmit="return false">
+          <label class="signup__label" for="fr-ftr-email">A little warmth in your inbox.</label>
+          <div class="signup__row">
+            <input id="fr-ftr-email" class="signup__input" type="email" placeholder="you@example.com" autocomplete="email">
+            <button class="btn btn--cream" type="submit">Sign up</button>
+          </div>
+        </form>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div class="footer__col">
+          <h3>Shop</h3>
+          <a href="#">Coffee</a><a href="#">Tea</a><a href="#">Cold-pressed juice</a><a href="#">Machines</a><a href="#">Accessories</a>
+        </div>
+        <div class="footer__col">
+          <h3>Company</h3>
+          <a href="#">Our story</a><a href="#">Sustainability</a><a href="#">Fréscopa Café</a><a href="#">Careers</a>
+        </div>
+        <div class="footer__col">
+          <h3>Support</h3>
+          <a href="#">Contact us</a><a href="#">Delivery &amp; returns</a><a href="#">Register your Atelier</a><a href="#">Help centre</a>
+        </div>
+      </nav>
+    </div>
+    <div class="container footer__legal">
+      <div class="footer__social">
+        <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17" cy="7" r="1" fill="currentColor" stroke="none"/></svg></a>
+        <a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8c-2 0-3 1.4-3 3 0 1 .5 2 1.3 2.4M12 8c1.8 0 3 1.1 3 2.8 0 2-1.2 3.4-2.8 3.4-.8 0-1.4-.5-1.2-1.3l.6-2.4M10.8 17l1-4" stroke-linecap="round"/></svg></a>
+        <a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="4"/><path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="none"/></svg></a>
+      </div>
+      <p class="footer__meta">© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration.</p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

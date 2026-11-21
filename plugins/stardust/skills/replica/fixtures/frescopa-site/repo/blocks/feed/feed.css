@@ -1,0 +1,146 @@
+/* feed — "This week, for you" product cards (prototype section.feed), mobile-first. */
+
+.feed {
+  background: var(--paper-2);
+  padding-block: clamp(3rem, 2rem + 4vw, 6rem);
+}
+
+.feed .feed-head {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  align-items: end;
+}
+
+.feed .feed-title {
+  margin-top: 1rem;
+}
+
+.feed .feed-title :is(h2, h3) {
+  font-size: var(--fs-h2);
+}
+
+.feed .feed-intro {
+  color: var(--ink-soft);
+  font-size: var(--fs-body-lg);
+  max-width: 44ch;
+}
+
+.feed .feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: clamp(1.2rem, 2.5vw, 1.8rem);
+  margin-top: clamp(2.2rem, 4vw, 3.2rem);
+}
+
+.feed .card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform var(--dur-2) var(--ease-quint),
+    box-shadow var(--dur-2) var(--ease-quint);
+}
+
+.feed .card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.feed .card-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.feed .card-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.feed .card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.8s var(--ease-quint);
+}
+
+.feed .card:hover .card-media img {
+  transform: scale(1.06);
+}
+
+.feed .card-cat {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.85rem;
+}
+
+/* the pill paints on the authored paragraph itself (one box, as the source span) */
+.feed .card-cat p {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--burgundy);
+  padding: 0.4em 0.75em;
+  border-radius: var(--r-pill);
+}
+
+.feed .card-body {
+  padding: 1.3rem 1.4rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.feed .card-title :is(h3, h4) {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--burgundy);
+  font-weight: 700;
+}
+
+.feed .card-note {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.feed .card-note p {
+  flex: 1;
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+}
+
+.feed .card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.7rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.feed .card-price {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.feed .card-foot .link p {
+  display: inline;
+}
+
+@media (width > 900px) {
+  .feed .feed-head {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -1,0 +1,86 @@
+/* cafe-hero — café photo hero (prototype section.cafe-hero). The app header sits transparent
+   over it (Header Style | app). Values verbatim from the prototype. */
+
+.cafe-hero {
+  position: relative;
+  min-height: min(78vh, 720px);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.cafe-hero .cafe-hero-media,
+.cafe-hero .cafe-hero-media picture {
+  position: absolute;
+  inset: 0;
+}
+
+.cafe-hero .cafe-hero-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+.cafe-hero .cafe-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgb(30 18 15 / 82%) 0%,
+      rgb(30 18 15 / 50%) 45%,
+      rgb(30 18 15 / 15%) 100%
+    );
+}
+
+.cafe-hero .cafe-hero-inner {
+  position: relative;
+  max-width: var(--content);
+  margin-inline: auto;
+  width: 100%;
+  color: var(--cream);
+  padding: 0 var(--gutter) clamp(3rem, 2rem + 4vw, 5.5rem);
+}
+
+/* The prototype eyebrow is an inline span on the inner's line box. */
+.cafe-hero .cafe-hero-eyebrow,
+.cafe-hero .cafe-hero-eyebrow p {
+  display: inline;
+}
+
+.cafe-hero .cafe-hero-eyebrow p {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.78rem;
+  color: var(--amber);
+}
+
+.cafe-hero .cafe-hero-title :is(h1, h2) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.4rem, 1.6rem + 4vw, 4.4rem);
+  color: var(--cream);
+  margin: 1rem 0 0;
+  line-height: 1.02;
+  max-width: 16ch;
+}
+
+.cafe-hero .cafe-hero-lead p {
+  color: rgb(255 248 240 / 90%);
+  font-size: clamp(1.05rem, 1rem + 0.4vw, 1.3rem);
+  margin: 1.2rem 0 0;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+.cafe-hero .cafe-hero-actions {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin-top: 1.8rem;
+}

@@ -1,0 +1,479 @@
+{
+ "tool": "chrome-explore",
+ "url": "https://markszulc.github.io/frescopa-atelier/",
+ "at": "2026-11-21T19:18:38.254Z",
+ "shots": "stardust/.work/chrome/header-contract",
+ "widths": {
+  "360": {
+   "root": "body>header",
+   "controls": [
+    {
+     "name": "Fréscopa home",
+     "key": "fréscopa home",
+     "role": "toggle",
+     "kind": "menu",
+     "sel": "body>header>div>a",
+     "expanded": null,
+     "rect": [
+      20,
+      23,
+      117,
+      32
+     ],
+     "actions": {
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Search",
+     "key": "search",
+     "role": "toggle",
+     "kind": "search",
+     "sel": "body>header>div>div>button:nth-of-type(1)",
+     "expanded": null,
+     "rect": [
+      161,
+      19,
+      40,
+      40
+     ],
+     "actions": {
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Account",
+     "key": "account",
+     "role": "toggle",
+     "kind": "account",
+     "sel": "body>header>div>div>button:nth-of-type(2)",
+     "expanded": null,
+     "rect": [
+      207,
+      19,
+      40,
+      40
+     ],
+     "actions": {
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Cart, 0 items",
+     "key": "cart 0 items",
+     "role": "toggle",
+     "kind": "cart",
+     "sel": "body>header>div>div>button:nth-of-type(3)",
+     "expanded": null,
+     "rect": [
+      252,
+      19,
+      40,
+      40
+     ],
+     "actions": {
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Menu",
+     "key": "menu",
+     "role": "toggle",
+     "kind": "drawer",
+     "sel": "body>header>div>div>button:nth-of-type(4)",
+     "expanded": "false",
+     "rect": [
+      298,
+      18,
+      42,
+      42
+     ],
+     "actions": {
+      "click": {
+       "opened": true,
+       "hidden": 0,
+       "panel": {
+        "links": [
+         {
+          "text": "The Atelier",
+          "href": "https://markszulc.github.io/frescopa-atelier/landing.html"
+         },
+         {
+          "text": "Machines",
+          "href": "https://markszulc.github.io/frescopa-atelier/machines.html"
+         },
+         {
+          "text": "Beverages",
+          "href": "https://markszulc.github.io/frescopa-atelier/beverages.html"
+         },
+         {
+          "text": "Café",
+          "href": "https://markszulc.github.io/frescopa-atelier/cafe.html"
+         },
+         {
+          "text": "Journal",
+          "href": "https://markszulc.github.io/frescopa-atelier/blog.html"
+         }
+        ],
+        "headings": [],
+        "images": 0,
+        "inputs": [],
+        "buttons": [],
+        "options": 0,
+        "rect": [
+         65,
+         0,
+         295,
+         844
+        ]
+       },
+       "expanded": "true",
+       "focus": "trigger",
+       "scrollLock": true,
+       "motion": [
+        {
+         "kind": "transition",
+         "prop": "transform",
+         "ms": 350,
+         "delay": 0,
+         "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+         "target": "span"
+        },
+        {
+         "kind": "transition",
+         "prop": "transform",
+         "ms": 600,
+         "delay": 0,
+         "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+         "target": "nav.nav"
+        }
+       ],
+       "shot": "360-001-Menu-click.png"
+      },
+      "key": {
+       "opened": true,
+       "hidden": 0,
+       "panel": {
+        "links": [
+         {
+          "text": "The Atelier",
+          "href": "https://markszulc.github.io/frescopa-atelier/landing.html"
+         },
+         {
+          "text": "Machines",
+          "href": "https://markszulc.github.io/frescopa-atelier/machines.html"
+         },
+         {
+          "text": "Beverages",
+          "href": "https://markszulc.github.io/frescopa-atelier/beverages.html"
+         },
+         {
+          "text": "Café",
+          "href": "https://markszulc.github.io/frescopa-atelier/cafe.html"
+         },
+         {
+          "text": "Journal",
+          "href": "https://markszulc.github.io/frescopa-atelier/blog.html"
+         }
+        ],
+        "headings": [],
+        "images": 0,
+        "inputs": [],
+        "buttons": [],
+        "options": 0,
+        "rect": [
+         65,
+         0,
+         295,
+         844
+        ]
+       },
+       "expanded": "true",
+       "focus": "trigger",
+       "scrollLock": true,
+       "motion": [
+        {
+         "kind": "transition",
+         "prop": "transform",
+         "ms": 350,
+         "delay": 0,
+         "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+         "target": "span"
+        },
+        {
+         "kind": "transition",
+         "prop": "transform",
+         "ms": 600,
+         "delay": 0,
+         "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+         "target": "nav.nav"
+        }
+       ],
+       "shot": "360-002-Menu-key.png",
+       "tabReachesPanel": false
+      }
+     },
+     "close": {
+      "escape": true,
+      "focusReturn": true,
+      "outside": false,
+      "toggle": true
+     },
+     "children": []
+    }
+   ],
+   "scroll": [
+    {
+     "at": "top",
+     "y": 0,
+     "top": 0,
+     "height": 77,
+     "position": "fixed",
+     "inView": true
+    },
+    {
+     "at": "down",
+     "y": 1000,
+     "top": -77,
+     "height": 77,
+     "position": "fixed",
+     "inView": false
+    },
+    {
+     "at": "up",
+     "y": 700,
+     "top": 0,
+     "height": 77,
+     "position": "fixed",
+     "inView": true
+    },
+    {
+     "at": "back",
+     "y": 0,
+     "top": 0,
+     "height": 77,
+     "position": "fixed",
+     "inView": true
+    }
+   ],
+   "states": 2,
+   "truncated": null,
+   "loads": 1,
+   "requests": 15,
+   "maxRequests": 600,
+   "inputsSkipped": 0,
+   "watch": {
+    "status": "not-triggered"
+   }
+  },
+  "1440": {
+   "root": "body>header",
+   "controls": [
+    {
+     "name": "Fréscopa home",
+     "key": "fréscopa home",
+     "role": "toggle",
+     "kind": "menu",
+     "sel": "body>header>div>a",
+     "expanded": null,
+     "rect": [
+      208,
+      22,
+      118,
+      32
+     ],
+     "actions": {
+      "hover": null,
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "The Atelier",
+     "key": "the atelier",
+     "role": "link",
+     "kind": "link",
+     "sel": "body>header>div>nav>a:nth-of-type(1)",
+     "href": "https://markszulc.github.io/frescopa-atelier/landing.html",
+     "expanded": null,
+     "rect": [
+      506,
+      22,
+      76,
+      31
+     ],
+     "actions": {}
+    },
+    {
+     "name": "Machines",
+     "key": "machines",
+     "role": "link",
+     "kind": "link",
+     "sel": "body>header>div>nav>a:nth-of-type(2)",
+     "href": "https://markszulc.github.io/frescopa-atelier/machines.html",
+     "expanded": null,
+     "rect": [
+      610,
+      22,
+      66,
+      31
+     ],
+     "actions": {}
+    },
+    {
+     "name": "Beverages",
+     "key": "beverages",
+     "role": "link",
+     "kind": "link",
+     "sel": "body>header>div>nav>a:nth-of-type(3)",
+     "href": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+     "expanded": null,
+     "rect": [
+      705,
+      22,
+      72,
+      31
+     ],
+     "actions": {}
+    },
+    {
+     "name": "Café",
+     "key": "café",
+     "role": "link",
+     "kind": "link",
+     "sel": "body>header>div>nav>a:nth-of-type(4)",
+     "href": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+     "expanded": null,
+     "rect": [
+      806,
+      22,
+      33,
+      31
+     ],
+     "actions": {}
+    },
+    {
+     "name": "Journal",
+     "key": "journal",
+     "role": "link",
+     "kind": "link",
+     "sel": "body>header>div>nav>a:nth-of-type(5)",
+     "href": "https://markszulc.github.io/frescopa-atelier/blog.html",
+     "expanded": null,
+     "rect": [
+      867,
+      22,
+      54,
+      31
+     ],
+     "actions": {}
+    },
+    {
+     "name": "Search",
+     "key": "search",
+     "role": "toggle",
+     "kind": "search",
+     "sel": "body>header>div>div>button:nth-of-type(1)",
+     "expanded": null,
+     "rect": [
+      1101,
+      18,
+      40,
+      40
+     ],
+     "actions": {
+      "hover": null,
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Account",
+     "key": "account",
+     "role": "toggle",
+     "kind": "account",
+     "sel": "body>header>div>div>button:nth-of-type(2)",
+     "expanded": null,
+     "rect": [
+      1146,
+      18,
+      40,
+      40
+     ],
+     "actions": {
+      "hover": null,
+      "click": null,
+      "key": null
+     }
+    },
+    {
+     "name": "Cart, 0 items",
+     "key": "cart 0 items",
+     "role": "toggle",
+     "kind": "cart",
+     "sel": "body>header>div>div>button:nth-of-type(3)",
+     "expanded": null,
+     "rect": [
+      1192,
+      18,
+      40,
+      40
+     ],
+     "actions": {
+      "hover": null,
+      "click": null,
+      "key": null
+     }
+    }
+   ],
+   "scroll": [
+    {
+     "at": "top",
+     "y": 0,
+     "top": 0,
+     "height": 75,
+     "position": "fixed",
+     "inView": true
+    },
+    {
+     "at": "down",
+     "y": 1000,
+     "top": -75,
+     "height": 75,
+     "position": "fixed",
+     "inView": false
+    },
+    {
+     "at": "up",
+     "y": 700,
+     "top": 0,
+     "height": 75,
+     "position": "fixed",
+     "inView": true
+    },
+    {
+     "at": "back",
+     "y": 0,
+     "top": 0,
+     "height": 75,
+     "position": "fixed",
+     "inView": true
+    }
+   ],
+   "states": 0,
+   "truncated": null,
+   "loads": 1,
+   "requests": 15,
+   "maxRequests": 600,
+   "inputsSkipped": 0,
+   "watch": {
+    "status": "not-triggered"
+   }
+  }
+ },
+ "probe": null
+}

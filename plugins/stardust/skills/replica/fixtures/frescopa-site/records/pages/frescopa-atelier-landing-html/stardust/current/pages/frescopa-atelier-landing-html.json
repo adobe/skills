@@ -1,0 +1,587 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-21T18:16:44.256Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "frescopa-atelier-landing-html",
+  "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-21T18:16:44.256Z",
+  "finalUrl": "https://markszulc.github.io/frescopa-atelier/landing.html",
+  "title": null,
+  "description": null,
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Every morning,perfected."
+    },
+    {
+      "tag": "h2",
+      "text": "Barista craft, with a mind of its own."
+    },
+    {
+      "tag": "h3",
+      "text": "It learns you"
+    },
+    {
+      "tag": "h3",
+      "text": "It reads the room"
+    },
+    {
+      "tag": "h3",
+      "text": "Nothing wasted"
+    },
+    {
+      "tag": "h2",
+      "text": "It learns your taste. Here's how."
+    },
+    {
+      "tag": "h3",
+      "text": "It tastes every cup"
+    },
+    {
+      "tag": "h3",
+      "text": "It builds your flavour DNA"
+    },
+    {
+      "tag": "h3",
+      "text": "It reads the morning"
+    },
+    {
+      "tag": "h3",
+      "text": "It acts on its own"
+    },
+    {
+      "tag": "h2",
+      "text": "Your taste, drawn one cup at a time."
+    },
+    {
+      "tag": "h4",
+      "text": "The weekday cup"
+    },
+    {
+      "tag": "h2",
+      "text": "Two minutes in a real kitchen."
+    },
+    {
+      "tag": "h2",
+      "text": "The verdict, three months in."
+    },
+    {
+      "tag": "h2",
+      "text": "Everything considered, nothing fussy."
+    },
+    {
+      "tag": "h2",
+      "text": "Start with the machine, or the whole ritual."
+    },
+    {
+      "tag": "h3",
+      "text": "The Atelier"
+    },
+    {
+      "tag": "h3",
+      "text": "The Atelier + a year of beans"
+    },
+    {
+      "tag": "h3",
+      "text": "The Atelier + Barista Kit"
+    },
+    {
+      "tag": "h3",
+      "text": "Shop"
+    },
+    {
+      "tag": "h3",
+      "text": "Company"
+    },
+    {
+      "tag": "h3",
+      "text": "Support"
+    }
+  ],
+  "body": [
+    "Meet the Atelier",
+    "A machine that pays attention. It senses every cup, learns what you love, reads the shape of your morning, and pours accordingly — no dials, no guesswork.",
+    "From $2,199, or $184/mo. Free delivery, expert setup, and a two-year guarantee.",
+    "Ritual, meet intelligence",
+    "A cup or two in, it starts to memorise your taste. Soon the first pour of the day simply arrives the way you like it.",
+    "A slow Sunday and a full calendar call for different cups. The Atelier adjusts to the shape of your day.",
+    "It reorders beans before you run out and sends the grounds back to soil. Care, right down to the last cup.",
+    "How it actually works",
+    "Not a preset menu, and not a guess. The Atelier works the way a good barista does — it pays attention, remembers, and adjusts. Four quiet steps, running every morning.",
+    "Sensors read the grind, the flow, the strength and the temperature of every pour — the same things a barista would notice.",
+    "Those readings become a profile for each person in the house, refined a little more with every cup you pour.",
+    "The time, your calendar, the weather, and who's awake all shape what it suggests — before you've asked for anything.",
+    "It warms up before your alarm, adjusts the pour to match, and reorders beans before you run low. You just lift the cup.",
+    "Your flavour DNA and morning routines stay on your machine and your account. You can review what it has learned, correct it, or wipe it clean, any time.",
+    "How it learns you",
+    "We call the picture the Atelier builds your flavour DNA. Watch it shift as the day, and your mood, changes.",
+    "Brisk and a little bolder. Enough to meet the day, never so much it rushes you.",
+    "See it in the morning",
+    "A short film is in production. Drop your own reel in here when it's ready.",
+    "It simply knew what I wanted, before I did.",
+    "Priya — three weeks with the Atelier",
+    "What owners say",
+    "from 214 verified owners",
+    "It simply knew what I wanted, before I did. The first machine I've owned that got better the longer I had it.",
+    "I was sceptical at the price. Then it started reordering beans before I noticed, and warming up before my alarm. Now the counter feels bare without it.",
+    "Every person in our house gets their own cup, exactly right, without touching a single dial. Worth every penny.",
+    "In the details",
+    "Learns your taste",
+    "Reorders itself",
+    "Compostable pods",
+    "Whisper-quiet grind",
+    "Two-year guarantee",
+    "Ways to buy",
+    "The machine, delivered and set up in your kitchen. Everything it needs to start learning you.",
+    "The machine, plus house beans delivered as you need them for a year. It reorders; you never run dry.",
+    "Adds the milk jug, tamper, and two ceramic cups — for the mornings you want to do it by hand.",
+    "Bring the Atelier home.",
+    "From $2,199, or $184/mo for 12 months. Free delivery, expert setup, and a two-year workshop guarantee.",
+    "Warm mornings, made effortless. Coffee, tea, and cold-pressed juice, and the machines that make them sing.",
+    "© 2026 Fréscopa · Privacy · Terms · A fictional brand, created for demonstration."
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "The Atelier",
+      "href": "landing.html"
+    },
+    {
+      "label": "Machines",
+      "href": "machines.html"
+    },
+    {
+      "label": "Beverages",
+      "href": "beverages.html"
+    },
+    {
+      "label": "Café",
+      "href": "cafe.html"
+    },
+    {
+      "label": "Journal",
+      "href": "blog.html"
+    },
+    {
+      "label": "Order the Atelier→",
+      "href": "atelier.html"
+    },
+    {
+      "label": "See how it works",
+      "href": "#how"
+    },
+    {
+      "label": "See the full machine→",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Weekday",
+      "href": null
+    },
+    {
+      "label": "Slow Sunday",
+      "href": null
+    },
+    {
+      "label": "After dinner",
+      "href": null
+    },
+    {
+      "label": "Choose",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Choose→",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Choose",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Order the Atelier→",
+      "href": "atelier.html"
+    },
+    {
+      "label": "Compare machines",
+      "href": "machines.html"
+    },
+    {
+      "label": "Sign up",
+      "href": null
+    },
+    {
+      "label": "Coffee",
+      "href": "#"
+    },
+    {
+      "label": "Tea",
+      "href": "#"
+    },
+    {
+      "label": "Cold-pressed juice",
+      "href": "#"
+    },
+    {
+      "label": "Machines",
+      "href": "#"
+    },
+    {
+      "label": "Accessories",
+      "href": "#"
+    },
+    {
+      "label": "Our story",
+      "href": "#"
+    },
+    {
+      "label": "Sustainability",
+      "href": "#"
+    },
+    {
+      "label": "Fréscopa Café",
+      "href": "#"
+    },
+    {
+      "label": "Careers",
+      "href": "#"
+    },
+    {
+      "label": "Contact us",
+      "href": "#"
+    },
+    {
+      "label": "Delivery & returns",
+      "href": "#"
+    },
+    {
+      "label": "Register your Atelier",
+      "href": "#"
+    },
+    {
+      "label": "Help centre",
+      "href": "#"
+    }
+  ],
+  "links": [
+    "https://markszulc.github.io/frescopa-atelier/index.html",
+    "https://markszulc.github.io/frescopa-atelier/landing.html",
+    "https://markszulc.github.io/frescopa-atelier/machines.html",
+    "https://markszulc.github.io/frescopa-atelier/beverages.html",
+    "https://markszulc.github.io/frescopa-atelier/cafe.html",
+    "https://markszulc.github.io/frescopa-atelier/blog.html",
+    "https://markszulc.github.io/frescopa-atelier/atelier.html",
+    "https://markszulc.github.io/frescopa-atelier/landing.html#how",
+    "https://markszulc.github.io/frescopa-atelier/landing.html#"
+  ],
+  "media": {
+    "imgs": [
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+        "alt": "",
+        "w": 1391,
+        "h": 378
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+        "alt": "The Fréscopa Atelier on a sunlit kitchen counter.",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+        "alt": "A morning with the Atelier.",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg",
+        "alt": "Espresso pouring into a warm glass.",
+        "w": 1408,
+        "h": 768
+      },
+      {
+        "src": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+        "alt": "Fréscopa",
+        "w": 1391,
+        "h": 378
+      }
+    ],
+    "allImgCount": 6,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--burgundy": "oklch(0.34 0.093 25)",
+    "--burgundy-deep": "oklch(0.275 0.082 26)",
+    "--terracotta": "oklch(0.605 0.116 44)",
+    "--terracotta-deep": "oklch(0.515 0.108 40)",
+    "--amber": "oklch(0.79 0.128 74)",
+    "--amber-soft": "oklch(0.865 0.083 80)",
+    "--teal": "oklch(0.55 0.05 205)",
+    "--paper": "oklch(0.970 0.010 82)",
+    "--paper-2": "oklch(0.948 0.015 78)",
+    "--paper-3": "oklch(0.918 0.020 74)",
+    "--sand": "oklch(0.884 0.025 71)",
+    "--line": "oklch(0.855 0.018 68)",
+    "--ink": "oklch(0.262 0.021 52)",
+    "--ink-soft": "oklch(0.430 0.022 52)",
+    "--charcoal": "oklch(0.222 0.016 52)",
+    "--charcoal-2": "oklch(0.282 0.020 50)",
+    "--line-dark": "oklch(0.400 0.020 55)",
+    "--cream": "oklch(0.945 0.016 80)",
+    "--cream-soft": "oklch(0.795 0.021 78)",
+    "--bg": "oklch(0.970 0.010 82)",
+    "--surface-raised": "oklch(0.948 0.015 78)",
+    "--surface-card": "oklch(0.970 0.010 82)",
+    "--surface-dark": "oklch(0.222 0.016 52)",
+    "--fg": "oklch(0.262 0.021 52)",
+    "--text-body": "oklch(0.262 0.021 52)",
+    "--text-muted": "oklch(0.430 0.022 52)",
+    "--text-heading": "oklch(0.34 0.093 25)",
+    "--text-on-dark": "oklch(0.945 0.016 80)",
+    "--accent": "oklch(0.605 0.116 44)",
+    "--accent-hover": "oklch(0.515 0.108 40)",
+    "--detail": "oklch(0.79 0.128 74)",
+    "--border": "oklch(0.855 0.018 68)",
+    "--focus": "oklch(0.605 0.116 44)",
+    "--font-display": "\"Schibsted Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-body": "\"Hanken Grotesk\", system-ui, -apple-system, sans-serif",
+    "--font-mono": "\"Hanken Grotesk\", system-ui, sans-serif",
+    "--fs-eyebrow": "0.75rem",
+    "--fs-sm": "0.9375rem",
+    "--fs-body": "1.0625rem",
+    "--fs-body-lg": "clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem)",
+    "--fs-h4": "clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem)",
+    "--fs-h3": "clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem)",
+    "--fs-h2": "clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem)",
+    "--fs-h1": "clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem)",
+    "--fs-display": "clamp(3.4rem, 1.1rem + 8.4vw, 8rem)",
+    "--lh-tight": "1.03",
+    "--lh-snug": "1.15",
+    "--lh-body": "1.62",
+    "--fw-regular": "400",
+    "--fw-medium": "500",
+    "--fw-semibold": "600",
+    "--fw-bold": "700",
+    "--fw-black": "800",
+    "--tracking-eyebrow": "0.2em",
+    "--tracking-tight": "-0.02em",
+    "--space-3xs": "0.25rem",
+    "--space-2xs": "0.5rem",
+    "--space-xs": "0.75rem",
+    "--space-sm": "1rem",
+    "--space-md": "1.5rem",
+    "--space-lg": "2.5rem",
+    "--space-xl": "4rem",
+    "--space-2xl": "6rem",
+    "--section-y": "clamp(4.5rem, 3rem + 6vw, 9.5rem)",
+    "--content": "1120px",
+    "--content-wide": "1320px",
+    "--content-narrow": "760px",
+    "--gutter": "clamp(1.25rem, 0.4rem + 3vw, 3rem)",
+    "--r-sm": "8px",
+    "--r-md": "14px",
+    "--r-lg": "22px",
+    "--r-xl": "32px",
+    "--r-pill": "999px",
+    "--shadow-sm": "0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05)",
+    "--shadow-md": "0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08)",
+    "--shadow-lg": "0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13)",
+    "--ease-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "--ease-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "--dur-1": "0.35s",
+    "--dur-2": "0.6s",
+    "--dur-3": "0.9s"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 22,
+    "mainTextLen": 5131,
+    "realImageCount": 6,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 8465
+    }
+  },
+  "dynamic": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "host": "markszulc.github.io",
+        "path": "/frescopa-atelier/landing.html",
+        "query": [],
+        "resourceType": "fetch",
+        "contentType": "text/html",
+        "status": 200,
+        "bytes": 5837,
+        "hits": 1,
+        "example": "https://markszulc.github.io/frescopa-atelier/landing.html",
+        "sameSite": true
+      }
+    ],
+    "thirdPartyScriptHosts": [
+      {
+        "host": "unpkg.com",
+        "count": 2
+      }
+    ],
+    "truncated": false,
+    "inlineData": [],
+    "globalState": [],
+    "frameworkHints": [],
+    "forms": [
+      {
+        "action": "https://markszulc.github.io/frescopa-atelier/landing.html",
+        "hasAction": false,
+        "method": "get",
+        "sameOrigin": true,
+        "fieldCount": 1,
+        "fieldNames": [
+          "fr-ftr-email"
+        ],
+        "search": false
+      }
+    ],
+    "ariaLiveRegions": 0,
+    "triggers": [],
+    "mediaIds": [],
+    "summary": {
+      "sameSiteEndpoints": 1,
+      "thirdPartyEndpoints": 0,
+      "thirdPartyScriptHosts": 1,
+      "inlineDataBlobs": 0,
+      "forms": 1,
+      "searchForms": 0,
+      "hydrated": false
+    }
+  },
+  "screenshot": "assets/screenshots/frescopa-atelier-landing-html.png",
+  "renderedHtml": "pages/frescopa-atelier-landing-html.html",
+  "slots": {
+    "pageType": "product-landing",
+    "inferredShape": "program",
+    "source": "stardust:extract --prep §4 (rendered HTML selectors)",
+    "slots": [
+      {
+        "name": "site-header",
+        "type": "module",
+        "module": "candidate-site-header",
+        "selector": "header.fr-hdr"
+      },
+      {
+        "name": "program-headline",
+        "type": "module",
+        "module": "candidate-photo-hero",
+        "selector": "#dc-root > div > div > section:nth-of-type(1)",
+        "headline": "Every morning, perfected.",
+        "ctas": [
+          "Order the Atelier→",
+          "See how it works"
+        ]
+      },
+      {
+        "name": "summary",
+        "type": "section",
+        "selector": "#learn",
+        "headline": "Barista craft, with a mind of its own."
+      },
+      {
+        "name": "feature-grid",
+        "type": "section",
+        "selector": "#how",
+        "headline": "It learns your taste. Here's how.",
+        "items": [
+          "It tastes every cup",
+          "It builds your flavour DNA",
+          "It reads the morning",
+          "It acts on its own"
+        ]
+      },
+      {
+        "name": "flavour-dna",
+        "type": "module",
+        "module": "candidate-flavour-dna",
+        "selector": "#dc-root > div > div > section:nth-of-type(4)",
+        "headline": "Your taste, drawn one cup at a time."
+      },
+      {
+        "name": "video-or-demo",
+        "type": "section",
+        "selector": "#dc-root > div > div > section:nth-of-type(5)",
+        "headline": "Two minutes in a real kitchen."
+      },
+      {
+        "name": "reviews",
+        "type": "section",
+        "selector": "#reviews",
+        "headline": "The verdict, three months in."
+      },
+      {
+        "name": "specs",
+        "type": "section",
+        "selector": "#dc-root > div > div > section:nth-of-type(8)",
+        "headline": "Everything considered, nothing fussy."
+      },
+      {
+        "name": "bundles",
+        "type": "card-grid",
+        "selector": "#bundles",
+        "headline": "Start with the machine, or the whole ritual.",
+        "cards": {
+          "count": 3,
+          "titles": [
+            "The Atelier",
+            "The Atelier + a year of beans",
+            "The Atelier + Barista Kit"
+          ],
+          "subSlots": [
+            "badge",
+            "title",
+            "price",
+            "features",
+            "cta"
+          ]
+        }
+      },
+      {
+        "name": "cta-band",
+        "type": "module",
+        "module": "candidate-cta-band",
+        "selector": "#dc-root > div > div > section:nth-of-type(10)",
+        "ctas": [
+          "Order the Atelier→",
+          "Compare machines"
+        ]
+      },
+      {
+        "name": "site-footer",
+        "type": "module",
+        "module": "candidate-site-footer",
+        "selector": "footer.fr-ftr"
+      }
+    ]
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "name": "frescopa-site",
+  "version": 2,
+  "sourceUrls": [
+    "https://markszulc.github.io/frescopa-atelier/",
+    "https://markszulc.github.io/frescopa-atelier/",
+    "https://markszulc.github.io/frescopa-atelier/index.html"
+  ],
+  "aliases": [
+    {
+      "url": "https://markszulc.github.io/",
+      "note": "the GitHub Pages user root answers 404 (Site not found); the Frescopa site lives under /frescopa-atelier/ and aem.new submits the bare domain."
+    }
+  ],
+  "builtAt": "2026-11-21T22:16:48Z",
+  "provenance": {
+    "run": "a562b12c-1461-440e-8f78-9ac9ef441629",
+    "repo": "aemcoder/a562b12c",
+    "commit": "deb112f92b639097582bbf0e59645188074a4b4d"
+  },
+  "fingerprint": {
+    "assets": {
+      "https://markszulc.github.io/frescopa-atelier/shared/tokens.css": "9b4bc809e4d53f2a15c5b248c07bc721b7a2f3c9e3530a4516f2cc352ec88af7",
+      "https://markszulc.github.io/frescopa-atelier/atelier.css": "222a0057d08dce79f95782c12a64211d87142b03dc33be3f0cd873ce0e95f34c",
+      "https://markszulc.github.io/frescopa-atelier/shared/view-transitions.css": "86f00feb39fd45757d703f2094fed24b88e044cbb6c381e67bee27001ef04f7c",
+      "https://markszulc.github.io/frescopa-atelier/shared/flavor-dna.js": "daab906d6fa26c364d66ac29332865e04405757803ae0f3e77eb3577f80d87ce",
+      "https://markszulc.github.io/frescopa-atelier/shared/hero.js": "7574e5b1f144d6c4177915682a4d3a85481ff2a4cfe9bd2cc46166944b8e90b5",
+      "https://markszulc.github.io/frescopa-atelier/shared/app.js": "68f7c588af9e355230873523a04755f3d15986ada7a4220000f854756a08469d",
+      "https://markszulc.github.io/frescopa-atelier/support.js": "5de6a1b840537ef0fc935642bfd7fc2183177f4eb77fe4942c85d60d75d9ccc7",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/fonts.css": "adffcbc12c466544658d07fa186c1d6955400f2f2ae7fadb7b2524ff5cde30a8",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/colors.css": "7a881938db5e12995a0a83605c495fa7f3b06a818223f3a71d6167eefa7e2617",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/typography.css": "6fa65011f685e22171de3104dc76a05a12c326b0c85ac872c2b1affd3c22abb2",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/spacing.css": "3c687f12a6772451cdeb1384fddbcdb91afe40549bb926ddf1fc0df05da927c9",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/effects.css": "9a1ff09a0202a5634664970ce3d615faaa9a8bfb3a711948d1d46c57d988c765",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/tokens/base.css": "5680761dcd60d753ea062fdccfbaec31b880344c3ee5cde9f30cd5cb1dc2dbc5",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/styles.css": "228e7fe62d383089c49edf5b7d91f8426aaf8cf586f5b710d0d35f64c006a464",
+      "https://markszulc.github.io/frescopa-atelier/_ds/fr-scopa-design-system-40681532-d1a7-4dcb-94af-093bb0d56f27/_ds_bundle.js": "2ceeb8d4c27000b592ba25f36e59dbb81e4d0bf9ad6e8012f6e0914f0bbeca3f"
+    }
+  },
+  "pages": [
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/",
+      "slug": "frescopa-atelier",
+      "path": "/",
+      "doc": "index",
+      "marker": "Every morning, perfected.",
+      "home": true,
+      "ref": "stardust/replica/gates/frescopa-atelier-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.03,
+        "heightDelta": 0
+      },
+      "pageSha": "2f27e7666456ea18e443b997bfeb6ffefbe6239b7537aa6f44e6c03ade417449"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+      "slug": "frescopa-atelier-beverages-html",
+      "path": "/beverages",
+      "doc": "beverages",
+      "marker": "Three ways to",
+      "home": false,
+      "ref": "stardust/replica/gates/frescopa-atelier-beverages-html-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.03,
+        "heightDelta": 0
+      },
+      "pageSha": "2e7f9bc84215a42d6d5d6e8aaa1a9c6ad9995e3db3c1703f75e1c70c15e8c337"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/blog.html",
+      "slug": "frescopa-atelier-blog-html",
+      "path": "/blog",
+      "doc": "blog",
+      "marker": "Notes on the",
+      "home": false,
+      "ref": "stardust/replica/gates/frescopa-atelier-blog-html-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.02,
+        "heightDelta": 0
+      },
+      "pageSha": "61226e22e36769d30ba4900c9515f5646bcff0bd2dc2703c6481dbac95272f9f"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+      "slug": "frescopa-atelier-cafe-html",
+      "path": "/cafe",
+      "doc": "cafe",
+      "marker": "Come taste the",
+      "home": false,
+      "ref": "stardust/replica/gates/frescopa-atelier-cafe-html-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.04,
+        "heightDelta": 0
+      },
+      "pageSha": "b09ee9e7c5ad6d9a7351378af182c53a2d6861f3d1727932e1471831b560ee09"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/landing.html",
+      "slug": "frescopa-atelier-landing-html",
+      "path": "/landing",
+      "doc": "landing",
+      "marker": "Every morning, perfected.",
+      "home": false,
+      "ref": "stardust/replica/gates/frescopa-atelier-landing-html-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.1,
+        "heightDelta": 0
+      },
+      "pageSha": "454606175f0ede08dd923e87878253eded4e7b194185c535f1a10b27cbd26a9b"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/machines.html",
+      "slug": "frescopa-atelier-machines-html",
+      "path": "/machines",
+      "doc": "machines",
+      "marker": "Made in the",
+      "home": false,
+      "ref": "stardust/replica/gates/frescopa-atelier-machines-html-1440",
+      "gate": {
+        "pass": true,
+        "pct": 0.04,
+        "heightDelta": 0
+      },
+      "pageSha": "4212e468e0a284c4ca2294ce0cdd1d8e41f6c55a814550a19e774e8e61f113ed"
+    }
+  ],
+  "codeMarker": {
+    "path": "/blocks/bev-cta/bev-cta.js",
+    "contains": "bev-cta-title"
+  },
+  "da": {
+    "chrome": [
+      "nav",
+      "footer"
+    ]
+  },
+  "gate": {
+    "args": [
+      "--parallel-probes"
+    ]
+  },
+  "evidence": {}
+}

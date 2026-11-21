@@ -1,0 +1,24 @@
+{
+ "tool": "chrome-compare",
+ "at": "2026-11-21T22:12:51.243Z",
+ "source": "https://markszulc.github.io/frescopa-atelier/",
+ "build": "https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.live/",
+ "profile": "replica",
+ "bar": 0.02,
+ "widths": [
+  360,
+  1440
+ ],
+ "stage": "published",
+ "round": {
+  "label": "compare-1",
+  "kind": "first"
+ },
+ "counts": {
+  "error": 0,
+  "warn": 0,
+  "decided": 0,
+  "classed": 0
+ },
+ "findings": []
+}

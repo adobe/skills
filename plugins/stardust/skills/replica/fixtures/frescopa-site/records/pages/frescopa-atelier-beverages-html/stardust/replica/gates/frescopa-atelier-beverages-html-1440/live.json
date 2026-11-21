@@ -1,0 +1,11 @@
+{
+  "writtenBy": "gate.sh --gate-against-baseline",
+  "origin": "baseline",
+  "url": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+  "width": 1440,
+  "at": "2026-11-21T19:24:48.943Z",
+  "originBaseline": {
+    "capturedAt": "2026-11-21T19:24:48.943Z",
+    "height": 2986
+  }
+}
