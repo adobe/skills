@@ -10,8 +10,8 @@
  *   identified → prototyped → migrated → deployed → optimised
  *
  * spanning stardust/state.json (agnostic stages) + rollout coverage (deployed) +
- * optimize (optimised = verified & no open finding outside `out-of-scope`, the source-parity
- * class). Template archetypes (the pages that define a template for their siblings) are marked distinctly.
+ * optimize (optimised = verified & no open finding other than source parity, as optimize counts
+ * them). Template archetypes (the pages that define a template for their siblings) are marked distinctly.
  *
  * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]   (default stardust/rollout)
  *
@@ -78,8 +78,8 @@ const STAGE_COLOR = { identified: '#9aa3ad', prototyped: '#5b8def', deployed: '#
 const AG = { rostered: 0, extracted: 0, directed: 0, prototyped: 1, approved: 1, migrated: 1 };
 const rankOf = (stage) => STAGES.indexOf(stage);
 
-// Open findings per page, as optimize counts them: `out-of-scope` (source parity) is informational there —
-// out of the health score and the open P1/P2/P3 counts — so it never holds a page back from "optimised".
+// Open findings per page, as optimize counts them: source parity (isSourceParity) is informational there — out
+// of the health score, the open P1/P2/P3 counts and the gate — so it never holds a page back from "optimised".
 const openByPage = {};
 for (const f of findings) {
   if (blocksOptimised(f) && f.scope.level === 'page') {

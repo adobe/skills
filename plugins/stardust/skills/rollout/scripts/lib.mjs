@@ -199,32 +199,6 @@ export const ALL_LAYERS = ['brand-tensions', 'design-ux', 'accessibility', 'seo'
 export const ASSESSED_BY_BASELINE = ['accessibility', 'seo', 'ai-search', 'cross-page'];
 export const SEV_WEIGHT = { P1: 25, P2: 10, P3: 4 };
 
-/**
- * An open finding that keeps a page from "optimised": open or in progress and not `out-of-scope` — the
- * informational class (source parity: the source has the same condition) that optimize already leaves out of
- * the health score and the open P1/P2/P3 counts. Pure.
- */
-export const blocksOptimised = (f) => !!f && (f.status === 'open' || f.status === 'in-progress') && f.fixability !== 'out-of-scope';
-
-/**
- * The verdict a gate-all row carries for update-coverage --gate. A row whose pixel step errored (`error` set,
- * no percentage: a capture that never happened, an unstable reference) has NO verdict — `null` — unless an
- * override decided it; otherwise the row's pass / passWithOverride reading. Pure.
- */
-export function gateRowVerdict(r) {
-  if (!r) return null;
-  const override = 'passWithOverride' in r ? r.passWithOverride : r.override;
-  if (r.error && (r.pct === null || r.pct === undefined) && !override) return null;
-  return !!(r.pass || override);
-}
-
-/** True when a page's `gate: …` failure text names only capture errors (no measured criterion). Pure. */
-export const gateFailureIsCaptureErrorOnly = (error) => {
-  const m = /^gate: (.*)$/s.exec(error || '');
-  if (!m) return false;
-  const parts = m[1].split(/;\s*/).filter(Boolean);
-  return parts.length > 0 && parts.every((p) => /pixel error|missing capture|reference-unstable/i.test(p));
-};
 
 /**
  * AEM autofix registry: maps a finding's `check` to the EDS fixer that resolves it.
@@ -264,6 +238,36 @@ export function autofixFor(check) {
  */
 export const SOURCE_PARITY_PREFIX = 'source parity: ';
 export const isSourceParity = (f) => !!(f && f.fixability === 'out-of-scope' && typeof f.evidence === 'string' && f.evidence.startsWith(SOURCE_PARITY_PREFIX));
+
+/**
+ * An open finding that keeps a page from "optimised": open or in progress and not source parity — exactly the
+ * findings optimize scores and gates on (isSourceParity: `out-of-scope` with the `source parity: ` evidence). Pure.
+ */
+export const blocksOptimised = (f) => !!f && (f.status === 'open' || f.status === 'in-progress') && !isSourceParity(f);
+
+/**
+ * The verdict a gate-all row carries for update-coverage --gate: true / false, or null for NO verdict — a row
+ * whose pixel step errored (`error`, no percentage: a capture that never happened, an unstable reference) and
+ * whose other criteria (clip, content, units — probed independently of the capture) measured no failure. A
+ * measured failure beside a capture error is still false; an override still decides. Pure.
+ */
+export function gateRowVerdict(r) {
+  if (!r) return null;
+  if (r.pass || ('passWithOverride' in r ? r.passWithOverride : r.override)) return true;
+  if (r.error && (r.pct === null || r.pct === undefined)) {
+    const measured = Array.isArray(r.failing) ? r.failing.some((c) => c !== 'capture') : [r.clipPass, r.contentPass, r.unitPass].includes(false);
+    return measured ? false : null;
+  }
+  return false;
+}
+
+/** True when a page's `gate: …` failure text names only capture errors (no measured criterion). Pure. */
+export const gateFailureIsCaptureErrorOnly = (error) => {
+  const m = /^gate: (.*)$/s.exec(error || '');
+  if (!m) return false;
+  const parts = m[1].split(/;\s*/).filter(Boolean);
+  return parts.length > 0 && parts.every((p) => /pixel error|missing capture|reference-unstable/i.test(p));
+};
 
 /** Tag a detected finding as mirroring the source (`why` names the shared condition). */
 export function markSourceParity(finding, why) {
