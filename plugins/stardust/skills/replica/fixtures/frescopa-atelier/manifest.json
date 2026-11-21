@@ -51,5 +51,11 @@
     "blocks": "9 blocks (hero, intro, flavour-dna, calendar, feed, sustain, voices, cafe, cta) + header/footer, from the fixture",
     "dynamics": "dynamic features triaged in the fixture build run (behaviours ship in block JS)",
     "dynamicsParity": "behaviours ship in block JS as delivered and gated by the fixture build run"
-  }
+  },
+  "aliases": [
+    {
+      "url": "https://markszulc.github.io/",
+      "note": "the GitHub Pages user root answers 404 (Site not found); the Frescopa site lives under /frescopa-atelier/ and aem.new submits the bare domain."
+    }
+  ]
 }

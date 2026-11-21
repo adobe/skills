@@ -81,8 +81,12 @@ function findFixture(url, forced) {
     if (!fs.existsSync(mf)) continue;
     const m = JSON.parse(fs.readFileSync(mf, 'utf8'));
     if (forced ? name === forced : (m.sourceUrls || []).some((s) => norm(s) === norm(url))) {
-      return { name, dir: path.join(dir, name), m };
+      return { name, dir: path.join(dir, name), m, via: 'url' };
     }
+    // aliases: a URL that does not serve the page itself but means it (e.g. a GitHub Pages user root
+    // that answers 404 while the site lives under a project path) — the fixture says where the site is
+    const alias = (m.aliases || []).find((a) => norm(a.url) === norm(url));
+    if (!forced && alias) return { name, dir: path.join(dir, name), m, via: 'alias', alias };
   }
   return null;
 }
@@ -239,7 +243,8 @@ try { got = await fingerprint(fx.m); } catch (e) { console.log(`REPLAY-NO-MATCH:
 const diffs = compareFp(fx.m.fingerprint, got);
 if (diffs.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} does not match the live page (${diffs.join('; ')}) — continue with the normal replica flow`); process.exit(3); }
 log(`fixture ${fx.name} matches the live page (built ${fx.m.builtAt} from run ${fx.m.provenance?.run || '?'})`);
-if (flag('--match-only')) { console.log('REPLAY-MATCH'); process.exit(0); }
+if (fx.via === 'alias') log(`run URL ${url} is an alias of ${fx.m.fingerprint.page}: ${fx.alias.note || ''}`);
+if (flag('--match-only')) { console.log(`REPLAY-MATCH${fx.via === 'alias' ? ` (alias of ${fx.m.fingerprint.page})` : ''}`); process.exit(0); }
 
 const gitSite = siteFromGit();
 const ORG = gitSite?.org || run?.site?.org;
@@ -256,7 +261,23 @@ const slug = m.page.slug;
 const done = lastEnded();
 const skip = (skill, phase) => done.has(`stardust:${skill}|${phase}`);
 fs.mkdirSync(SD, { recursive: true });
-timing('replay-start', `fixture ${fx.name}, site ${ORG}/${SITE}`);
+timing('replay-start', `fixture ${fx.name}, site ${ORG}/${SITE}${fx.via === 'alias' ? `, run URL ${url} → ${m.fingerprint.page} (alias)` : ''}`);
+// A site-mode run (or an aliased URL) gets its site plan rewritten to the page the fixture delivers:
+// the runner's discovery found nothing (or a 404 root), and the plan is what scopes every phase.
+const planPath = path.join(SD, '.labs', 'site-plan.json');
+if (run?.scope?.mode === 'site' || fx.via === 'alias') {
+  const prev = (() => { try { return JSON.parse(fs.readFileSync(planPath, 'utf8')); } catch { return {}; } })();
+  const plan = {
+    version: prev.version || 1, mode: prev.mode || run?.scope?.mode || 'pages', sourceUrl: prev.sourceUrl || url,
+    pageCap: prev.pageCap ?? run?.scope?.pageCap ?? 1, discoveredAt: iso(),
+    discovery: { technique: 'fixture', total: 1, durationMs: 0, note: fx.via === 'alias' ? `${url} is an alias: ${fx.alias.note || ''} The prepared page is ${m.fingerprint.page}.` : `fixture ${fx.name} delivers ${m.fingerprint.page}` },
+    pages: [{ url: m.fingerprint.page, slug: m.page.slug, score: 10, selected: true }],
+  };
+  fs.mkdirSync(path.dirname(planPath), { recursive: true });
+  fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  fs.writeFileSync(path.join(SD, '.labs', 'site-plan.pages'), `${m.fingerprint.page}\n`);
+  log(`site plan rewritten: 1 page (${m.fingerprint.page}), technique fixture`);
+}
 
 // script copies (what Setup does in a normal run)
 for (const s of ['replica', 'stardust', 'migrate', 'diff', 'deploy', 'rollout', 'dynamics']) {
@@ -352,7 +373,7 @@ if (!skip('replica', 'extract')) {
   timing('extract-start');
   const n = copyTree(path.join(fx.dir, 'records'), ROOT, subst);
   journal('extract — fixture capture verified against the live page', [
-    `Fixture ${fx.name} (built ${m.builtAt}, from run ${m.provenance?.run || '?'}) lists ${url}.`,
+    fx.via === 'alias' ? `The run URL ${url} is an alias the fixture declares (${fx.alias.note || 'no page at that URL'}); the prepared page is ${m.fingerprint.page}. Site plan rewritten to that one page.` : `Fixture ${fx.name} (built ${m.builtAt}, from run ${m.provenance?.run || '?'}) lists ${url}.`,
     `Fingerprint: live page HTML and ${Object.keys(m.fingerprint.assets || {}).length} same-origin assets hash-identical to the fixture's capture, so the capture is current.`,
     `${n} capture, spec, prototype and gate-evidence files seeded from the fixture (site placeholders set to ${ORG}/${SITE}).`,
   ]);
