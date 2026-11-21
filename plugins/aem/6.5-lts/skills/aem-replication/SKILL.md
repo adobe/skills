@@ -1,11 +1,9 @@
 ---
 name: aem-replication
 description: |
-  Single entry point for all AEM 6.5 LTS Replication skills. Covers configuring replication agents,
-  activating/deactivating content, using the Replication API programmatically, and troubleshooting
-  distribution issues for Adobe Experience Manager 6.5 LTS. Use when the user asks about publishing,
-  unpublishing, replicating, or distributing content in AEM 6.5 LTS or AMS — including flushing the
-  dispatcher cache, fixing stuck or blocked replication queues, or configuring replication agents.
+  Use for AEM 6.5 LTS or AMS replication: configure agents, publish or unpublish content, use the
+  Replication API, troubleshoot queues, or orchestrate end-to-end replication workflows. Routes
+  LTS/AMS work to specialist skills; use Sling Content Distribution for AEM as a Cloud Service.
 license: Apache-2.0
 compatibility: Requires AEM 6.5 LTS or Adobe Managed Services (AMS). NOT compatible with AEM as a Cloud Service (use Sling Distribution API instead).
 metadata:

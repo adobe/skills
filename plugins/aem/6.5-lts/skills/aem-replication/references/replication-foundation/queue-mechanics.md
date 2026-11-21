@@ -187,21 +187,18 @@ If item N blocks:
 
 ## Queue Listener Patterns
 
-For event-driven queue monitoring, implement a custom `ReplicationListener` to react to queue state changes:
+`ReplicationListener` callbacks fire **only for synchronous replication** when attached via `ReplicationOptions.setListener()`; registering it as an OSGi service does not subscribe it to queue events.
 
 ```java
 import com.day.cq.replication.Agent;
 import com.day.cq.replication.ReplicationAction;
 import com.day.cq.replication.ReplicationListener;
+import com.day.cq.replication.ReplicationLog;
+import com.day.cq.replication.ReplicationQueue;
 import com.day.cq.replication.ReplicationResult;
-import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Component(
-    service = ReplicationListener.class,
-    immediate = true
-)
 public class QueueMonitorListener implements ReplicationListener {
     
     private static final Logger LOG = LoggerFactory.getLogger(QueueMonitorListener.class);
@@ -210,7 +207,9 @@ public class QueueMonitorListener implements ReplicationListener {
     @Override
     public void onStart(Agent agent, ReplicationAction action) {
         // Check queue depth at replication start
-        int queueSize = agent.getQueue().getEntries().size();
+        ReplicationQueue queue = agent.getQueue();
+        if (queue == null) return;
+        int queueSize = queue.entries().size();
         
         if (queueSize > ALERT_THRESHOLD) {
             LOG.warn("Queue depth elevated for agent {}: {} items", 
@@ -218,6 +217,12 @@ public class QueueMonitorListener implements ReplicationListener {
             // Send alert to monitoring system
             alertHighQueueDepth(agent.getId(), queueSize);
         }
+
+    }
+
+    @Override
+    public void onMessage(ReplicationLog.Level level, String message) {
+        LOG.debug("Replication message ({}): {}", level, message);
     }
     
     @Override
@@ -235,15 +240,15 @@ public class QueueMonitorListener implements ReplicationListener {
     public void onError(Agent agent, ReplicationAction action, Exception exception) {
         LOG.error("Replication error for path: {}", action.getPath(), exception);
         
-        // Check if queue is blocked
-        if (agent.getQueue().getState() == ReplicationQueue.State.BLOCKED) {
-            LOG.error("Queue BLOCKED for agent: {}", agent.getId());
-            alertQueueBlocked(agent.getId());
-        }
+        checkQueueBlocked(agent);
     }
     
     private void checkQueueBlocked(Agent agent) {
-        if (agent.getQueue().getState() == ReplicationQueue.State.BLOCKED) {
+        ReplicationQueue queue = agent.getQueue();
+        if (queue == null) return;
+        ReplicationQueue.Status status = queue.getStatus();
+        if (!queue.isPaused() && status.getNextRetryTime() > 0) {
+            LOG.error("Queue blocked for agent: {}; next retry at {}", agent.getId(), status.getNextRetryTime());
             alertQueueBlocked(agent.getId());
         }
     }
@@ -258,14 +263,9 @@ public class QueueMonitorListener implements ReplicationListener {
 }
 ```
 
-**Event-Driven Monitoring Use Cases:**
-- **Alerting:** Trigger PagerDuty/Slack alerts when queue depth exceeds threshold
-- **Metrics Collection:** Send queue depth metrics to Datadog/New Relic
-- **Auto-Remediation:** Trigger automated retry or clear stale items
-- **Audit Logging:** Record all replication events for compliance
+Attach it per call: `options.setSynchronous(true); options.setListener(new QueueMonitorListener());`
 
-**Listener Registration:**
-Listeners registered as OSGi services are automatically invoked by the replication framework for all replication events across all agents.
+For asynchronous replication, poll `Agent.getQueue()` (`entries()`, `getStatus()`, `isPaused()`) or use the Replication UI.
 
 ## Best Practices
 
@@ -275,4 +275,4 @@ Listeners registered as OSGi services are automatically invoked by the replicati
 4. **Clear Stale Items:** Remove failed items that won't retry successfully
 5. **Size Appropriately:** One agent per publish instance, no sharing
 6. **Log Monitoring:** Watch for repeated retry patterns indicating systemic issues
-7. **Event-Driven Monitoring:** Implement ReplicationListener for real-time queue monitoring and alerting
+7. **Listener Scope:** Attach ReplicationListener only to synchronous calls; use queue snapshots for broader monitoring
