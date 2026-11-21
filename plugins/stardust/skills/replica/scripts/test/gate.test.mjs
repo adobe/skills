@@ -833,6 +833,10 @@ check('hold default: the old reference\'s recorded settings a round omits go int
   && /^gate\.sh: reference: settings this round omits are the frozen reference's — --consent #ok --locale de-DE /m.test(r.stdout), `${r.stdout}\n${lines(refArgsFile).join(' | ')}`);
 resetRefArgs(); r = await refRound('legacy', 'l3');
 check('hold default: … and the round after reuses it', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && /build\.png .*--consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(buildArgs()[0] || ''), r.stdout);
+resetRefArgs(); r = await refRound('legacy2', 'm1', ['--consent', '#ok', '--locale', 'de-DE', '--no-hold-timers']);
+resetRefArgs(); r = await refRound('legacy2', 'm2', ['--consent', '#other']);
+check('hold default: a default round that ALSO changes a setting inherits nothing from the old reference — frozen under this round\'s flags plus the hold, as gate-all does', r.status === 0 && freezes() === 1
+  && / --consent #other --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && !/de-DE/.test(lines(refArgsFile)[0] || '') && !/de-DE/.test(buildArgs()[0] || ''), `${lines(refArgsFile)[0]}\n${buildArgs()[0]}\n${r.stdout}`);
 resetRefArgs(); r = await refRound('old', 'o2');
 check('hold default: a reference with NO recorded settings (stitch-shot\'s) is not reused under the hold — frozen again with the line, never "settings not recorded"', r.status === 0 && freezes() === 1 && whyLines(r) === 1 && !/settings not recorded/.test(r.stdout) && livePng('old') === 'frozen-reference-bytes', `status ${r.status} ${r.stdout}`);
 resetRefArgs(); r = await refRound('old', 'o3');

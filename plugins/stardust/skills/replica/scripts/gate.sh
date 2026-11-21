@@ -441,12 +441,12 @@ if [ "$HAVE_BASE" = 1 ]; then
   esac
   if [ -z "$HOLD" ] && [ -n "$REF_HOLD" ]; then REFREEZE="${REFREEZE:+$REFREEZE, }holdTimers"; HAVE_BASE=0; INHERIT=0; fi
   # the default hold against a reference frozen without it: frozen again under the settings it recorded (below), once
-  if [ "$HOLD_SET" = 0 ]; then case "$REFREEZE" in *holdTimers*) HOLD_WHY=": the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)" ;; *) [ -n "$REFREEZE" ] && INHERIT=0 ;; esac
+  if [ "$HOLD_SET" = 0 ]; then case "$REFREEZE" in holdTimers) HOLD_WHY=": the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)" ;; *holdTimers*) HOLD_WHY=": the gates hold timers by default and this reference was frozen without the hold"; INHERIT=0 ;; *) [ -n "$REFREEZE" ] && INHERIT=0 ;; esac
   elif [ -n "$REFREEZE" ]; then INHERIT=0; fi
 fi
 # A reference's settings that this round omits are taken from it (reference.mjs settings --inherit, one argument per
 # line): the build capture and the probes then see the page the reference was frozen from — and so does the freeze
-# that only adds the default hold.
+# that only adds the default hold (a round that also changes a setting inherits nothing, as gate-all does).
 if [ "$INHERIT" = 1 ]; then
   while IFS= read -r a; do
     case "$a" in
