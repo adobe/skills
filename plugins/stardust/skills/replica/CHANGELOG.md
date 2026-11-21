@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/adobe/skills/compare/replica-v1.6.1...replica-v1.7.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
 ## [1.6.1](https://github.com/adobe/skills/compare/replica-v1.6.0...replica-v1.6.1) (2026-11-21)
 
 
