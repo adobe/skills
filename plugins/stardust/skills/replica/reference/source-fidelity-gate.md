@@ -338,8 +338,8 @@ runs over the same stitched PNGs — no live hit):**
 
 **Hard cap: 3 rounds per page, breakpoint and stage** (prototype, local-build,
 published): the first and two fix rounds. A round is a `gate.sh` or
-`chrome-compare` run ending in a verdict; a PASS right after a PASS is free.
-`rounds.mjs` counts, and `gate.sh` exits 6 until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
+`chrome-compare` run ending in a verdict; a PASS after a PASS is free.
+`rounds.mjs` counts; `gate.sh` exits 6 until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
 `extend` (a round lost to a named instrument defect).
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
