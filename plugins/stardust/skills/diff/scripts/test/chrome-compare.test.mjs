@@ -103,6 +103,9 @@ check('at-rest watch: a difference in what the two records excluded warns; a wat
   assert.deepEqual(pair(ran(1), { status: 'not-triggered' }), [['at-rest-watch@1440 (page)', 'warn', 'source at-rest watch: 8.0 s, 1 self-changing region(s) excluded: main>div [0,96,1440,500] | build at-rest watch: not run (no action revealed content outside the header)']]);
   assert.match(pair(ran(1), undefined)[0][2], /\| build at-rest watch: not recorded/);
   assert.deepEqual(pair(undefined, ran(0)).map((x) => x.slice(0, 2)), [['at-rest-watch@1440 (page)', 'warn']], 'not recorded is not "nothing excluded"');
+  assert.deepEqual(pair(undefined, { status: 'not-triggered' }), [], 'an old contract against a build whose watch had nothing to do: no warning');
+  assert.deepEqual(pair({ status: 'not-triggered' }, undefined), [], 'and the other way round');
+  assert.match(pair(undefined, ran(1))[0][2], /explore the side without the record again/);
   const failed = pair(ran(0), { status: 'failed', ms: 0, reason: 'no sample of the page at rest in 0 ms' });
   assert.deepEqual(failed, [['at-rest-watch@1440 (build)', 'error', 'at-rest watch: COULD NOT RUN (no sample of the page at rest in 0 ms), no self-changing region was excluded: explore the build again']]);
   assert.deepEqual(pair({ status: 'later' }, undefined).map((x) => x.slice(0, 2)), [['at-rest-watch@1440 (source)', 'error']], 'a status this version does not know is not read as a watch that ran');

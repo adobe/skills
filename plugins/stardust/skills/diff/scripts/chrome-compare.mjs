@@ -173,7 +173,10 @@ function compareWatch(sw, bw, width, add) {
   for (const [side, w] of sides) if (w && !ok(w)) add({ width, path: `(${side})`, id: 'at-rest-watch', severity: 'error', detail: `${watchLine({ watch: w })}: explore the ${side} again` });
   if (sides.some(([, w]) => w && !ok(w)) || (!sw.watch && !bw.watch)) return;
   const n = (w) => (w && w.status === 'ran' ? w.excluded || 0 : 0);
-  if (!sw.watch || !bw.watch || n(sw.watch) !== n(bw.watch)) add({ width, path: '(page)', id: 'at-rest-watch', severity: 'warn', detail: sides.map(([side, w]) => `${side} ${watchLine({ watch: w })}`).join(' | ') });
+  // a side recorded before the watch existed, against one where the watch had nothing to do: nothing was excluded on either
+  const idle = (w) => !w || w.status === 'not-triggered';
+  if (idle(sw.watch) && idle(bw.watch)) return;
+  if (!sw.watch || !bw.watch || n(sw.watch) !== n(bw.watch)) add({ width, path: '(page)', id: 'at-rest-watch', severity: 'warn', detail: `${sides.map(([side, w]) => `${side} ${watchLine({ watch: w })}`).join(' | ')}${sides.some(([, w]) => !w) ? ' — explore the side without the record again to compare what was excluded' : ''}` });
 }
 
 /** All findings except the crop pixels (returned as `visual` pairs for the image pass). Pure. */
