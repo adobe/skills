@@ -17,7 +17,7 @@
  * Usage (from the project root):
  *   node <plugin>/skills/replica/scripts/fixture-replay.mjs [--url <source url>] [--fixture <name>]
  *        [--match-only] [--no-runner] [--skip-gate]
- *   --url        source URL (default: stardust/.labs/run.json scope.sourceUrl)
+ *   --url        source URL (default: stardust/.labs/run.json scope)
  *   --fixture    force a fixture by name (default: the one whose manifest lists the URL)
  *   --match-only check URL + fingerprint, print the verdict, write nothing
  *   --no-runner  do not call localhost:8080 (local testing: boundary = continue, done-check = local script)
@@ -68,11 +68,15 @@ function readRunJson() {
 const norm = (u) => {
   try {
     const x = new URL(u);
-    let p = x.pathname.replace(/\/index\.html?$/, '/');
-    if (!p.endsWith('/')) p += '';
+    const p = x.pathname.replace(/\/index\.html?$/, '/');
     return `${x.protocol}//${x.host.toLowerCase()}${p}`;
   } catch { return String(u || '').trim(); }
 };
+/** v1 manifests (one page) and v2 manifests (pages[]) → one shape: pages[] with url, slug, path, marker, pageSha, doc, home. */
+function pagesOf(m) {
+  if (Array.isArray(m.pages) && m.pages.length) return m.pages;
+  return [{ url: m.fingerprint.page, slug: m.page.slug, path: m.page.path, marker: m.page.marker, pageSha: m.fingerprint.pageSha, doc: 'index', home: true }];
+}
 function findFixture(url, forced) {
   const dir = path.join(REPLICA_DIR, 'fixtures');
   if (!fs.existsSync(dir)) return null;
@@ -80,34 +84,45 @@ function findFixture(url, forced) {
     const mf = path.join(dir, name, 'manifest.json');
     if (!fs.existsSync(mf)) continue;
     const m = JSON.parse(fs.readFileSync(mf, 'utf8'));
-    if (forced ? name === forced : (m.sourceUrls || []).some((s) => norm(s) === norm(url))) {
-      return { name, dir: path.join(dir, name), m, via: 'url' };
-    }
-    // aliases: a URL that does not serve the page itself but means it (e.g. a GitHub Pages user root
-    // that answers 404 while the site lives under a project path) — the fixture says where the site is
+    const base = { name, dir: path.join(dir, name), m, pages: pagesOf(m) };
+    if (forced) { if (name === forced) return { ...base, via: 'forced' }; continue; }
+    if ((m.sourceUrls || []).some((s) => norm(s) === norm(url))) return { ...base, via: 'site' };
+    if (base.pages.some((pg) => norm(pg.url) === norm(url))) return { ...base, via: 'page' };
+    // aliases: a URL that does not serve the site itself but means it (e.g. a GitHub Pages user root that
+    // answers 404 while the site lives under a project path) — the fixture says where the site is
     const alias = (m.aliases || []).find((a) => norm(a.url) === norm(url));
-    if (!forced && alias) return { name, dir: path.join(dir, name), m, via: 'alias', alias };
+    if (alias) return { ...base, via: 'alias', alias };
   }
   return null;
+}
+/** Which prepared pages this run delivers: a site-mode run (or the site's root/alias) gets every prepared
+ *  page, home first; a pages-mode run gets exactly its URLs, each of which must be prepared. */
+function selectPages(fx, run, url) {
+  const home = fx.pages.find((p) => p.home) || fx.pages[0];
+  const ordered = [home, ...fx.pages.filter((p) => p !== home)];
+  if (run?.scope?.mode === 'site' || fx.via === 'alias' || (fx.via === 'site' && run?.scope?.mode !== 'pages')) return { pages: ordered };
+  const raw = Array.isArray(run?.scope?.pages) && run.scope.pages.length ? run.scope.pages : [url];
+  const urls = raw.map((x) => (typeof x === 'string' ? x : x.url)).filter(Boolean);
+  const pick = [];
+  const missing = [];
+  for (const u of urls) {
+    const pg = fx.pages.find((p) => norm(p.url) === norm(u)) || ((fx.m.sourceUrls || []).some((s) => norm(s) === norm(u)) ? home : null);
+    if (pg) { if (!pick.includes(pg)) pick.push(pg); } else missing.push(u);
+  }
+  return { pages: pick, missing };
 }
 async function fetchText(u, ms = 15000) {
   const r = await fetch(u, { signal: AbortSignal.timeout(ms), headers: { 'user-agent': 'Mozilla/5.0 stardust-replay' } });
   if (!r.ok) throw new Error(`${u} → ${r.status}`);
   return Buffer.from(await r.arrayBuffer());
 }
-async function fingerprint(m) {
-  const page = m.fingerprint.page;
-  const html = await fetchText(page);
-  const res = { page: sha(html), assets: {} };
-  await Promise.all(Object.keys(m.fingerprint.assets || {}).map(async (a) => {
-    res.assets[a] = sha(await fetchText(new URL(a, page).toString()));
-  }));
-  return res;
-}
-function compareFp(want, got) {
+async function checkFingerprints(m, pages) {
   const diffs = [];
-  if (want.pageSha !== got.page) diffs.push('page HTML changed');
-  for (const [a, h] of Object.entries(want.assets || {})) if (got.assets[a] !== h) diffs.push(`${a} changed`);
+  const base = pages[0].url;
+  await Promise.all([
+    ...pages.map(async (pg) => { if (sha(await fetchText(pg.url)) !== pg.pageSha) diffs.push(`${pg.url} changed`); }),
+    ...Object.entries(m.fingerprint?.assets || {}).map(async ([a, h]) => { if (sha(await fetchText(new URL(a, base).toString())) !== h) diffs.push(`${a} changed`); }),
+  ]);
   return diffs;
 }
 
@@ -235,16 +250,20 @@ async function pollUntil(fn, { every = 2000, max = 240000 } = {}) {
 // ---------- main ----------
 const run = readRunJson();
 const url = opt('--url') || run?.scope?.sourceUrl || run?.sourceUrl;
-if (!url) { console.log('REPLAY-NO-MATCH: no source URL (no --url, no stardust/.labs/run.json scope.sourceUrl)'); process.exit(3); }
+if (!url) { console.log('REPLAY-NO-MATCH: no source URL (no --url, no stardust/.labs/run.json scope)'); process.exit(3); }
 const fx = findFixture(url, opt('--fixture'));
 if (!fx) { console.log(`REPLAY-NO-MATCH: no fixture lists ${url} — continue with the normal replica flow`); process.exit(3); }
-let got;
-try { got = await fingerprint(fx.m); } catch (e) { console.log(`REPLAY-NO-MATCH: live page unreachable for the fingerprint (${e.message}) — continue with the normal flow`); process.exit(3); }
-const diffs = compareFp(fx.m.fingerprint, got);
-if (diffs.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} does not match the live page (${diffs.join('; ')}) — continue with the normal replica flow`); process.exit(3); }
-log(`fixture ${fx.name} matches the live page (built ${fx.m.builtAt} from run ${fx.m.provenance?.run || '?'})`);
-if (fx.via === 'alias') log(`run URL ${url} is an alias of ${fx.m.fingerprint.page}: ${fx.alias.note || ''}`);
-if (flag('--match-only')) { console.log(`REPLAY-MATCH${fx.via === 'alias' ? ` (alias of ${fx.m.fingerprint.page})` : ''}`); process.exit(0); }
+const sel = selectPages(fx, run, url);
+if (sel.missing?.length || !sel.pages.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} has no prepared page for ${(sel.missing || [url]).join(', ')} — continue with the normal replica flow`); process.exit(3); }
+const PAGES = sel.pages;
+try {
+  const diffs = await checkFingerprints(fx.m, PAGES);
+  if (diffs.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} does not match the live site (${diffs.join('; ')}) — continue with the normal replica flow`); process.exit(3); }
+} catch (e) { console.log(`REPLAY-NO-MATCH: live page unreachable for the fingerprint (${e.message}) — continue with the normal flow`); process.exit(3); }
+const FIRST = PAGES[0];
+log(`fixture ${fx.name} matches the live site: ${PAGES.length} page(s) ${PAGES.map((p) => p.path).join(' ')} (built ${fx.m.builtAt} from run ${fx.m.provenance?.run || '?'})`);
+if (fx.via === 'alias') log(`run URL ${url} is an alias of ${FIRST.url}: ${fx.alias.note || ''}`);
+if (flag('--match-only')) { console.log(`REPLAY-MATCH ${PAGES.length} page(s): ${PAGES.map((p) => p.url).join(' ')}${fx.via === 'alias' ? ' (via alias)' : ''}`); process.exit(0); }
 
 const gitSite = siteFromGit();
 const ORG = gitSite?.org || run?.site?.org;
@@ -257,26 +276,27 @@ const subst = (s) => s.replaceAll('{{ORG}}', ORG).replaceAll('{{SITE}}', SITE).r
   .replaceAll('{{PREVIEW}}', PREVIEW).replaceAll('{{LIVE}}', LIVE).replaceAll('{{BUILT_AT}}', fx.m.builtAt || '')
   .replaceAll('{{NOW}}', iso());
 const m = fx.m;
-const slug = m.page.slug;
+const V2 = Array.isArray(m.pages) && m.pages.length > 0;
+const NPG = PAGES.length;
 const done = lastEnded();
 const skip = (skill, phase) => done.has(`stardust:${skill}|${phase}`);
 fs.mkdirSync(SD, { recursive: true });
-timing('replay-start', `fixture ${fx.name}, site ${ORG}/${SITE}${fx.via === 'alias' ? `, run URL ${url} → ${m.fingerprint.page} (alias)` : ''}`);
-// A site-mode run (or an aliased URL) gets its site plan rewritten to the page the fixture delivers:
-// the runner's discovery found nothing (or a 404 root), and the plan is what scopes every phase.
+timing('replay-start', `fixture ${fx.name}, site ${ORG}/${SITE}, ${NPG} page(s)${fx.via === 'alias' ? `, run URL ${url} is an alias` : ''}`);
+// The site plan is what scopes every phase: rewrite it to the pages the fixture delivers (a site-mode run's
+// discovery found other pages, nothing, or a 404 root).
 const planPath = path.join(SD, '.labs', 'site-plan.json');
-if (run?.scope?.mode === 'site' || fx.via === 'alias') {
+if (run?.scope?.mode === 'site' || fx.via === 'alias' || NPG > 1) {
   const prev = (() => { try { return JSON.parse(fs.readFileSync(planPath, 'utf8')); } catch { return {}; } })();
   const plan = {
     version: prev.version || 1, mode: prev.mode || run?.scope?.mode || 'pages', sourceUrl: prev.sourceUrl || url,
-    pageCap: prev.pageCap ?? run?.scope?.pageCap ?? 1, discoveredAt: iso(),
-    discovery: { technique: 'fixture', total: 1, durationMs: 0, note: fx.via === 'alias' ? `${url} is an alias: ${fx.alias.note || ''} The prepared page is ${m.fingerprint.page}.` : `fixture ${fx.name} delivers ${m.fingerprint.page}` },
-    pages: [{ url: m.fingerprint.page, slug: m.page.slug, score: 10, selected: true }],
+    pageCap: prev.pageCap ?? run?.scope?.pageCap ?? NPG, discoveredAt: iso(),
+    discovery: { technique: 'fixture', total: NPG, durationMs: 0, note: fx.via === 'alias' ? `${url} is an alias: ${fx.alias.note || ''} The prepared site is ${FIRST.url}.` : `fixture ${fx.name} delivers ${NPG} prepared page(s)` },
+    pages: PAGES.map((pg, i) => ({ url: pg.url, slug: pg.slug, score: 10 - Math.min(i, 9), selected: true })),
   };
   fs.mkdirSync(path.dirname(planPath), { recursive: true });
   fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
-  fs.writeFileSync(path.join(SD, '.labs', 'site-plan.pages'), `${m.fingerprint.page}\n`);
-  log(`site plan rewritten: 1 page (${m.fingerprint.page}), technique fixture`);
+  fs.writeFileSync(path.join(SD, '.labs', 'site-plan.pages'), `${PAGES.map((pg) => pg.url).join('\n')}\n`);
+  log(`site plan rewritten: ${NPG} page(s), technique fixture`);
 }
 
 // script copies (what Setup does in a normal run)
@@ -285,41 +305,54 @@ for (const s of ['replica', 'stardust', 'migrate', 'diff', 'deploy', 'rollout', 
   if (fs.existsSync(src)) fs.cpSync(src, path.join(SD, 'scripts', s), { recursive: true });
 }
 
-// Delivery is PIPELINED: it starts now, right after the fingerprint matched, and runs while the
-// record phases below write their ledger lines and the runner checkpoints each boundary. The ledger
-// keeps the normal phase order; the C-deliver line and the journal state when delivery actually ran.
+// Delivery is PIPELINED: it starts now, right after the fingerprints matched, and runs while the record
+// phases below write their ledger lines and the runner checkpoints each boundary. The ledger keeps the
+// normal phase order; the C-deliver line and the journal state when delivery actually ran.
 const NO_DELIVER = flag('--no-deliver');
 const deliverT0 = Date.now();
 const nCode = copyTree(path.join(fx.dir, 'repo'), ROOT, null);
 const codePaths = fs.readdirSync(path.join(fx.dir, 'repo'));
 const token = NO_DELIVER ? '' : daToken();
 const mediaDir = path.join(fx.dir, 'da', 'media');
-const media = fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir) : [];
+const mediaFiles = [];
+(function walk(d, rel) { if (!fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.isDirectory()) walk(path.join(d, e.name), `${rel}${e.name}/`); else mediaFiles.push(`${rel}${e.name}`); } }(mediaDir, ''));
+const chromeDocs = V2 ? (m.da.chrome || ['nav', 'footer']) : m.da.docs.filter((d) => d !== 'index');
+const pageDocs = V2 ? PAGES.map((pg) => pg.doc) : ['index'];
+const DOCS = [...new Set([...pageDocs, ...chromeDocs])];
 const tmpDocs = path.join(SD, '.work', 'replay-docs');
-fs.mkdirSync(tmpDocs, { recursive: true });
-const D = { previewOk: false, liveOk: false, codeLive: false, pushed: false, at: {} };
+const D = { previewOk: false, liveOk: false, allLive: false, codeLive: false, pushed: false, at: {} };
 const mark = (k) => { D.at[k] = since(); };
+const pageOk = async (origin, pg) => { try { const r = await fetch(`${origin}${pg.path}?cb=${Date.now()}`); return r.ok && (!pg.marker || (await r.text()).includes(pg.marker)); } catch { return false; } };
 const daP = (async () => {
   if (NO_DELIVER) return;
-  await Promise.all(media.map((f) => daPut(token, ORG, SITE, `media/${m.da.mediaScope}/${f}`, path.join(mediaDir, f))));
-  await Promise.all(m.da.docs.map(async (d) => {
+  // media: v1 fixtures keep one flat scope; v2 keep media/<scope>/<file>
+  await Promise.all(mediaFiles.map((f) => daPut(token, ORG, SITE, V2 ? `media/${f}` : `media/${m.da.mediaScope}/${f}`, path.join(mediaDir, f))));
+  await Promise.all(DOCS.map(async (d) => {
     const out = path.join(tmpDocs, `${d}.html`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, subst(fs.readFileSync(path.join(fx.dir, 'da', `${d}.html`), 'utf8')));
     await daPut(token, ORG, SITE, `${d}.html`, out);
   }));
   mark('da-put');
-  await Promise.all(m.da.docs.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
-  D.previewOk = await pollUntil(async () => {
-    try { const r = await fetch(`${PREVIEW}${m.page.path}?cb=${Date.now()}`); const t = await r.text(); return r.ok && t.includes(m.page.marker); } catch { return false; }
-  }, { every: 500, max: 60000 });
+  // the first page first: preview + publish it (and the chrome) before the others
+  const firstDocs = [FIRST.doc || 'index', ...chromeDocs];
+  await Promise.all(firstDocs.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
+  D.previewOk = await pollUntil(() => pageOk(PREVIEW, FIRST), { every: 500, max: 60000 });
   mark('first-preview');
-  timing('first-preview', `${D.previewOk ? 'PASS' : 'FAIL'} ${PREVIEW}${m.page.path}`);
-  await Promise.all(m.da.docs.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
-  D.liveOk = await pollUntil(async () => {
-    try { const r = await fetch(`${LIVE}${m.page.path}?cb=${Date.now()}`); return r.ok && (await r.text()).includes(m.page.marker); } catch { return false; }
-  }, { every: 500, max: 60000 });
+  timing('first-preview', `${D.previewOk ? 'PASS' : 'FAIL'} ${PREVIEW}${FIRST.path}`);
+  await Promise.all(firstDocs.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
+  D.liveOk = await pollUntil(() => pageOk(LIVE, FIRST), { every: 500, max: 60000 });
   mark('first-live');
-  timing('first-live', `${D.liveOk ? 'PASS' : 'FAIL'} ${LIVE}${m.page.path}`);
+  timing('first-live', `${D.liveOk ? 'PASS' : 'FAIL'} ${LIVE}${FIRST.path}`);
+  const rest = DOCS.filter((d) => !firstDocs.includes(d));
+  if (rest.length) {
+    await Promise.all(rest.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
+    await Promise.all(rest.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
+    const oks = await Promise.all(PAGES.slice(1).map((pg) => pollUntil(() => pageOk(LIVE, pg), { every: 500, max: 60000 })));
+    D.allLive = oks.every(Boolean);
+    mark('all-live');
+    timing('all-live', `${D.allLive ? 'PASS' : 'FAIL'} ${NPG} page(s) on ${LIVE}`);
+  } else D.allLive = D.liveOk;
 })();
 // code: commit now (before the runner's first checkpoint touches the index), push, then poll
 if (!NO_DELIVER) {
@@ -350,80 +383,101 @@ const codeP = (async () => {
   timing('code-live', D.codeLive ? 'ok' : 'FAIL');
 })();
 const deliveryP = Promise.all([daP, codeP]).catch((e) => { D.error = e.message; });
-// the published-origin gate starts as soon as the page and its code are served and the fixture
-// records (with the frozen origin reference) are seeded — overlapping the remaining checkpoints
+timing('deploy-start', `pipelined: push + DA media/docs → preview → publish (first page first), in parallel with the record phases`);
+
+// records: shared + the selected pages' own; state.json keeps only the delivered pages
+function seedRecords() {
+  if (!V2) return copyTree(path.join(fx.dir, 'records'), ROOT, subst);
+  let n = copyTree(path.join(fx.dir, 'records', 'shared'), ROOT, subst);
+  for (const pg of PAGES) n += copyTree(path.join(fx.dir, 'records', 'pages', pg.slug), ROOT, subst);
+  const st = path.join(SD, 'state.json');
+  if (fs.existsSync(st)) {
+    const s = JSON.parse(fs.readFileSync(st, 'utf8'));
+    const keep = new Set(PAGES.map((pg) => pg.slug));
+    s.pages = (s.pages || []).filter((pg) => keep.has(pg.slug));
+    if (s.site) { s.site.crawled = s.pages.length; s.site.totalDiscovered = s.pages.length; }
+    fs.writeFileSync(st, `${JSON.stringify(s, null, 2)}\n`);
+  }
+  return n;
+}
+// the published-origin gate starts as soon as the pages and their code are served and the records (with
+// each page's frozen origin reference) are seeded — overlapping the remaining checkpoints
 let recordsSeeded;
 const seededP = new Promise((r) => { recordsSeeded = r; });
+const coverageDeployed = () => { for (const pg of PAGES) sh('node', ['stardust/scripts/rollout/update-coverage.mjs', pg.slug, '--status', 'deployed', '--url', `${LIVE}${pg.path}`]); };
 const gateP = (async () => {
   await Promise.all([deliveryP, seededP]);
   if (D.error || flag('--skip-gate')) return { skipped: true };
   sh('node', ['stardust/scripts/rollout/inventory.mjs']);
-  sh('node', ['stardust/scripts/rollout/update-coverage.mjs', slug, '--status', 'deployed', '--url', `${LIVE}${m.page.path}`]);
+  coverageDeployed();
   mark('gate-start');
-  timing('published-gate-start');
-  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', ...(m.gate?.args || [])]);
+  timing('published-gate-start', `${NPG} page(s)`);
+  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', '--probe-concurrency', String(Math.min(4, NPG * 2)), ...(m.gate?.args || [])]);
   mark('gate-end');
   return g;
 })();
-timing('deploy-start', 'pipelined: push + DA media/docs → preview → publish, in parallel with the record phases');
 
-// Phase 1 — extract: the fixture's capture, proven current by the fingerprint
+// Phase 1 — extract: the fixture's capture, proven current by the fingerprints
 if (!skip('replica', 'extract')) {
-  ledger('replica', 'extract', 'start', `fixture replay: ${url} matched fixture ${fx.name}`);
+  ledger('replica', 'extract', 'start', `fixture replay: ${url} matched fixture ${fx.name} (${NPG} page(s))`);
   timing('extract-start');
-  const n = copyTree(path.join(fx.dir, 'records'), ROOT, subst);
-  journal('extract — fixture capture verified against the live page', [
-    fx.via === 'alias' ? `The run URL ${url} is an alias the fixture declares (${fx.alias.note || 'no page at that URL'}); the prepared page is ${m.fingerprint.page}. Site plan rewritten to that one page.` : `Fixture ${fx.name} (built ${m.builtAt}, from run ${m.provenance?.run || '?'}) lists ${url}.`,
-    `Fingerprint: live page HTML and ${Object.keys(m.fingerprint.assets || {}).length} same-origin assets hash-identical to the fixture's capture, so the capture is current.`,
+  const n = seedRecords();
+  journal('extract — fixture capture verified against the live site', [
+    fx.via === 'alias' ? `The run URL ${url} is an alias the fixture declares (${fx.alias.note || 'no site at that URL'}); the prepared site starts at ${FIRST.url}. Site plan rewritten to the prepared pages.` : `Fixture ${fx.name} (built ${m.builtAt}, from run ${m.provenance?.run || '?'}) covers ${url}.`,
+    `${NPG} page(s): ${PAGES.map((pg) => `${pg.path} ← ${pg.url}`).join('; ')}.`,
+    `Fingerprints: each page's HTML and ${Object.keys(m.fingerprint?.assets || {}).length} shared same-origin assets hash-identical to the fixture's capture, so the capture is current.`,
     `${n} capture, spec, prototype and gate-evidence files seeded from the fixture (site placeholders set to ${ORG}/${SITE}).`,
   ]);
   recordsSeeded();
-  ledger('replica', 'extract', 'end', `1/1 page: fixture capture verified current (fingerprint match, ${Object.keys(m.fingerprint.assets || {}).length + 1} hashes)`);
+  ledger('replica', 'extract', 'end', `${NPG}/${NPG} page(s): fixture capture verified current (fingerprint match, ${NPG + Object.keys(m.fingerprint?.assets || {}).length} hashes)`);
   timing('extract-end', 'fingerprint match');
-  notes('We confirmed your page is unchanged since we last measured it and are restoring its verified rebuild.', 'Next we place the rebuilt page on Adobe Edge Delivery.');
+  notes('We confirmed your pages are unchanged since we last measured them and are restoring their verified rebuild.', 'Next we place the rebuilt pages on Adobe Edge Delivery.');
   await boundary('extract');
 }
 recordsSeeded();
 for (const [phase, title, detail] of [
-  ['preserve-direction', 'preserve-direction — bounded spec from the fixture', m.evidence?.direction || 'bounded-single spec + empty register (fixture)'],
-  ['recreate', 'recreate — gated prototype from the fixture', m.evidence?.recreate || 'archetype prototype from the fixture'],
+  ['preserve-direction', 'preserve-direction — bounded spec from the fixture', m.evidence?.direction || 'bounded spec + empty register (fixture)'],
+  ['recreate', 'recreate — gated archetypes from the fixture', m.evidence?.recreate || 'archetype prototypes from the fixture'],
   ['source-fidelity-gate', 'source-fidelity-gate — fixture gate evidence', m.evidence?.gate || 'fixture gate evidence'],
 ]) {
   if (skip('replica', phase)) continue;
   ledger('replica', phase, 'start', 'fixture replay');
   if (phase === 'recreate') timing('recreate-start');
-  journal(title, [`${detail}.`, 'Evidence produced by the fixture\'s build run and carried in stardust/ unchanged; the live page is proven unchanged by the extract fingerprint.']);
+  journal(title, [`${detail}.`, 'Evidence produced by the fixture\'s build run and carried in stardust/ unchanged; the live pages are proven unchanged by the extract fingerprints.']);
   ledger('replica', phase, 'end', detail);
   if (phase === 'source-fidelity-gate') timing('prototype-gate-end', detail);
   await boundary(phase);
 }
 
 // Phase 5 — handoff: the pipelined delivery is awaited here, then the published-origin gate
-ledger('replica', 'handoff', 'start', 'fixture replay: deploy → publish → published-origin gate → rollout records');
-ledger('migrate', 'render', 'start', 'fixture: approved archetype, no siblings');
-ledger('migrate', 'render', 'end', '1/1 rendered (fixture migrated tree)');
+ledger('replica', 'handoff', 'start', `fixture replay: deploy → publish → published-origin gate → rollout records (${NPG} page(s))`);
+ledger('migrate', 'render', 'start', `fixture: ${NPG} page(s), migrated tree from the fixture`);
+ledger('migrate', 'render', 'end', `${NPG}/${NPG} rendered (fixture migrated tree)`);
 ledger('rollout', 'A-inventory', 'start');
 sh('node', ['stardust/scripts/rollout/inventory.mjs']);
-ledger('rollout', 'A-inventory', 'end', '1 page, 1 template');
+ledger('rollout', 'A-inventory', 'end', `${NPG} page(s)`);
 ledger('rollout', 'B-block', 'start');
 ledger('rollout', 'B-block', 'end', m.evidence?.blocks || 'blocks from the fixture');
 ledger('rollout', 'B2-dynamic', 'start');
 ledger('rollout', 'B2-dynamic', 'end', m.evidence?.dynamics || 'dynamic features triaged in the fixture');
-ledger('rollout', 'C-deliver', 'start', `foundation + archetype in one unit (fixture); delivery pipelined since +${((deliverT0 - T0) / 1000).toFixed(1)}s`);
-notes('Your rebuilt page is being placed on Adobe Edge Delivery now.', 'Next we publish it and measure it against your live page.');
+ledger('rollout', 'C-deliver', 'start', `foundation + ${NPG} page(s) in one unit (fixture); delivery pipelined since +${((deliverT0 - T0) / 1000).toFixed(1)}s`);
+notes('Your rebuilt pages are being placed on Adobe Edge Delivery now.', 'Next we publish them and measure them against your live pages.');
 await deliveryP;
 log(`delivery: ${JSON.stringify(D)}`);
 if (D.error) throw new Error(`delivery failed: ${D.error}`);
 
-// coverage + published-origin gate
-sh('node', ['stardust/scripts/rollout/update-coverage.mjs', slug, '--status', 'deployed', '--url', `${LIVE}${m.page.path}`]);
+coverageDeployed();
 let gateLine = 'skipped (--skip-gate)';
 const g = await gateP;
 if (!g.skipped) {
   const sum = path.join(SD, 'replica', 'gates', 'all-1440', 'summary.json');
   if (fs.existsSync(sum)) {
-    const row = (JSON.parse(fs.readFileSync(sum, 'utf8')).rows || [])[0] || {};
-    gateLine = `${row.pass ? 'PASS' : 'FAIL'} pixel ${row.pct}% (aligned ${row.alignedPct}%), height delta ${row.heightDelta}px, clipped ${row.clipped}, content missing ${row.content?.missing ?? '?'}${row.reasons?.length ? `, reasons: ${row.reasons.join('; ')}` : ''}`;
+    const rows = JSON.parse(fs.readFileSync(sum, 'utf8')).rows || [];
+    const pass = rows.filter((r) => r.pass).length;
+    const one = (r) => `${r.path} ${r.pass ? 'PASS' : 'FAIL'} ${r.pct}% Δh ${r.heightDelta}`;
+    gateLine = NPG === 1 && rows[0]
+      ? `${rows[0].pass ? 'PASS' : 'FAIL'} pixel ${rows[0].pct}% (aligned ${rows[0].alignedPct}%), height delta ${rows[0].heightDelta}px, clipped ${rows[0].clipped}, content missing ${rows[0].content?.missing ?? '?'}${rows[0].reasons?.length ? `, reasons: ${rows[0].reasons.join('; ')}` : ''}`
+      : `${pass}/${rows.length} PASS — ${rows.map(one).join('; ')}`;
     sh('node', ['stardust/scripts/rollout/update-coverage.mjs', '--gate', sum]);
   } else gateLine = `no summary (gate-all exit ${g.code}): ${g.out.slice(-200)}`;
   timing('published-gate-end', gateLine);
@@ -433,22 +487,22 @@ try { sh('node', ['stardust/scripts/rollout/verify.mjs', '--base', LIVE, '--all'
 journal('C-deliver — fixture code and content delivered on this run\'s site', [
   `Delivery pipelined from +${((deliverT0 - T0) / 1000).toFixed(1)}s, in parallel with the record phases: ${JSON.stringify(D.at)}.`,
   `${nCode} code files from the fixture committed and pushed; code served on ${PREVIEW} (${D.codeLive ? 'confirmed' : 'NOT confirmed'}).`,
-  `${media.length} media files and ${m.da.docs.length} documents (${m.da.docs.join(', ')}) PUT to DA ${ORG}/${SITE}, previewed and published (preview ${D.previewOk ? 'ok' : 'NOT ok'}, live ${D.liveOk ? 'ok' : 'NOT ok'}).`,
+  `${mediaFiles.length} media files and ${DOCS.length} documents (${DOCS.join(', ')}) PUT to DA ${ORG}/${SITE}, previewed and published; the first page (${FIRST.path}) first (preview ${D.previewOk ? 'ok' : 'NOT ok'}, live ${D.liveOk ? 'ok' : 'NOT ok'}, all pages live ${D.allLive ? 'ok' : 'NOT ok'}).`,
   `Published-origin gate @1440: ${gateLine}.`,
 ]);
-ledger('rollout', 'C-deliver', 'end', `1/1 page live at ${m.page.path} (live at ${D.at['first-live'] || '?'}); gate 1440: ${gateLine}`.slice(0, 400));
+ledger('rollout', 'C-deliver', 'end', `${NPG}/${NPG} page(s) live (first ${FIRST.path} at ${D.at['first-live'] || '?'}); gate 1440: ${gateLine}`.slice(0, 400));
 await boundary('C-deliver');
 
-// D–I: light, real steps for one page
-const root200 = async (o) => { try { return (await fetch(`${o}/?cb=${Date.now()}`)).status; } catch { return 0; } };
+// D–I: light, real steps
+const status = async (o, p2 = '/') => { try { return (await fetch(`${o}${p2}?cb=${Date.now()}`)).status; } catch { return 0; } };
 for (const [phase, fn] of [
-  ['D-site', async () => `/ answers ${await root200(LIVE)} on aem.live, ${await root200(PREVIEW)} on aem.page`],
-  ['D2-dynamic', async () => m.evidence?.dynamicsParity || 'carousel/scroll behaviours ship in block JS (fixture); no host-bound APIs'],
-  ['E-full-site', async () => 'verify.mjs --all on aem.live: 1/1'],
-  ['E2-link-audit', async () => 'links stay absolute to the source host (fixture decision); no internal targets outside the page'],
+  ['D-site', async () => `${FIRST.path} answers ${await status(LIVE, FIRST.path)} on aem.live, ${await status(PREVIEW, FIRST.path)} on aem.page; ${NPG} page(s) delivered`],
+  ['D2-dynamic', async () => m.evidence?.dynamicsParity || 'behaviours ship in block JS (fixture); no host-bound APIs'],
+  ['E-full-site', async () => `verify.mjs --all on aem.live: ${NPG} page(s)`],
+  ['E2-link-audit', async () => m.evidence?.links || 'links as decided in the fixture build run'],
   ['F-optimize', async () => { try { const o = sh('node', ['stardust/scripts/rollout/optimize.mjs', '--all']); return (o.split('\n').filter((l) => /GATE|health|P1/.test(l)).slice(-2).join(' ') || 'optimize run').slice(0, 300); } catch (e) { return `optimize: ${String(e.stdout || e.message).slice(-200)}`; } }],
-  ['G-aem', async () => 'no AEM autofix candidates for a single replayed page'],
-  ['H-report', async () => '1 page / 1 template delivered'],
+  ['G-aem', async () => 'no AEM autofix candidates for replayed pages'],
+  ['H-report', async () => `${NPG} page(s) delivered`],
   ['I-dashboard', async () => { try { sh('node', ['stardust/scripts/rollout/dashboard.mjs']); return 'dashboard written (stardust/rollout/dashboard/)'; } catch { return 'dashboard skipped'; } }],
 ]) {
   if (skip('rollout', phase)) continue;
@@ -456,7 +510,7 @@ for (const [phase, fn] of [
   const d = await fn();
   ledger('rollout', phase, 'end', d);
 }
-journal('Rollout D-site to I-dashboard — one replayed page', ['Root resolves on .page and .live; verify, link policy and dashboard recorded by the stock rollout scripts.']);
+journal('Rollout D-site to I-dashboard — replayed pages', ['Pages resolve on .page and .live; verify, optimize and dashboard recorded by the stock rollout scripts.']);
 
 // done-check
 let complete = false;
@@ -467,13 +521,13 @@ if (NO_RUNNER) {
   const r = await runnerGet('done-check');
   try { const j = JSON.parse(r); complete = j.complete === true; gaps = j.gaps || []; } catch { gaps = [`unreadable done-check: ${String(r).slice(0, 200)}`]; }
 }
-notes(complete ? 'Your page is live on Adobe Edge Delivery and matches your current site on desktop screens.' : 'Your page is live on Adobe Edge Delivery; we are completing the final checks.',
-  complete ? 'Nothing further is needed for this page.' : 'We finish the remaining checks next.');
+notes(complete ? `Your ${NPG === 1 ? 'page is' : `${NPG} pages are`} live on Adobe Edge Delivery and match your current site on desktop screens.` : 'Your pages are live on Adobe Edge Delivery; we are completing the final checks.',
+  complete ? 'Nothing further is needed.' : 'We finish the remaining checks next.');
 if (complete) {
-  journal('handoff — page live, done-check complete', [`Replay of fixture ${fx.name} complete in ${since()}.`]);
-  ledger('replica', 'handoff', 'end', `1 page live at ${LIVE}${m.page.path} (fixture replay, ${since()}); gate 1440: ${gateLine}`.slice(0, 400));
+  journal('handoff — pages live, done-check complete', [`Replay of fixture ${fx.name} (${NPG} page(s)) complete in ${since()}.`]);
+  ledger('replica', 'handoff', 'end', `${NPG} page(s) live on ${LIVE} (fixture replay, ${since()}); gate 1440: ${gateLine}`.slice(0, 400));
   timing('done', `complete in ${since()}`);
-  console.log(`REPLAY-DONE ${since()} preview ${PREVIEW}${m.page.path} live ${LIVE}${m.page.path}`);
+  console.log(`REPLAY-DONE ${since()} ${NPG} page(s) preview ${PREVIEW}${FIRST.path} live ${LIVE}${FIRST.path}`);
   process.exit(0);
 }
 timing('done-check', `gaps: ${gaps.join('; ')}`.slice(0, 300));
