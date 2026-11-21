@@ -860,6 +860,11 @@ check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status ==
   r = await hc('c0');
   check('header contract: at its cap with no class recorded → still FAIL, naming the decisions file', r.status === 2 && /^header contract: FAIL at this stage — 3 counted rounds of 3, the last one a FAIL: record a class per remaining error in stardust\/chrome\/header-decisions\.json /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
   ledger(['fail', 'fail', 'fail'], [{ decision: 'accept-residual', reason: '12 header-contract error(s) classed (12 accept-residual) in stardust/chrome/header-decisions.json', at: '2026-11-20T10:05:00Z', counted: 3 }]);
+  const open = [{ key: 'motion@390 Menu [click]', id: 'motion', width: 390, path: 'Menu', action: 'click', severity: 'error' }, { key: 'keyboard@1440 Shop', id: 'keyboard', width: 1440, path: 'Shop', severity: 'error' }];
+  writeFileSync(join(chromeDir, 'header-parity.json'), JSON.stringify({ stage: 'prototype', findings: open }));
+  r = await hc('c0b');
+  check('header contract: a closing decision in the ledger without a class per remaining error (a hand-made accept-residual) is not a cap → FAIL', r.status === 2 && /^header contract: FAIL at this stage — closed in the ledger by accept-residual, but 2 of 2 error\(s\) have no class: record a class per remaining error in stardust\/chrome\/header-decisions\.json /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  writeFileSync(join(chromeDir, 'header-decisions.json'), JSON.stringify({ decisions: open.map((f) => ({ finding: f.key, class: 'accept-residual', reason: 'the prototype carries no behaviour script' })) }));
   r = await hc('c1');
   check('header contract: a capped comparison (three rounds, then a class per error) → CAPPED, the round passes: a prototype without the behaviour is not stuck', r.status === 0 && /^header contract: CAPPED at this stage — 3 counted rounds, closed by accept-residual: 12 header-contract error\(s\) classed /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
   writeFileSync(join(chromeDir, 'rounds.json'), '{ "version": 1, ');

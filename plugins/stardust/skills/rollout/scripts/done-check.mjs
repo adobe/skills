@@ -24,7 +24,8 @@
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors —
  *                                  `header_parity:3 — 2 owner, 1 no class: <key> (owner), …` when chrome-compare wrote a
- *                                  class beside one (its --help § Round cap): a class names who closes it, never closes it
+ *                                  class beside one (its --help § Round cap) that chrome/header-decisions.json still
+ *                                  holds: a class names who closes it, never closes it
  *   library_missing[:<why>]        pages were delivered but da-library.mjs has not written the site's block library to
  *                                  DA for them: <out>/library/published.json is absent (never run, or its last run
  *                                  stopped or failed), was published to another org/site than rollout.json site.da,
@@ -76,7 +77,7 @@ export const openP1 = (findings) => findings.filter((f) => (f.status === 'open' 
 const hostOf = (u) => { try { return new URL(/^https?:/.test(u) ? u : `https://${u}`).host; } catch { return ''; } };
 
 /** The header's gap, or null: a migration is not done while its header's behaviour is unproven (header-parity). */
-export function headerGap({ flow = null, contract = null, parity = null, liveHost = null }) {
+export function headerGap({ flow = null, contract = null, parity = null, liveHost = null, decisions = [] }) {
   if (!flow) return null;
   const want = flow === 'replica' ? 'replica' : 'functional';
   if (!contract) return 'header_parity:no contract: chrome-explore.mjs <source home> stardust/chrome/header-contract.json';
@@ -90,7 +91,9 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   const open = (parity.findings || []).filter((f) => f.severity === 'error' && !f.decided);
   if (!open.length) return null;
   // the classes chrome-compare wrote at its round cap: said with the gap, which stays a gap
-  const cls = (f) => (f.classed && f.classed.class) || null;
+  // … and only a class the decisions file still holds for that key, with a reason: a class written by hand into the verdict is none
+  const held = (f) => decisions.some((d) => d && d.finding === f.key && d.class === f.classed.class && String(d.reason || '').trim());
+  const cls = (f) => (f.classed && f.classed.class && held(f) ? f.classed.class : null);
   if (!open.some(cls)) return `header_parity:${open.length}: ${listed(open.map((f) => f.key))}`;
   const counts = [...new Set(open.map(cls).filter(Boolean))].map((c) => `${open.filter((f) => cls(f) === c).length} ${c}`);
   const none = open.filter((f) => !cls(f)).length;
@@ -202,7 +205,7 @@ async function main() {
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
-  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
+  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host, decisions: (readJSON(join(chrome, 'header-decisions.json'), {}) || {}).decisions || [] });
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });

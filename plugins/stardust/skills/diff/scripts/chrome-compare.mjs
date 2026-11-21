@@ -29,9 +29,13 @@
  * it in the verdict and done-check prints the gap with its classes; only the site owner's `by` and `at` clear it.
  * With every error classed the stage is closed in the ledger (accept-residual) and later comparisons of it run
  * uncounted, refused again when an error without a class appears. `rounds.mjs decide <dir> --stage <s> --decision
- * extend` grants one more counted round for a named instrument defect. The guard fails closed: without rounds.mjs
- * (../../replica/scripts/ or ../replica/), or with a ledger that cannot be read or written, nothing is compared
- * (exit 1); STARDUST_ROUND_CAP=0 compares without the refusal.
+ * extend` grants one more counted round for a named instrument defect.
+ * The cap is the replica flow's: it applies in a replica project — stardust/state.json says `flow: "replica"` (what
+ * done-check and qa read), or stardust/replica/ exists (gate.sh's evidence) — both read from the working directory.
+ * Anywhere else (redesign, reskin, a bare pair of records) the comparison runs as it always did, with one line saying
+ * it is not counted. In a replica project the guard fails closed: without rounds.mjs (../../replica/scripts/ or
+ * ../replica/), with a ledger that cannot be read or written, or with a state.json that cannot be read, nothing is
+ * compared (exit 1); STARDUST_ROUND_CAP=0 compares without the refusal.
  *
  * Usage: node skills/diff/scripts/chrome-compare.mjs <source.json> <build.json> [options]
  *   --profile replica|functional   default replica
@@ -47,10 +51,12 @@
  *                                  contract's `url` is another page than --page (host and path); else one line:
  *                                  `header contract: PASS at this stage …` or `… CAPPED at this stage …` (exit 0),
  *                                  `… NOT COMPARED at this stage — <command>` or `… FAIL at this stage …` (exit 2).
+ *                                  CAPPED needs more than a closed ledger: the stage's last verdict (--json, default
+ *                                  <--rounds dir>/header-parity.json) with every open error classed in --decisions.
  *                                  gate.sh --full prints it at the prototype stage.
  * Exit: 0 no undecided error · 2 errors · 6 round refused by the cap · 1 usage, or the cap could not be checked.
  * `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`, `pairLinks`, `stageOfBuild`, `samePage`,
- * `stageStatus`, `CLASSES` are exported.
+ * `stageStatus`, `unclassedAt`, `replicaProject`, `CLASSES` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -298,13 +304,35 @@ export function samePage(a, b) {
 
 const classCounts = (list) => CLASSES.map((c) => [list.filter((f) => f.classed && f.classed.class === c).length, c]).filter(([n]) => n).map(([n, c]) => `${n} ${c}`).join(', ');
 
+/** Is the working directory a replica project? state.json's `flow` (done-check's and qa's signal) or gate.sh's evidence
+ * folder. → { replica, why } ; throws when state.json is there and cannot be read (the flow cannot be told). */
+export function replicaProject(root = '.') {
+  const sf = join(root, 'stardust', 'state.json');
+  let flow = null;
+  if (existsSync(sf)) { try { flow = JSON.parse(readFileSync(sf, 'utf8')).flow || null; } catch (e) { throw new Error(`${join('stardust', 'state.json')} cannot be read (${e.message}), so the flow cannot be told`); } }
+  if (flow === 'replica') return { replica: true, why: 'stardust/state.json flow "replica"' };
+  if (existsSync(join(root, 'stardust', 'replica'))) return { replica: true, why: 'stardust/replica/ exists' };
+  return { replica: false, why: `${flow ? `stardust/state.json flow "${flow}"` : 'no flow "replica" in stardust/state.json'} and no stardust/replica/` };
+}
+
+/** What keeps a closed stage from being "capped": null when the stage's last verdict (`parity`) has every open error
+ * classed by the decisions file as it is now, else the reason. A closing decision alone is not a class. Pure. */
+export function unclassedAt(parity, stage, decisions = []) {
+  if (!parity || !Array.isArray(parity.findings)) return 'no verdict file of the comparison';
+  if (parity.stage !== stage) return `the verdict file is of the ${parity.stage || 'unknown'} stage`;
+  const open = applyDecisions(parity.findings.filter((f) => f.id !== 'decision-invalid').map(({ classed, decided, ...f }) => f), decisions).filter((f) => f.severity === 'error' && !f.decided);
+  const none = open.filter((f) => !f.classed).length;
+  return none ? `${none} of ${open.length} error(s) have no class` : null;
+}
+
 /** The header contract's verdict at a stage, for the page a round gates (--status). `contract`: the parsed contract or
- * null; `t`: rounds.mjs `tally` of the stage. → null (nothing to say: no contract, or it was recorded on another page)
- * or { rc, line }. Pure. */
-export function stageStatus({ contract, page, t, command, decisions }) {
+ * null; `t`: rounds.mjs `tally` of the stage; `unclassed`: unclassedAt() of a closed stage. → null (nothing to say: no
+ * contract, or it was recorded on another page) or { rc, line }. Pure. */
+export function stageStatus({ contract, page, t, command, decisions, unclassed = null }) {
   if (!contract || !samePage(contract.url, page)) return null;
   const n = `${t.counted} counted round${t.counted === 1 ? '' : 's'}`;
   if (t.last && t.last.verdict === 'pass') return { rc: 0, line: `header contract: PASS at this stage (${n})` };
+  if (t.closed && unclassed) return { rc: 2, line: `header contract: FAIL at this stage — closed in the ledger by ${t.closed.decision}, but ${unclassed}: record a class per remaining error in ${decisions} (chrome-compare.mjs --help § Round cap), then ${command}` };
   if (t.closed) return { rc: 0, line: `header contract: CAPPED at this stage — ${n}, closed by ${t.closed.decision}: ${t.closed.reason}` };
   if (!t.rounds) return { rc: 2, line: `header contract: NOT COMPARED at this stage — ${command}` };
   return { rc: 2, line: `header contract: FAIL at this stage — ${n} of ${t.allowance}, the last one a FAIL: ${t.counted < t.allowance ? 'fix the header, then' : `record a class per remaining error in ${decisions} (chrome-compare.mjs --help § Round cap), then`} ${command}` };
@@ -368,7 +396,10 @@ async function main() {
     if (source !== 'ledger' && existsSync(join(dir, 'rounds.json'))) throw new Error(`${join(dir, 'rounds.json')} is not a readable round ledger: repair or delete it`);
     const build = join(dir, 'header-build.json'); const widths = Object.keys(contract.widths || {}).join(',');
     const command = `node ${join(dirname(me), 'chrome-explore.mjs')} "${arg('build')}" ${build}${widths ? ` --width ${widths}` : ''} --max-requests 0 --pace-ms 0 --reload-pause-ms 0 && node ${me} ${cf} ${build} --profile ${profile} --json ${join(dir, 'header-parity.json')}`;
-    const s = stageStatus({ contract, page: arg('page'), t: R.tally(ledger, stage), command, decisions: df });
+    const t = R.tally(ledger, stage); const pf = arg('json', join(dir, 'header-parity.json'));
+    const read = (f, d) => (existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : d);
+    const unclassed = t.closed ? unclassedAt(read(pf, null), stage, read(df, {}).decisions || []) : null;
+    const s = stageStatus({ contract, page: arg('page'), t, command, decisions: df, unclassed });
     if (s) console.log(s.line);
     process.exit(s ? s.rc : 0);
   }
@@ -380,8 +411,10 @@ async function main() {
   // Round cap (header § Round cap): the ledger is read and written BEFORE anything is compared — a cap that cannot be
   // checked or kept refuses the comparison (exit 1); only STARDUST_ROUND_CAP=0 compares without it.
   const capOff = process.env.STARDUST_ROUND_CAP === '0';
-  let R = null; let ledger = null; let may = null;
+  let R = null; let ledger = null; let may = null; let project = { replica: true }; let uncounted = '';
   try {
+    project = replicaProject();
+    if (!project.replica) throw Object.assign(new Error(project.why), { notReplica: true });
     if (!ROUNDS) throw new Error('rounds.mjs not found (looked in ../../replica/scripts/ and ../replica/): copy the replica skill\'s scripts dir to stardust/scripts/replica/');
     R = await import(ROUNDS.href);
     mkdirSync(dir, { recursive: true });
@@ -390,8 +423,9 @@ async function main() {
     ledger = l.ledger; R.save(dir, ledger);
     may = R.mayRun(ledger, stage);
   } catch (e) {
-    if (!capOff) { console.error(`chrome-compare: the round cap could not be checked — ${e.message} — so nothing is compared (STARDUST_ROUND_CAP=0 compares without the cap)`); process.exit(1); }
-    console.error(`chrome-compare: the round cap could not be checked — ${e.message} — the comparison runs uncounted (STARDUST_ROUND_CAP=0)`);
+    if (e.notReplica) uncounted = `chrome-compare: not counted, no round cap — this is not a replica project (${e.message}); the cap is the replica flow's (--help § Round cap)`;
+    else if (!capOff) { console.error(`chrome-compare: the round cap could not be checked — ${e.message} — so nothing is compared (STARDUST_ROUND_CAP=0 compares without the cap)`); process.exit(1); }
+    else console.error(`chrome-compare: the round cap could not be checked — ${e.message} — the comparison runs uncounted (STARDUST_ROUND_CAP=0)`);
     R = null;
   }
   const { findings, visual } = compareDocs(src, bld, { profile });
@@ -433,7 +467,7 @@ async function main() {
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
   console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${errors.length > unclassed.length ? ` — classes: ${classCounts(errors)}${unclassed.length ? `, ${unclassed.length} without` : ''}` : ''}${out ? ` → ${out}` : ''}`);
-  if (roundLine) console.log(roundLine);
+  if (roundLine || uncounted) console.log(roundLine || uncounted);
   process.exit(errors.length ? 2 : 0);
 }
 

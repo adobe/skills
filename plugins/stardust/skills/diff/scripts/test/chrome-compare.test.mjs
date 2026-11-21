@@ -13,7 +13,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLASSES, applyDecisions, compareDocs, findingKey, pairControls, pairLinks, samePage, stageOfBuild, stageStatus } from '../chrome-compare.mjs';
+import { CLASSES, applyDecisions, compareDocs, findingKey, pairControls, pairLinks, replicaProject, samePage, stageOfBuild, stageStatus, unclassedAt } from '../chrome-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -224,17 +224,25 @@ check('stageStatus: nothing without a contract or for another page; NOT COMPARED
   assert.match(at({ rounds: 3, counted: 3, last: { verdict: 'fail' } }).line, /^header contract: FAIL at this stage — 3 counted rounds of 3, the last one a FAIL: record a class per remaining error in D\.json /);
   assert.deepEqual(at({ rounds: 2, counted: 2, last: { verdict: 'pass' } }), { rc: 0, line: 'header contract: PASS at this stage (2 counted rounds)' });
   assert.deepEqual(at({ rounds: 3, counted: 3, last: { verdict: 'fail' }, closed: { decision: 'accept-residual', reason: '2 classed' } }), { rc: 0, line: 'header contract: CAPPED at this stage — 3 counted rounds, closed by accept-residual: 2 classed' });
+  // a closing decision alone is not a class
+  assert.deepEqual(at({ rounds: 3, counted: 3, last: { verdict: 'fail' }, closed: { decision: 'accept-residual', reason: 'by hand' } }, { unclassed: '2 of 2 error(s) have no class' }), { rc: 2, line: 'header contract: FAIL at this stage — closed in the ledger by accept-residual, but 2 of 2 error(s) have no class: record a class per remaining error in D.json (chrome-compare.mjs --help § Round cap), then CMD' });
+  const parity = { stage: 'prototype', findings: [{ id: 'motion', width: 390, path: 'Menu', severity: 'error', classed: { class: 'owner', reason: 'written by hand' } }, { id: 'link-href', width: 390, path: 'Shop', severity: 'warn' }] };
+  assert.equal(unclassedAt(parity, 'prototype', []), '1 of 1 error(s) have no class', 'the class must be in the decisions file, not only in the verdict');
+  assert.equal(unclassedAt(parity, 'prototype', [{ finding: 'motion@390 Menu', class: 'owner', reason: 'r' }]), null);
+  assert.equal(unclassedAt(parity, 'published', []), 'the verdict file is of the prototype stage');
+  assert.equal(unclassedAt(null, 'prototype', []), 'no verdict file of the comparison');
 });
 
 // ── the CLI in a scratch project: the round cap, its classes, the guard, --status ──
 const CLI = join(HERE, '..', 'chrome-compare.mjs');
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'chrome-compare-')));
 const stockBuild = (url) => ({ ...doc([ctl('Shop', 'menu', { hover: null, click: st(shopLinks, { expanded: 'true' }), key: st(shopLinks, { expanded: 'true', tab: true }) }, { close: { escape: true, focusReturn: true, outside: true, leave: true } }), source.widths[1440].controls[1]], source.widths[1440].scroll), url });
-const project = (buildUrl = 'http://localhost:8791/home-proposed.html') => {
+const project = (buildUrl = 'http://localhost:8791/home-proposed.html', flow = 'replica') => {
   const root = scratch();
   mkdirSync(join(root, 'stardust', 'chrome'), { recursive: true });
   writeFileSync(join(root, 'stardust/chrome/header-contract.json'), JSON.stringify(source));
   writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify(stockBuild(buildUrl)));
+  if (flow) writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ flow }));
   return root;
 };
 const run = (root, extra = [], env = {}, script = CLI) => spawnSync(process.execPath, [script, ...(extra.includes('--status') ? [] : ['stardust/chrome/header-contract.json', 'stardust/chrome/header-build.json', '--profile', 'functional', '--json', 'stardust/chrome/header-parity.json']), ...extra], { cwd: root, encoding: 'utf8', timeout: 30000, env: { ...process.env, STARDUST_ROUND_CAP: '', ...env } });
@@ -329,6 +337,72 @@ check('round cap: a pass after a pass is free; the guard fails closed on a ledge
     assert.equal(json(capped, 'rounds.json').stages.prototype.rounds.length, 4);
   } finally { rmSync(capped, { recursive: true, force: true }); }
 });
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+check('not a replica project (redesign, reskin, no state): the comparison runs as before this branch — same exit, same findings, no ledger, one line saying it is not counted', () => {
+  const before = compareDocs(source, stockBuild('http://localhost:8791/home-proposed.html'), { profile: 'functional' }).findings;
+  for (const [flow, why] of [[null, 'no flow "replica" in stardust/state.json and no stardust/replica/'], ['redesign', 'stardust/state.json flow "redesign" and no stardust/replica/'], ['reskin', 'stardust/state.json flow "reskin" and no stardust/replica/']]) {
+    const root = project(undefined, flow);
+    try {
+      const { copy, root: copyRoot } = copyWithoutMaster(); // no replica scripts beside it either: nothing to fail on
+      cpSync(join(HERE, '..', '..', '..', 'stardust', 'scripts'), join(copyRoot, 'a', 'stardust'), { recursive: true });
+      for (const script of [CLI, join(copy, 'chrome-compare.mjs')]) {
+        for (let i = 0; i < 5; i += 1) {
+          const r = run(root, [], {}, script);
+          assert.equal(r.status, 2, r.stderr); assert.equal(r.stderr, '');
+          assert.deepEqual(r.stdout.trim().split('\n').slice(-2), ['chrome-compare: 2 error(s), 1 warning(s), 0 decided (profile functional, widths 1440) → stardust/chrome/header-parity.json', `chrome-compare: not counted, no round cap — this is not a replica project (${why}); the cap is the replica flow's (--help § Round cap)`]);
+        }
+        const v = json(root, 'header-parity.json');
+        assert.deepEqual(v.findings.map(({ key, ...f }) => f), before, 'the findings of compareDocs, untouched');
+        assert.deepEqual([v.round, v.capped, v.counts.error], [undefined, undefined, 2]);
+      }
+      assert.ok(!existsSync(join(root, 'stardust/chrome/rounds.json')), 'no ledger outside a replica project');
+      rmSync(copyRoot, { recursive: true, force: true });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  assert.equal(replicaProject(scratch()).replica, false);
+});
+check('a replica project is told by state.json flow or by stardust/replica/; a state.json that cannot be read refuses the comparison', () => {
+  const root = project(undefined, null);
+  try {
+    mkdirSync(join(root, 'stardust/replica/gates'), { recursive: true });
+    assert.deepEqual(replicaProject(root), { replica: true, why: 'stardust/replica/ exists' });
+    assert.match(run(root).stdout, /prototype stage — recorded "compare-1" fail as first/);
+    assert.deepEqual(replicaProject(project()), { replica: true, why: 'stardust/state.json flow "replica"' });
+    rmSync(join(root, 'stardust/replica'), { recursive: true });
+    writeFileSync(join(root, 'stardust/state.json'), '{ "flow": ');
+    const r = run(root);
+    assert.equal(r.status, 1); assert.equal(r.stdout, ''); assert.match(r.stderr, /the round cap could not be checked — stardust\/state\.json cannot be read .* so the flow cannot be told — so nothing is compared/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('a hand-made accept-residual in the ledger is not a cap: --status stays FAIL until every remaining error has a class in the decisions file', () => {
+  const root = project();
+  const status = () => run(root, ['--status', '--page', 'https://example.com/', '--build', 'http://localhost:8791/home-proposed.html']);
+  const ROUNDS_CLI = join(HERE, '..', '..', '..', 'replica', 'scripts', 'rounds.mjs');
+  try {
+    assert.equal(run(root).status, 2);
+    const d = spawnSync(process.execPath, [ROUNDS_CLI, 'decide', 'stardust/chrome', '--stage', 'prototype', '--decision', 'accept-residual', '--reason', 'done with the header'], { cwd: root, encoding: 'utf8' });
+    assert.equal(d.status, 0, d.stderr);
+    let r = status();
+    assert.equal(r.status, 2); assert.match(r.stdout, /^header contract: FAIL at this stage — closed in the ledger by accept-residual, but 2 of 2 error\(s\) have no class: record a class per remaining error in stardust\/chrome\/header-decisions\.json /);
+    assert.equal(run(root).status, 6, 'and the comparison itself is refused');
+    // a class written by hand into the verdict file is not one either
+    const v = json(root, 'header-parity.json'); for (const f of v.findings) if (f.severity === 'error') f.classed = { class: 'owner', reason: 'by hand' };
+    writeFileSync(join(root, 'stardust/chrome/header-parity.json'), JSON.stringify(v));
+    assert.equal(status().status, 2);
+    decisions(root, [{ finding: KEYS[0], class: 'owner', reason: 'the menu service' }]);
+    assert.match(status().stdout, /but 1 of 2 error\(s\) have no class/);
+    decisions(root, KEYS.map((k) => ({ finding: k, class: 'owner', reason: 'the menu service' })));
+    r = status();
+    assert.deepEqual([r.status, r.stdout.slice(0, 40)], [0, 'header contract: CAPPED at this stage — ']);
+    rmSync(join(root, 'stardust/chrome/header-parity.json'));
+    assert.match(status().stdout, /but no verdict file of the comparison/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 check('--status: silent without a contract or for another page; NOT COMPARED names the two commands; a pass or a capped stage exits 0', () => {
   const root = project();
   const status = (page, extra = []) => run(root, ['--status', '--page', page, '--build', 'http://localhost:8791/home-proposed.html', ...extra]);
@@ -359,13 +433,7 @@ check('--status: silent without a contract or for another page; NOT COMPARED nam
     assert.equal(run(root, ['--status']).status, 1, '--status needs --page and --build');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-const copyWithoutMaster = () => {
-  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
-  const copy = join(root, 'a', 'b');
-  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
-  return { root, copy };
-};
-check('a copy without the replica scripts beside it compares nothing (exit 1)', () => {
+check('a replica project whose copy has no replica scripts beside it compares nothing (exit 1)', () => {
   const { root, copy } = copyWithoutMaster();
   const proj = project();
   try {
