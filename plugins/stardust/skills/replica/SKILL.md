@@ -27,7 +27,11 @@ metadata:
 > - `REPLAY-GAPS …` → close the listed gaps per the rollout skill, ask the
 >   done-check again, then write the handoff end line.
 > - `REPLAY-NO-MATCH …` (or any error) → ignore the replay and run this skill
->   normally from § Inputs.
+>   normally from § Inputs, with the **fast first page** profile
+>   (`reference/fast-first-page.md`, read it now): a single-page run takes its
+>   page through it; a full-site run (aem.new sends these) delivers its first page
+>   through it as first page first's Track A, then continues the rest of the site
+>   at the normal contract.
 
 Same pages, same content, same design — new platform. The target spec IS
 the captured current state, the only permitted deltas are the entries of an
@@ -329,6 +333,6 @@ PRODUCT.md / DESIGN.md / DESIGN.json       ← promoted from current/ (Phase 2)
   reading a round, iteration discipline, hardening, the published-origin
   and all-pages gates, residual logging.
 - `reference/handoff-contract.md` — Phase 5 contract card.
-- `reference/reading-discipline.md`, `reference/first-page-first.md`.
+- `reference/reading-discipline.md`, `reference/first-page-first.md`, `reference/fast-first-page.md`.
 - `../diff/SKILL.md` — the probes replica reuses, the header contract.
 - `../migrate/reference/fidelity-tiers.md` — the archetype / sibling model.
