@@ -14,7 +14,7 @@
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
 #       [--no-dismiss] [--locale <tag>] [--mask <yA:h[@yB],…>] [--live-origin]
-#       [--gate-against-baseline] [--help]
+#       [--gate-against-baseline] [--hold-timers] [--hold-min <ms>] [--help]
 #
 # Origin reference (the default origin of every round):
 #   No usable frozen reference in the evidence dir (`stitch-shot.mjs baseline <dir> --url --width`:
@@ -36,6 +36,8 @@
 #   rows — joins the pixel-compare --mask list (with any --mask of the caller), and one line says what
 #   the round was gated against:
 #   `gate.sh: reference: frozen <capturedAt>, noise floor 2.31% in 2 region(s) — 708 rows excluded`.
+#   A reference whose captures differed without the timer hold carries a `hint` (reference.mjs § HINT): repeated
+#   once, `gate.sh: hint: …` after that line (stderr on the exit-5 path). Advice only: no verdict or exit code reads it.
 #   It holds the PIXEL target still only: a --full round's probes still navigate the live URL.
 #   --live-origin   this round gates against a live capture instead, as every round did before the
 #            reference: live.png captured when absent and reused (unprimed, no noise floor, no mask); a
@@ -146,6 +148,13 @@
 #   --mask <yA:h[@yB],…>  rows excluded from the pixel number (pixel-compare --mask; repeatable) — merged with
 #                       the reference's self-varying rows
 #   --live-origin | --gate-against-baseline   § Origin reference
+#   --hold-timers       stitch-shot's timer hold (its --help; default OFF) on the reference and both captures: a
+#                       page whose carousel advances on its own is captured in one state on both sides. A reference
+#                       frozen without it (or with another threshold) is frozen again (`changed: holdTimers`); a round
+#                       that omits the flag inherits a held reference's. Before the compare one line,
+#                       `gate.sh: timers held (≥ 2000 ms) — live <n> (<delays>), build <n>`; two sides under different holds
+#                       end the round, exit 1, nothing compared.
+#   --hold-min <ms>     a higher threshold for the hold; implies --hold-timers (default and floor 2000)
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -219,6 +228,7 @@
 #   GATE_CHROME_REGION   "header=<liveSel>|<buildSel>[;footer=…]" when chrome-parity cannot resolve a region (its exit 4)
 #   GATE_REGIME          prototype | local-build | published — the stage, whatever the build URL (§ Stage)
 #   GATE_REFERENCE       live = every round gates against a live capture (--live-origin); default frozen
+#   GATE_HOLD_TIMERS     1 = --hold-timers on every round; a number of ms (≥ 2000) = --hold-min <ms>; default off
 set -u
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -239,6 +249,8 @@ CONSENT=""
 DISMISS_EXTRA=""
 LOCALE=""
 MASK=""
+HOLD="" # the timer hold's threshold in ms; empty = off
+case "${GATE_HOLD_TIMERS:-}" in ''|0) ;; 1) HOLD=2000 ;; *) HOLD=$GATE_HOLD_TIMERS ;; esac
 case "${GATE_REFERENCE:-frozen}" in
   frozen) BASELINE=1 ;;
   live) BASELINE=0 ;;
@@ -258,11 +270,17 @@ while [ $# -gt 0 ]; do
     --mask) MASK="${MASK:+$MASK,}${2:?--mask needs yA:h[@yB],…}"; shift 2 ;;
     --gate-against-baseline) BASELINE=1; shift ;;
     --live-origin) BASELINE=0; shift ;;
+    --hold-timers) HOLD=${HOLD:-2000}; shift ;;
+    --hold-min) HOLD=${2:?--hold-min needs a number of ms}; shift 2 ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
 done
 
+if [ -n "$HOLD" ]; then
+  case "$HOLD" in *[!0-9]*) HOLD_OK=0 ;; *) HOLD_OK=1; [ "$HOLD" -ge 2000 ] || HOLD_OK=0 ;; esac
+  [ "$HOLD_OK" = 1 ] || { echo "gate.sh: --hold-min / GATE_HOLD_TIMERS needs a whole number of ms, at least 2000 (got '$HOLD')" >&2; exit 125; }
+fi
 if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
   echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
 fi
@@ -282,6 +300,8 @@ build_opts() {
   fi
   # --locale reaches the reference, both captures and every probe (they all take the flag).
   if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
+  # the timer hold: the reference and both captures (stitch-shot's flags; the probes do not stitch)
+  if [ -n "$HOLD" ]; then STITCH_OPTS+=(--hold-timers --hold-min "$HOLD"); fi
 }
 build_opts
 # chrome-parity only: the declared font substitutions (one <brand>=<substitute> per line) and region overrides.
@@ -362,6 +382,9 @@ if [ "$HAVE_BASE" = 1 ]; then
   case "$SETTINGS" in
     "changed: "*) REFREEZE=${SETTINGS#changed: }; HAVE_BASE=0 ;;
     "not recorded") echo "gate.sh: reference: reused — settings not recorded (frozen by an older version: delete $DIR/baseline.json to freeze it under this round's flags)" ;;
+    same) ;;
+    # no answer: with the timer hold asked for, nothing says the reference was frozen with it — never reused
+    *) if [ -n "$HOLD" ]; then echo "gate.sh: reference.mjs settings gave no answer for $DIR (${SETTINGS:-nothing}) — with --hold-timers the reference is not reused unchecked; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; fi ;;
   esac
 fi
 # A reused reference's settings that this round omits are taken from it (reference.mjs settings --inherit, one
@@ -374,10 +397,14 @@ if [ "$HAVE_BASE" = 1 ]; then
       --dismiss) IFS= read -r DISMISS_EXTRA; INHERITED="$INHERITED --dismiss $DISMISS_EXTRA" ;;
       --no-dismiss) DISMISS=0; INHERITED="$INHERITED --no-dismiss" ;;
       --locale) IFS= read -r LOCALE; INHERITED="$INHERITED --locale $LOCALE" ;;
+      --hold-min) IFS= read -r HOLD; INHERITED="$INHERITED --hold-timers --hold-min $HOLD" ;;
     esac
   done < <(node "$HERE/reference.mjs" settings "$DIR" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} --inherit 2>/dev/null)
   if [ -n "$INHERITED" ]; then build_opts; echo "gate.sh: reference: settings this round omits are the frozen reference's —$INHERITED (the build capture and the probes run under them)"; fi
 fi
+# The timer hold a capture was taken with, from its record (capture.json or baseline.json `timers.hold`): the
+# threshold in ms, or nothing (no hold, or no readable record).
+record_hold() { node -e 'try { const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).timers; if (t && t.hold) process.stdout.write(String(t.hold)); } catch { /* no record: no hold */ }' "$1" 2>/dev/null; }
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
 # final. $1 names the step for the log line; the rest is the command (a function or a program).
@@ -490,6 +517,7 @@ if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
     0) [ -n "$REFREEZE" ] && echo "gate.sh: reference: re-frozen — capture settings changed ($REFREEZE)"
        echo "gate.sh: ${WHY:-reference: frozen}" ;;
     2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
+       HINT=$(grep -E '^hint: ' "$REF_LINE" 2>/dev/null | tail -1); [ -n "$HINT" ] && echo "gate.sh: $HINT" >&2
        FLAGS="${STITCH_OPTS[*]-}" # the round's overlay and locale flags: the forced freeze must capture the same page
        echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W${FLAGS:+ $FLAGS} --force" >&2
        exit 5 ;;
@@ -522,6 +550,12 @@ else
     echo "gate.sh: $DIR/live.png predates the fixed-layer capture (no fixedLayers in live.capture.json) — retaking it so both sides capture alike"
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
   fi
+  # A live capture taken under another timer hold than this round's (none against one, or another threshold) would
+  # be compared with a build captured this round's way: retake it.
+  if [ -f "$DIR/live.png" ] && [ "$(record_hold "$DIR/live.capture.json")" != "$HOLD" ]; then
+    echo "gate.sh: $DIR/live.png was captured with timer hold '$(record_hold "$DIR/live.capture.json")', this round's is '${HOLD}' — retaking it so both sides capture alike"
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
+  fi
   if [ ! -f "$DIR/live.png" ]; then
     capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
     retry_once "live capture" capture_live
@@ -538,6 +572,18 @@ capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$H
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && capture_failed build "$rc"
+# Timer hold (header --hold-timers): both sides were captured under the same hold, or nothing is compared — a held
+# origin against an unheld build (or the reverse) is two instruments. The origin's record is the frozen baseline's
+# on a frozen round, the live capture's otherwise.
+ORIGIN_REC="$DIR/live.capture.json"; [ "$ORIGIN" = frozen ] && ORIGIN_REC="$DIR/baseline.json"
+LIVE_HOLD=$(record_hold "$ORIGIN_REC"); BUILD_HOLD=$(record_hold "$DIR/build.capture.json")
+if [ "$LIVE_HOLD" != "$BUILD_HOLD" ] || [ "$BUILD_HOLD" != "$HOLD" ]; then
+  echo "gate.sh: timer hold differs — origin '${LIVE_HOLD}' ($ORIGIN_REC), build '${BUILD_HOLD}', this round '${HOLD}' (ms; empty = none): not comparing. Delete $DIR/baseline.png + baseline.json (or live.png) and re-run the round" >&2; exit 1
+fi
+if [ -n "$HOLD" ]; then
+  held() { node -e 'const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).timers; process.stdout.write(`${t.held}${t.delays.length ? ` (${t.delays.join(", ")} ms)` : ""}`);' "$1" 2>/dev/null; }
+  echo "gate.sh: timers held (≥ $HOLD ms) — live $(held "$ORIGIN_REC"), build $(held "$DIR/build.capture.json")"
+fi
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
 # no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
@@ -579,7 +625,8 @@ if [ "$ORIGIN" = frozen ]; then
   node -e 'const b = (() => { try { return JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch { return {}; } })();
     const v = Array.isArray(b.variable) ? b.variable : []; const rows = v.reduce((n, r) => n + (Number(r.h) || 0), 0);
     const floor = typeof b.noiseFloor === "number" ? `noise floor ${b.noiseFloor.toFixed(2)}%${v.length ? ` in ${v.length} region(s)` : ", no self-varying region"} — ${rows} rows excluded` : "noise floor not measured (frozen without priming — reference.mjs freeze --force measures it) — 0 rows excluded";
-    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);' "$DIR/baseline.json" "$BASE_AT"
+    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);
+    if (typeof b.hint === "string" && b.hint) console.log(`gate.sh: hint: ${b.hint}`);' "$DIR/baseline.json" "$BASE_AT"
 else
   echo "gate.sh: reference: a live capture (--live-origin / GATE_REFERENCE=live, or no reference.mjs) — not primed, no noise floor measured, no rows excluded"
 fi

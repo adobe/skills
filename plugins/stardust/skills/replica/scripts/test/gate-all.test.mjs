@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -464,10 +464,12 @@ if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(
 mkdirSync(dir, { recursive: true });
 for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
 if (url === process.env.STUB_REF_FAIL) { console.log('reference: not frozen — the capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
-if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), '{}'); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
+const hint = process.env.STUB_REF_HINT && !rest.includes('--hold-min') ? process.env.STUB_REF_HINT : null; // reference.mjs's hint: only without the hold, before its verdict line
+if (hint) console.log('hint: ' + hint);
+if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), JSON.stringify(hint ? { hint } : {})); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
 const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 9 }));
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
-writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed') } }));
+writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, ...(hint ? { hint } : {}), flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed') } }));
 console.log('reference: frozen, primed');\n`);
   // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
   // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
@@ -645,7 +647,7 @@ check('CHILD_FLAGS is what each child\'s own parseArgs accepts — a flag listed
   for (const [name, file] of Object.entries(src)) {
     const text = readFileSync(file, 'utf8');
     // a probe takes the three overlay flags through measure-live's overlayFlag(); --locale and stitch-shot's own flags are parsed in place
-    const accepted = ['--consent', '--dismiss', '--no-dismiss', '--locale'].filter((flag) => text.includes("=== '" + flag + "'") || (flag !== '--locale' && text.includes('overlayFlag(a,')));
+    const accepted = ['--consent', '--dismiss', '--no-dismiss', '--locale', '--hold-timers', '--hold-min'].filter((flag) => text.includes("=== '" + flag + "'") || (['--consent', '--dismiss', '--no-dismiss'].includes(flag) && text.includes('overlayFlag(a,')));
     assert.deepEqual([...CHILD_FLAGS[name]].sort(), accepted.sort(), name);
   }
 });
@@ -854,6 +856,38 @@ check('givenFlags / inheritedOpts: the locale default is not a given setting; a 
   assert.equal(inheritedOpts(given, { consent: '#ok', locale: 'de-DE' }), given, 'a given setting that differs: the reference is frozen again, nothing inherited');
   assert.equal(inheritedOpts(run, null), run);
 });
+check('timer hold (--hold-timers / --hold-min / GATE_HOLD_TIMERS, default OFF): reaches stitch-shot only, both sides; a reference\'s hold is inherited when the run omits it; a capture taken under another hold is stale; two sides under different holds are an error row', () => {
+  const off = parseArgs(['node', 'x']);
+  assert.equal(off.holdTimers, null); assert.equal(passThrough('stitch-shot', off).join(' ').includes('hold'), false);
+  assert.equal(parseArgs(['node', 'x', '--hold-timers']).holdTimers, 2000); assert.equal(parseArgs(['node', 'x', '--hold-min', '3000', '--hold-timers']).holdTimers, 3000);
+  assert.deepEqual([envHold(undefined), envHold(''), envHold('0'), envHold('1'), envHold('2500')], [null, null, null, 2000, 2500]);
+  const on = parseArgs(['node', 'x', '--hold-timers']);
+  for (const side of [stitchArgs('s', 'https://origin.example/a', 'o.png', on, ['--headed']), stitchArgs('s', 'https://eds.example/a', 'e.png', on)]) assert.deepEqual(side.slice(side.indexOf('--hold-timers'), side.indexOf('--hold-timers') + 3), ['--hold-timers', '--hold-min', '2000']);
+  for (const probe of ['content-presence', 'clip-probe', 'unit-geometry']) assert.equal(passThrough(probe, on).join(' ').includes('hold'), false, probe);
+  assert.deepEqual(givenFlags(on), ['--hold-timers', '--hold-min', '2000'], 'a given setting for reference.mjs settings');
+  assert.equal(inheritedOpts(off, { consent: null, locale: null, holdTimers: 2000 }).holdTimers, 2000, 'omitted: the reference\'s');
+  assert.equal(inheritedOpts(off, { consent: null, locale: null }).holdTimers, null);
+  assert.equal(inheritedOpts(on, { consent: '#ok', locale: null }), on, 'given against an unheld reference: frozen again, nothing inherited');
+  assert.equal(inheritedOpts(on, { consent: '#ok', locale: null, holdTimers: 2000 }).consent, '#ok');
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-hold-'));
+  try {
+    const eds = join(d, 'eds.png'); writeFileSync(eds, 'png');
+    const fixedLayers = { capture: 'once', count: 0, late: 0 }; const timers = { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] };
+    writeFileSync(captureRecordOf(eds), JSON.stringify({ fixedLayers }));
+    assert.equal(staleCapture(eds), false); assert.equal(staleCapture(eds, 2000), true, 'unheld, the run holds');
+    assert.equal(staleReason(eds, 2000), 'was captured under another timer hold (none, this run 2000)');
+    writeFileSync(captureRecordOf(eds), JSON.stringify({ fixedLayers, timers }));
+    assert.equal(staleCapture(eds, 2000), false); assert.equal(staleCapture(eds), true, 'held, the run does not'); assert.equal(staleCapture(eds, 3000), true, 'another threshold');
+    const live = join(d, 'live.png'); writeFileSync(live, 'png'); writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers, timers }));
+    assert.equal(staleCapture(live, 2000), false, 'a copy of a held reference'); assert.equal(staleCapture(live), true);
+    assert.equal(holdMismatch({ fixedLayers, timers }, { fixedLayers, timers }), null); assert.equal(holdMismatch({ fixedLayers }, { fixedLayers }), null);
+    assert.equal(holdMismatch(null, { fixedLayers, timers }), null, 'no record on one side (a crawl shot): flagged asymmetric elsewhere');
+    assert.match(holdMismatch({ fixedLayers, timers }, { fixedLayers }), /^timer hold differs: origin 2000, build none \(ms\) — not compared/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+  const help = spawnSync(process.execPath, [join(HERE, '../gate-all.mjs'), '--help'], { encoding: 'utf8' }).stdout;
+  assert.match(help, /--hold-timers /); assert.match(help, /--hold-min <ms>/); assert.match(help, /GATE_HOLD_TIMERS/);
+});
 check('unselected: an --only slug that selection neither kept nor skipped gets its own NOT gated line', () => {
   assert.deepEqual(unselected(['a', 'b', 'c'], [{ slug: 'a' }], [{ slug: 'b', why: 'x' }]), ['c']);
   assert.deepEqual(unselected(null, [], []), []);
@@ -988,6 +1022,34 @@ check('reference: the archetype gate dir\'s frozen baseline is the origin (no fr
     assert.equal(JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8')).totals.failOffsets, 1);
     assert.deepEqual(compares().page.slice(compares().page.indexOf('--offset-max'), compares().page.indexOf('--offset-max') + 2), ['--offset-max', '16']);
   } finally { done(); }
+});
+check('hint: a reference whose captures differed without the hold carries reference.mjs\'s hint — logged once per page, kept on the row and in its reasons cell; none under --hold-timers / GATE_HOLD_TIMERS, none for a stable page; rows, totals and exit code are those of the run without it', () => {
+  const HINT = 'the page changes on its own between captures (2 self-varying region(s) masked) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates: --hold-timers or GATE_HOLD_TIMERS=1) captures it in one state';
+  assert.equal(referenceOf({ capturedAt: 'T', hint: HINT }, 'd').hint, HINT); assert.equal('hint' in referenceOf({ capturedAt: 'T' }, 'd'), false);
+  assert.deepEqual([hintOf({ hint: ` ${HINT} ` }), hintOf({ hint: '' }), hintOf({ hint: 7 }), hintOf(null)], [HINT, null, null, null]);
+  const hintLogs = (r, slug) => (r.stdout.match(new RegExp(`origin ${slug}: hint: .*$`, 'gm')) || []);
+  const strip = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { ...v, hint: null }]));
+  const plain = sandbox(['good', 'wobbly']); const self = sandbox(['good', 'wobbly']); const held = sandbox(['good', 'wobbly']); const env = sandbox(['good', 'wobbly']);
+  try {
+    const UN = { ...REF, STUB_REF_MASK: '392:56,4000:652', STUB_REF_UNSTABLE: 'https://origin.example/wobbly' };
+    const r0 = plain.gateAll([], UN);
+    let r = self.gateAll([], { ...UN, STUB_REF_HINT: HINT });
+    assert.equal(r.status, r0.status, r.stderr); assert.equal(r.status, 2);
+    for (const slug of ['good', 'wobbly']) { assert.deepEqual(hintLogs(r, slug).length, 1, `${slug}: ${r.stdout}`); assert.ok(hintLogs(r, slug)[0].endsWith(`origin ${slug}: hint: ${HINT}`)); assert.equal(self.rows()[slug].hint, HINT); assert.equal(hintLogs(r0, slug).length, 0); assert.equal(plain.rows()[slug].hint, null); }
+    assert.deepEqual(strip(self.rows()), strip(plain.rows()), 'the hint changes no verdict, reason or number'); assert.deepEqual(self.totals(), plain.totals());
+    assert.equal(self.rows().good.pass, true); assert.deepEqual(self.rows().wobbly.reasons, plain.rows().wobbly.reasons);
+    const md = readFileSync(join(self.out, 'summary.md'), 'utf8');
+    assert.equal(md.split(`(hint) ${HINT}`).length - 1, 2, 'once per row'); assert.doesNotMatch(readFileSync(join(plain.out, 'summary.md'), 'utf8'), /hint/);
+    // the next run reuses the frozen reference: the row keeps the hint
+    r = self.gateAll([], { ...REF, STUB_REF_HINT: HINT, STUB_REF_UNSTABLE: 'https://origin.example/wobbly' });
+    assert.equal(self.rows().good.hint, HINT);
+    for (const [box, args, extra] of [[held, ['--hold-timers'], {}], [env, [], { GATE_HOLD_TIMERS: '1' }]]) {
+      r = box.gateAll(args, { ...UN, STUB_REF_HINT: HINT, ...extra });
+      assert.equal(r.status, 2, r.stderr); assert.doesNotMatch(r.stdout + r.stderr, /hint/); assert.deepEqual([box.rows().good.hint, box.rows().wobbly.hint], [null, null]);
+    }
+  } finally { plain.done(); self.done(); held.done(); env.done(); }
+  const help = spawnSync(process.execPath, [join(HERE, '../gate-all.mjs'), '--help'], { encoding: 'utf8' }).stdout;
+  assert.match(help, /origin <slug>: hint: …/);
 });
 check('reference: an UNSTABLE reference is an error row — reason reference-unstable: <line>, counted in totals.error, not a FAIL, not a pass, no crawl shot in its place; the next run tries again; --recapture-origin re-freezes without --force', () => {
   const { root, out, gateAll, shots, rows, totals, spawned, files, done } = sandbox(['good', 'wobbly']);
