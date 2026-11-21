@@ -1,21 +1,23 @@
+[live-session] waiting to pace live navigations to {{BRANCH}}--{{SITE}}--{{ORG}}.aem.page (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 33 ms
 chrome-parity @ 1440px, tolerance 1px
-  live:  https://markszulc.github.io/frescopa-atelier/index.html (live side from cache stardust/replica/gates/frescopa-atelier-index-html-1440/chrome-live.json, probed 2026-11-21T07:09:40.902Z — delete the file to re-probe)
+  live:  https://markszulc.github.io/frescopa-atelier/index.html (live side from cache stardust/replica/gates/frescopa-atelier-index-html-1440/chrome-live.json, probed 2026-11-21T06:46:04.499Z — delete the file to re-probe)
   build: https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/
 
 ■ header: 6 delta(s) — 5 paired of 5/5 texts, 5/5 icons
   region live:  header.header — outermost <header>, box 0,0 1440×75; selector body > header
   region build: div.header.block — auto-detected (no usable <header> landmark), box 0,0 1440×75; selector body > header > div
-  REGION STYLE backgroundColor oklab(0.97 0.00139173 0.00990268 / 0.0000800844) → oklab(0.97 0.00139173 0.00990268 / 0.00000277158)
-  PAIR         "The Atelier"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944998 0.0027784 0.0157569)
-  PAIR         "Machines"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944998 0.0027784 0.0157569)
-  PAIR         "Beverages"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944998 0.0027784 0.0157569)
-  PAIR         "Café"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944998 0.0027784 0.0157569)
-  PAIR         "Journal"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944998 0.0027784 0.0157569)
-  advisory     NAMES: 3 carried by another channel (aria-label ↔ hidden text)
+  REGION STYLE backgroundColor oklab(0.97 0.00139173 0.00990268 / 0.000717143) → oklab(0.97 0.00139173 0.00990268 / 0.0054515)
+  PAIR         "The Atelier"  color oklab(0.944443 0.00278664 0.0157576) → oklab(0.940769 0.00284125 0.0157618); Δy +3px (22→25); Δh -5px (31→26)
+  PAIR         "Machines"  color oklab(0.944443 0.00278664 0.0157576) → oklab(0.940769 0.00284125 0.0157618); Δy +3px (22→25); Δh -5px (31→26)
+  PAIR         "Beverages"  color oklab(0.944443 0.00278664 0.0157576) → oklab(0.940769 0.00284125 0.0157618); Δy +3px (22→25); Δh -5px (31→26)
+  PAIR         "Café"  color oklab(0.944443 0.00278664 0.0157576) → oklab(0.940769 0.00284125 0.0157618); Δy +3px (22→25); Δh -5px (31→26)
+  PAIR         "Journal"  color oklab(0.944443 0.00278664 0.0157576) → oklab(0.940769 0.00284125 0.0157618); Δy +3px (22→25); Δh -5px (31→26)
 
-■ footer: ✓ parity — 21 paired of 21/21 texts, 4/4 icons
+■ footer: 3 delta(s) — 19 paired of 21/20 texts, 4/4 icons
   region live:  footer.footer — outermost <footer>, box 0,5978 1440×497; selector body > footer
   region build: footer.footer-wrapper — outermost <footer>, box 0,5978 1440×497; selector body > footer
-  advisory     NAMES: 3 carried by another channel (aria-label ↔ hidden text)
+  MISSING      "© Fréscopa · Privacy · Terms · A fiction"  live <p> "© Fréscopa · Privacy · Terms · A fictional brand" has no build element with the same text
+  MISSING      "2026"  live <span> "2026" has no build element with the same text
+  EXTRA        "© 2026 Fréscopa · Privacy · Terms · A fi"  build <p> "© 2026 Fréscopa · Privacy · Terms · A fictional " has no live source
 
-✗ 6 delta(s), 2 advisory group(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.
+✗ 9 delta(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.

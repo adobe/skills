@@ -1,76 +1,72 @@
 {
   "_provenance": {
     "writtenBy": "stardust:replica",
-    "writtenAt": "2026-11-21T07:20:51.837Z"
+    "writtenAt": "2026-11-21T06:51:34.494Z"
   },
   "types": {
     "frescopa-atelier-index-html": {
       "pageType": "landing",
       "archetype": "frescopa-atelier-index-html",
-      "rep_url": "https://markszulc.github.io/frescopa-atelier/index.html",
+      "liveUrl": "https://markszulc.github.io/frescopa-atelier/index.html",
       "prototype": "stardust/prototypes/frescopa-atelier-index-html-proposed.html",
       "breakpoints": {
         "1440": {
-          "iterations": 1,
+          "iterations": 2,
           "result": {
             "structuralRed": 0,
             "nothingLost": 0,
             "visualFlags": "none",
-            "pixelPct": 0.29,
-            "alignedPct": 0.29,
+            "pixelPct": 0.32,
+            "alignedPct": 0.32,
             "heightDelta": 0,
             "clipped": 0,
-            "overflow": "none",
-            "capProbe": "PASS at 2560 (0/10 rows failed)",
-            "gateAllPrototype": "0.37% Δh 0 PASS",
             "pass": true
           },
+          "rounds": [
+            {
+              "iter": "iter1",
+              "pixelPct": 0.4,
+              "heightDelta": 0,
+              "pass": true,
+              "note": "1 nothing-lost: mobile Menu toggle aria-label"
+            },
+            {
+              "iter": "iter2",
+              "pixelPct": 0.32,
+              "heightDelta": 0,
+              "pass": true,
+              "note": "toggle added; confirmation --full"
+            }
+          ],
           "justified": [
             {
               "probe": "chrome-parity",
-              "flag": "header backgroundColor alpha 0.0000800844 vs 0.0000801043 (1 delta after re-probe; 6 in iter1 were mid-transition colour reads)",
-              "why": "transition residue of the 600 ms header colour/background transition; both sides at rest transparent/cream"
+              "flag": "6 deltas: header bg alpha 0.0007 vs 0.00002, nav text oklab L 0.9444 vs 0.9450",
+              "why": "header colour transition mid-state at capture; sub-perceptual"
             }
           ],
           "residuals": [
             {
-              "region": "whole page",
-              "pct": 0.29,
-              "cause": "glyph antialiasing + image resampling; no band above noise",
-              "flaggedFor": "user"
+              "band": "y 1233–2605",
+              "pct": 1.38,
+              "cause": "capture-state: flavour-DNA radar and mood calendar auto-cycle every 3 s; the two captures land on different steps",
+              "flaggedFor": "delivery"
             }
           ],
           "captureState": [
             {
-              "what": "flavour radar and calendar autocycle frozen at capture time (stitch-shot clears timers)",
+              "what": "flavour-DNA radar and calendar caught mid auto-cycle",
               "where": "learn, mood",
-              "restoreAtDelivery": "radar: bloom on first view 1100 ms, autocycle weekday→sunday→evening every 3 s until a click; calendar: autocycle every 3 s once on screen until a click"
-            },
-            {
-              "what": "reveal-on-scroll elements captured in their revealed state",
-              "where": "all sections",
-              "restoreAtDelivery": ".reveal fades/rises in on intersection (threshold 0.14, rootMargin 0 0 -8% 0, 900 ms expo, per-element --reveal-delay)"
+              "restoreAtDelivery": "flavour DNA: blooms on view, auto-cycles weekday→sunday→evening every 3 s until a profile is clicked; calendar: auto-cycles days every 3 s until clicked; header: is-scrolled >12px, hides scrolling down past 480px; hero copy column from image metadata; parallax on hero and café images"
             }
-          ],
-          "sourceSpecCompare": "height 6474=6474, 0 sections off; 7 nodes differ only by autocycle phase (radar/calendar active state) — time-dependent, not static"
+          ]
         }
       },
       "motion": {
-        "observed": "header scroll-morph (is-scrolled/is-hidden), reveal is-in ×20, card hover (img scale, shadow, lift), radar + calendar is-active autocycle; 130 transitions",
-        "implemented": "all observed — motion-compare 15 parity, 0 missing, 0 extra",
-        "dead": [
-          ".dna__btn click poke (no sampled frame change)",
-          ".cal__day click poke (no sampled frame change)",
-          ".btn hover (no measured diff)"
-        ],
-        "evidence": [
-          "stardust/replica/motion/frescopa-atelier-index-html.json",
-          "stardust/replica/motion/frescopa-atelier-index-html-proto.json",
-          "stardust/replica/motion/compare.json"
-        ]
-      },
-      "portation": [],
-      "jsException": "prototype JS re-authors the source behaviours (header morph, reveal, hero art, radar, calendar, parallax) at the source thresholds — operator instruction + recreation-procedure § Fixed and sticky chrome"
+        "observed": "not run (operator: skip motion-observe); behaviour read from source JS",
+        "implemented": "header morph, reveal, hero art-direction, DNA radar + calendar autocycle 3 s, parallax, mobile nav",
+        "dead": []
+      }
     }
   }
 }

@@ -45,12 +45,5 @@
         ]
       }
     ]
-  },
-  "visionCheck": [
-    {
-      "slug": "frescopa-atelier-index-html",
-      "verdict": "ok",
-      "notes": "hero headline + espresso machine photo match record; palette burgundy/cream/terracotta plausible; logo present; fully rendered, no wall. Reveal-on-scroll content visible under reduced-motion."
-    }
-  ]
+  }
 }

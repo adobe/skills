@@ -7,8 +7,8 @@
     "mode": "overlap"
   },
   "heightDelta": 0,
-  "differingPixels": 76662,
-  "pct": 0.82,
+  "differingPixels": 71710,
+  "pct": 0.77,
   "threshold": 10,
   "pass": true,
   "diff": "stardust/replica/gates/frescopa-atelier-index-html-1440/diff-pub3.png",
@@ -41,7 +41,7 @@
     {
       "y0": 2000,
       "y1": 2500,
-      "pct": 1
+      "pct": 0
     },
     {
       "y0": 2500,
@@ -51,7 +51,7 @@
     {
       "y0": 3000,
       "y1": 3500,
-      "pct": 0
+      "pct": 0.1
     },
     {
       "y0": 3500,
@@ -76,7 +76,7 @@
     {
       "y0": 5500,
       "y1": 6000,
-      "pct": 0
+      "pct": 0.2
     },
     {
       "y0": 6000,
@@ -87,8 +87,8 @@
   "verdict": "aligned",
   "aligned": {
     "used": false,
-    "pct": 0.82,
-    "differingPixels": 76662,
+    "pct": 0.77,
+    "differingPixels": 71710,
     "compared": {
       "width": 1440,
       "height": 6474,
@@ -127,8 +127,8 @@
       {
         "y0": 2000,
         "y1": 2500,
-        "pct": 1,
-        "unaligned": 1
+        "pct": 0,
+        "unaligned": 0
       },
       {
         "y0": 2500,
@@ -139,8 +139,8 @@
       {
         "y0": 3000,
         "y1": 3500,
-        "pct": 0,
-        "unaligned": 0
+        "pct": 0.1,
+        "unaligned": 0.1
       },
       {
         "y0": 3500,
@@ -169,8 +169,8 @@
       {
         "y0": 5500,
         "y1": 6000,
-        "pct": 0,
-        "unaligned": 0
+        "pct": 0.2,
+        "unaligned": 0.2
       },
       {
         "y0": 6000,
@@ -182,7 +182,7 @@
     "diff": null,
     "reason": "no offset step found",
     "candidate": {
-      "pct": 0.82,
+      "pct": 0.77,
       "steps": 0,
       "totalShift": 0
     }

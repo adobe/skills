@@ -1,3 +1,4 @@
+[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 885 ms
 
 Content diff @ 1440px (profile "generic", roots: main, header, footer)
 root "main"
@@ -9,12 +10,13 @@ root "header"
   source: 5 text nodes — 0 headings, 0 eyebrows, 5 CTAs, 0 body; 2 img
   build: 5 text nodes — 0 headings, 0 eyebrows, 5 CTAs, 0 body; 2 img
   editable texts (outermost h*/p/ul/ol): source 0 / build 0
-  attributes (placeholder/aria-label/title): source 6 / build 6; icons: source 3 / build 3
+  attributes (placeholder/aria-label/title): source 6 / build 5; icons: source 3 / build 3
 root "footer"
   source: 21 text nodes — 3 headings, 0 eyebrows, 13 CTAs, 5 body; 1 img
   build: 21 text nodes — 3 headings, 0 eyebrows, 13 CTAs, 5 body; 1 img
   editable texts (outermost h*/p/ul/ol): source 5 / build 5
   attributes (placeholder/aria-label/title): source 5 / build 5; icons: source 3 / build 3
 
-Findings: none — content + roles match
-Tiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0
+Findings: 1 (0 structural 🔴)
+Tiers: looks-same 🔴 0 · nothing-lost 🟡 1 · accepted 🟢 0 (owner 0, auto 0) · advisory 0
+  🟡 MISSING ARIA-LABEL [header]: source <button> aria-label="Menu" has no build <button> with that aria-label (build <button> aria-labels: "Search", "Account", "Cart, 0 items"). Authored text a user or assistive tech reads, dropped by the build — carry it over verbatim.

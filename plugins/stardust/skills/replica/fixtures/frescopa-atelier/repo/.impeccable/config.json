@@ -9,8 +9,62 @@
         "files": [
           "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
         ],
-        "createdAt": "2026-11-21T08:19:39.661Z",
-        "reason": "agent decision (replica run): prototype reproduces the live source's captured colours verbatim; the inconsistency register is empty, so any contrast change would be a fidelity defect"
+        "createdAt": "2026-11-21T07:20:58.742Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.749Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.756Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.763Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "skipped-heading",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.770Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "tight-leading",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.778Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T07:20:58.785Z",
+        "reason": "agent (replica flow): prototype reproduces the live source design verbatim and passed its fidelity gate; replica forbids design changes not in the inconsistency register (stardust/replica/inconsistency-register.md)"
       }
     ]
   }

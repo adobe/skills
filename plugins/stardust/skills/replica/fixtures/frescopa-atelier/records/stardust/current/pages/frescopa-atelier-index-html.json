@@ -1,7 +1,7 @@
 {
   "_provenance": {
     "renderedBy": "playwright",
-    "fetchedAt": "2026-11-21T07:05:51.693Z",
+    "fetchedAt": "2026-11-21T06:44:28.119Z",
     "waitMode": "medium",
     "waitMs": 2500,
     "httpStatus": 200
@@ -9,7 +9,7 @@
   "slug": "frescopa-atelier-index-html",
   "url": "https://markszulc.github.io/frescopa-atelier/index.html",
   "renderedBy": "playwright",
-  "fetchedAt": "2026-11-21T07:05:51.693Z",
+  "fetchedAt": "2026-11-21T06:44:28.119Z",
   "finalUrl": "https://markszulc.github.io/frescopa-atelier/index.html",
   "title": "Fréscopa Atelier — Every morning, perfected.",
   "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",

@@ -1,35 +1,25 @@
-/* Feed — prototype `.feed` + `.card`, re-scoped under the block; mobile-first (901). */
 .feed {
-  padding-block: var(--section-pad);
+  position: relative;
+  padding-block: clamp(3rem, 2rem + 4vw, 6rem);
   background: var(--paper-2);
-  scroll-margin-top: 92px;
+}
+
+.feed .feed-heading :is(h1, h2, h3) {
+  margin-top: 1rem;
+  font-size: var(--fs-h2);
 }
 
 .feed .feed-head {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 2rem;
   align-items: end;
 }
 
-.feed .feed-title {
-  margin-top: 1rem;
-}
-
-.feed .feed-title :is(h1, h2, h3) {
-  font-size: var(--fs-h2);
-}
-
 .feed .feed-intro {
   max-width: 44ch;
-  color: var(--ink-soft);
   font-size: var(--fs-body-lg);
-}
-
-@media (width >= 901px) {
-  .feed .feed-head {
-    grid-template-columns: 1fr 1fr;
-  }
+  color: var(--ink-soft);
 }
 
 .feed .feed-grid {
@@ -43,21 +33,29 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--paper);
-  transition: transform var(--dur-2) var(--ease-quint), box-shadow var(--dur-2) var(--ease-quint);
+  transition:
+    transform var(--dur-2) var(--ease-quint),
+    box-shadow var(--dur-2) var(--ease-quint);
 }
 
-.feed .card:hover {
-  box-shadow: var(--shadow-lg);
+.feed .card.reveal.is-in:hover {
   transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
 }
 
 .feed .card-media {
   position: relative;
-  overflow: hidden;
   aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.feed .card-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .feed .card-media img {
@@ -76,13 +74,13 @@
   top: 0.85rem;
   left: 0.85rem;
   padding: 0.4em 0.75em;
-  border-radius: var(--r-pill);
-  background: color-mix(in oklch, var(--paper) 92%, transparent);
-  color: var(--burgundy);
-  font-family: var(--font-label);
+  font-family: var(--font-mono);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--burgundy);
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  border-radius: var(--r-pill);
   backdrop-filter: blur(6px);
 }
 
@@ -95,15 +93,15 @@
 }
 
 .feed .card-title :is(h2, h3, h4) {
-  color: var(--burgundy);
   font-size: 1.5rem;
   font-weight: 700;
+  color: var(--burgundy);
 }
 
 .feed .card-note {
   flex: 1;
-  color: var(--ink-soft);
   font-size: 0.94rem;
+  color: var(--ink-soft);
 }
 
 .feed .card-foot {
@@ -116,13 +114,39 @@
 }
 
 .feed .card-price {
-  color: var(--ink);
   font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 700;
+  color: var(--ink);
 }
 
-.feed .card-cart {
+.feed .card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding-bottom: 2px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--terracotta);
   cursor: pointer;
-  user-select: none;
+  background: linear-gradient(currentcolor, currentcolor) 0 100% / 0% 1.5px no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint);
+}
+
+.feed .card-action .arrow {
+  transition: transform var(--dur-1) var(--ease-quint);
+}
+
+.feed .card-action:hover {
+  background-size: 100% 1.5px;
+}
+
+.feed .card-action:hover .arrow {
+  transform: translateX(3px);
+}
+
+@media (width <= 900px) {
+  .feed .feed-head {
+    grid-template-columns: 1fr;
+  }
 }

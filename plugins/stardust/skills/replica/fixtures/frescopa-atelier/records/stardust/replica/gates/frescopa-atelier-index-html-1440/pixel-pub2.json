@@ -7,8 +7,8 @@
     "mode": "overlap"
   },
   "heightDelta": 0,
-  "differingPixels": 76658,
-  "pct": 0.82,
+  "differingPixels": 64355,
+  "pct": 0.69,
   "threshold": 10,
   "pass": true,
   "diff": "stardust/replica/gates/frescopa-atelier-index-html-1440/diff-pub2.png",
@@ -21,12 +21,12 @@
     {
       "y0": 0,
       "y1": 500,
-      "pct": 5.2
+      "pct": 4.4
     },
     {
       "y0": 500,
       "y1": 1000,
-      "pct": 4.4
+      "pct": 4.2
     },
     {
       "y0": 1000,
@@ -41,7 +41,7 @@
     {
       "y0": 2000,
       "y1": 2500,
-      "pct": 1
+      "pct": 0
     },
     {
       "y0": 2500,
@@ -51,7 +51,7 @@
     {
       "y0": 3000,
       "y1": 3500,
-      "pct": 0
+      "pct": 0.1
     },
     {
       "y0": 3500,
@@ -76,7 +76,7 @@
     {
       "y0": 5500,
       "y1": 6000,
-      "pct": 0
+      "pct": 0.2
     },
     {
       "y0": 6000,
@@ -87,8 +87,8 @@
   "verdict": "aligned",
   "aligned": {
     "used": false,
-    "pct": 0.82,
-    "differingPixels": 76658,
+    "pct": 0.69,
+    "differingPixels": 64355,
     "compared": {
       "width": 1440,
       "height": 6474,
@@ -103,14 +103,14 @@
       {
         "y0": 0,
         "y1": 500,
-        "pct": 5.2,
-        "unaligned": 5.2
+        "pct": 4.4,
+        "unaligned": 4.4
       },
       {
         "y0": 500,
         "y1": 1000,
-        "pct": 4.4,
-        "unaligned": 4.4
+        "pct": 4.2,
+        "unaligned": 4.2
       },
       {
         "y0": 1000,
@@ -127,8 +127,8 @@
       {
         "y0": 2000,
         "y1": 2500,
-        "pct": 1,
-        "unaligned": 1
+        "pct": 0,
+        "unaligned": 0
       },
       {
         "y0": 2500,
@@ -139,8 +139,8 @@
       {
         "y0": 3000,
         "y1": 3500,
-        "pct": 0,
-        "unaligned": 0
+        "pct": 0.1,
+        "unaligned": 0.1
       },
       {
         "y0": 3500,
@@ -169,8 +169,8 @@
       {
         "y0": 5500,
         "y1": 6000,
-        "pct": 0,
-        "unaligned": 0
+        "pct": 0.2,
+        "unaligned": 0.2
       },
       {
         "y0": 6000,
@@ -182,7 +182,7 @@
     "diff": null,
     "reason": "no offset step found",
     "candidate": {
-      "pct": 0.82,
+      "pct": 0.69,
       "steps": 0,
       "totalShift": 0
     }

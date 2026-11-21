@@ -1,4 +1,4 @@
-# Dynamic features — detected (2026-11-21T07:20:06.112Z)
+# Dynamic features — detected (2026-11-21T06:52:01.031Z)
 
 Pages probed: /frescopa-atelier/index.html · settle 5000 ms · width 1440 · reach from 1/1 crawled pages
 

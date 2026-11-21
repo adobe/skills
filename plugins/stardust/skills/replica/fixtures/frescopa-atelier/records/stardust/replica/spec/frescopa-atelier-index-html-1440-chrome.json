@@ -3,7 +3,7 @@
   "width": 1440,
   "probe": 3,
   "liveCache": "stardust/replica/gates/frescopa-atelier-index-html-1440/chrome-live.json",
-  "probedAt": "2026-11-21T07:09:40.903Z",
+  "probedAt": "2026-11-21T06:46:04.500Z",
   "regions": {
     "header": {
       "found": true,
@@ -15,7 +15,7 @@
         "h": 75
       },
       "position": "fixed",
-      "backgroundColor": "oklab(0.97 0.00139173 0.00990268 / 0.0000800844)",
+      "backgroundColor": "oklab(0.97 0.00139173 0.00990268 / 0.000717143)",
       "backgroundImage": "none",
       "atoms": [
         {
@@ -45,7 +45,7 @@
             "lineHeight": "24.624px",
             "letterSpacing": "0.152px",
             "textTransform": "none",
-            "color": "oklab(0.944938 0.0027793 0.015757)",
+            "color": "oklab(0.944443 0.00278664 0.0157576)",
             "backgroundColor": "rgba(0, 0, 0, 0)",
             "paddingTop": "3.2px",
             "paddingRight": "0px",
@@ -83,7 +83,7 @@
             "lineHeight": "24.624px",
             "letterSpacing": "0.152px",
             "textTransform": "none",
-            "color": "oklab(0.944938 0.0027793 0.015757)",
+            "color": "oklab(0.944443 0.00278664 0.0157576)",
             "backgroundColor": "rgba(0, 0, 0, 0)",
             "paddingTop": "3.2px",
             "paddingRight": "0px",
@@ -121,7 +121,7 @@
             "lineHeight": "24.624px",
             "letterSpacing": "0.152px",
             "textTransform": "none",
-            "color": "oklab(0.944938 0.0027793 0.015757)",
+            "color": "oklab(0.944443 0.00278664 0.0157576)",
             "backgroundColor": "rgba(0, 0, 0, 0)",
             "paddingTop": "3.2px",
             "paddingRight": "0px",
@@ -159,7 +159,7 @@
             "lineHeight": "24.624px",
             "letterSpacing": "0.152px",
             "textTransform": "none",
-            "color": "oklab(0.944938 0.0027793 0.015757)",
+            "color": "oklab(0.944443 0.00278664 0.0157576)",
             "backgroundColor": "rgba(0, 0, 0, 0)",
             "paddingTop": "3.2px",
             "paddingRight": "0px",
@@ -197,7 +197,7 @@
             "lineHeight": "24.624px",
             "letterSpacing": "0.152px",
             "textTransform": "none",
-            "color": "oklab(0.944938 0.0027793 0.015757)",
+            "color": "oklab(0.944443 0.00278664 0.0157576)",
             "backgroundColor": "rgba(0, 0, 0, 0)",
             "paddingTop": "3.2px",
             "paddingRight": "0px",

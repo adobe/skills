@@ -1,29 +1,28 @@
-/* Header — lifted from the gated prototype's chrome (.header / .nav / .iconbtn / .nav-toggle).
-   Overlay chrome: the block bar is fixed over the hero; nothing is reserved in flow. */
-
-header .header {
+/* Fréscopa header — prototype chrome CSS scoped under the header block */
+.header {
   position: fixed;
   inset: 0 0 auto;
   z-index: 100;
   color: var(--cream);
-  transition: transform var(--dur-2) var(--ease-quint),
+  transition:
+    transform var(--dur-2) var(--ease-quint),
     background-color var(--dur-2) var(--ease-quint),
     color var(--dur-2) var(--ease-quint),
     box-shadow var(--dur-2) var(--ease-quint);
 }
 
-header .header.is-scrolled {
+.header.is-scrolled {
   background: color-mix(in oklch, var(--paper) 88%, transparent);
   backdrop-filter: blur(14px);
   color: var(--ink);
   box-shadow: 0 1px 0 var(--line), var(--shadow-sm);
 }
 
-header .header.is-hidden {
+.header.is-hidden {
   transform: translateY(-100%);
 }
 
-header .header .header-inner {
+.header .header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -31,197 +30,188 @@ header .header .header-inner {
   padding-block: 1.1rem;
 }
 
-/* brand: authored <p><a> with the two logos moved inside */
-header .header .header-brand p {
-  margin: 0;
-  line-height: 0;
-}
-
-header .header .header-brand a {
+.header .header-brand a {
   position: relative;
   display: block;
   line-height: 0;
 }
 
-header .header .header-logo-light,
-header .header .header-logo-dark {
-  display: contents;
+.header .header-brand-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-header .header .header-brand img {
+.header .header-logo,
+.header .header-logo picture {
+  display: block;
+}
+
+.header .header-logo img {
   width: auto;
   height: 32px;
   transition: opacity var(--dur-2) var(--ease-quint);
 }
 
-header .header .header-logo-dark img {
+.header .header-logo-dark {
   position: absolute;
   inset: 0;
+}
+
+.header .header-logo-dark img {
   opacity: 0;
 }
 
-header .header.is-scrolled .header-logo-light img {
+.header.is-scrolled .header-logo-light img {
   opacity: 0;
 }
 
-header .header.is-scrolled .header-logo-dark img {
+.header.is-scrolled .header-logo-dark img {
   opacity: 1;
 }
 
-/* mobile: off-canvas drawer */
-header .header .nav {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: 90;
+.header .nav ul {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 1.4rem;
-  width: min(82vw, 340px);
-  padding: 5rem 2.2rem;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: var(--shadow-lg);
-  transform: translateX(105%);
-  transition: transform var(--dur-2) var(--ease-expo);
+  align-items: center;
+  gap: clamp(1.1rem, 2vw, 2.4rem);
+  margin: 0;
+  padding: 0;
+  line-height: var(--lh-body);
 }
 
-header .header .nav.is-open {
-  transform: none;
-}
-
-header .header .nav ul,
-header .header .nav li,
-header .header .nav p {
-  display: contents;
-}
-
-header .header .nav a {
+.header .nav a {
   position: relative;
+  display: block;
   padding: 0.2rem 0;
-  color: var(--burgundy);
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
-header .header .header-utils {
+.header .nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 0;
+  height: 1.5px;
+  background: currentcolor;
+  transition: width var(--dur-2) var(--ease-quint);
+}
+
+.header .nav a:hover::after {
+  width: 100%;
+}
+
+.header .header-utils {
   display: flex;
   align-items: center;
   gap: 0.35rem;
 }
 
-header .header .header-utils ul {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  list-style: none;
-}
-
-header .header .header-utils li {
-  display: contents;
-}
-
-header .header .iconbtn {
+.header .iconbtn {
   display: inline-grid;
   place-items: center;
   width: 40px;
   height: 40px;
+  padding: 0;
   border-radius: 50%;
   transition: background-color var(--dur-1) var(--ease-quint);
 }
 
-header .header .iconbtn:hover {
+.header .iconbtn:hover {
   background: color-mix(in oklch, currentcolor 12%, transparent);
 }
 
-header .header .iconbtn .icon {
-  display: block;
-  width: 20px;
-  height: 20px;
-}
-
-header .header .nav-toggle {
+.header .nav-toggle {
+  display: none;
   position: relative;
-  z-index: 95;
-  display: inline-grid;
-  place-items: center;
   width: 42px;
   height: 42px;
+  padding: 0;
   border-radius: 50%;
 }
 
-header .header .nav-toggle span {
+.header .nav-toggle span {
   position: absolute;
   left: 11px;
   width: 20px;
   height: 1.8px;
   border-radius: 2px;
   background: currentcolor;
-  transition: transform var(--dur-1) var(--ease-quint), opacity var(--dur-1);
+  transition:
+    transform var(--dur-1) var(--ease-quint),
+    opacity var(--dur-1);
 }
 
-header .header .nav-toggle span:first-child {
+.header .nav-toggle span:first-child {
   top: 17px;
 }
 
-header .header .nav-toggle span:last-child {
+.header .nav-toggle span:last-child {
   top: 24px;
 }
 
-header .header .nav-toggle[aria-expanded="true"] span {
+.header .nav-toggle[aria-expanded="true"] span {
   background: var(--ink);
 }
 
-header .header .nav-toggle[aria-expanded="true"] span:first-child {
+.header .nav-toggle[aria-expanded="true"] span:first-child {
   transform: translateY(3.5px) rotate(45deg);
 }
 
-header .header .nav-toggle[aria-expanded="true"] span:last-child {
+.header .nav-toggle[aria-expanded="true"] span:last-child {
   transform: translateY(-3.5px) rotate(-45deg);
 }
 
-@media (width >= 901px) {
-  header .header .nav {
-    position: static;
-    z-index: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: clamp(1.1rem, 2vw, 2.4rem);
-    width: auto;
-    padding: 0;
-    background: none;
-    color: inherit;
-    box-shadow: none;
+html.nav-open {
+  overflow: hidden;
+}
+
+@media (width <= 900px) {
+  .header .nav {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: min(82vw, 340px);
+    padding: 5rem 2.2rem;
+    color: var(--ink);
+    background: var(--paper);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(105%);
+    transition: transform var(--dur-2) var(--ease-expo);
+  }
+
+  .header .nav.is-open {
     transform: none;
-    transition: none;
   }
 
-  header .header .nav a {
-    color: inherit;
-    font-family: var(--font-body);
-    font-size: 0.95rem;
-    font-weight: 500;
-    letter-spacing: 0.01em;
+  .header .nav ul {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.4rem;
   }
 
-  header .header .nav a::after {
-    content: "";
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 0;
-    height: 1.5px;
-    background: currentcolor;
-    transition: width var(--dur-2) var(--ease-quint);
+  .header .nav a {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--burgundy);
   }
 
-  header .header .nav a:hover::after {
-    width: 100%;
-  }
-
-  header .header .nav-toggle {
+  .header .nav a::after {
     display: none;
+  }
+
+  .header .nav-toggle {
+    display: inline-grid;
+    place-items: center;
+    z-index: 95;
   }
 }

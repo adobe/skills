@@ -1,18 +1,23 @@
-/* Hero — prototype `.hero`, re-scoped under the block; mobile-first (561 / 761). */
 .hero {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  overflow: hidden;
+  align-items: flex-start;
   min-height: min(92vh, 900px);
-  padding-top: 6rem;
-  padding-bottom: clamp(2rem, 5vh, 3.5rem);
+  overflow: hidden;
+  padding-top: var(--hero-copy-top, 24vh);
+  padding-bottom: clamp(2.5rem, 6vh, 5rem);
 }
 
 .hero .hero-media {
   position: absolute;
   inset: 0;
   z-index: 0;
+}
+
+.hero .hero-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .hero .hero-media img {
@@ -37,36 +42,25 @@
   z-index: 1;
 }
 
-.hero .hero-inner > div {
-  max-width: 100%;
-}
-
-.hero .hero-title {
-  margin-top: 1.1rem;
-  color: var(--cream);
-  font-size: clamp(2.5rem, 1.6rem + 2.9vw, 4rem);
-  font-weight: 800;
-  line-height: var(--lh-tight);
-  text-shadow: 0 2px 30px oklch(15% 0.02 40deg / 35%);
+.hero .hero-inner > * {
+  max-width: var(--hero-copy-max, 400px);
 }
 
 .hero .hero-title :is(h1, h2, h3) {
-  color: inherit;
-  font: inherit;
-  font-family: var(--font-display);
-  line-height: inherit;
+  margin-top: 1.1rem;
+  font-size: clamp(2.5rem, 1.6rem + 2.9vw, 4rem);
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  color: var(--cream);
+  text-shadow: 0 2px 30px oklch(15% 0.02 40deg / 35%);
 }
 
 .hero .hero-lead {
   margin-top: 1.3rem;
-  color: var(--cream);
-  opacity: 0.92;
   font-size: var(--fs-body);
   line-height: 1.55;
-}
-
-.hero .hero-lead.is-in {
-  opacity: 1;
+  color: var(--cream);
+  opacity: 0.92;
 }
 
 .hero .hero-actions {
@@ -74,6 +68,10 @@
   flex-wrap: wrap;
   gap: 0.9rem;
   margin-top: 2rem;
+}
+
+.hero .hero-actions p {
+  display: flex;
 }
 
 .hero .hero-scroll {
@@ -85,18 +83,12 @@
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
-  color: var(--cream);
-  opacity: 0.85;
-  font-family: var(--font-label);
+  font-family: var(--font-mono);
   font-size: 0.68rem;
-  line-height: var(--lh-body);
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  cursor: pointer;
-}
-
-.hero .hero-scroll a:any-link {
-  color: inherit;
+  color: var(--cream);
+  opacity: 0.85;
 }
 
 .hero .hero-scroll svg {
@@ -114,21 +106,20 @@
   }
 }
 
-@media (width >= 561px) {
+@media (width <= 760px) {
   .hero {
+    align-items: flex-end;
     padding-top: 7rem;
+    padding-bottom: clamp(2rem, 5vh, 3.5rem);
+  }
+
+  .hero .hero-inner > * {
+    max-width: 100%;
   }
 }
 
-@media (width >= 761px) {
-  /* art-directed: --hero-copy-top / --hero-copy-max come from the block script */
+@media (width <= 560px) {
   .hero {
-    align-items: flex-start;
-    padding-top: var(--hero-copy-top, 24vh);
-    padding-bottom: clamp(2.5rem, 6vh, 5rem);
-  }
-
-  .hero .hero-inner > div {
-    max-width: var(--hero-copy-max, 400px);
+    padding-top: 6rem;
   }
 }

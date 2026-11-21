@@ -1,17 +1,21 @@
-/* Café — prototype `.cafe`, re-scoped under the block. */
 .cafe {
   position: relative;
   display: flex;
   align-items: center;
-  overflow: hidden;
   min-height: 64vh;
-  scroll-margin-top: 92px;
+  overflow: hidden;
 }
 
 .cafe .cafe-media {
   position: absolute;
   inset: 0;
   z-index: 0;
+}
+
+.cafe .cafe-media picture {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .cafe .cafe-media img {
@@ -25,13 +29,12 @@
 .cafe .cafe-scrim {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(
-      92deg,
-      oklch(16% 0.02 40deg / 80%) 0%,
-      oklch(16% 0.02 40deg / 42%) 46%,
-      transparent 78%
-    );
+  background: linear-gradient(
+    92deg,
+    oklch(16% 0.02 40deg / 80%) 0%,
+    oklch(16% 0.02 40deg / 42%) 46%,
+    transparent 78%
+  );
 }
 
 .cafe .cafe-inner {
@@ -42,13 +45,10 @@
   color: var(--cream);
 }
 
-.cafe .cafe-title {
-  margin-top: 1rem;
-}
-
 .cafe .cafe-title :is(h1, h2, h3) {
-  color: var(--cream);
+  margin-top: 1rem;
   font-size: var(--fs-h2);
+  color: var(--cream);
 }
 
 .cafe .cafe-body {
@@ -56,4 +56,21 @@
   margin: 1.1rem 0 1.9rem;
   color: var(--cream);
   opacity: 0.9;
+}
+
+.cafe .cafe-actions p {
+  display: flex;
+}
+
+.cafe a.button.primary {
+  --btn-bg: var(--paper);
+  --btn-fg: var(--burgundy);
+
+  box-shadow: var(--shadow-sm);
+}
+
+.cafe a.button.primary:hover {
+  --btn-bg: #fff;
+
+  box-shadow: var(--shadow-md);
 }

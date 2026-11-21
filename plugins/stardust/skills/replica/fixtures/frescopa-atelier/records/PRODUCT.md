@@ -1,4 +1,12 @@
-<!-- stardust:provenance writtenBy=stardust:replica writtenAt=2026-11-21T07:08:24Z mode=bounded-single synthesizedFrom=stardust/current/pages/frescopa-atelier-index-html.json,stardust/replica/lifted-tokens.json -->
+---
+_provenance:
+  writtenBy: stardust:replica
+  writtenAt: 2026-11-21T06:45:20Z
+  mode: bounded-single
+  synthesizedFrom:
+    - stardust/current/pages/frescopa-atelier-index-html.json
+    - stardust/replica/tokens-lifted.md
+---
 # Product
 <!-- impeccable:product-schema 1 -->
 
@@ -6,12 +14,10 @@
 web
 
 ## Product Purpose
-Marketing page for the Fréscopa Atelier coffee machine (captured title: "Fréscopa Atelier — Every morning, perfected.").
+Fréscopa Atelier — "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest." (captured meta description). Single landing page.
 
 ## Brand Commitments
-Register: brand. The captured state is the target (preserve mode); nothing changes outside the inconsistency register.
+Register: brand (marketing landing). Design is preserved verbatim (replica flow).
 
 ## Evidence on Hand
-- stardust/current/pages/frescopa-atelier-index-html.{json,html} — content and rendered DOM
-- stardust/current/assets/ — screenshot, media, fonts, source CSS/JS (harvest.json)
-- stardust/replica/lifted-tokens.json — tokens
+stardust/current/pages/frescopa-atelier-index-html.json (+ .html, screenshot), stardust/current/assets/ (fonts, media, source CSS).

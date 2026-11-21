@@ -1,6 +1,6 @@
-[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 100 ms
-content-presence @ 1440px (chrome) — origin https://markszulc.github.io/frescopa-atelier/index.html (docH 6474, 118 items, HTTP 200) vs served https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/ (docH 6474, 115 items, HTTP 200)
-scope: main#main vs main#main (header/footer left to the chrome crop gate; --chrome to include)
+[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 746 ms
+content-presence @ 1440px (chrome) — origin https://markszulc.github.io/frescopa-atelier/index.html (docH 6474, 118 items, HTTP 200) vs served https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/ (docH 6474, 114 items, HTTP 200)
+scope: main#main vs main (header/footer left to the chrome crop gate; --chrome to include)
 | band | heading | links O/E (+hidden) | buttons O/E (+hidden) | text O/E | images O/E | findings |
 |---|---|---|---|---|---|---|
 | 0 | (top) | 0/0 | 0/0 | 1/1 | 1/1 | - |

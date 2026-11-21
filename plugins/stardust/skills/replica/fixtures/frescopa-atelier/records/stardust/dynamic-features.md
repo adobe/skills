@@ -1,31 +1,24 @@
-<!-- stardust provenance: skill=stardust:dynamics · phase=triage (curated, hands-off) · 2026-11-21 · input stardust/current/_dynamics.json, stardust/dynamics/dynamic-features.generated-plan.md, stardust/replica/motion/ -->
-# Dynamic features — Fréscopa Atelier home (curated)
+# Dynamic features — markszulc.github.io/frescopa-atelier (index.html)
 
-Source: https://markszulc.github.io/frescopa-atelier/index.html (static GitHub Pages site; 0 first-party API endpoints,
-0 third-party scripts beyond Google Fonts; all behaviour is three local scripts: shared/app.js, hero.js, flavor-dna.js).
+Detector: stardust/current/_dynamics.json (dynamics-detect, 2 findings) + extract --dynamics reach (0 endpoints, 0 hydration) + a read of the source scripts (shared/app.js, hero.js, flavor-dna.js).
 
 ## Listings contract
-
-None — no client-rendered or index-fed listing on the page. The three "New favourites" cards are authored content.
+none — no listing blocks.
 
 ## Features
+| # | id | feature | class | reach | disposition | target | reproducibility | status | pattern | decision / owner | evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | f-form-signup | footer newsletter "Sign up" (email; `action="#" onsubmit="return false"` — never submits on source) | F form | 1/1 | rebuild-native | block (footer fragment) — inert form as on source | full | planned | forms | self: source posts nowhere; replicate as non-submitting | index.html L305 |
+| 2 | x-commerce | "Add to cart" buttons ×3, cart icon "Cart, 0 items" (no handler on source) | X commerce | 1/1 | decided-out | content — buttons render, no action (as source) | full | planned | — | self: no cart exists on source | dynamics-detect |
+| 3 | dna-radar | flavour-DNA SVG radar: blooms on view, auto-cycles 3 profiles every 3 s, click to choose | client-only | 1/1 | client-only | block JS (flavour-dna) | full | planned | — | self | shared/flavor-dna.js |
+| 4 | mood-calendar | calendar days → brew suggestion, auto-cycles every 3 s, click to choose | client-only | 1/1 | client-only | block JS (calendar) | full | planned | — | self | shared/app.js initCalendar |
+| 5 | chrome-morph | header is-scrolled >12px, hides scrolling down past 480px; mobile nav toggle | runtime | 1/1 | rebuild-native | runtime (header block) | full | planned | — | self | shared/app.js initHeader/initNav |
+| 6 | hero-art | hero copy column from image metadata (focal/product top/left) + parallax on hero & café images + scroll reveal | runtime | 1/1 | rebuild-native | block JS (hero, cafe) + scripts | full | planned | — | self | shared/hero.js, app.js |
 
-| # | id | class | feature | disposition | target | reproducibility | status | notes |
-|---|---|---|---|---|---|---|---|---|
-| 1 | f-form-signup | F | footer newsletter form (1 email field) | rebuild-native (UI) | footer block | self (as captured) | implemented in prototype | Source form is inert: `action="#"`, `onsubmit="return false"`. Rebuilt with the same no-op submit (prevented). **Decision named: production newsletter endpoint** (owner) — interim = source behaviour (no submission). Not regulated-PII beyond an email address; nothing is captured. |
-| 2 | x-commerce-signals | X | cart icon "Cart, 0 items", 3 × "Add to cart" buttons, prices | rebuild-native (UI) | header block, cards block | self (as captured) | implemented in prototype | Source buttons have no handlers (static UI). Replicated inert. **Decision named: commerce backend** (owner). Not decided-out. |
-| 3 | w-flavor-radar | — | flavour DNA radar: SVG build, bloom on first view (threshold 0.35, 1100 ms expo), 3 profile buttons (820 ms morph), autocycle 3 s until a click | rebuild-native | flavor-dna block | self | implemented, motion parity | motion-compare: is-active ×9 parity |
-| 4 | w-mood-calendar | — | mood calendar: day buttons set the brew card (tag/title/note), autocycle 3 s once on screen until a click | rebuild-native | calendar block | self | implemented, motion parity | |
-| 5 | w-reveal | — | reveal-on-scroll (.reveal → .is-in, threshold 0.14, rootMargin -8 %), 900 ms expo | rebuild-native | scripts.js (site-wide) | self | implemented, motion parity | is-in ×20 parity |
-| 6 | w-header-morph | — | header: `is-scrolled` > 12 px, `is-hidden` scrolling down past 480 px; mobile drawer | rebuild-native | header block | self | implemented, motion parity | header scroll-morph parity, 600 ms |
-| 7 | w-hero-art | — | art-directed hero: copy top/width from product position in the cover-cropped image (≥ 760 px) | rebuild-native | hero block | self | implemented | live inline style 166 px / 378 px at 1440 reproduced (gate Δh 0) |
-| 8 | w-parallax | — | parallax translate on hero + café images (12 / 14 px), pointer devices only | rebuild-native | hero, cafe blocks | self | implemented | |
+## Decision batch
+None — every row is self-decided (no owner input needed).
 
-## Decision batch (owner, hands-off: interim tier ships, decision named)
-
-1. Newsletter production endpoint (row 1) — interim: inert form, as on the source.
-2. Commerce backend for cart / add-to-cart (row 2) — interim: inert UI, as on the source.
-
-## Register
-
-No register entries: every row replicates captured behaviour; martech out of scope (operator).
+## Register (decided-out)
+| feature | reason | production statement |
+|---|---|---|
+| cart / add to cart | no commerce backend on source; buttons are inert there | buttons kept visually, no action — same as source |

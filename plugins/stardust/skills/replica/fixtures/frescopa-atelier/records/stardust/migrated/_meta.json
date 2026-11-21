@@ -3,17 +3,7 @@
   "type": "landing",
   "renderBranch": "A",
   "template": null,
-  "modules": [
-    "hero",
-    "intro",
-    "learn",
-    "mood",
-    "feed",
-    "sustain",
-    "voices",
-    "cafe",
-    "cta"
-  ],
+  "modules": [],
   "widgets": [],
   "slotsFilled": [
     "hero",
@@ -27,9 +17,9 @@
     "cta"
   ],
   "canonShas": {
-    "header": "b6818d6782fc",
-    "footer": "3cbe3084ba17",
-    "css": "958f93d0b7e1"
+    "header": "c74bfee1dabb",
+    "footer": "55b61bd08ae2",
+    "css": "27d0d8f25c46"
   },
   "deviations": [],
   "migrationDecisions": [],
@@ -46,11 +36,11 @@
     "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
     "url": "https://markszulc.github.io/frescopa-atelier/index.html"
   },
-  "migratedAt": "2026-11-21T07:22:44Z",
-  "designMdSha": "a7dc5c02c077",
-  "designJsonSha": "42156069d613",
-  "sourceCurrentSha": "50949af72e47",
-  "sourceProposedSha": "cc582d04cfaa",
+  "migratedAt": "2026-11-21T06:53:47Z",
+  "designMdSha": "31b6a948d5cd",
+  "designJsonSha": "12fb491c4221",
+  "sourceCurrentSha": "502ea03c5890",
+  "sourceProposedSha": "030d5f86d14c",
   "fidelityTier": "archetype",
   "archetypeSource": null,
   "archetypeSha": null,
@@ -58,7 +48,7 @@
   "gatesPassed": [],
   "gateEvidence": {},
   "contentDeviations": [],
-  "assetsBundled": 17,
+  "assetsBundled": 19,
   "missingAssets": [],
   "brokenInternalLinks": [
     {

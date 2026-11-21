@@ -1,88 +1,68 @@
 /**
- * Voices — testimonials (prototype `section.voices`).
- *
- * Authored rows: an eyebrow paragraph, then one row per quote: | quote | attribution |.
- * The first quote is the large lead; the rest form the two-up grid below the rule.
- * Classified by content (a quote paragraph opens with a quotation mark; the paragraph after it
- * is its attribution), so a flattened single cell decodes the same way.
- *
- * Harness-only fallback (EW5): a bare-text cell is wrapped by moving its text nodes into a <p>.
+ * Fréscopa voices — testimonials: an eyebrow row, then one row per quote:
+ * quote | attribution. The first quote is the large lead; the rest form a grid.
  */
 
-function el(tag, className) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function el(tag, cls) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  return n;
 }
 
-function collectNodes(block) {
-  const out = [];
-  block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    const kids = [...cell.children];
-    if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) {
-      const p = el('p');
-      p.append(...cell.childNodes);
-      out.push(p);
-    }
-  });
-  return out;
+function wrap(node, cls, tag = 'div') {
+  const w = el(tag, cls);
+  if (node) w.append(node);
+  return w;
 }
 
-function revealAll(pairs) {
-  pairs.forEach(([node, delay]) => {
-    node.classList.add('reveal');
-    if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
-  });
-  import('../../scripts/reveal.js')
-    .then(({ reveal }) => pairs.forEach(([node, delay]) => reveal(node, delay)))
-    .catch(() => pairs.forEach(([node]) => node.classList.add('is-in')));
+function reveal(node, delay = 0) {
+  node.classList.add('reveal');
+  if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
+  if (!('IntersectionObserver' in window) || reduced()) {
+    node.classList.add('is-in');
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+  io.observe(node);
 }
-
-const QUOTE = /^\s*["“‘«„]/;
 
 export default function decorate(block) {
-  if (block.dataset.decorated) return;
-  block.dataset.decorated = 'true';
-
-  const nodes = collectNodes(block);
+  const rows = [...block.querySelectorAll(':scope > div')];
+  const quoteRows = rows.filter((r) => r.children.length >= 2);
+  const eyebrowRows = rows.filter((r) => !quoteRows.includes(r));
   const container = el('div', 'container');
-  const eyebrow = el('div', 'eyebrow');
-  const quotes = [];
-  let current = null;
-  nodes.forEach((node) => {
-    if (node.tagName === 'BLOCKQUOTE' || QUOTE.test(node.textContent)) {
-      current = { quote: el('div', 'voices-quote'), cite: el('div', 'voices-cite') };
-      current.quote.append(node);
-      quotes.push(current);
-    } else if (!current) {
-      eyebrow.append(node);
-    } else if (!current.cite.children.length) {
-      current.cite.append(node);
-    } else {
-      current.quote.append(node);
-    }
+  eyebrowRows.forEach((row) => {
+    row.querySelectorAll('p').forEach((p) => {
+      const w = wrap(p, 'eyebrow');
+      reveal(w);
+      container.append(w);
+    });
   });
-
-  const reveals = [];
-  if (eyebrow.children.length) {
-    container.append(eyebrow);
-    reveals.push([eyebrow, 0]);
-  }
   const grid = el('div', 'voices-grid');
-  quotes.forEach((q, i) => {
-    const bq = el('blockquote', i ? 'voices-item' : 'voices-lead');
-    bq.append(q.quote);
-    if (q.cite.children.length) bq.append(q.cite);
-    if (i) {
-      grid.append(bq);
-      reveals.push([bq, (i - 1) * 0.1]);
+  quoteRows.forEach((row, i) => {
+    const [quoteCell, citeCell] = row.children;
+    const quote = el('blockquote', i === 0 ? 'voices-lead' : 'voices-item');
+    quote.append(...quoteCell.childNodes);
+    const cite = el('div', 'voices-cite');
+    if (citeCell) cite.append(...citeCell.childNodes);
+    quote.append(cite);
+    if (i === 0) {
+      reveal(quote, 0.06);
+      container.append(quote);
     } else {
-      container.append(bq);
-      reveals.push([bq, 0.06]);
+      reveal(quote, (i - 1) * 0.1);
+      grid.append(quote);
     }
   });
   if (grid.children.length) container.append(grid);
   block.replaceChildren(container);
-  revealAll(reveals);
 }
