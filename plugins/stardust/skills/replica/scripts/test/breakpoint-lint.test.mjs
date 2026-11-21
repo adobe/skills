@@ -83,6 +83,10 @@ check('`not` reverses the bound: query-level `not` its query, `not (…)` its gr
   assert.deepEqual(hits('@media not all and (max-width: 899px) {}'), [[900, 'min']]);
   assert.deepEqual(hits('@media (min-width: 600px) and (not (min-width: 900px)) {}'), [[600, 'min'], [900, 'max']]);
   assert.deepEqual(hits('@media not (width < 900px) {}'), [[900, 'min']]);
+  for (const gap of [' ', '  ', '\n', '\t', ' \n\t ']) {
+    assert.deepEqual(hits(`@media not${gap}(min-width: 900px) {}`), [[900, 'max']], JSON.stringify(gap));
+  }
+  assert.deepEqual(hits('@media not  all and (min-width: 900px) {}'), [[900, 'max']]);
   assert.deepEqual(hits('@media not print, (min-width: 600px) {}'), [[600, 'min']]);
   assert.deepEqual(hits('@media not all and (not (min-width: 600px)) {}'), [[600, 'min']]);
   assert.deepEqual(switchPoints('@media not all and (min-width: 900px) {}', 'css').filter(isDesktopFirst).map((h) => h.text), ['not min-width: 900px']);
