@@ -41,9 +41,16 @@
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
  *   --stage prototype|local-build|published   the round's stage; default from the build record's URL, as gate.sh:
  *                                  a local URL ending in -proposed.html, any other local URL, anything else
- *   --rounds <dir>                 the ledger's folder (default stardust/chrome)
+ *   --rounds <dir>                 the ledger's folder, also where --status reads header-contract.json (default stardust/chrome)
+ *   --status --page <source-url> --build <build-url>   no comparison: has the header contract a verdict at --stage
+ *                                  (default from --build)? Prints nothing (exit 0) without a contract or when the
+ *                                  contract's `url` is another page than --page (host and path); else one line:
+ *                                  `header contract: PASS at this stage …` or `… CAPPED at this stage …` (exit 0),
+ *                                  `… NOT COMPARED at this stage — <command>` or `… FAIL at this stage …` (exit 2).
+ *                                  gate.sh --full prints it at the prototype stage.
  * Exit: 0 no undecided error · 2 errors · 6 round refused by the cap · 1 usage, or the cap could not be checked.
- * `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`, `pairLinks`, `stageOfBuild`, `CLASSES` are exported.
+ * `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`, `pairLinks`, `stageOfBuild`, `samePage`,
+ * `stageStatus`, `CLASSES` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -283,7 +290,25 @@ export function stageOfBuild(url) {
   return /-proposed\.html$/.test(u.split(/[?#]/)[0]) ? 'prototype' : 'local-build';
 }
 
+/** Do two URLs name one page? Host (www. folded) and path (index file and trailing slash folded); scheme, query and fragment do not count. Pure. */
+export function samePage(a, b) {
+  const key = (u) => { try { const x = new URL(u); return `${x.hostname.toLowerCase().replace(/^www\./, '')}${decodeURIComponent(x.pathname).toLowerCase().replace(/\/index\.[a-z0-9]+$/, '/').replace(/\/+$/, '')}`; } catch { return null; } };
+  const ka = key(a); return ka !== null && ka === key(b);
+}
+
 const classCounts = (list) => CLASSES.map((c) => [list.filter((f) => f.classed && f.classed.class === c).length, c]).filter(([n]) => n).map(([n, c]) => `${n} ${c}`).join(', ');
+
+/** The header contract's verdict at a stage, for the page a round gates (--status). `contract`: the parsed contract or
+ * null; `t`: rounds.mjs `tally` of the stage. → null (nothing to say: no contract, or it was recorded on another page)
+ * or { rc, line }. Pure. */
+export function stageStatus({ contract, page, t, command, decisions }) {
+  if (!contract || !samePage(contract.url, page)) return null;
+  const n = `${t.counted} counted round${t.counted === 1 ? '' : 's'}`;
+  if (t.last && t.last.verdict === 'pass') return { rc: 0, line: `header contract: PASS at this stage (${n})` };
+  if (t.closed) return { rc: 0, line: `header contract: CAPPED at this stage — ${n}, closed by ${t.closed.decision}: ${t.closed.reason}` };
+  if (!t.rounds) return { rc: 2, line: `header contract: NOT COMPARED at this stage — ${command}` };
+  return { rc: 2, line: `header contract: FAIL at this stage — ${n} of ${t.allowance}, the last one a FAIL: ${t.counted < t.allowance ? 'fix the header, then' : `record a class per remaining error in ${decisions} (chrome-compare.mjs --help § Round cap), then`} ${command}` };
+}
 
 const loadDep = async (name) => {
   try { const req = createRequire(join(process.cwd(), 'package.json')); const m = await import(pathToFileURL(req.resolve(name)).href); return m.default || m; } catch { /* fall through */ }
@@ -321,12 +346,33 @@ async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
-  const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
-  const usage = (why) => { console.error(`${why ? `chrome-compare: ${why}\n` : ''}usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f] [--stage s] [--rounds dir] (see --help)`); process.exit(1); };
-  if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) usage();
+  const status = argv.includes('--status');
+  const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && argv[i - 1] !== '--status'));
+  const usage = (why) => { console.error(`${why ? `chrome-compare: ${why}\n` : ''}usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f] [--stage s] [--rounds dir] | --status --page <url> --build <url> (see --help)`); process.exit(1); };
+  if (status ? !arg('page') || !arg('build') : !sf || !bf || !existsSync(sf) || !existsSync(bf)) usage();
   const dir = arg('rounds', join('stardust', 'chrome'));
   const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
   const profile = arg('profile', 'replica');
+  const me = process.argv[1] && existsSync(process.argv[1]) ? relative(process.cwd(), process.argv[1]) : 'stardust/scripts/diff/chrome-compare.mjs';
+
+  if (status) {
+    // gate.sh's question (no comparison, no write): nothing without a contract; an unreadable contract or ledger is an error, never "compared".
+    const cf = join(dir, 'header-contract.json');
+    if (!existsSync(cf)) process.exit(0);
+    const contract = JSON.parse(readFileSync(cf, 'utf8'));
+    const stage = arg('stage', stageOfBuild(arg('build')));
+    if (!LEDGER_STAGES.includes(stage)) usage(`--stage is one of ${LEDGER_STAGES.join(' | ')} (got ${stage})`);
+    if (!ROUNDS) throw new Error('rounds.mjs not found (looked in ../../replica/scripts/ and ../replica/): copy the replica skill\'s scripts dir to stardust/scripts/replica/');
+    const R = await import(ROUNDS.href);
+    const { ledger, source } = R.load(dir);
+    if (source !== 'ledger' && existsSync(join(dir, 'rounds.json'))) throw new Error(`${join(dir, 'rounds.json')} is not a readable round ledger: repair or delete it`);
+    const build = join(dir, 'header-build.json'); const widths = Object.keys(contract.widths || {}).join(',');
+    const command = `node ${join(dirname(me), 'chrome-explore.mjs')} "${arg('build')}" ${build}${widths ? ` --width ${widths}` : ''} --max-requests 0 --pace-ms 0 --reload-pause-ms 0 && node ${me} ${cf} ${build} --profile ${profile} --json ${join(dir, 'header-parity.json')}`;
+    const s = stageStatus({ contract, page: arg('page'), t: R.tally(ledger, stage), command, decisions: df });
+    if (s) console.log(s.line);
+    process.exit(s ? s.rc : 0);
+  }
+
   const src = JSON.parse(readFileSync(sf, 'utf8')); const bld = JSON.parse(readFileSync(bf, 'utf8'));
   const bar = Number(arg('bar', 0.02));
   const stage = arg('stage', stageOfBuild(bld.url));

@@ -121,7 +121,8 @@
 #            their verdict lines are printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
 #            chrome-parity-<label>.txt, clip-<label>.{txt,json},
-#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
+#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}, header-contract-<label>.txt
+#            (§ Header contract). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -133,7 +134,8 @@
 #            Exit with --full: the pixel rc when it is not a verdict (above); 124 on
 #            any probe deadline; else the pixel verdict, then 2 on a structural 🔴,
 #            a chrome delta, a clipped count > 0, a content-presence MISSING / HIDDEN
-#            link or heading, or a required unit off; 1 when a probe errored (it gave
+#            link or heading, a required unit off, or a header contract without a verdict
+#            at this stage (§ Header contract); 1 when a probe errored (it gave
 #            no verdict), 0 only when every probe ran and passed.
 #            Concurrency: a --full round holds up to SIX Chromiums at its peak
 #            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
@@ -199,6 +201,20 @@
 #   script, or when its check ends with any code other than 0 or 6, the round does not run
 #   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
 #   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
+#
+# Header contract (--full, the prototype stage, only when stardust/chrome/header-contract.json exists): the first
+#   comparison of the header's behaviour belongs here, before the header is converted to a block. No browser:
+#   `chrome-compare.mjs --status` reads the contract and its round ledger (stardust/chrome/rounds.json, stage
+#   prototype) and answers for the page the contract was recorded on — the round whose <live-url> is the contract's
+#   `url` (host and path); every other page prints nothing. One verdict line, in every --full round of that page:
+#     header contract: NOT COMPARED at this stage — <the chrome-explore and chrome-compare commands to run>
+#     header contract: FAIL at this stage — <n> counted round(s) of 3, the last one a FAIL: …
+#     header contract: PASS at this stage (…)  |  header contract: CAPPED at this stage — … (closed with a class per error)
+#   NOT COMPARED and FAIL count as a failed probe (exit 2) once the pixel criterion passes; PASS and CAPPED do not.
+#   The comparison has its own cap (chrome-compare.mjs --help § Round cap): after its three rounds a class per
+#   remaining error closes the stage, so a prototype that cannot carry the behaviour still passes this probe.
+#   Fails closed: a contract or ledger that cannot be read, or a chrome-compare.mjs without --status, is
+#   `header contract: ERROR` and the round ends without a verdict (exit 1) — re-copy the diff scripts dir.
 #
 # Measure first: a prototype-stage round for a page and width with no source spec
 #   (stardust/replica/spec/<slug>-<width>.json) prints one advisory line naming the
@@ -723,6 +739,12 @@ if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
   capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$UNIT_STAGE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
+# Header contract (header § Header contract): at the prototype stage, with a contract on disk, has it a verdict here?
+RC_HC=0; HC=""
+if [ "$REGIME" = prototype ] && [ -f stardust/chrome/header-contract.json ]; then
+  HC="$DIR/header-contract-$LBL.txt"
+  node "$DIFF/chrome-compare.mjs" --status --stage prototype --page "$LIVE_URL" --build "$BUILD_URL" > "$HC" 2>&1; RC_HC=$?
+fi
 wait $P_CD; RC_CD=$?
 wait $P_VD; RC_VD=$?
 wait $P_CP; RC_CP=$?
@@ -770,9 +792,16 @@ else
   if [ -f "$UNITS_FILE" ]; then echo "unit-geometry: NOT RUN — $DIFF/unit-geometry.mjs is missing: the repeated-unit check did not run"
   else echo "unit-geometry: NOT RUN — no $UNITS_FILE: no repeated-unit family is declared, the repeated-unit check did not run"; fi
 fi
-echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
+if [ -n "$HC" ]; then
+  HC_LINE=$(grep -E '^header contract: ' "$HC" | head -1)
+  case "$RC_HC" in
+    0|2) if [ -n "$HC_LINE" ]; then echo "$HC_LINE"; else rm -f "$HC"; HC=""; RC_HC=0; fi ;; # no line: the contract is another page's
+    *) echo "header contract: ERROR (exit $RC_HC) — $(head -1 "$HC" | cut -c1-200) — no verdict; repair it, or re-copy the diff scripts dir" ;;
+  esac
+fi
+echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG}${HC:+ $HC} $DIR/vdiff-$LBL/"
 write_verdict content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \
-  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}"
+  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}" header-contract "$RC_HC" "$HC"
 
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural content 🔴, a
@@ -788,7 +817,9 @@ for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$PIXEL_RC"; do 
 [ "${CLIP_N:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "${PRESENCE_N:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "$RC_UG" = 2 ] && exit 2
+# the header contract has no passing or capped comparison at the prototype stage (header § Header contract)
+[ "$RC_HC" = 2 ] && exit 2
 # A probe that errored gave no verdict, so the round is not a pass: 3 (bot challenge) passes through,
 # anything else is the capture/compare error class (1). Only 0 and 2 carry a verdict.
-for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
+for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$RC_HC"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
 exit 0

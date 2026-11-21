@@ -55,7 +55,7 @@
  * the file's `stage` when it has one (prototype, local-build or published); else published when the label starts with `pub` or the file
  * carries a content-presence probe (gate.sh runs it in the published regime only), else prototype. Verdict as gate.sh exits: none (not counted) on any exit 124, a pixel
  * exit other than 0 / 2 or a probe exit other than 0 / 2; fail on pixel 2, structural or
- * nothing-lost > 0, or exit 2 from chrome-parity, clip-probe, content-presence or unit-geometry;
+ * nothing-lost > 0, or exit 2 from chrome-parity, clip-probe, content-presence, unit-geometry or header-contract;
  * else pass. Kinds come from order and verdict alone, never from the label: `map0` is `first`
  * only when it is the earliest, and `confirm`, `final*` or `post` count as fix rounds unless they
  * are a PASS directly after a PASS.
@@ -125,7 +125,7 @@ export function verdictOf(v) {
   if (![0, 2].includes(pixel) || rcs.some((rc) => ![0, 2].includes(rc))) return null;
   const rc = (name) => Number(probes[name]?.rc ?? 0);
   const fail = pixel === 2 || Number(v.structural) > 0 || Number(v.nothingLost) > 0
-    || ['chrome-parity', 'clip-probe', 'content-presence', 'unit-geometry'].some((p) => rc(p) === 2);
+    || ['chrome-parity', 'clip-probe', 'content-presence', 'unit-geometry', 'header-contract'].some((p) => rc(p) === 2);
   return fail ? 'fail' : 'pass';
 }
 

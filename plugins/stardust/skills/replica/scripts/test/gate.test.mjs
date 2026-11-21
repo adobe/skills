@@ -15,6 +15,9 @@
 // bound → 0, offsets over it → 2 with the offsets reason, alignment not used → the unaligned rule; verdict-<label>.json
 // carries the round's pixel numbers. The sections written for the live-origin round run it through GATE_REFERENCE=live
 // (the `gate` helper's default here); the reference sections pass DEF.
+// The header contract at the prototype stage (--full, the REAL chrome-compare.mjs --status, no browser): for the page the
+// contract was recorded on, NOT COMPARED / FAIL is a failed probe once the pixels pass, PASS / CAPPED is not; another
+// page, another stage or no contract prints nothing; a contract that cannot be read is no verdict (exit 1).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -822,6 +825,54 @@ check('hint: … and under the hold exit 5 with no hint', r.status === 5 && hint
 for (const bad of [['--hold-min', '1999'], ['--hold-min', 'soon']]) { r = await refRound('plain', 'n2', bad); check(`hold: ${bad.join(' ')} is a usage error (exit 125)`, r.status === 125 && /at least 2000/.test(r.stderr), r.stderr); }
 r = await gate(['--help']);
 check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status === 0 && /--hold-timers /.test(r.stdout) && /--hold-min <ms>/.test(r.stdout) && /GATE_HOLD_TIMERS/.test(r.stdout));
+// ── The header contract at the prototype stage: the first comparison belongs here (chrome-compare.mjs --status) ──
+{
+  const DIFF_SCRIPTS = join(scripts, '..', '..', 'diff', 'scripts');
+  for (const f of ['chrome-compare.mjs', 'chrome-explore.mjs']) cpSync(join(DIFF_SCRIPTS, f), join(diff, f));
+  const chromeDir = join(root, 'stardust/chrome'); mkdirSync(chromeDir, { recursive: true });
+  const contractFile = join(chromeDir, 'header-contract.json');
+  const ledger = (rounds, decisions = []) => writeFileSync(join(chromeDir, 'rounds.json'), JSON.stringify({ version: 1, stages: { prototype: { rounds: rounds.map((verdict, i) => ({ label: `compare-${i + 1}`, at: `2026-11-20T10:0${i}:00Z`, verdict, kind: i ? 'fix' : 'first' })), decisions } } }));
+  const hc = (label, env = {}, slug = 'hc', extra = []) => gate([slug, `https://live.example/${slug}`, buildUrl, '1440', label, '--marker', 'home-proposed', '--full', ...extra], env);
+  const probe = (slug, label) => ((verdictJson(slug, label) || {}).probes || {})['header-contract'];
+  r = await hc('n0');
+  check('header contract: no contract file → nothing printed, nothing failed', r.status === 0 && !/header contract/.test(r.stdout) && !probe('hc', 'n0') && !existsSync(join(root, gdir('hc'), 'header-contract-n0.txt')), `status ${r.status} ${r.stdout}`);
+  writeFileSync(contractFile, JSON.stringify({ url: 'http://live.example/hc/index.html', widths: { 1440: {}, 390: {} } }));
+  r = await hc('n1');
+  check('header contract: recorded on this page and never compared at the prototype stage → the NOT COMPARED verdict line with the two commands, a failed probe (exit 2) on a pixel pass',
+    r.status === 2 && new RegExp(`^header contract: NOT COMPARED at this stage — node stardust/scripts/diff/chrome-explore\\.mjs "${buildUrl}" stardust/chrome/header-build\\.json --width 390,1440 --max-requests 0 --pace-ms 0 --reload-pause-ms 0 && node stardust/scripts/diff/chrome-compare\\.mjs stardust/chrome/header-contract\\.json stardust/chrome/header-build\\.json --profile replica --json stardust/chrome/header-parity\\.json$`, 'm').test(r.stdout), `status ${r.status} ${r.stdout} ${r.stderr}`);
+  check('… every other probe ran and passed, the verdict file records the probe and its evidence, and the round is a FAIL in the page\'s ledger', /^content-diff: none/m.test(r.stdout) && /^chrome-parity: ✓/m.test(r.stdout) && (probe('hc', 'n1') || {}).rc === 2 && /header-contract-n1\.txt$/.test((probe('hc', 'n1') || {}).evidence || '') && / stardust\/replica\/gates\/hc-1440\/header-contract-n1\.txt /.test(r.stdout.split('\n').find((l) => l.startsWith('evidence: ')) || '') && roundsOf('hc').at(-1).verdict === 'fail', JSON.stringify(verdictJson('hc', 'n1')));
+  check('… the status question writes no ledger', !existsSync(join(chromeDir, 'rounds.json')));
+  r = await hc('n2', { STUB_PIXEL_RC: '2' });
+  check('header contract: on a pixel FAIL the line is still printed; the pixel verdict is the exit', r.status === 2 && /^header contract: NOT COMPARED at this stage — /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  r = await hc('o1', {}, 'hcother');
+  check('header contract: a page the contract was not recorded on → nothing printed, nothing failed, no evidence file', r.status === 0 && !/header contract/.test(r.stdout) && !probe('hcother', 'o1') && !existsSync(join(root, gdir('hcother'), 'header-contract-o1.txt')), `status ${r.status} ${r.stdout}`);
+  r = await gate(['hc', 'https://live.example/hc', `${base}/hc`, '1440', 'lb1', '--marker', 'home-proposed', '--full'], { GATE_REGIME: '' });
+  check('header contract: not asked at the local-build stage', r.status === 0 && !/header contract/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  r = await hc('p1', { GATE_REGIME: 'published' });
+  check('header contract: not asked at the published stage', r.status === 0 && !/header contract/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  ledger(['fail']);
+  r = await hc('f1');
+  check('header contract: a failing comparison inside its cap → FAIL at this stage, a failed probe', r.status === 2 && /^header contract: FAIL at this stage — 1 counted round of 3, the last one a FAIL: fix the header, then node /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  ledger(['fail', 'pass']);
+  r = await hc('ok1');
+  check('header contract: a passing comparison recorded for the stage → PASS, the round passes', r.status === 0 && /^header contract: PASS at this stage \(2 counted rounds\)$/m.test(r.stdout) && (probe('hc', 'ok1') || {}).rc === 0, `status ${r.status} ${r.stdout}`);
+  ledger(['fail', 'fail', 'fail']);
+  r = await hc('c0');
+  check('header contract: at its cap with no class recorded → still FAIL, naming the decisions file', r.status === 2 && /^header contract: FAIL at this stage — 3 counted rounds of 3, the last one a FAIL: record a class per remaining error in stardust\/chrome\/header-decisions\.json /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  ledger(['fail', 'fail', 'fail'], [{ decision: 'accept-residual', reason: '12 header-contract error(s) classed (12 accept-residual) in stardust/chrome/header-decisions.json', at: '2026-11-20T10:05:00Z', counted: 3 }]);
+  r = await hc('c1');
+  check('header contract: a capped comparison (three rounds, then a class per error) → CAPPED, the round passes: a prototype without the behaviour is not stuck', r.status === 0 && /^header contract: CAPPED at this stage — 3 counted rounds, closed by accept-residual: 12 header-contract error\(s\) classed /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  writeFileSync(join(chromeDir, 'rounds.json'), '{ "version": 1, ');
+  r = await hc('e1');
+  check('header contract: a ledger that cannot be read is no verdict (exit 1), never "compared"', r.status === 1 && /^header contract: ERROR \(exit 1\) — chrome-compare: .*rounds\.json is not a readable round ledger/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  rmSync(join(chromeDir, 'rounds.json'));
+  writeFileSync(join(diff, 'chrome-compare.mjs'), '#!/usr/bin/env node\nconsole.error("usage: chrome-compare.mjs <source.json> <build.json>"); process.exit(1);\n');
+  r = await hc('e2');
+  check('header contract: a chrome-compare.mjs copy without --status is no verdict (exit 1), with the re-copy instruction', r.status === 1 && /^header contract: ERROR \(exit 1\) — usage: chrome-compare\.mjs .* re-copy the diff scripts dir$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  rmSync(chromeDir, { recursive: true, force: true });
+  r = await gate(['--help']);
+  check('--help documents the header contract probe and its lines', /^Header contract \(--full, the prototype stage/m.test(r.stdout) && /header contract: NOT COMPARED at this stage — /.test(r.stdout) && /CAPPED at this stage/.test(r.stdout));
+}
 unlinkSync(join(replica, 'rounds.mjs'));
 
 server.close();

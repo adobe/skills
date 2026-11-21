@@ -5,7 +5,7 @@
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
 // The round cap (the CLI, in a scratch project): three counted comparisons per stage in stardust/chrome/rounds.json, the
 // fourth refused (exit 6) until every remaining error has a class in the decisions file; classes are written beside the
-// findings and clear nothing; the guard fails closed.
+// findings and clear nothing; the guard fails closed. --status: the header contract's verdict at a stage, for gate.sh.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -13,7 +13,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLASSES, applyDecisions, compareDocs, findingKey, pairControls, pairLinks, stageOfBuild } from '../chrome-compare.mjs';
+import { CLASSES, applyDecisions, compareDocs, findingKey, pairControls, pairLinks, samePage, stageOfBuild, stageStatus } from '../chrome-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -207,11 +207,26 @@ check('classes: written beside the error, never a clearance; an exact key, a kno
   const both = applyDecisions(structuredClone(f), [{ finding: 'motion@390 Open menu', class: 'owner', reason: 'r', decision: 'accepted', by: 'Site owner', at: '2026-10-09' }]);
   assert.equal(both[1].decided.by, 'Site owner'); assert.equal(both[1].classed.class, 'owner');
 });
-check('stageOfBuild is gate.sh\'s rule', () => {
+check('stageOfBuild is gate.sh\'s rule; samePage folds scheme, www., the index file and the trailing slash', () => {
   assert.deepEqual(['http://localhost:8791/home-proposed.html?x=1', 'http://127.0.0.1:3000/', 'file:///p/about-proposed.html', 'https://main--site--org.aem.page/', undefined].map(stageOfBuild), ['prototype', 'local-build', 'prototype', 'published', 'published']);
+  assert.ok(samePage('https://www.example.com/', 'http://example.com/index.html?utm=1#top'));
+  assert.ok(samePage('https://example.com/en/home/', 'https://example.com/en/home'));
+  assert.ok(!samePage('https://example.com/', 'https://example.com/about')); assert.ok(!samePage('https://example.com/', 'https://shop.example.com/')); assert.ok(!samePage(undefined, undefined));
+});
+check('stageStatus: nothing without a contract or for another page; NOT COMPARED and FAIL fail, PASS and CAPPED do not', () => {
+  const contract = { url: 'https://example.com/' }; const page = 'https://www.example.com/';
+  const t = (o = {}) => ({ rounds: 0, counted: 0, allowance: 3, closed: null, last: null, ...o });
+  const at = (o, more = {}) => stageStatus({ contract, page, t: t(o), command: 'CMD', decisions: 'D.json', ...more });
+  assert.equal(stageStatus({ contract: null, page, t: t(), command: 'CMD' }), null);
+  assert.equal(at({}, { page: 'https://example.com/about' }), null);
+  assert.deepEqual(at({}), { rc: 2, line: 'header contract: NOT COMPARED at this stage — CMD' });
+  assert.deepEqual(at({ rounds: 1, counted: 1, last: { verdict: 'fail' } }), { rc: 2, line: 'header contract: FAIL at this stage — 1 counted round of 3, the last one a FAIL: fix the header, then CMD' });
+  assert.match(at({ rounds: 3, counted: 3, last: { verdict: 'fail' } }).line, /^header contract: FAIL at this stage — 3 counted rounds of 3, the last one a FAIL: record a class per remaining error in D\.json /);
+  assert.deepEqual(at({ rounds: 2, counted: 2, last: { verdict: 'pass' } }), { rc: 0, line: 'header contract: PASS at this stage (2 counted rounds)' });
+  assert.deepEqual(at({ rounds: 3, counted: 3, last: { verdict: 'fail' }, closed: { decision: 'accept-residual', reason: '2 classed' } }), { rc: 0, line: 'header contract: CAPPED at this stage — 3 counted rounds, closed by accept-residual: 2 classed' });
 });
 
-// ── the CLI in a scratch project: the round cap, its classes, the guard ──
+// ── the CLI in a scratch project: the round cap, its classes, the guard, --status ──
 const CLI = join(HERE, '..', 'chrome-compare.mjs');
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'chrome-compare-')));
 const stockBuild = (url) => ({ ...doc([ctl('Shop', 'menu', { hover: null, click: st(shopLinks, { expanded: 'true' }), key: st(shopLinks, { expanded: 'true', tab: true }) }, { close: { escape: true, focusReturn: true, outside: true, leave: true } }), source.widths[1440].controls[1]], source.widths[1440].scroll), url });
@@ -222,7 +237,7 @@ const project = (buildUrl = 'http://localhost:8791/home-proposed.html') => {
   writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify(stockBuild(buildUrl)));
   return root;
 };
-const run = (root, extra = [], env = {}, script = CLI) => spawnSync(process.execPath, [script, 'stardust/chrome/header-contract.json', 'stardust/chrome/header-build.json', '--profile', 'functional', '--json', 'stardust/chrome/header-parity.json', ...extra], { cwd: root, encoding: 'utf8', timeout: 30000, env: { ...process.env, STARDUST_ROUND_CAP: '', ...env } });
+const run = (root, extra = [], env = {}, script = CLI) => spawnSync(process.execPath, [script, ...(extra.includes('--status') ? [] : ['stardust/chrome/header-contract.json', 'stardust/chrome/header-build.json', '--profile', 'functional', '--json', 'stardust/chrome/header-parity.json']), ...extra], { cwd: root, encoding: 'utf8', timeout: 30000, env: { ...process.env, STARDUST_ROUND_CAP: '', ...env } });
 const json = (root, name) => JSON.parse(readFileSync(join(root, 'stardust/chrome', name), 'utf8'));
 const decisions = (root, list) => writeFileSync(join(root, 'stardust/chrome/header-decisions.json'), JSON.stringify({ decisions: list }));
 const KEYS = ['state-missing@1440 Shop [hover]', 'control-missing@1440 Shop > Women'];
@@ -313,6 +328,36 @@ check('round cap: a pass after a pass is free; the guard fails closed on a ledge
     for (let i = 0; i < 4; i += 1) assert.equal(run(capped, [], { STARDUST_ROUND_CAP: '0' }).status, 2);
     assert.equal(json(capped, 'rounds.json').stages.prototype.rounds.length, 4);
   } finally { rmSync(capped, { recursive: true, force: true }); }
+});
+check('--status: silent without a contract or for another page; NOT COMPARED names the two commands; a pass or a capped stage exits 0', () => {
+  const root = project();
+  const status = (page, extra = []) => run(root, ['--status', '--page', page, '--build', 'http://localhost:8791/home-proposed.html', ...extra]);
+  try {
+    let r = status('https://example.com/');
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stdout, /^header contract: NOT COMPARED at this stage — node .*chrome-explore\.mjs "http:\/\/localhost:8791\/home-proposed\.html" stardust\/chrome\/header-build\.json --width 1440 --max-requests 0 --pace-ms 0 --reload-pause-ms 0 && node .*chrome-compare\.mjs stardust\/chrome\/header-contract\.json stardust\/chrome\/header-build\.json --profile replica --json stardust\/chrome\/header-parity\.json\n$/);
+    assert.ok(!existsSync(join(root, 'stardust/chrome/rounds.json')), '--status writes nothing');
+    r = status('https://example.com/about');
+    assert.deepEqual([r.status, r.stdout], [0, ''], 'the contract was recorded on another page');
+    run(root);
+    r = status('https://example.com/');
+    assert.equal(r.status, 2); assert.match(r.stdout, /^header contract: FAIL at this stage — 1 counted round of 3, the last one a FAIL: fix the header, then node /);
+    assert.equal(status('https://example.com/', ['--stage', 'local-build']).stdout.slice(0, 31), 'header contract: NOT COMPARED a', 'a comparison at another stage does not count');
+    run(root); run(root);
+    decisions(root, KEYS.map((k) => ({ finding: k, class: 'accept-residual', reason: 'the prototype carries no behaviour script' })));
+    assert.equal(run(root).status, 2);
+    r = status('https://example.com/');
+    assert.deepEqual([r.status, r.stdout], [0, 'header contract: CAPPED at this stage — 3 counted rounds, closed by accept-residual: 2 header-contract error(s) classed (2 accept-residual) in stardust/chrome/header-decisions.json\n']);
+    writeFileSync(join(root, 'stardust/chrome/rounds.json'), JSON.stringify({ version: 1, stages: { prototype: { rounds: [{ label: 'compare-1', at: '2026-11-20T10:00:00Z', verdict: 'pass', kind: 'first' }], decisions: [] } } }));
+    r = status('https://example.com/');
+    assert.deepEqual([r.status, r.stdout], [0, 'header contract: PASS at this stage (1 counted round)\n']);
+    writeFileSync(join(root, 'stardust/chrome/rounds.json'), 'not json');
+    assert.equal(status('https://example.com/').status, 1, 'an unreadable ledger is an error, never "compared"');
+    rmSync(join(root, 'stardust/chrome/header-contract.json'));
+    r = status('https://example.com/');
+    assert.deepEqual([r.status, r.stdout], [0, ''], 'no contract: nothing to say');
+    assert.equal(run(root, ['--status']).status, 1, '--status needs --page and --build');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 const copyWithoutMaster = () => {
   const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
