@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readWideTables, rolloutEnded, wideAdvisories } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readGateTables, readWideTables, rolloutEnded, unitsAdvisories, wideAdvisories } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, libraryGap, publicUrl } from '../lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -256,5 +256,28 @@ check('CLI: usage errors exit 2 — no pages.json; no live host without --offlin
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
 }
+check('units_not_declared: an advisory line per published table with pages that took no repeated-unit check — after the verdict, never a gap; complete and the exit code unchanged', () => {
+  const table = (w, rows, extra = {}) => ({ _provenance: { breakpoint: w, ...extra }, totals: {}, rows });
+  const none = (slug, unitsRecorded = null) => ({ slug, unitsDeclared: 0, unitsRecorded });
+  assert.deepEqual(unitsAdvisories([table(1440, [none('home', 2), none('about'), { slug: 'faq', unitsDeclared: 2 }]), table(360, [{ slug: 'faq', unitsDeclared: 1 }])]), ['units_not_declared:2: 1440px — home, about (1 with repeated modules recorded)']);
+  assert.deepEqual(unitsAdvisories([table(1440, [none('home')])]), ['units_not_declared:1: 1440px — home']);
+  assert.deepEqual(unitsAdvisories([table(1440, [{ slug: 'old', unitPass: null }]), table(2560, [none('home')], { wide: true }), { _provenance: { breakpoint: 1440 } }, null]), [], 'a table from before the count, a wide report, a table without rows: no line');
+  assert.deepEqual(unitsAdvisories(), []);
+  const proj = project();
+  assert.deepEqual(readGateTables(join(proj, 'stardust/replica/gates')), []);
+  mkdirSync(join(proj, 'stardust/replica/gates/all-1440'), { recursive: true });
+  writeFileSync(join(proj, 'stardust/replica/gates/all-1440/summary.json'), JSON.stringify(table(1440, [none('home', 2), none('about')])));
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, 'a page without a unit family does not block the handoff');
+  assert.match(r.stdout, /^✓ complete \(live probe skipped: --offline\)\nunits_not_declared:2: 1440px — home, about \(1 with repeated modules recorded\)$/m);
+  const j = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual([j.complete, j.gaps, j.advisories], [true, [], ['units_not_declared:2: 1440px — home, about (1 with repeated modules recorded)']]);
+  writeFileSync(join(proj, 'stardust/replica/gates/all-1440/summary.json'), JSON.stringify(table(1440, [{ slug: 'home', unitsDeclared: 3 }])));
+  r = run(proj, ['--offline', '--json']);
+  assert.equal(r.status, 0); assert.equal('advisories' in JSON.parse(r.stdout), false, 'every page declared: the JSON is as it was');
+  assert.match(run(proj, ['--help']).stdout, /units_not_declared:N/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
