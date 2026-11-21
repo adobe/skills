@@ -1,0 +1,56 @@
+{
+  "context": "Tests whether the agent copies a sibling field, follows the Sling Model, HTL and clientlib conventions, does the wiring outside the component folder, and reports honestly.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Copies a sibling",
+      "max_score": 8,
+      "description": "Reads `textinput` (or another simple field) and follows its structure rather than inventing one"
+    },
+    {
+      "name": "Sling Model conventions",
+      "max_score": 12,
+      "description": "Interface plus impl; `@Model` adapters list the interface and `ComponentExporter`; `resourceType` uses the `FormConstants` constant; optional properties use `InjectionStrategy.OPTIONAL`; a `FormConstants` entry exists"
+    },
+    {
+      "name": "Clientlib category and base",
+      "max_score": 10,
+      "description": "Site clientlib category is `core.forms.components.urlinput.v1.runtime` and it depends on `core.forms.components.runtime.base` with `allowProxy` true"
+    },
+    {
+      "name": "View JS registration",
+      "max_score": 8,
+      "description": "View JS extends `FormView.FormFieldBase` and registers with `FormView.Utils.setupField`"
+    },
+    {
+      "name": "HTL root attributes",
+      "max_score": 10,
+      "description": "Root `div` has `data-cmp-is`, the state attributes, `data-cmp-data-layer` and `id=\"${component.id}\"`; the widget id is the component id plus `-widget`"
+    },
+    {
+      "name": "pom.xml replace line",
+      "max_score": 12,
+      "description": "`ui.af.apps/pom.xml` gains a `<replace>` line for `urlinput` with token `.core-adaptiveform`"
+    },
+    {
+      "name": "Runtime embed",
+      "max_score": 12,
+      "description": "The `urlinput` site clientlib category is added to the `embed` list of `core-forms-components-runtime-all`"
+    },
+    {
+      "name": "Tests and docs",
+      "max_score": 8,
+      "description": "Unit test with test content, component README, and an example proxy or page are added"
+    },
+    {
+      "name": "Static validator run",
+      "max_score": 8,
+      "description": "Runs `validate-component.mjs urlinput --root .` and fixes every FAIL"
+    },
+    {
+      "name": "Honest report",
+      "max_score": 12,
+      "description": "`REPORT.md` names gates that could not run (Maven, Cypress, AEM) with the exact command, and does not claim they passed"
+    }
+  ]
+}

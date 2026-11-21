@@ -1,0 +1,11 @@
+{
+  "description": "Repair wiring of a half-finished phoneinput; the checkout is the fixture, the excerpts in task.md describe the broken state",
+  "fixtures": {
+    "checkout": {
+      "type": "commit",
+      "repoUrl": "https://github.com/adobe/aem-core-forms-components.git",
+      "ref": "fc839c72ef1bdbbd9dcb6e1d099196d5a625de5f",
+      "installPath": "."
+    }
+  }
+}

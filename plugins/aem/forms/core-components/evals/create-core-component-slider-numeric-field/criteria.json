@@ -1,0 +1,66 @@
+{
+  "context": "Tests whether the agent builds a new numeric range field from a stated product requirement: correct Sling Model and numeric export, dialog validation, accessible runtime, wiring outside the component folder, and an honest report.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Numeric sibling copied",
+      "max_score": 6,
+      "description": "Reads `numberinput` (or another numeric field) and follows its structure; `REPORT.md` says which and why"
+    },
+    {
+      "name": "Sling Model",
+      "max_score": 12,
+      "description": "Interface plus impl on the simple field base class; `@Model` adapters list the interface and `ComponentExporter`; `FormConstants` constant for the resource type; minimum, maximum, step and default value are getters using `InjectionStrategy.OPTIONAL`"
+    },
+    {
+      "name": "Numeric exported value",
+      "max_score": 8,
+      "description": "The value is exported as a number, not a string, so form calculations can use it"
+    },
+    {
+      "name": "Dialog fields",
+      "max_score": 10,
+      "description": "Dialog has minimum, maximum, step and default value, plus name, label, description, required, disabled and read-only"
+    },
+    {
+      "name": "Dialog validation",
+      "max_score": 12,
+      "description": "Dialog or its clientlib rejects minimum >= maximum, a non-positive step, and a default outside the range or off the step"
+    },
+    {
+      "name": "Slider markup",
+      "max_score": 10,
+      "description": "HTL renders an `input type=\"range\"` with min, max, step and value, and a visible output element showing the current value; root `div` has `data-cmp-is`, `data-cmp-data-layer` and `id=\"${component.id}\"`, widget id is the component id plus `-widget`"
+    },
+    {
+      "name": "View JS contract",
+      "max_score": 10,
+      "description": "Extends `FormView.FormFieldBase`, registers with `FormView.Utils.setupField`, updates the displayed value and the model on input, clamps and snaps to the step"
+    },
+    {
+      "name": "Disabled and read-only",
+      "max_score": 6,
+      "description": "Disabled disables the input; read-only prevents changes while keeping the value visible"
+    },
+    {
+      "name": "Accessibility",
+      "max_score": 6,
+      "description": "Label is associated with the input, keyboard works natively, and the value is announced through the output or `aria-valuetext`"
+    },
+    {
+      "name": "Clientlib category",
+      "max_score": 4,
+      "description": "Site clientlib category is `core.forms.components.slider.v1.runtime` with dependency on `core.forms.components.runtime.base`"
+    },
+    {
+      "name": "pom.xml and runtime embed",
+      "max_score": 10,
+      "description": "`ui.af.apps/pom.xml` gains the `.core-adaptiveform` replace line for `slider`, and the slider category is added to the `core-forms-components-runtime-all` embed"
+    },
+    {
+      "name": "Honest report",
+      "max_score": 6,
+      "description": "`REPORT.md` names gates that could not run (Maven, Cypress, AEM) with the exact command and claims no pass for them"
+    }
+  ]
+}
