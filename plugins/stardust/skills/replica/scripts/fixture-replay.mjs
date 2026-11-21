@@ -386,11 +386,17 @@ const daP = (async () => {
   if (rest.length) {
     await Promise.all(rest.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
     await Promise.all(rest.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
-    const oks = await Promise.all(PAGES.slice(1).map((pg) => pollUntil(() => pageOk(LIVE, pg), { every: 500, max: 60000 })));
+    const served = async (pg) => { try { return (await fetch(`${LIVE}${pg.path}?cb=${Date.now()}`)).ok; } catch { return false; } };
+    const oks = await Promise.all(PAGES.slice(1).map((pg) => pollUntil(() => served(pg), { every: 500, max: 120000 })));
     D.allLive = oks.every(Boolean);
     mark('all-live');
     timing('all-live', `${D.allLive ? 'PASS' : 'FAIL'} ${NPG} page(s) on ${LIVE}`);
   } else D.allLive = D.liveOk;
+  // broken media shows as about:error in the delivered markup — name it before any page is measured
+  const errs = await Promise.all(PAGES.map(async (pg) => { try { const t = await (await fetch(`${LIVE}${pg.path === '/' ? '/index' : pg.path}.plain.html?cb=${Date.now()}`)).text(); return (t.match(/about:error/g) || []).length ? `${pg.path}: ${(t.match(/about:error/g) || []).length}` : null; } catch { return null; } }));
+  D.mediaErrors = errs.filter(Boolean);
+  if (D.mediaErrors.length) log(`about:error in delivered pages: ${D.mediaErrors.join('; ')}`);
+  timing('media-check', D.mediaErrors.length ? `about:error ${D.mediaErrors.join('; ')}` : `0 about:error on ${NPG} page(s)`);
 })();
 // code: commit now (before the runner's first checkpoint touches the index), push, then poll
 if (!NO_DELIVER) {
@@ -417,6 +423,13 @@ const codeP = (async () => {
     if (i === 20 && !synced) { synced = true; try { await admin(token, 'code', ORG, SITE, BRANCH, '*'); } catch { /* best effort */ } }
     return false;
   }, { every: 1000, max: 240000 });
+  // every code file the fixture ships must be served before any page is measured (a page captured while
+  // one of its block files is still missing measures a half-decorated page)
+  const codeFiles = [];
+  (function walkCode(d, rel) { if (!fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.isDirectory()) walkCode(path.join(d, e.name), `${rel}${e.name}/`); else if (/\.(js|css)$/.test(e.name) && /^(blocks|styles|scripts)\//.test(`${rel}${e.name}`)) codeFiles.push(`/${rel}${e.name}`); } }(path.join(fx.dir, 'repo'), ''));
+  const allCode = await Promise.all(codeFiles.map((f) => pollUntil(async () => { try { return (await fetch(`${PREVIEW}${f}?cb=${Date.now()}`)).ok; } catch { return false; } }, { every: 1000, max: 180000 })));
+  D.allCodeLive = allCode.every(Boolean);
+  log(`code files served: ${allCode.filter(Boolean).length}/${codeFiles.length}`);
   mark('code-live');
   timing('code-live', D.codeLive ? 'ok' : 'FAIL');
 })();
