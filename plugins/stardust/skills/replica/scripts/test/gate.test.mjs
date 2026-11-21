@@ -139,16 +139,18 @@ stub(replica, 'reference.mjs', `
   const once = process.env.STUB_REF_FAIL_ONCE;
   if (once && !existsSync(once)) { writeFileSync(once, '1'); console.log('reference: not frozen — the priming capture failed (stitch-shot exit 1)'); process.exit(1); }
   const rc = Number(process.env.STUB_REF_RC || 0);
-  if (rc === 2) { writeFileSync(join(dir, 'reference-unstable.json'), '{ "stable": false }'); console.log('reference: UNSTABLE — heights 2000 vs 2640 after priming; not frozen'); process.exit(2); }
+  const hold = rest.includes('--hold-min') ? Number(flag('--hold-min')) : null; // the timer hold, as reference.mjs records it
+  const hint = process.env.STUB_REF_HINT && !hold ? process.env.STUB_REF_HINT : null; // reference.mjs's hint: only without the hold, before its verdict line
+  if (hint) console.log('hint: ' + hint);
+  if (rc === 2) { writeFileSync(join(dir, 'reference-unstable.json'), JSON.stringify({ stable: false, ...(hint ? { hint } : {}) })); console.log('reference: UNSTABLE — heights 2000 vs 2640 after priming; not frozen'); process.exit(2); }
   if (rc === 3) { console.log('reference: not frozen — the priming capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
   if (rc) { console.log('reference: not frozen — the capture failed (stitch-shot exit ' + rc + ')'); process.exit(rc); }
   const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 12 }));
   const noiseFloor = Number(process.env.STUB_REF_FLOOR || 0);
-  const hold = rest.includes('--hold-min') ? Number(flag('--hold-min')) : null; // the timer hold, as reference.mjs records it
   writeFileSync(join(dir, 'baseline.png'), 'frozen-reference-bytes');
   writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width, vh: 900, height: 2000, settle: true, chunks: 3,
     fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, ...(hold ? { timers: { hold, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] } } : {}), primed: true, prime: { height: 2100, pct: 31.4, heightDelta: 100 }, captures: 2, heights: [2000, 2000], noiseFloor, heightSpread: 0, outside: 0,
-    variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z',
+    variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z', ...(hint ? { hint } : {}),
     flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: false, ...(hold ? { holdTimers: hold } : {}) } }, null, 2) + '\\n');
   console.log('reference: frozen ' + width + '×2000, primed, noise floor ' + noiseFloor.toFixed(2) + '%' + (maskArg ? ' in ' + variable.length + ' variable region(s) → mask ' + maskArg : ', no variable region'));`);
 stub(replica, 'chrome-parity.mjs', `
@@ -793,6 +795,30 @@ resetRefArgs(); r = await refRound('old', 'o2', ['--hold-timers']);
 check('hold: a reference with NO recorded settings is not reused under the hold — frozen again, never "settings not recorded"', r.status === 0 && freezes() === 1 && /re-frozen — capture settings changed \(holdTimers\)/.test(r.stdout) && !/settings not recorded/.test(r.stdout) && livePng('old') === 'frozen-reference-bytes', `status ${r.status} ${r.stdout}`);
 resetRefArgs(); r = await refRound('plain', 'n1');
 check('hold: OFF by default — no hold flag on the freeze or the captures, no timers line', r.status === 0 && !/hold/.test(lines(refArgsFile).join(' ')) && !/hold/.test(lines(stitchArgsFile).join(' ')) && !/timer/.test(r.stdout + r.stderr), r.stdout);
+// ── The hint (reference.mjs § HINT): a reference whose captures differed without the hold says so in the round's output ──
+const HINT = 'the page changes on its own between captures (2 self-varying region(s) masked) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates: --hold-timers or GATE_HOLD_TIMERS=1) captures it in one state';
+const hintLines = (s) => (s.match(/^gate\.sh: hint: .*$/gm) || []);
+const sameVerdict = (v) => JSON.stringify({ ...v, at: 0 }).replace(/hint(no)?-1440/g, 'X'); // the record without its time and its dir
+const SELF = { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652', STUB_REF_HINT: HINT };
+resetRefArgs(); r = await refRound('hint', 'i1', [], SELF);
+const hintFreezes = freezes();
+const plainRound = await refRound('hintno', 'i1', [], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652' });
+check('hint: a self-varying page frozen without the hold — the reference\'s hint once on stdout, after the reference line; the exit code and the verdict are those of the same round without it', r.status === 0 && plainRound.status === 0 && hintFreezes === 1
+  && hintLines(r.stdout).length === 1 && hintLines(r.stdout)[0] === `gate.sh: hint: ${HINT}` && hintLines(r.stderr).length === 0 && hintLines(plainRound.stdout + plainRound.stderr).length === 0
+  && /^gate\.sh: reference: frozen 2026-11-01T09:00:00\.000Z, noise floor 2\.31% in 2 region\(s\) — 708 rows excluded\ngate\.sh: hint: /m.test(r.stdout)
+  && sameVerdict(verdictJson('hint', 'i1')) === sameVerdict(verdictJson('hintno', 'i1')), `status ${r.status} ${r.stdout}\n${JSON.stringify(verdictJson('hint', 'i1'))}\n${JSON.stringify(verdictJson('hintno', 'i1'))}`);
+resetRefArgs(); r = await refRound('hint', 'i2');
+check('hint: the next round reuses the reference and repeats its hint, once', r.status === 0 && freezes() === 0 && hintLines(r.stdout).length === 1, r.stdout);
+resetRefArgs(); r = await refRound('hint', 'i3', ['--hold-timers'], SELF);
+check('hint: with --hold-timers the reference is frozen again under the hold and carries no hint — no hint line', r.status === 0 && freezes() === 1 && hintLines(r.stdout + r.stderr).length === 0 && !('hint' in JSON.parse(readFileSync(join(root, gdir('hint'), 'baseline.json'), 'utf8'))), r.stdout);
+resetRefArgs(); r = await refRound('hintenv', 'i1', [], { ...SELF, GATE_HOLD_TIMERS: '1' });
+check('hint: GATE_HOLD_TIMERS=1 likewise', r.status === 0 && hintLines(r.stdout + r.stderr).length === 0, r.stdout);
+resetRefArgs(); r = await refRound('plain', 'n3');
+check('hint: a stable page has none', r.status === 0 && !/hint/.test(r.stdout + r.stderr), r.stdout);
+resetRefArgs(); r = await refRound('hintun', 'i1', [], { STUB_REF_RC: '2', STUB_REF_HINT: HINT });
+check('hint: an UNSTABLE freeze without the hold — still exit 5 and its two lines, plus the hint once (stderr)', r.status === 5 && hintLines(r.stderr).length === 1 && hintLines(r.stdout).length === 0 && /^gate\.sh: REFERENCE UNSTABLE \(exit 5\)/m.test(r.stderr) && verdictJson('hintun', 'i1') === null, `status ${r.status} ${r.stderr}`);
+resetRefArgs(); r = await refRound('hintun', 'i2', ['--hold-timers'], { STUB_REF_RC: '2', STUB_REF_HINT: HINT });
+check('hint: … and under the hold exit 5 with no hint', r.status === 5 && hintLines(r.stdout + r.stderr).length === 0, r.stderr);
 for (const bad of [['--hold-min', '1999'], ['--hold-min', 'soon']]) { r = await refRound('plain', 'n2', bad); check(`hold: ${bad.join(' ')} is a usage error (exit 125)`, r.status === 125 && /at least 2000/.test(r.stderr), r.stderr); }
 r = await gate(['--help']);
 check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status === 0 && /--hold-timers /.test(r.stdout) && /--hold-min <ms>/.test(r.stdout) && /GATE_HOLD_TIMERS/.test(r.stdout));

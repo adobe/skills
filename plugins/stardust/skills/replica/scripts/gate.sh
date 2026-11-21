@@ -36,6 +36,8 @@
 #   rows — joins the pixel-compare --mask list (with any --mask of the caller), and one line says what
 #   the round was gated against:
 #   `gate.sh: reference: frozen <capturedAt>, noise floor 2.31% in 2 region(s) — 708 rows excluded`.
+#   A reference whose captures differed without the timer hold carries a `hint` (reference.mjs § HINT): repeated
+#   once, `gate.sh: hint: …` after that line (stderr on the exit-5 path). Advice only: no verdict or exit code reads it.
 #   It holds the PIXEL target still only: a --full round's probes still navigate the live URL.
 #   --live-origin   this round gates against a live capture instead, as every round did before the
 #            reference: live.png captured when absent and reused (unprimed, no noise floor, no mask); a
@@ -515,6 +517,7 @@ if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
     0) [ -n "$REFREEZE" ] && echo "gate.sh: reference: re-frozen — capture settings changed ($REFREEZE)"
        echo "gate.sh: ${WHY:-reference: frozen}" ;;
     2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
+       HINT=$(grep -E '^hint: ' "$REF_LINE" 2>/dev/null | tail -1); [ -n "$HINT" ] && echo "gate.sh: $HINT" >&2
        FLAGS="${STITCH_OPTS[*]-}" # the round's overlay and locale flags: the forced freeze must capture the same page
        echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W${FLAGS:+ $FLAGS} --force" >&2
        exit 5 ;;
@@ -622,7 +625,8 @@ if [ "$ORIGIN" = frozen ]; then
   node -e 'const b = (() => { try { return JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch { return {}; } })();
     const v = Array.isArray(b.variable) ? b.variable : []; const rows = v.reduce((n, r) => n + (Number(r.h) || 0), 0);
     const floor = typeof b.noiseFloor === "number" ? `noise floor ${b.noiseFloor.toFixed(2)}%${v.length ? ` in ${v.length} region(s)` : ", no self-varying region"} — ${rows} rows excluded` : "noise floor not measured (frozen without priming — reference.mjs freeze --force measures it) — 0 rows excluded";
-    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);' "$DIR/baseline.json" "$BASE_AT"
+    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);
+    if (typeof b.hint === "string" && b.hint) console.log(`gate.sh: hint: ${b.hint}`);' "$DIR/baseline.json" "$BASE_AT"
 else
   echo "gate.sh: reference: a live capture (--live-origin / GATE_REFERENCE=live, or no reference.mjs) — not primed, no noise floor measured, no rows excluded"
 fi

@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, holdOf, recordedHold, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
+import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, holdHint, holdOf, recordedHold, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
 import { baselineStatus } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -204,7 +204,7 @@ await check('freeze: primes, discards the prime, freezes ref-1 with a mask; stit
     assert.equal(readFileSync(join(dir, 'baseline.png'), 'utf8'), 'png ref-1');
     const b = JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8'));
     assert.deepEqual({ ...b, flags: undefined, thresholds: undefined }, { writtenBy: WRITER, schema: 1, capturedAt: '2026-01-01T00:00:00.000Z', url: 'https://x.test/', width: 1440, vh: 900, height: 3000, settle: true, chunks: 4, fontsFailed: [], fixedLayers: { capture: 'once', count: 0, late: 0 },
-      primed: true, prime: { height: 4065, pct: 41.2, heightDelta: 1065 }, captures: 2, heights: [3000, 3000], noiseFloor: 2.31, heightSpread: 0, outside: 0.02, variable: [{ y: 112, h: 56, pct: 30 }], variableShare: 1.87, maskArg: '112:56', stable: true, reason: null, frozenAt: '2026-01-02T03:04:05.000Z', flags: undefined, thresholds: undefined });
+      primed: true, prime: { height: 4065, pct: 41.2, heightDelta: 1065 }, captures: 2, heights: [3000, 3000], noiseFloor: 2.31, heightSpread: 0, outside: 0.02, variable: [{ y: 112, h: 56, pct: 30 }], variableShare: 1.87, maskArg: '112:56', stable: true, reason: null, frozenAt: '2026-01-02T03:04:05.000Z', flags: undefined, thresholds: undefined, hint: b.hint });
     assert.deepEqual(b.flags, { consent: '#ok', dismiss: null, noDismiss: false, locale: null, vh: null, headed: false });
     assert.deepEqual(b.thresholds, { floorMax: DEFAULTS.floorMax, heightMax: DEFAULTS.heightMax, variableMax: DEFAULTS.variableMax, band: DEFAULTS.band, bandMin: DEFAULTS.bandMin, pad: DEFAULTS.pad });
     assert.equal(baselineStatus(dir, { url: 'https://x.test', width: 1440 }).ok, true, 'the existing reader accepts it');
@@ -241,6 +241,57 @@ await check('freeze --hold-timers: every capture gets the hold; baseline.json re
     const other = stubs({ heights: [3000, 3000, 3000], compares: same });
     assert.notEqual(freeze(opts(dir, '--hold-min', '4000'), other).reused, true, 'another threshold: frozen again');
     assert.equal(JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8')).flags.holdTimers, 4000);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+await check('hint: a freeze WITHOUT the hold whose captures differ (a mask, an unstable page, a priming capture apart) says once that --hold-timers captures a timer-driven page in one state — printed before the verdict line, recorded as `hint`, repeated on reuse; none under the hold, none when the captures agree; never a verdict or an exit code', () => {
+  const dir = tmp();
+  const HINT = /^the page changes on its own between captures \(.+\) — when a timer drives the change \(a carousel that advances by itself\), freezing again with --hold-timers \(the gates: --hold-timers or GATE_HOLD_TIMERS=1\) captures it in one state$/;
+  const printed = (o, deps) => { const out = []; const log = console.log; console.log = (l) => out.push(l); try { return { code: main(o, deps), out }; } finally { console.log = log; } };
+  const args = (...a) => ['freeze', 'https://x.test/', dir, '--width', '1440', ...a];
+  const base = () => JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8'));
+  try {
+    // the pure rule: which states, and the thresholds of the call
+    const calm = { stable: true, reason: null, variable: [], prime: { pct: 0.3, heightDelta: 0 } };
+    assert.equal(holdHint(calm, {}), null, 'captures agree');
+    assert.match(holdHint({ ...calm, variable: [{ y: 100, h: 40, pct: 9 }] }, {}), /\(1 self-varying region\(s\) masked\)/);
+    assert.match(holdHint({ ...calm, stable: false, reason: 'heights 3390 vs 2950' }, {}), /\(unstable: heights 3390 vs 2950\)/);
+    assert.match(holdHint({ ...calm, prime: { pct: 4.2, heightDelta: 0 } }, {}), /\(the priming capture is 4\.2% and 0px in height from the first kept one\)/);
+    assert.match(holdHint({ ...calm, prime: { pct: 0, heightDelta: -40 } }, {}), /-40px in height/);
+    assert.equal(holdHint({ ...calm, prime: { pct: 4.2, heightDelta: 0 } }, { floorMax: 5 }), null, 'the call\'s own --floor-max');
+    for (const r of [{ ...calm, variable: [{ y: 100, h: 40, pct: 9 }] }, { ...calm, stable: false, reason: 'x' }, { ...calm, prime: { pct: 50, heightDelta: 900 } }]) assert.equal(holdHint(r, { holdTimers: 2000 }), null, 'the hold is on');
+    assert.equal(holdHint(null, {}), null);
+    // a self-varying page (a carousel: one region masked), no hold: hint, then the verdict as the LAST line; same code, same verdict line
+    const carousel = () => stubs({ heights: [3000, 3000, 3000], compares: { 'prime|ref-1|': { pct: 3.1 }, 'ref-1|ref-2|': { pct: 2.31, bands: [band(120, 30)] }, 'ref-1|ref-2|112:36': { pct: 0.02 } } });
+    let r = printed(args(), carousel());
+    assert.equal(r.code, 0); assert.equal(r.out.length, 2);
+    assert.match(r.out[0], /^hint: the page changes on its own between captures \(1 self-varying region\(s\) masked\) — /); assert.match(r.out[0].slice(6), HINT);
+    assert.equal(r.out[1], 'reference: frozen 1440×3000, primed, noise floor 2.31% in 1 variable region(s) (rows 112–148) → mask 112:36; outside them 0.02%');
+    assert.equal(base().hint, r.out[0].slice(6)); assert.equal(base().stable, true);
+    assert.equal(baselineStatus(dir, { url: 'https://x.test', width: 1440 }).ok, true, 'the record is still a usable baseline');
+    // reused: the stored hint again, before the line
+    r = printed(args(), stubs({ heights: [], compares: {} }));
+    assert.equal(r.code, 0); assert.equal(r.out.length, 2); assert.equal(r.out[0], `hint: ${base().hint}`); assert.match(r.out[1], /^reference: reused /);
+    // the same page under the hold: frozen again, no hint line, no field — and the reuse of a held reference has none
+    r = printed(args('--hold-timers'), carousel());
+    assert.equal(r.code, 0); assert.equal(r.out.length, 1); assert.match(r.out[0], /^reference: frozen .*; timers held: 1$/); assert.equal('hint' in base(), false);
+    r = printed(args(), stubs({ heights: [], compares: {} }));
+    assert.deepEqual([r.code, r.out.length], [0, 1]);
+    // a stable page: one line, no field
+    const same = { 'prime|ref-1|': { pct: 0 }, 'ref-1|ref-2|': { pct: 0 } };
+    r = printed(args('--force'), stubs({ heights: [3000, 3000, 3000], compares: same }));
+    assert.deepEqual(r, { code: 0, out: ['reference: frozen 1440×3000, primed, noise floor 0.00%, no variable region'] }); assert.equal('hint' in base(), false);
+    // the priming capture alone differs
+    r = printed(args('--force'), stubs({ heights: [3000, 3000, 3000], compares: { ...same, 'prime|ref-1|': { pct: 6.5 } } }));
+    assert.equal(r.code, 0); assert.match(r.out[0], /^hint: .*\(the priming capture is 6\.5% and 0px in height from the first kept one\)/); assert.equal(r.out.length, 2);
+    // unstable: exit 2 as before, the hint in reference-unstable.json; under the hold exit 2 and no hint
+    const wobbly = () => stubs({ heights: [3390, 3390, 2950], compares: { 'prime|ref-1|': { pct: 0 }, 'ref-1|ref-2|': { pct: 38 } } });
+    rmSync(join(dir, 'baseline.json')); rmSync(join(dir, 'baseline.png'));
+    r = printed(args(), wobbly());
+    assert.equal(r.code, 2); assert.equal(r.out.length, 2); assert.match(r.out[0], /^hint: .*\(unstable: heights 3390 vs 2950\)/); assert.equal(r.out[1], 'reference: UNSTABLE — heights 3390 vs 2950 after priming; not frozen');
+    assert.equal(JSON.parse(readFileSync(join(dir, 'reference-unstable.json'), 'utf8')).hint, r.out[0].slice(6)); assert.equal(existsSync(join(dir, 'baseline.json')), false);
+    r = printed(args('--hold-timers'), wobbly());
+    assert.deepEqual(r, { code: 2, out: ['reference: UNSTABLE — heights 3390 vs 2950 after priming; not frozen'] }); assert.equal('hint' in JSON.parse(readFileSync(join(dir, 'reference-unstable.json'), 'utf8')), false);
+    assert.match(HELP, /^hint: a freeze without --hold-timers whose captures differ/m);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 await check('freeze: heights differ → exit 2, no baseline, captures and reference-unstable.json stay; --force freezes it as stable: false', () => {
@@ -325,11 +376,12 @@ await check('main: status / mask read the stored reference; none → exit 1; usa
     assert.equal(main(['freeze', 'https://x.test/'], d), 125);
     assert.match(lines[0], /^reference: none — no frozen baseline in /);
     assert.equal(lines[1], '');
-    assert.equal(lines[3], 'reference: frozen 1440×900, primed, noise floor 1.00% in 1 variable region(s) (rows 92–128) → mask 92:36; outside them 0.00%');
-    assert.equal(JSON.parse(lines[4]).usable, true);
-    assert.match(lines[5], /^reference: none — stale: /);
-    assert.equal(lines[6], '92:36');
-    assert.match(lines[7], /^E reference: freeze needs <url> <dir> \(--help\)$/);
+    assert.match(lines[2], /^hint: the page changes on its own between captures \(1 self-varying region\(s\) masked\) — /, 'the freeze: its hint, then its line');
+    for (const i of [3, 4]) assert.equal(lines[i], 'reference: frozen 1440×900, primed, noise floor 1.00% in 1 variable region(s) (rows 92–128) → mask 92:36; outside them 0.00%', 'the freeze, then status: one line, no hint line');
+    assert.equal(JSON.parse(lines[5]).usable, true); assert.equal(JSON.parse(lines[5]).hint, lines[2].slice(6), 'status --json carries it');
+    assert.match(lines[6], /^reference: none — stale: /);
+    assert.equal(lines[7], '92:36');
+    assert.match(lines[8], /^E reference: freeze needs <url> <dir> \(--help\)$/);
   } finally { console.log = log; console.error = err; rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -392,6 +444,7 @@ if (pw.status !== 0 || !lan) {
         assert.equal(r.code, 0, r.err);
         assert.equal(r.out, 'reference: frozen 800×3600, primed, noise floor 0.00%, no variable region');
         assert.deepEqual([r.baseline.stable, r.baseline.noiseFloor, r.baseline.variable, r.baseline.maskArg, r.baseline.prime.pct], [true, 0, [], '', 0]);
+        assert.equal('hint' in r.baseline, false, 'captures agree: no hint');
         assert.equal(baselineStatus(r.dir, { url: `${base}/stable`, width: 800 }).ok, true);
         const before = hits['/stable'];
         const again = await run('reference.mjs', ['freeze', `${base}/stable`, 'ref', '--width', '800'], r.cwd);
@@ -404,7 +457,10 @@ if (pw.status !== 0 || !lan) {
       const r = await freezeCase('/banner');
       try {
         assert.equal(r.code, 0, r.err);
-        assert.equal(r.out, 'reference: frozen 800×3600, primed, noise floor 0.00%, no variable region');
+        // the priming capture is apart from the kept pair and nothing was held: the hint line first, the verdict last
+        const [hint, line, ...more] = r.out.split('\n');
+        assert.equal(line, 'reference: frozen 800×3600, primed, noise floor 0.00%, no variable region'); assert.deepEqual(more, []);
+        assert.match(hint, /^hint: the page changes on its own between captures \(the priming capture is [\d.]+% and 400px in height from the first kept one\) — .*--hold-timers/); assert.equal(r.baseline.hint, hint.slice(6));
         assert.equal(r.baseline.prime.height, 4000); assert.equal(r.baseline.prime.heightDelta, 400);
         assert.ok(r.baseline.prime.pct > 4, `the first visit differs (${r.baseline.prime.pct}%)`);
         assert.ok(r.baseline.noiseFloor <= 0.5); assert.deepEqual(r.baseline.heights, [3600, 3600]);
@@ -415,6 +471,7 @@ if (pw.status !== 0 || !lan) {
       const r = await freezeCase('/varying');
       try {
         assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /^hint: the page changes on its own between captures \(1 self-varying region\(s\) masked\) — .*--hold-timers.*\nreference: frozen [^\n]*$/); assert.equal(r.baseline.hint, r.out.split('\n')[0].slice(6));
         assert.equal(r.baseline.stable, true); assert.equal(r.baseline.variable.length, 1);
         const [v] = r.baseline.variable;
         assert.ok(v.y <= 900 && v.y >= 872 && v.y + v.h >= 1200 && v.y + v.h <= 1228, JSON.stringify(v));
@@ -426,13 +483,18 @@ if (pw.status !== 0 || !lan) {
         assert.ok(await cmp() > 5); assert.equal(await cmp('--mask', r.baseline.maskArg), 0);
         const a = await run('reference.mjs', ['assess', 'x.png', 'y.png'], r.cwd);
         assert.equal(a.code, 0); assert.ok(a.out.endsWith(`→ mask ${r.baseline.maskArg}; outside them 0.00%`), a.out);
+        // the same page under the hold (it varies per load, not on a timer: still masked): one line, no hint, the same verdict
+        const h = await run('reference.mjs', ['freeze', `${base}/varying`, 'ref', '--width', '800', '--vh', '600', '--hold-timers'], r.cwd);
+        const held = JSON.parse(readFileSync(join(r.dir, 'baseline.json'), 'utf8'));
+        assert.equal(h.code, 0, h.err); assert.match(h.out, /^reference: frozen [^\n]*$/); assert.equal('hint' in held, false); assert.deepEqual([held.stable, held.variable.length, held.flags.holdTimers], [true, 1, 2000]);
       } finally { rmSync(r.cwd, { recursive: true, force: true }); }
     });
     await check('e2e alternating layouts: UNSTABLE, exit 2, nothing frozen, the captures and the report stay', async () => {
       const r = await freezeCase('/alternating');
       try {
         assert.equal(r.code, 2, r.err);
-        assert.match(r.out, /^reference: UNSTABLE — heights (2700 vs 3140|3140 vs 2700) after priming; not frozen$/);
+        assert.match(r.out, /^hint: the page changes on its own between captures \(unstable: heights (2700 vs 3140|3140 vs 2700)\) — [^\n]*\nreference: UNSTABLE — heights (2700 vs 3140|3140 vs 2700) after priming; not frozen$/);
+        assert.equal(r.report.hint, r.out.split('\n')[0].slice(6));
         assert.equal(r.baseline, null); assert.equal(existsSync(join(r.dir, 'baseline.png')), false);
         assert.equal(r.report.stable, false); assert.equal(r.report.heightSpread, 440);
         assert.ok(existsSync(join(r.dir, 'ref-1.png')) && existsSync(join(r.dir, 'ref-2.png')));

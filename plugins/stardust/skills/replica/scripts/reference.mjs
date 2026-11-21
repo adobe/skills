@@ -41,6 +41,11 @@
  *     --force              re-freeze over an existing baseline; freeze an unstable one (stable: false)
  *   A usable baseline for this URL and width (stitch-shot's `baseline <dir>` check) is reused: no capture, exit 0 —
  *   unless the call asks for the timer hold and the baseline was frozen without it (or with another threshold).
+ *   HINT: a freeze WITHOUT the hold whose captures differ — unstable, a variable region masked, or the priming capture
+ *   further from the first kept one than --floor-max % / --height-max px — prints one `hint: …` line on stdout BEFORE
+ *   the verdict line (which stays the last one) and records it as `hint` in baseline.json / reference-unstable.json;
+ *   a reuse of that reference prints it again, gate.sh and gate-all.mjs repeat it. It names --hold-timers; it changes
+ *   no verdict and no exit code. Captures that agree, or a freeze under the hold: no hint, no field.
  *   node skills/replica/scripts/reference.mjs status <dir> [--json] [--url <u>] [--width <px>]
  *   node skills/replica/scripts/reference.mjs mask <dir>      only the --mask argument for pixel-compare ('' = none)
  *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--hold-timers] [--hold-min <ms>] [--inherit]
@@ -59,7 +64,7 @@
  * baseline.json: stitch-shot's fields (writtenBy, schema, capturedAt, url, width, vh, height, settle, chunks,
  * fontsFailed, fixedLayers[, timers — the first kept capture's, only with the hold]) + { primed: true, prime: { height, pct, heightDelta }, captures, heights, noiseFloor,
  * heightSpread, outside, variable: [{ y, h, pct }], variableShare, maskArg, stable, reason, frozenAt, flags,
- * thresholds }.
+ * thresholds[, hint] }.
  *
  * Exit codes: 0 frozen / reused / usable (status, mask) / stable (assess), 1 error or no usable reference,
  * 2 unstable (not frozen), 3 bot challenge (stitch-shot's), 124 a capture exceeded --timeout (no verdict), 125 usage.
@@ -107,9 +112,13 @@ full-page %; variable regions = the rows where the page differs from itself (pix
 (heights within --height-max, outside ≤ --floor-max, regions ≤ --variable-max % of the rows, the same dead font faces on every capture) →
 baseline.png (= ref-1) + baseline.json in <dir>, atomic: stitch-shot's baseline record plus primed, prime { height,
 pct, heightDelta }, captures, heights, noiseFloor, heightSpread, outside, variable [{ y, h, pct }], variableShare,
-maskArg, stable, reason, frozenAt, flags (holdTimers among them), thresholds[, timers]. Unstable → nothing frozen; ref-*.png and
+maskArg, stable, reason, frozenAt, flags (holdTimers among them), thresholds[, timers][, hint]. Unstable → nothing frozen; ref-*.png and
 reference-unstable.json stay. A usable baseline for this URL and width is reused without a capture.
-One verdict line on stdout; the children's output goes to stderr.
+One verdict line on stdout, the last one; the children's output goes to stderr.
+hint: a freeze without --hold-timers whose captures differ (unstable, a variable region masked, or the priming capture
+over --floor-max % / --height-max px from the first kept one) prints one "hint: …" line before the verdict line and
+records it as "hint" in the JSON: the page changes on its own, and --hold-timers (the gates: also GATE_HOLD_TIMERS=1)
+captures a timer-driven page in one state. It changes no verdict and no exit code; under the hold there is none.
 Exit codes: 0 frozen / reused / usable / stable, 1 error or no usable reference, 2 unstable (not frozen),
 3 bot challenge (stitch-shot's exit 3), 124 a capture exceeded --timeout, 125 usage.`;
 
@@ -268,6 +277,18 @@ export function assess(pngs, o, deps, { diffDir, fontsDiffer = null } = {}) {
     thresholds: { floorMax: o.floorMax, heightMax: o.heightMax, variableMax: o.variableMax, band: o.band, bandMin: o.bandMin, pad: o.pad } };
 }
 
+// The hint (header § HINT): the captures of a freeze WITHOUT the timer hold differ → one sentence naming the hold, else
+// null. r = { stable, reason, variable, prime: { pct, heightDelta } }; o = the call's options (hold, thresholds).
+// Advice only: nothing reads it to decide.
+export function holdHint(r, o = {}) {
+  if (holdOf(o) || !r) return null;
+  const { floorMax = DEFAULTS.floorMax, heightMax = DEFAULTS.heightMax } = o; const v = Array.isArray(r.variable) ? r.variable : []; const prime = r.prime || {};
+  const why = r.stable === false ? `unstable: ${r.reason}`
+    : v.length ? `${v.length} self-varying region(s) masked`
+      : Number(prime.pct) > floorMax || Math.abs(Number(prime.heightDelta) || 0) > heightMax ? `the priming capture is ${round2(Number(prime.pct) || 0)}% and ${Number(prime.heightDelta) || 0}px in height from the first kept one` : null;
+  return why ? `the page changes on its own between captures (${why}) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates: --hold-timers or GATE_HOLD_TIMERS=1) captures it in one state` : null;
+}
+
 // The one line. `how` = 'frozen' | 'reused' | 'stable' (assess) …
 export function verdictLine(r, how = 'frozen') {
   if (!r.stable && !r.forced) return `reference: UNSTABLE — ${r.reason}${r.primed ? ' after priming' : ''}; not frozen`;
@@ -298,13 +319,14 @@ export function fontsDiffer(records) {
   const keys = records.map((r) => (r && Array.isArray(r.fontsFailed) ? [...r.fontsFailed].sort().join(', ') || 'none' : 'not checked'));
   return new Set(keys).size > 1 ? keys.join(' vs ') : null;
 }
-// → { code, line, result }.
+// → { code, line, result[, hint] }.
 export function freeze(o, deps) {
   const have = deps.baselineCheck(o.dir, { url: o.url, width: o.width });
   const b = have.ok ? deps.readJson(join(o.dir, 'baseline.json')) || {} : null;
   // a freeze that asks for the timer hold never reuses a reference frozen without it (or with another threshold)
   if (b && !o.force && !(holdOf(o) && recordedHold(b) !== holdOf(o))) {
-    return { code: 0, line: verdictLine({ ...b, stable: b.stable !== false, forced: true }, 'reused'), result: b, reused: true };
+    const kept = typeof b.hint === 'string' && b.hint && !holdOf(o) && !recordedHold(b) ? b.hint : null;
+    return { code: 0, line: verdictLine({ ...b, stable: b.stable !== false, forced: true }, 'reused'), result: b, reused: true, ...(kept ? { hint: kept } : {}) };
   }
   mkdirSync(o.dir, { recursive: true });
   for (const f of readdirSync(o.dir)) if (OURS.test(f)) rmSync(join(o.dir, f), { force: true });
@@ -327,14 +349,16 @@ export function freeze(o, deps) {
     variable: a.variable, variableShare: a.variableShare, maskArg: a.maskArg, stable: a.stable, reason: a.reason, frozenAt,
     flags: { consent: o.consent, dismiss: o.dismiss, noDismiss: o.noDismiss, locale: o.locale, vh: o.vh, headed: o.headed, ...(holdOf(o) ? { holdTimers: holdOf(o) } : {}) }, thresholds: a.thresholds,
   };
+  const hint = holdHint({ ...a, prime }, o);
+  if (hint) result.hint = hint;
   if (!a.stable && !o.force) {
     writeJsonAtomic(join(o.dir, 'reference-unstable.json'), result);
-    return { code: 2, line: verdictLine({ ...result, width: a.width }), result };
+    return { code: 2, line: verdictLine({ ...result, width: a.width }), result, ...(hint ? { hint } : {}) };
   }
   const tmp = join(o.dir, `baseline.png.${process.pid}.tmp`);
   copyFileSync(refs[0], tmp); renameSync(tmp, join(o.dir, 'baseline.png'));
   writeJsonAtomic(join(o.dir, 'baseline.json'), result);
-  return { code: 0, line: verdictLine({ ...result, width: a.width, forced: !a.stable }), result };
+  return { code: 0, line: verdictLine({ ...result, width: a.width, forced: !a.stable }), result, ...(hint ? { hint } : {}) };
 }
 
 // ── the real children ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -375,7 +399,7 @@ export function main(argv, deps = realDeps) {
     if (!(e instanceof UsageError)) throw e;
     console.error(`reference: ${e.message} (--help)`); return 125;
   }
-  if (o.cmd === 'freeze') { const r = freeze(o, deps); console.log(r.line); return r.code; }
+  if (o.cmd === 'freeze') { const r = freeze(o, deps); if (r.hint) console.log(`hint: ${r.hint}`); console.log(r.line); return r.code; }
   if (o.cmd === 'assess') {
     const diffDir = mkdtempSync(join(tmpdir(), 'reference-assess-'));
     try {

@@ -44,7 +44,9 @@
  * the usable baseline of the page's archetype gate dir `gates/<slug>-<width>/` (gate.sh's, shared), else (prototype
  * stage) that dir's cached live.png, else the one in the page's own dir, else one is frozen there
  * (`reference.mjs freeze`, the overlay flags and locale passed through) and reused by every later run. origin.png is
- * its copy; origin.json carries `reference` { dir, capturedAt, primed, stable, noiseFloor, variableRows, maskArg };
+ * its copy; origin.json carries `reference` { dir, capturedAt, primed, stable, noiseFloor, variableRows, maskArg[, hint] }
+ * (hint: reference.mjs's, when its captures differed without the timer hold — repeated once per page as the log line
+ * `origin <slug>: hint: …`, the row's `hint` and a `(hint) …` entry of its reasons cell; no verdict or exit code reads it);
  * the reference's self-varying rows join the page's masks.json rows in the compare; the row records `noiseFloor` and
  * `variableRows`. An UNSTABLE reference (the captures are not one page: reference.mjs exit 2, nothing frozen) is an
  * ERROR row — reason `reference-unstable: <its line>`, counted in totals.error and totals.referenceUnstable — never a
@@ -108,7 +110,7 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
@@ -187,6 +189,9 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   (gates/<slug>-<width>/), else one frozen once into the page's dir and reused; its self-varying rows are masked and
   the row records noiseFloor and variableRows. An UNSTABLE reference is an error row — reference-unstable: <line> —
   never a FAIL or a pass: pin the page's state (--consent / --dismiss / --locale), or freeze it by hand with --force.
+  A reference whose captures differed without the timer hold carries reference.mjs's hint (--hold-timers may capture
+  the page in one state): logged once per page ("origin <slug>: hint: …"), kept as the row's hint and in its reasons
+  cell as "(hint) …" — advice, never a reason: no verdict and no exit code reads it.
   A reference frozen under other --consent / --dismiss / --no-dismiss / --locale than this run's is frozen again
   ("reference: re-frozen — capture settings changed (consent, locale)"; not a round); one whose settings were not
   recorded is reused, and said so.
@@ -262,8 +267,10 @@ export function wideLine(flagged, { width, threshold = 10, max = 12 } = {}) {
 /** baseline.json (reference.mjs's, or stitch-shot's older freeze) → what the origin meta and the row keep of the page's frozen reference. */
 export function referenceOf(b, dir) {
   const v = Array.isArray(b && b.variable) ? b.variable : [];
-  return { dir, capturedAt: (b && b.capturedAt) ?? null, primed: !!b && b.primed === true, stable: !b || b.stable !== false, noiseFloor: b && typeof b.noiseFloor === 'number' ? b.noiseFloor : null, variableRows: v.reduce((n, r) => n + (Number(r.h) || 0), 0), maskArg: (b && b.maskArg) || '' };
+  return { dir, capturedAt: (b && b.capturedAt) ?? null, primed: !!b && b.primed === true, stable: !b || b.stable !== false, noiseFloor: b && typeof b.noiseFloor === 'number' ? b.noiseFloor : null, variableRows: v.reduce((n, r) => n + (Number(r.h) || 0), 0), maskArg: (b && b.maskArg) || '', ...(hintOf(b) ? { hint: hintOf(b) } : {}) };
 }
+/** reference.mjs's `hint` (baseline.json / reference-unstable.json: the captures differed without the timer hold), or null. Advice: no verdict reads it. */
+export const hintOf = (b) => (b && typeof b.hint === 'string' && b.hint.trim() ? b.hint.trim() : null);
 
 // ---- pure: the font check of a capture ----------------------------------------------------------------
 /**
@@ -545,7 +552,7 @@ export function formatSummary(summary) {
     const units = probeErr.includes('units') ? 'ERROR' : r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
     const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
     const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : probeErr.length ? `ERROR (probe: ${probeErr.join(', ')})` : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`)].join('; ') || '-'} |`);
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`), ...(r.hint ? [`(hint) ${r.hint}`] : [])].join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -789,7 +796,7 @@ async function main() {
         if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})`);
         // the page dir keeps the frozen reference only: reference.mjs's kept captures and their diffs go (#156, disk)
         if (freezeInto === d) for (const f of readdirSync(d)) if (/^ref-(\d|diff-).*\.(png|capture\.json)$/.test(f)) rmSync(join(d, f), { force: true });
-      } else if (s.code === 2) r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})` };
+      } else if (s.code === 2) { const hint = hintOf(readJsonSafe(join(freezeInto, 'reference-unstable.json'))); r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})`, ...(hint ? { hint } : {}) }; }
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `reference freeze exit ${s.code}: ${line || lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `reference freeze exit ${s.code}: ${line || lastLine(s.err)}` };
     }
@@ -816,6 +823,8 @@ async function main() {
     }
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
     log(`origin ${p.slug} → ${r.instrument}${r.reference ? ` (frozen reference ${r.reference.dir}${r.reference.noiseFloor != null ? `, noise floor ${r.reference.noiseFloor}%, ${r.reference.variableRows} self-varying rows masked` : ', noise floor not measured'})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
+    const hint = (r.reference && r.reference.hint) || r.hint || null;
+    if (hint) log(`origin ${p.slug}: hint: ${hint}`);
   }
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -921,7 +930,7 @@ async function main() {
       units: r.units && r.units.verdict ? r.units.verdict : null, unitsRequired: !!(r.units && r.units.required), unitsError: (r.units && r.units.error) || null,
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: OVERRIDES[p.slug] || null, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
-      reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0,
+      reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0, hint: (ref && ref.hint) || (r.origin && r.origin.hint) || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null };
   };
   let dropped = 0;
