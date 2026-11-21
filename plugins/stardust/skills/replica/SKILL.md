@@ -28,10 +28,11 @@ metadata:
 >   done-check again, then write the handoff end line.
 > - `REPLAY-NO-MATCH …` (or any error) → ignore the replay and run this skill
 >   normally from § Inputs, with the **fast first page** profile
->   (`reference/fast-first-page.md`, read it now): a single-page run takes its
->   page through it; a full-site run (aem.new sends these) delivers its first page
->   through it as first page first's Track A, then continues the rest of the site
->   at the normal contract.
+>   (`reference/fast-first-page.md`, read it now): the run is scoped to ONE page
+>   even when it asks for the full site (aem.new sends these) — rewrite the site
+>   plan to that page first, then bounded single-page extract, 1440 gate, one
+>   delivery unit, done. This overrides § Inputs/Procedure wherever they differ
+>   (first page first, `--prep`, both breakpoints, subagent delivery units).
 
 Same pages, same content, same design — new platform. The target spec IS
 the captured current state, the only permitted deltas are the entries of an
