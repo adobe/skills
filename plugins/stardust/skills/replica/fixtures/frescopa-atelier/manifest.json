@@ -4,11 +4,11 @@
     "https://markszulc.github.io/frescopa-atelier/index.html",
     "https://markszulc.github.io/frescopa-atelier/"
   ],
-  "builtAt": "2026-11-21T10:23:11Z",
+  "builtAt": "2026-11-21T10:55:26Z",
   "provenance": {
-    "run": "d4a9e620-cb7a-488c-9a25-7148fc04a9ca",
-    "repo": "aemcoder/d4a9e620",
-    "commit": "afe2ffde5bc94ce18f307c790cd39b922d461a09"
+    "run": "c2e2bb39-3337-4123-871b-f326a72e49e7",
+    "repo": "aemcoder/c2e2bb39",
+    "commit": "098aa31153209e5f65204a56bf6370a7d41af0cb"
   },
   "fingerprint": {
     "page": "https://markszulc.github.io/frescopa-atelier/index.html",
@@ -37,7 +37,7 @@
       "index",
       "nav"
     ],
-    "mediaScope": "frescopa-atelier"
+    "mediaScope": "frescopa"
   },
   "gate": {
     "args": [
@@ -46,10 +46,10 @@
   },
   "evidence": {
     "direction": "bounded-single spec (PRODUCT/DESIGN/DESIGN.json) + empty register, from the fixture build run",
-    "recreate": "archetype frescopa-atelier-index-html; source-spec compare 6474=6474, 0 sections off (fixture build run)",
-    "gate": "1440: pixel 0.29% (aligned 0.29%), height delta 0, content 0/0, clipped 0 (fixture build run gate evidence)",
-    "blocks": "9 blocks (hero, intro, learn, mood, feed, sustain, voices, cafe, cta) + header/footer, from the fixture",
-    "dynamics": "8 features triaged in the fixture build (parity 8/8 on aem.live there); 2 interim: newsletter endpoint, commerce backend (owner)",
-    "dynamicsParity": "8 features ship in block JS as in the fixture build (parity 8/8 there); 2 interim (newsletter endpoint, commerce backend)"
+    "recreate": "archetype frescopa-atelier-index-html; source-spec compare 0 section deltas (fixture build run)",
+    "gate": "1440: pixel 0.32%, height delta 0, content 0, clipped 0 \u2014 round 2 PASS (fixture build run gate evidence)",
+    "blocks": "9 blocks (hero, intro, flavour-dna, calendar, feed, sustain, voices, cafe, cta) + header/footer, from the fixture",
+    "dynamics": "dynamic features triaged in the fixture build run (behaviours ship in block JS)",
+    "dynamicsParity": "behaviours ship in block JS as delivered and gated by the fixture build run"
   }
 }

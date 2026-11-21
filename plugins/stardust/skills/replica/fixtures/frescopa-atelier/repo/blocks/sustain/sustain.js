@@ -1,84 +1,64 @@
 /**
- * Sustain — "Kind by design" image + copy with chips (prototype `section.sustain`).
- *
- * Authored rows (any cell layout; flattened single-cell content is read the same way):
- *   - an image
- *   - eyebrow paragraph (before the heading), heading, lede paragraph(s)
- *   - a list → the chips
- *
- * Harness-only fallback (EW5): a bare-text cell is wrapped by moving its text nodes into a <p>.
+ * Fréscopa sustain — image + copy split.
+ * Authored: an image; eyebrow <p>, <h2>, lede <p>, chips <ul>.
  */
 
-function el(tag, className) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function el(tag, cls) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  return n;
 }
 
-function collectNodes(block) {
-  const out = [];
-  block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    let kids = [...cell.children];
-    if (kids.length === 1 && kids[0].tagName === 'P' && kids[0].querySelector('picture, img')
-      && kids[0].textContent.trim()) {
-      kids = [...kids[0].children];
-    }
-    if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) {
-      const p = el('p');
-      p.append(...cell.childNodes);
-      out.push(p);
-    }
-  });
-  return out;
+function wrap(node, cls, tag = 'div') {
+  const w = el(tag, cls);
+  if (node) w.append(node);
+  return w;
 }
 
-function revealAll(pairs) {
-  pairs.forEach(([node, delay]) => {
-    node.classList.add('reveal');
-    if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
-  });
-  import('../../scripts/reveal.js')
-    .then(({ reveal }) => pairs.forEach(([node, delay]) => reveal(node, delay)))
-    .catch(() => pairs.forEach(([node]) => node.classList.add('is-in')));
+function reveal(node, delay = 0) {
+  node.classList.add('reveal');
+  if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
+  if (!('IntersectionObserver' in window) || reduced()) {
+    node.classList.add('is-in');
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+  io.observe(node);
 }
+
+const precedes = (heading) => (n) => !!heading
+  && (heading.compareDocumentPosition(n) % 4) === Node.DOCUMENT_POSITION_PRECEDING;
 
 export default function decorate(block) {
-  if (block.dataset.decorated) return;
-  block.dataset.decorated = 'true';
-
-  const nodes = collectNodes(block);
-  const grid = el('div', 'container sustain-grid');
-  const media = el('div', 'sustain-media');
-  const copy = el('div', 'sustain-copy');
-  const eyebrow = el('div', 'eyebrow');
-  const title = el('div', 'sustain-title');
-  const lede = el('div', 'lede-wrap');
-  const chips = el('div', 'sustain-chips');
-  let seenHeading = false;
-
-  nodes.forEach((node) => {
-    const pic = node.matches('picture, img') ? node : node.querySelector('picture, img');
-    if (pic && !media.children.length) {
-      media.append(pic);
-      if (node !== pic && !node.textContent.trim()) node.remove();
-    } else if (/^H[1-6]$/.test(node.tagName) && !seenHeading) {
-      title.append(node);
-      seenHeading = true;
-    } else if (node.matches('ul, ol')) {
-      chips.append(node);
-    } else if (!seenHeading) {
-      eyebrow.append(node);
-    } else {
-      lede.append(node);
-    }
+  const picture = block.querySelector('picture') || block.querySelector('img');
+  const heading = block.querySelector('h1, h2, h3');
+  const isBefore = precedes(heading);
+  const copy = el('div');
+  let ledeDone = false;
+  [...block.querySelectorAll('p, ul, ol, h1, h2, h3')].forEach((n) => {
+    if (n.querySelector('picture, img') || n.closest('li')) return;
+    if (n.tagName === 'P' && !n.textContent.trim()) return;
+    if (n === heading) copy.append(wrap(n, 'sustain-heading'));
+    else if (n.tagName === 'UL' || n.tagName === 'OL') copy.append(wrap(n, 'chips'));
+    else if (isBefore(n)) copy.append(wrap(n, 'eyebrow'));
+    else if (!ledeDone) {
+      copy.append(wrap(n, 'lede'));
+      ledeDone = true;
+    } else copy.append(n);
   });
-
-  [eyebrow, title, lede, chips].forEach((part) => {
-    if (part.children.length) copy.append(part);
-  });
-  if (media.children.length) grid.append(media);
-  grid.append(copy);
-  block.replaceChildren(grid);
-  revealAll([[media, 0], [copy, 0.1]]);
+  const media = wrap(picture, 'sustain-media');
+  reveal(media);
+  reveal(copy, 0.1);
+  const split = el('div', 'container split');
+  split.append(media, copy);
+  block.replaceChildren(split);
 }

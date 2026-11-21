@@ -1,116 +1,85 @@
 import { getMetadata } from '../../scripts/aem.js';
 import { loadFragment } from '../fragment/fragment.js';
-import inlineIcons from '../../scripts/inline-icons.js';
 
 /**
- * Header — template-slotted from the gated prototype's chrome (replica C0).
- *
- * Authored `/nav` document, by section:
- *   1. brand: a link paragraph (home) + the light logo image + the dark logo image
- *   2. nav: one list of links
- *   3. tools: one list, each item `:icon: Label`
- * Behaviour (as observed on the source): solid ground after 12px of scroll, hides when
- * scrolling down past 480px and returns on scroll-up; below 901px the nav is an
- * off-canvas drawer toggled by the menu button (Escape / link click close it).
- *
- * @ew-exempt "Skip to content", "Menu", "Primary": fixed accessibility labels of block-owned
- *   controls (the source hard-codes them; nothing an author edits).
+ * Fréscopa header — template-slotted from the authored /nav document:
+ * section 1 = brand (home link + light logo + dark logo), section 2 = link list,
+ * section 3 = utility list (search, account, cart) rendered as icon buttons.
+ * Behaviour (source shared/app.js): is-scrolled past 12px, hidden while scrolling
+ * down past 480px, off-canvas mobile nav below 900px.
+ * @ew-exempt <li> utility labels (section 3) — rendered as icon-button aria-labels
  */
 
-const DESKTOP = window.matchMedia('(min-width: 901px)');
+const ICONS = {
+  search: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="7"/>'
+    + '<path d="m20 20-3.2-3.2" stroke-linecap="round"/></svg>',
+  account: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/>'
+    + '<path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" stroke-linecap="round"/></svg>',
+  cart: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.6" aria-hidden="true"><path d="M6 8h12l-1 11H7L6 8Z"/>'
+    + '<path d="M9 8a3 3 0 0 1 6 0" stroke-linecap="round"/></svg>',
+};
 
-function el(tag, className, attrs = {}) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
-  return node;
+function iconFor(label) {
+  const key = Object.keys(ICONS).find((k) => label.toLowerCase().includes(k));
+  return ICONS[key] || ICONS.search;
 }
 
-/** the default-content wrapper of each fragment section (or the section itself) */
-function sectionsOf(fragment) {
-  return [...fragment.children].map((s) => s.querySelector('.default-content-wrapper') || s);
+function el(tag, cls, attrs = {}) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+  return n;
 }
 
 function buildBrand(section) {
   const brand = el('div', 'header-brand');
   if (!section) return brand;
-  const link = section.querySelector('a[href]');
+  const link = section.querySelector('a');
   const pictures = [...section.querySelectorAll('picture, img')]
-    .filter((p) => p.tagName === 'PICTURE' || !p.closest('picture'));
+    .filter((p) => !(p.tagName === 'IMG' && p.closest('picture')));
+  const host = link || el('a', '', { href: '/' });
   if (link) {
-    const p = link.closest('p') || link;
-    // the link's own text becomes its accessible name, visually hidden (moved, not copied)
-    const label = el('span', 'sr-only');
-    [...link.childNodes].forEach((n) => label.append(n));
-    link.append(label);
-    pictures.forEach((pic, i) => {
-      // chrome logos are above the fold on every page: never lazy (the source loads them eagerly)
-      pic.querySelectorAll('img').forEach((img) => { img.loading = 'eager'; });
-      if (pic.tagName === 'IMG') pic.loading = 'eager';
-      const slot = el('span', i === 0 ? 'header-logo-light' : 'header-logo-dark');
-      // the dark (scrolled) logo is a duplicate of the brand mark: hidden from AT, as on the source
-      if (i > 0) pic.querySelectorAll('img').forEach((img) => img.setAttribute('aria-hidden', 'true'));
-      const host = pic.closest('p');
-      slot.append(pic);
-      link.append(slot);
-      if (host && !host.children.length && !host.textContent.trim()) host.remove();
+    host.setAttribute('aria-label', link.textContent);
+    [...host.childNodes].forEach((node) => {
+      const span = el('span', 'header-brand-text');
+      node.replaceWith(span);
+      span.append(node);
     });
-    brand.append(p);
-  } else {
-    pictures.forEach((pic) => brand.append(pic.closest('p') || pic));
   }
+  pictures.forEach((pic, i) => {
+    const slot = el('span', `header-logo ${i === 0 ? 'header-logo-light' : 'header-logo-dark'}`);
+    if (i > 0) slot.setAttribute('aria-hidden', 'true');
+    slot.append(pic);
+    host.append(slot);
+  });
+  brand.append(host);
   return brand;
 }
 
-function buildTools(section) {
+function buildUtils(section, toggle) {
   const utils = el('div', 'header-utils');
-  const list = section && section.querySelector('ul');
-  if (list) {
-    [...list.querySelectorAll(':scope > li')].forEach((li, i) => {
-      const icon = li.querySelector('.icon');
-      const label = el('span', 'sr-only', { id: `header-tool-${i}` });
-      [...li.childNodes].filter((n) => n !== icon).forEach((n) => label.append(n));
-      const btn = el('button', 'iconbtn', { type: 'button', 'aria-labelledby': label.id });
-      if (icon) btn.append(icon);
-      li.append(btn, label);
-    });
-    utils.append(list);
-  }
-  const toggle = el('button', 'nav-toggle', {
-    type: 'button', 'aria-label': 'Menu', 'aria-expanded': 'false', 'aria-controls': 'nav',
+  const items = section ? [...section.querySelectorAll('li')] : [];
+  items.forEach((li) => {
+    const label = li.textContent.trim();
+    const btn = el('button', 'iconbtn', { type: 'button', 'aria-label': label });
+    btn.innerHTML = iconFor(label);
+    utils.append(btn);
   });
-  toggle.append(el('span'), el('span'));
   utils.append(toggle);
   return utils;
 }
 
-function initDrawer(bar, nav, toggle) {
-  const set = (open) => {
-    nav.classList.toggle('is-open', open);
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    document.documentElement.classList.toggle('nav-open', open);
-  };
-  toggle.addEventListener('click', () => set(!nav.classList.contains('is-open')));
-  nav.addEventListener('click', (e) => {
-    if (e.target.closest('a')) set(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && nav.classList.contains('is-open')) {
-      set(false);
-      toggle.focus();
-    }
-  });
-  DESKTOP.addEventListener('change', () => set(false));
-}
-
-function initMorph(bar) {
+function initScroll(block) {
   let last = 0;
   let ticking = false;
   const update = () => {
     const y = window.scrollY;
-    bar.classList.toggle('is-scrolled', y > 12);
-    if (y > 480 && y > last + 4) bar.classList.add('is-hidden');
-    else if (y < last - 4 || y < 480) bar.classList.remove('is-hidden');
+    block.classList.toggle('is-scrolled', y > 12);
+    if (y > 480 && y > last + 4) block.classList.add('is-hidden');
+    else if (y < last - 4 || y < 480) block.classList.remove('is-hidden');
     last = y;
     ticking = false;
   };
@@ -123,6 +92,21 @@ function initMorph(bar) {
   update();
 }
 
+function initToggle(toggle, nav) {
+  const set = (open) => {
+    nav.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.documentElement.classList.toggle('nav-open', open);
+  };
+  toggle.addEventListener('click', () => set(!nav.classList.contains('is-open')));
+  nav.addEventListener('click', (e) => {
+    if (e.target.closest('a')) set(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') set(false);
+  });
+}
+
 /**
  * loads and decorates the header
  * @param {Element} block The header block element
@@ -131,35 +115,30 @@ export default async function decorate(block) {
   const navMeta = getMetadata('nav');
   const navPath = navMeta ? new URL(navMeta, window.location).pathname : '/nav';
   const fragment = await loadFragment(navPath);
+  block.textContent = '';
   if (!fragment) return;
 
-  const [brandSection, navSection, toolsSection] = sectionsOf(fragment);
+  const [brandSec, linksSec, toolsSec] = fragment.querySelectorAll(':scope > .section');
 
   const inner = el('div', 'container header-inner');
-  const nav = el('nav', 'nav', { id: 'nav', 'aria-label': 'Primary' });
-  if (navSection) {
-    let next = navSection.firstElementChild;
-    while (next) {
-      const current = next;
-      next = current.nextElementSibling;
-      nav.append(current);
-    }
+  const nav = el('nav', 'nav', { id: 'primary-nav', 'aria-label': 'Primary' });
+  const list = linksSec && linksSec.querySelector('ul');
+  if (list) {
+    list.querySelectorAll(':scope > li > p').forEach((p) => p.replaceWith(...p.childNodes));
+    nav.append(list);
   }
-  const utils = buildTools(toolsSection);
-  inner.append(buildBrand(brandSection), nav, utils);
 
-  const main = document.querySelector('main');
-  if (main && !main.id) main.id = 'main';
-  const skip = el('a', 'skip-link', { href: '#main' });
-  skip.textContent = 'Skip to content';
+  const toggle = el('button', 'nav-toggle', {
+    type: 'button',
+    'aria-label': 'Menu',
+    'aria-expanded': 'false',
+    'aria-controls': 'primary-nav',
+  });
+  toggle.append(el('span'), el('span'));
 
-  block.textContent = '';
-  block.setAttribute('data-header', '');
+  inner.append(buildBrand(brandSec), nav, buildUtils(toolsSec, toggle));
   block.append(inner);
-  // the skip link sits before the header landmark, as in the source
-  if (!document.querySelector('body > .skip-link')) document.body.prepend(skip);
-  await inlineIcons(utils, 20);
 
-  initDrawer(block, nav, utils.querySelector('.nav-toggle'));
-  initMorph(block);
+  initScroll(block);
+  initToggle(toggle, nav);
 }

@@ -1,51 +1,47 @@
-/* Intro — prototype `.intro`, re-scoped under the block; mobile-first (901). */
 .intro {
+  position: relative;
   padding-block: clamp(2.5rem, 1.5rem + 3.5vw, 4.5rem);
   background: var(--paper);
-  scroll-margin-top: 92px;
 }
 
 .intro .intro-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.2rem;
-  align-items: start;
-}
-
-.intro .intro-statement {
-  margin-top: 1.2rem;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: end;
 }
 
 .intro .intro-statement :is(h1, h2, h3) {
+  margin-top: 1.2rem;
   font-size: var(--fs-h2);
   font-weight: 700;
   line-height: 1.08;
 }
 
 .intro .intro-statement em {
-  color: var(--terracotta);
   font-style: normal;
   font-weight: 800;
+  color: var(--terracotta);
 }
 
 .intro .intro-body {
   padding-bottom: 0.3rem;
 }
 
-.intro .intro-copy p {
+.intro .intro-body p:where(:not(.text-link p)) {
   max-width: 42ch;
-  color: var(--ink-soft);
   font-size: var(--fs-body-lg);
+  color: var(--ink-soft);
 }
 
-.intro .intro-link {
+.intro .text-link {
   margin-top: 1.4rem;
 }
 
-@media (width >= 901px) {
+@media (width <= 900px) {
   .intro .intro-grid {
-    grid-template-columns: 1.05fr 0.95fr;
-    gap: clamp(2rem, 6vw, 5rem);
-    align-items: end;
+    grid-template-columns: 1fr;
+    gap: 1.2rem;
+    align-items: start;
   }
 }

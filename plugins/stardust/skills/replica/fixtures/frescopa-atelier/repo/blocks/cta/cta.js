@@ -1,80 +1,74 @@
 /**
- * CTA — closing promise band on charcoal (prototype `section.cta`).
- *
- * Authored rows (any cell layout; flattened single-cell content is read the same way):
- *   - the promise paragraph (italic run = the amber accent)
- *   - the sub paragraph
- *   - button paragraphs (bold link = terracotta, italic link = ghost on dark)
- * Text paragraphs are classified by order: the first is the promise, the rest the sub line.
- *
- * Harness-only fallback (EW5): a bare-text cell is wrapped by moving its text nodes into a <p>.
- *
- * @ew-exempt "→" — decorative CTA arrow (aria-hidden), appended as text as on the source.
+ * Fréscopa closing CTA — promise line (an <em> run is the accent), sub line,
+ * CTA paragraphs (<strong> link = primary, <em> link = secondary).
  */
 
-function el(tag, className) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function addArrow(host) {
+  if (!host || host.querySelector('.arrow') || /→\s*$/.test(host.textContent)) return;
+  const span = document.createElement('span');
+  span.className = 'arrow';
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = '→';
+  host.append(' ', span);
 }
 
-function collectNodes(block) {
-  const out = [];
-  block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    const kids = [...cell.children];
-    if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) {
-      const p = el('p');
-      p.append(...cell.childNodes);
-      out.push(p);
-    }
-  });
-  return out;
+function el(tag, cls) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  return n;
 }
 
-function revealAll(pairs) {
-  pairs.forEach(([node, delay]) => {
-    node.classList.add('reveal');
-    if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
-  });
-  import('../../scripts/reveal.js')
-    .then(({ reveal }) => pairs.forEach(([node, delay]) => reveal(node, delay)))
-    .catch(() => pairs.forEach(([node]) => node.classList.add('is-in')));
+function wrap(node, cls, tag = 'div') {
+  const w = el(tag, cls);
+  if (node) w.append(node);
+  return w;
 }
 
-const isButtonP = (n) => n.tagName === 'P'
-  && !!n.querySelector('a.button, strong a, em a, a strong, a em');
-
-/** the source CTA arrow is text: append span.arrow[aria-hidden] "→" (re-entrant) */
-function addArrows(scope) {
-  scope.querySelectorAll('a.button.primary, a.button.accent').forEach((a) => {
-    if (a.querySelector('.arrow')) return;
-    const arrow = document.createElement('span');
-    arrow.className = 'arrow';
-    arrow.setAttribute('aria-hidden', 'true');
-    arrow.append('→');
-    a.append(arrow);
-  });
+function reveal(node, delay = 0) {
+  node.classList.add('reveal');
+  if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
+  if (!('IntersectionObserver' in window) || reduced()) {
+    node.classList.add('is-in');
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+  io.observe(node);
 }
 
 export default function decorate(block) {
-  if (block.dataset.decorated) return;
-  block.dataset.decorated = 'true';
-
-  const nodes = collectNodes(block);
+  const paras = [...block.querySelectorAll('p')].filter((p) => p.textContent.trim());
+  const ctas = paras.filter((p) => p.querySelector('a'));
+  const texts = paras.filter((p) => !ctas.includes(p));
   const inner = el('div', 'container cta-inner');
-  const promise = el('div', 'cta-promise');
-  const sub = el('div', 'cta-sub');
-  const actions = el('div', 'cta-actions');
-  nodes.forEach((node) => {
-    if (isButtonP(node)) actions.append(node);
-    else if (!promise.children.length) promise.append(node);
-    else sub.append(node);
+  const heading = block.querySelector('h1, h2, h3');
+  if (heading) {
+    const w = wrap(heading, 'cta-promise');
+    reveal(w);
+    inner.append(w);
+  }
+  texts.forEach((p, i) => {
+    const promise = i === 0 && !heading;
+    const w = wrap(p, promise ? 'cta-promise' : 'cta-sub');
+    reveal(w, promise ? 0 : 0.08);
+    inner.append(w);
   });
-  [promise, sub, actions].forEach((part) => {
-    if (part.children.length) inner.append(part);
-  });
+  if (ctas.length) {
+    const actions = el('div', 'cta-actions');
+    ctas.forEach((p) => {
+      actions.append(p);
+      addArrow(p.querySelector('a.primary, strong a'));
+    });
+    reveal(actions, 0.16);
+    inner.append(actions);
+  }
   block.replaceChildren(inner);
-  addArrows(block);
-  revealAll([[promise, 0], [sub, 0.08], [actions, 0.16]]);
 }

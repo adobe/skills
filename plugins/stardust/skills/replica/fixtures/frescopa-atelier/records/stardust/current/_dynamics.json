@@ -1,7 +1,7 @@
 {
  "_provenance": {
   "writtenBy": "stardust:dynamics detect",
-  "writtenAt": "2026-11-21T07:20:06.112Z",
+  "writtenAt": "2026-11-21T06:52:01.031Z",
   "settleMs": 5000,
   "width": 1440,
   "urls": [
@@ -68,9 +68,9 @@
     "fonts.gstatic.com"
    ],
    "scripts": [
-    "https://markszulc.github.io/frescopa-atelier/shared/hero.js",
     "https://markszulc.github.io/frescopa-atelier/shared/flavor-dna.js",
-    "https://markszulc.github.io/frescopa-atelier/shared/app.js"
+    "https://markszulc.github.io/frescopa-atelier/shared/app.js",
+    "https://markszulc.github.io/frescopa-atelier/shared/hero.js"
    ],
    "firstPartyApi": [],
    "thirdPartyXhr": [],

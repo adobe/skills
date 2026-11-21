@@ -1,4 +1,3 @@
-[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 504 ms
 
 Visual diff @ 1440px (profile "generic") — screenshots in stardust/replica/gates/frescopa-atelier-index-html-1440/vdiff-iter1/
 

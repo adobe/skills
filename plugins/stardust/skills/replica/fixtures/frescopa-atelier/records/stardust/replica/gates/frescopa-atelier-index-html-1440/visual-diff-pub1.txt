@@ -263,7 +263,7 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
   "viewport": 1440,
   "blankRender": false,
   "mainHeight": 6114,
-  "textLen": 3430,
+  "textLen": 3452,
   "images": [
    {
     "src": "media_1385c596f447e63d360b9317bc115063b2bf05528.svg?width=2000&format=webply&optimize=medium",
@@ -426,6 +426,10 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
     "color": "oklch(0.79 0.128 74)"
    },
    {
+    "text": "Scroll",
+    "color": "oklch(0.945 0.016 80)"
+   },
+   {
     "text": "Ritual, meet intelligenc",
     "color": "oklch(0.605 0.116 44)"
    },
@@ -447,10 +451,6 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
    },
    {
     "text": "Mood-aware brewing",
-    "color": "oklch(0.605 0.116 44)"
-   },
-   {
-    "text": "Tap a day to see what it",
     "color": "oklch(0.605 0.116 44)"
    }
   ],
@@ -492,8 +492,8 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
     "left": 160
    },
    {
-    "sel": "voices-quote",
-    "width": 900,
+    "sel": "eyebrow",
+    "width": 1024,
     "left": 208
    },
    {

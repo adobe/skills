@@ -1,11 +1,10 @@
-/* CTA — prototype `.cta`, re-scoped under the block. */
 .cta {
   position: relative;
   overflow: hidden;
   padding-block: clamp(5rem, 9vw, 9.5rem);
-  background: var(--charcoal);
-  color: var(--cream);
   text-align: center;
+  color: var(--cream);
+  background: var(--charcoal);
 }
 
 .cta::before {
@@ -13,12 +12,11 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(
-      60% 80% at 50% 120%,
-      color-mix(in oklch, var(--amber) 20%, transparent),
-      transparent 70%
-    );
+  background: radial-gradient(
+    60% 80% at 50% 120%,
+    color-mix(in oklch, var(--amber) 20%, transparent),
+    transparent 70%
+  );
 }
 
 .cta .cta-inner {
@@ -28,17 +26,23 @@
 .cta .cta-promise {
   max-width: 20ch;
   margin-inline: auto;
-  color: var(--cream);
   font-family: var(--font-display);
   font-size: clamp(2.2rem, 5.4vw, 4.2rem);
   font-weight: 700;
   line-height: 1.08;
+  color: var(--cream);
+}
+
+.cta .cta-promise :is(h1, h2, h3) {
+  font: inherit;
+  letter-spacing: normal;
+  color: inherit;
 }
 
 .cta .cta-promise em {
-  color: var(--amber);
   font-style: normal;
   font-weight: 800;
+  color: var(--amber);
 }
 
 .cta .cta-sub {
@@ -52,4 +56,16 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.9rem;
+}
+
+.cta .cta-actions p {
+  display: flex;
+}
+
+.cta a.button.secondary {
+  border-color: color-mix(in oklch, var(--cream) 34%, transparent);
+}
+
+.cta a.button.secondary:hover {
+  border-color: var(--cream);
 }

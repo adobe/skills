@@ -6,8 +6,8 @@
     "rc": 0,
     "diff": "stardust/replica/gates/frescopa-atelier-index-html-1440/diff-pub1.png",
     "json": "stardust/replica/gates/frescopa-atelier-index-html-1440/pixel-pub1.json",
-    "pct": 0.75,
-    "alignedPct": 0.75,
+    "pct": 0.78,
+    "alignedPct": 0.78,
     "alignedUsed": false,
     "totalShift": 0,
     "steps": [],
@@ -18,7 +18,7 @@
   },
   "reference": {
     "origin": "frozen",
-    "capturedAt": "2026-11-21T07:15:36.465Z",
+    "capturedAt": "2026-11-21T06:48:55.632Z",
     "primed": true,
     "stable": true,
     "maskArg": ""
@@ -46,6 +46,6 @@
     }
   },
   "structural": 0,
-  "nothingLost": 7,
-  "at": "2026-11-21T07:54:10.082Z"
+  "nothingLost": 0,
+  "at": "2026-11-21T07:01:00.511Z"
 }

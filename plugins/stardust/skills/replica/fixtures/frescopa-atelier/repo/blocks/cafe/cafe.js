@@ -1,64 +1,56 @@
 /**
- * Café — full-bleed photograph band with copy and a cream CTA (prototype `section.cafe`).
- *
- * Authored rows (any cell layout; flattened single-cell content is read the same way):
- *   - an image (the band's photograph)
- *   - eyebrow paragraph (before the heading), heading, body paragraph(s)
- *   - a button paragraph (bold + italic link = cream button)
- *
- * Behaviour carried from the source (app.js): 14 px parallax on the photograph for pointer
- * devices; scroll reveal on the copy.
- *
- * Harness-only fallback (EW5): a bare-text cell is wrapped by moving its text nodes into a <p>.
- *
- * @ew-exempt "→" — decorative CTA arrow (aria-hidden), appended as text as on the source.
+ * Fréscopa café band — full-bleed image with a scrim and a copy column.
+ * Authored: an image; eyebrow <p>, <h2>, body <p>, CTA paragraph (<strong> link).
  */
 
-const PARALLAX = '14';
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function el(tag, className) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
+function addArrow(host) {
+  if (!host || host.querySelector('.arrow') || /→\s*$/.test(host.textContent)) return;
+  const span = document.createElement('span');
+  span.className = 'arrow';
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = '→';
+  host.append(' ', span);
 }
 
-function collectNodes(block) {
-  const out = [];
-  block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    let kids = [...cell.children];
-    if (kids.length === 1 && kids[0].tagName === 'P' && kids[0].querySelector('picture, img')
-      && kids[0].textContent.trim()) {
-      kids = [...kids[0].children];
-    }
-    if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) {
-      const p = el('p');
-      p.append(...cell.childNodes);
-      out.push(p);
-    }
-  });
-  return out;
+function el(tag, cls) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  return n;
 }
 
-function revealAll(pairs) {
-  pairs.forEach(([node, delay]) => {
-    node.classList.add('reveal');
-    if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
-  });
-  import('../../scripts/reveal.js')
-    .then(({ reveal }) => pairs.forEach(([node, delay]) => reveal(node, delay)))
-    .catch(() => pairs.forEach(([node]) => node.classList.add('is-in')));
+function wrap(node, cls, tag = 'div') {
+  const w = el(tag, cls);
+  if (node) w.append(node);
+  return w;
 }
 
-function parallax(img) {
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce || window.matchMedia('(hover: none)').matches) return;
+function reveal(node, delay = 0) {
+  node.classList.add('reveal');
+  if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
+  if (!('IntersectionObserver' in window) || reduced()) {
+    node.classList.add('is-in');
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+  io.observe(node);
+}
+
+function parallax(img, amount) {
+  if (!img || reduced() || window.matchMedia('(hover: none)').matches) return;
   let ticking = false;
   const update = () => {
     const vh = window.innerHeight;
-    const rect = img.getBoundingClientRect();
-    const progress = (rect.top + rect.height / 2 - vh / 2) / vh;
-    const amount = parseFloat(img.dataset.parallax) || 24;
+    const r = img.getBoundingClientRect();
+    const progress = (r.top + r.height / 2 - vh / 2) / vh;
     img.style.transform = `translate3d(0,${(-progress * amount).toFixed(1)}px,0)`;
     ticking = false;
   };
@@ -72,65 +64,28 @@ function parallax(img) {
   update();
 }
 
-const isButtonP = (n) => n.tagName === 'P'
-  && !!n.querySelector('a.button, strong a, em a, a strong, a em');
-
-/** the source CTA arrow is text: append span.arrow[aria-hidden] "→" (re-entrant) */
-function addArrows(scope) {
-  scope.querySelectorAll('a.button.primary, a.button.accent').forEach((a) => {
-    if (a.querySelector('.arrow')) return;
-    const arrow = document.createElement('span');
-    arrow.className = 'arrow';
-    arrow.setAttribute('aria-hidden', 'true');
-    arrow.append('→');
-    a.append(arrow);
-  });
-}
+const precedes = (heading) => (n) => !!heading
+  && (heading.compareDocumentPosition(n) % 4) === Node.DOCUMENT_POSITION_PRECEDING;
 
 export default function decorate(block) {
-  if (block.dataset.decorated) return;
-  block.dataset.decorated = 'true';
-  if (!document.getElementById('cafe')) block.id = 'cafe';
-
-  const nodes = collectNodes(block);
+  const picture = block.querySelector('picture') || block.querySelector('img');
+  const heading = block.querySelector('h1, h2, h3');
+  const isBefore = precedes(heading);
+  const paras = [...block.querySelectorAll('p')]
+    .filter((p) => !p.querySelector('picture, img') && p.textContent.trim());
   const media = el('div', 'cafe-media');
-  const inner = el('div', 'container cafe-inner');
-  const eyebrow = el('div', 'eyebrow eyebrow-light');
-  const title = el('div', 'cafe-title');
-  const body = el('div', 'cafe-body');
-  const actions = el('div', 'cafe-actions');
-  let seenHeading = false;
-  let picture = null;
-
-  nodes.forEach((node) => {
-    const pic = node.matches('picture, img') ? node : node.querySelector('picture, img');
-    if (pic && !picture) {
-      picture = pic;
-      media.append(pic);
-      if (node !== pic && !node.textContent.trim()) node.remove();
-    } else if (/^H[1-6]$/.test(node.tagName) && !seenHeading) {
-      title.append(node);
-      seenHeading = true;
-    } else if (isButtonP(node)) {
-      actions.append(node);
-    } else if (!seenHeading) {
-      eyebrow.append(node);
-    } else {
-      body.append(node);
-    }
-  });
-
+  if (picture) media.append(picture);
   media.append(el('div', 'cafe-scrim'));
-  [eyebrow, title, body, actions].forEach((part) => {
-    if (part.children.length) inner.append(part);
+  const inner = el('div', 'container cafe-inner');
+  paras.filter(isBefore).forEach((p) => inner.append(wrap(p, 'eyebrow eyebrow-light')));
+  if (heading) inner.append(wrap(heading, 'cafe-title'));
+  paras.filter((p) => !isBefore(p)).forEach((p) => {
+    inner.append(p.querySelector('a') ? wrap(p, 'cafe-actions') : wrap(p, 'cafe-body'));
+    addArrow(p.querySelector('a.primary, strong a'));
   });
+  reveal(inner);
   block.replaceChildren(media, inner);
-  addArrows(block);
-  revealAll([[inner, 0]]);
-
-  const img = media.querySelector('img');
-  if (img) {
-    img.dataset.parallax = PARALLAX;
-    parallax(img);
-  }
+  const section = block.closest('.section');
+  if (section && !section.id) section.id = 'cafe';
+  parallax(media.querySelector('img'), 14);
 }

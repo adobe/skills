@@ -1,5 +1,3 @@
-[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 100 ms
-[live-session] waiting to pace live navigations to {{BRANCH}}--{{SITE}}--{{ORG}}.aem.page (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 218 ms
 
 Visual diff @ 1440px (profile "generic") — screenshots in stardust/replica/gates/frescopa-atelier-index-html-1440/vdiff-pub2/
 
@@ -265,7 +263,7 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
   "viewport": 1440,
   "blankRender": false,
   "mainHeight": 6114,
-  "textLen": 3444,
+  "textLen": 3452,
   "images": [
    {
     "src": "media_1385c596f447e63d360b9317bc115063b2bf05528.svg?width=2000&format=webply&optimize=medium",
@@ -428,6 +426,10 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
     "color": "oklch(0.79 0.128 74)"
    },
    {
+    "text": "Scroll",
+    "color": "oklch(0.945 0.016 80)"
+   },
+   {
     "text": "Ritual, meet intelligenc",
     "color": "oklch(0.605 0.116 44)"
    },
@@ -449,10 +451,6 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
    },
    {
     "text": "Mood-aware brewing",
-    "color": "oklch(0.605 0.116 44)"
-   },
-   {
-    "text": "Tap a day to see what it",
     "color": "oklch(0.605 0.116 44)"
    }
   ],
@@ -494,8 +492,8 @@ Full metrics JSON (compare source vs build: heading colors, eyebrow colors, imag
     "left": 160
    },
    {
-    "sel": "voices-quote",
-    "width": 900,
+    "sel": "eyebrow",
+    "width": 1024,
     "left": 208
    },
    {

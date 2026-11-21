@@ -1,116 +1,66 @@
 /**
- * Hero — template-slotted from the gated prototype (`section.hero`).
- *
- * Authored rows (any cell order; flattened single-cell content is read the same way):
- *   - an image (the art-directed background photograph)
- *   - a short paragraph BEFORE the heading → eyebrow
- *   - the heading (the page's single h1)
- *   - paragraphs AFTER the heading → lead
- *   - button paragraphs (bold link = terracotta, italic link = ghost) → actions
- *   - a plain link paragraph → the scroll cue (e.g. "Scroll" → #intro)
- *
- * Behaviour carried from the source (hero.js / app.js): art direction at ≥ 760 px — the copy
- * top aligns to the product top and the copy column stops at the product's left edge (focal
- * 50% 44%, product-top 0.20, product-left 0.43, gap 28, column 280–560); 12 px parallax on the
- * photograph for pointer devices; scroll reveal on the copy.
- *
- * Harness-only fallback (EW5): a cell holding bare text with no element is wrapped by moving
- * its text nodes into a <p>; DA content always delivers elements, so it never fires there.
- *
- * @ew-exempt "→" — decorative CTA arrow (aria-hidden), appended as text as on the source.
+ * Fréscopa hero — template-slotted, cinematic lead.
+ * Authored: an image, then eyebrow <p>, <h1>, lead <p>, CTA paragraphs
+ * (<strong> link = primary, <em> link = secondary), in any cell layout.
+ * Behaviour (source hero.js / app.js): art-directed copy column computed from the
+ * image's product position (object-fit: cover math), image parallax, scroll reveal.
  */
 
-const ART = {
-  focal: '50% 44%',
-  productTop: '0.20',
-  productLeft: '0.43',
-  parallax: '12',
-};
-const MOBILE = 760;
-const GAP = 28;
-const MIN_COL = 280;
-const MAX_COL = 560;
+const FOCAL = [0.5, 0.44];
+const PRODUCT_TOP = 0.2;
+const PRODUCT_LEFT = 0.43;
+const PARALLAX = 12;
 
-function el(tag, className) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function addArrow(host) {
+  if (!host || host.querySelector('.arrow') || /→\s*$/.test(host.textContent)) return;
+  const span = document.createElement('span');
+  span.className = 'arrow';
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = '→';
+  host.append(' ', span);
 }
 
-/** every authored element of every cell, in order (media-led <p> wrappers expanded) */
-function collectNodes(block) {
-  const out = [];
-  block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    let kids = [...cell.children];
-    if (kids.length === 1 && kids[0].tagName === 'P' && kids[0].querySelector('picture, img')
-      && kids[0].textContent.trim()) {
-      kids = [...kids[0].children];
-    }
-    if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) {
-      const p = el('p');
-      p.append(...cell.childNodes);
-      out.push(p);
-    }
-  });
-  return out;
+function el(tag, cls, attrs = {}) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+  return n;
 }
 
-function revealAll(pairs) {
-  pairs.forEach(([node, delay]) => {
-    node.classList.add('reveal');
-    if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
-  });
-  import('../../scripts/reveal.js')
-    .then(({ reveal }) => pairs.forEach(([node, delay]) => reveal(node, delay)))
-    .catch(() => pairs.forEach(([node]) => node.classList.add('is-in')));
+function wrap(node, cls) {
+  const w = el('div', cls);
+  if (node) w.append(node);
+  return w;
 }
 
-const isButtonP = (n) => n.tagName === 'P'
-  && !!n.querySelector('a.button, strong a, em a, a strong, a em');
-const isLinkP = (n) => n.tagName === 'P' && n.querySelector('a')
-  && n.textContent.trim() === n.querySelector('a').textContent.trim();
-
-function ratio(v) {
-  return v.includes('%') ? parseFloat(v) / 100 : parseFloat(v);
-}
-
-/** copy top + column width from the product position (source hero.js) */
-function artDirect(hero, img, inner) {
-  const { width: cw, height: ch } = hero.getBoundingClientRect();
-  if (cw < MOBILE) {
-    hero.style.removeProperty('--hero-copy-top');
-    hero.style.removeProperty('--hero-copy-max');
+function reveal(node, delay = 0) {
+  node.classList.add('reveal');
+  if (delay) node.style.setProperty('--reveal-delay', `${delay}s`);
+  if (!('IntersectionObserver' in window) || reduced()) {
+    node.classList.add('is-in');
     return;
   }
-  const [fxs, fys] = ART.focal.split(/\s+/);
-  const fx = ratio(fxs);
-  const fy = ratio(fys ?? fxs);
-  img.style.objectPosition = `${fx * 100}% ${fy * 100}%`;
-  const iw = img.naturalWidth || parseFloat(img.getAttribute('width')) || 1;
-  const ih = img.naturalHeight || parseFloat(img.getAttribute('height')) || 1;
-  const scale = Math.max(cw / iw, ch / ih);
-  const dw = iw * scale;
-  const dh = ih * scale;
-  const y = (ch - dh) * fy + parseFloat(ART.productTop) * dh;
-  hero.style.setProperty('--hero-copy-top', `${Math.max(0, Math.round(y))}px`);
-  const x = (cw - dw) * fx + parseFloat(ART.productLeft) * dw;
-  const padL = parseFloat(getComputedStyle(inner).paddingLeft) || 0;
-  const left = inner.getBoundingClientRect().left + padL;
-  const col = Math.max(MIN_COL, Math.min(MAX_COL, x - left - GAP));
-  hero.style.setProperty('--hero-copy-max', `${Math.round(col)}px`);
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+  io.observe(node);
 }
 
 function parallax(img) {
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce || window.matchMedia('(hover: none)').matches) return;
+  if (!img || reduced() || window.matchMedia('(hover: none)').matches) return;
   let ticking = false;
   const update = () => {
     const vh = window.innerHeight;
-    const rect = img.getBoundingClientRect();
-    const progress = (rect.top + rect.height / 2 - vh / 2) / vh;
-    const amount = parseFloat(img.dataset.parallax) || 24;
-    img.style.transform = `translate3d(0,${(-progress * amount).toFixed(1)}px,0)`;
+    const r = img.getBoundingClientRect();
+    const progress = (r.top + r.height / 2 - vh / 2) / vh;
+    img.style.transform = `translate3d(0,${(-progress * PARALLAX).toFixed(1)}px,0)`;
     ticking = false;
   };
   window.addEventListener('scroll', () => {
@@ -123,107 +73,109 @@ function parallax(img) {
   update();
 }
 
-/** the source CTA arrow is text: append span.arrow[aria-hidden] "→" (re-entrant) */
-function addArrows(scope) {
-  scope.querySelectorAll('a.button.primary, a.button.accent').forEach((a) => {
-    if (a.querySelector('.arrow')) return;
-    const arrow = document.createElement('span');
-    arrow.className = 'arrow';
-    arrow.setAttribute('aria-hidden', 'true');
-    arrow.append('→');
-    a.append(arrow);
-  });
+function artDirect(block, img, inner) {
+  const apply = () => {
+    const { width: cw, height: ch } = block.getBoundingClientRect();
+    if (cw < 760) {
+      block.style.removeProperty('--hero-copy-top');
+      block.style.removeProperty('--hero-copy-max');
+      return;
+    }
+    const [fx, fy] = FOCAL;
+    img.style.objectPosition = `${fx * 100}% ${fy * 100}%`;
+    const iw = img.naturalWidth || 1408;
+    const ih = img.naturalHeight || 768;
+    const scale = Math.max(cw / iw, ch / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const top = (ch - dh) * fy + PRODUCT_TOP * dh;
+    block.style.setProperty('--hero-copy-top', `${Math.max(0, Math.round(top))}px`);
+    const x = (cw - dw) * fx + PRODUCT_LEFT * dw;
+    const pad = parseFloat(getComputedStyle(inner).paddingLeft) || 0;
+    const left = inner.getBoundingClientRect().left + pad;
+    const col = Math.max(280, Math.min(560, x - left - 28));
+    block.style.setProperty('--hero-copy-max', `${Math.round(col)}px`);
+  };
+  if (!img.complete) img.addEventListener('load', apply, { once: true });
+  apply();
+  // the section is display:none while it loads: re-apply whenever the hero's box changes
+  // (first paint, then viewport resizes)
+  let lastWidth = -1;
+  let lastHeight = -1;
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (Math.round(width) === lastWidth && Math.round(height) === lastHeight) return;
+      lastWidth = Math.round(width);
+      lastHeight = Math.round(height);
+      apply();
+    }).observe(block);
+  } else {
+    let t;
+    window.addEventListener('resize', () => {
+      clearTimeout(t);
+      t = setTimeout(apply, 120);
+    }, { passive: true });
+  }
 }
 
 export default function decorate(block) {
-  if (block.dataset.decorated) return;
-  block.dataset.decorated = 'true';
+  const picture = block.querySelector('picture') || block.querySelector('img');
+  const heading = block.querySelector('h1, h2, h3');
+  const paras = [...block.querySelectorAll('p')]
+    .filter((p) => !p.querySelector('picture, img') && p.textContent.trim());
+  const ctas = paras.filter((p) => p.querySelector('a'));
+  const texts = paras.filter((p) => !ctas.includes(p));
+  const isBefore = (p) => heading
+    && (heading.compareDocumentPosition(p) % 4) === Node.DOCUMENT_POSITION_PRECEDING;
+  const eyebrows = texts.filter(isBefore);
+  const leads = texts.filter((p) => !eyebrows.includes(p));
 
-  const nodes = collectNodes(block);
   const media = el('div', 'hero-media');
-  const inner = el('div', 'container hero-inner');
-  const eyebrow = el('div', 'eyebrow eyebrow-light');
-  const title = el('div', 'hero-title');
-  const lead = el('div', 'hero-lead');
-  const actions = el('div', 'hero-actions');
-  const scroll = el('div', 'hero-scroll');
-  let picture = null;
-  let seenHeading = false;
-
-  nodes.forEach((node) => {
-    const pic = node.matches('picture, img') ? node : node.querySelector('picture, img');
-    if (pic && !picture) {
-      picture = pic;
-      media.append(pic);
-      if (node !== pic && !node.textContent.trim() && !node.querySelector('picture, img')) {
-        node.remove();
-      }
-      return;
-    }
-    if (/^H[1-6]$/.test(node.tagName)) {
-      if (!seenHeading) title.append(node);
-      else lead.append(node);
-      seenHeading = true;
-    } else if (isButtonP(node)) {
-      actions.append(node);
-    } else if (isLinkP(node) && !scroll.children.length) {
-      scroll.append(node);
-    } else if (!seenHeading) {
-      eyebrow.append(node);
-    } else {
-      lead.append(node);
-    }
-  });
-
+  if (picture) media.append(picture);
   media.append(el('div', 'hero-scrim'));
-  [eyebrow, title, lead, actions].forEach((part) => {
-    if (part.children.length) inner.append(part);
-  });
-  block.replaceChildren(media, inner);
 
-  if (scroll.children.length) {
-    const link = scroll.querySelector('a');
-    link.setAttribute('aria-label', 'Scroll to explore');
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', '18');
-    svg.setAttribute('height', '18');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1.6');
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(ns, 'path');
-    path.setAttribute('d', 'M12 5v14M6 13l6 6 6-6');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    svg.append(path);
-    scroll.append(svg);
-    scroll.addEventListener('click', (e) => {
-      if (!e.target.closest('a')) link.click();
+  const inner = el('div', 'container hero-inner');
+  eyebrows.forEach((p) => {
+    const w = wrap(p, 'eyebrow eyebrow-light');
+    reveal(w);
+    inner.append(w);
+  });
+  if (heading) {
+    const w = wrap(heading, 'hero-title');
+    reveal(w, 0.08);
+    inner.append(w);
+  }
+  leads.forEach((p) => {
+    const w = wrap(p, 'hero-lead');
+    reveal(w, 0.16);
+    inner.append(w);
+  });
+  if (ctas.length) {
+    const actions = el('div', 'hero-actions');
+    ctas.forEach((p) => {
+      actions.append(p);
+      addArrow(p.querySelector('a.primary, strong a'));
     });
-    block.append(scroll);
+    reveal(actions, 0.24);
+    inner.append(actions);
   }
 
-  addArrows(block);
-  revealAll([[eyebrow, 0], [title, 0.08], [lead, 0.16], [actions, 0.24]]);
+  const scroll = el('a', 'hero-scroll', { href: '#intro', 'aria-label': 'Scroll to explore' });
+  const label = el('span');
+  label.textContent = 'Scroll';
+  scroll.append(label);
+  scroll.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="18" height="18" '
+    + 'fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path '
+    + 'd="M12 5v14M6 13l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+
+  block.replaceChildren(media, inner, scroll);
 
   const img = media.querySelector('img');
-  if (!img) return;
-  img.dataset.heroFocal = ART.focal;
-  img.dataset.heroProductTop = ART.productTop;
-  img.dataset.heroProductLeft = ART.productLeft;
-  img.dataset.parallax = ART.parallax;
-  img.setAttribute('fetchpriority', 'high');
-  img.loading = 'eager';
-
-  const run = () => artDirect(block, img, inner);
-  if (!img.complete) img.addEventListener('load', run, { once: true });
-  requestAnimationFrame(run);
-  let t;
-  window.addEventListener('resize', () => {
-    clearTimeout(t);
-    t = setTimeout(run, 120);
-  }, { passive: true });
-  parallax(img);
+  if (img) {
+    img.loading = 'eager';
+    img.setAttribute('fetchpriority', 'high');
+    artDirect(block, img, inner);
+    parallax(img);
+  }
 }

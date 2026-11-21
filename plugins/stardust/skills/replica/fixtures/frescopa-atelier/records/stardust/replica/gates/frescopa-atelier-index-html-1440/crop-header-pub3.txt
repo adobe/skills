@@ -1,2 +1,0 @@
-crop y0+75: 989 px = 0.92% diff → match 99.08% — PASS
-  texture: 0.0% thick → thin-edge (glyph-antialiasing texture)
