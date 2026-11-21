@@ -570,7 +570,7 @@ rather than erroring.
    must be symmetric.
 5. **Freeze animations AFTER lazyload settle** (stitch-shot.mjs does;
    earlier breaks lazy loaders' swaps). Self-advancing carousel:
-   `gate.sh --hold-timers` (default off) captures both sides in one state.
+   the gates hold timers by default (`--no-hold-timers` turns it off).
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
    layout settles as a real visit does). Two classes, one shared
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`

@@ -245,7 +245,7 @@ await check('freeze --hold-timers: every capture gets the hold; baseline.json re
 });
 await check('hint: a freeze WITHOUT the hold whose captures differ (a mask, an unstable page, a priming capture apart) says once that --hold-timers captures a timer-driven page in one state — printed before the verdict line, recorded as `hint`, repeated on reuse; none under the hold, none when the captures agree; never a verdict or an exit code', () => {
   const dir = tmp();
-  const HINT = /^the page changes on its own between captures \(.+\) — when a timer drives the change \(a carousel that advances by itself\), freezing again with --hold-timers \(the gates: --hold-timers or GATE_HOLD_TIMERS=1\) captures it in one state$/;
+  const HINT = /^the page changes on its own between captures \(.+\) — when a timer drives the change \(a carousel that advances by itself\), freezing again with --hold-timers \(the gates hold by default: drop --no-hold-timers \/ GATE_HOLD_TIMERS=0\) captures it in one state$/;
   const printed = (o, deps) => { const out = []; const log = console.log; console.log = (l) => out.push(l); try { return { code: main(o, deps), out }; } finally { console.log = log; } };
   const args = (...a) => ['freeze', 'https://x.test/', dir, '--width', '1440', ...a];
   const base = () => JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8'));

@@ -45,7 +45,8 @@
  *   further from the first kept one than --floor-max % / --height-max px — prints one `hint: …` line on stdout BEFORE
  *   the verdict line (which stays the last one) and records it as `hint` in baseline.json / reference-unstable.json;
  *   a reuse of that reference prints it again, gate.sh and gate-all.mjs repeat it. It names --hold-timers; it changes
- *   no verdict and no exit code. Captures that agree, or a freeze under the hold: no hint, no field.
+ *   no verdict and no exit code. Captures that agree, or a freeze under the hold: no hint, no field. The gates hold by
+ *   default (this script, called bare, does not), so only a gate run with the hold turned off can carry it.
  *   node skills/replica/scripts/reference.mjs status <dir> [--json] [--url <u>] [--width <px>]
  *   node skills/replica/scripts/reference.mjs mask <dir>      only the --mask argument for pixel-compare ('' = none)
  *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--hold-timers] [--hold-min <ms>] [--inherit]
@@ -117,8 +118,9 @@ reference-unstable.json stay. A usable baseline for this URL and width is reused
 One verdict line on stdout, the last one; the children's output goes to stderr.
 hint: a freeze without --hold-timers whose captures differ (unstable, a variable region masked, or the priming capture
 over --floor-max % / --height-max px from the first kept one) prints one "hint: …" line before the verdict line and
-records it as "hint" in the JSON: the page changes on its own, and --hold-timers (the gates: also GATE_HOLD_TIMERS=1)
-captures a timer-driven page in one state. It changes no verdict and no exit code; under the hold there is none.
+records it as "hint" in the JSON: the page changes on its own, and --hold-timers captures a timer-driven page in one
+state (the gates hold by default; --no-hold-timers / GATE_HOLD_TIMERS=0 turns that off). It changes no verdict and no
+exit code; under the hold there is none.
 Exit codes: 0 frozen / reused / usable / stable, 1 error or no usable reference, 2 unstable (not frozen),
 3 bot challenge (stitch-shot's exit 3), 124 a capture exceeded --timeout, 125 usage.`;
 
@@ -286,7 +288,7 @@ export function holdHint(r, o = {}) {
   const why = r.stable === false ? `unstable: ${r.reason}`
     : v.length ? `${v.length} self-varying region(s) masked`
       : Number(prime.pct) > floorMax || Math.abs(Number(prime.heightDelta) || 0) > heightMax ? `the priming capture is ${round2(Number(prime.pct) || 0)}% and ${Number(prime.heightDelta) || 0}px in height from the first kept one` : null;
-  return why ? `the page changes on its own between captures (${why}) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates: --hold-timers or GATE_HOLD_TIMERS=1) captures it in one state` : null;
+  return why ? `the page changes on its own between captures (${why}) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates hold by default: drop --no-hold-timers / GATE_HOLD_TIMERS=0) captures it in one state` : null;
 }
 
 // The one line. `how` = 'frozen' | 'reused' | 'stable' (assess) …
