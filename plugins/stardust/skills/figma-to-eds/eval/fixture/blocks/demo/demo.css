@@ -1,0 +1,14 @@
+/* SYNTHETIC eval block for token-literals.mjs: exactly two planted
+   literals (lines 5 and 7); every other line must stay silent */
+.demo {
+  color: var(--color-content-ink);
+  background: #E4ECF7;
+  border: 1px solid #3355aa; /* token-literal-ok: eval — accepted with a reason */
+  transition: color 150ms var(--motion-ease-out);
+  padding: 32px;
+  /* commented out: background: #101a2e; */
+}
+
+@media (width >= 900px) {
+  .demo { padding: var(--spacing-unit-4); }
+}
