@@ -57,7 +57,9 @@
  * SETTINGS: a usable reference frozen under other capture settings than this run's (`reference.mjs settings`: consent,
  * dismiss, noDismiss, locale against baseline.json `flags`) is deleted and frozen again where it lives, one log line
  * `reference: re-frozen — capture settings changed (consent, locale)` (gate.sh's rule and wording; an unstable
- * re-freeze is the error row above); a --skip-existing origin or recorded pass that came from it is not reused. One
+ * re-freeze is the error row above); a --skip-existing origin or recorded pass that came from it is not reused.
+ * TIMER HOLD: on by default at 2000 ms (--help § Timer hold; gate.sh's rule) — a reference frozen without it is frozen
+ * again once, under the settings it recorded plus the hold. One
  * frozen without recorded flags is reused: `reference: reused — settings not recorded`. No round is recorded for a freeze.
  * WIDE (--wide): the same rows at a wide width — DESIGN.json's extensions.breakpoints.probeWidth (--design, default
  * DESIGN.json), else 2560 — written to `gates/wide-<w>/summary.{json,md}`: a REPORT, exit 0 whatever the rows say,
@@ -101,7 +103,7 @@
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
- *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US]
+ *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
@@ -110,7 +112,7 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
@@ -161,11 +163,10 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --dismiss <sel,…>         extra overlay-dismiss selectors — both captures
   --no-dismiss              dismiss no overlay (contradicts --consent / --dismiss: exit 1)
   --locale <tag>            en-US — both captures and every probe
-  --hold-timers             stitch-shot's timer hold (its --help; default OFF) on the reference and both captures; a
-                            reference frozen without it is frozen again, a run that omits it inherits a held reference's;
-                            a reused capture taken under another hold is retaken. GATE_HOLD_TIMERS=1 (or a number of ms)
-                            in the environment does the same (gate.sh's)
-  --hold-min <ms>           a higher threshold for the hold; implies --hold-timers (default and floor 2000)
+  --no-hold-timers          capture without the timer hold, which is ON by default (§ Timer hold below; exit 1
+                            together with --hold-timers / --hold-min)
+  --hold-min <ms>           the hold with a higher threshold (floor 2000)
+  --hold-timers             the hold, asked for: at GATE_HOLD_TIMERS's threshold when that is a number, else 2000
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -189,9 +190,17 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   (gates/<slug>-<width>/), else one frozen once into the page's dir and reused; its self-varying rows are masked and
   the row records noiseFloor and variableRows. An UNSTABLE reference is an error row — reference-unstable: <line> —
   never a FAIL or a pass: pin the page's state (--consent / --dismiss / --locale), or freeze it by hand with --force.
-  A reference whose captures differed without the timer hold carries reference.mjs's hint (--hold-timers may capture
-  the page in one state): logged once per page ("origin <slug>: hint: …"), kept as the row's hint and in its reasons
-  cell as "(hint) …" — advice, never a reason: no verdict and no exit code reads it.
+  Timer hold: stitch-shot's (its --help; a bare stitch-shot or reference.mjs call stays unheld), ON by default at
+  2000 ms on the reference and both captures, so a page whose carousel advances on its own is captured in one state on
+  both sides. Precedence: a flag wins over GATE_HOLD_TIMERS (0 = off, 1 = 2000, a number = that threshold), which
+  wins over the default. A reference frozen without the hold is frozen again ONCE under the settings it recorded plus
+  the hold ("reference: re-frozen — capture settings changed (holdTimers): the gates hold timers by default …") and
+  later runs reuse it; a run that names no hold takes a held reference's threshold; a --no-hold-timers /
+  GATE_HOLD_TIMERS=0 run freezes a held one again without it and keeps an unheld one. A reused capture taken under
+  another hold is retaken; two sides under different holds are an error row, nothing compared.
+  A reference whose captures differed without the timer hold carries reference.mjs's hint: logged once per page
+  ("origin <slug>: hint: …"), kept as the row's hint and in its reasons cell as "(hint) …" — advice, never a reason:
+  no verdict and no exit code reads it. A run under the hold (the default) has none.
   A reference frozen under other --consent / --dismiss / --no-dismiss / --locale than this run's is frozen again
   ("reference: re-frozen — capture settings changed (consent, locale)"; not a round); one whose settings were not
   recorded is reused, and said so.
@@ -211,12 +220,21 @@ Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
 export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
-/** GATE_HOLD_TIMERS → the timer hold's threshold in ms: unset, '' or 0 = null (off), 1 = 2000, else the number. */
-export const envHold = (v) => (v == null || v === '' || v === '0' ? null : v === '1' ? 2000 : Number(v));
+/** The gates' default timer hold (ms) — stitch-shot's own default threshold; a bare stitch-shot / reference.mjs call stays unheld. */
+export const HOLD_DEFAULT = 2000;
+/** GATE_HOLD_TIMERS → the timer hold's threshold in ms: unset or '' = undefined (not named: the default), 0 = null (off), 1 = 2000, else the number. */
+export const envHold = (v) => (v == null || v === '' ? undefined : v === '0' ? null : v === '1' ? HOLD_DEFAULT : Number(v));
+/** What the re-frozen line adds when only the default asked for the hold (gate.sh's wording). */
+export const HOLD_DEFAULT_WHY = ': the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)';
+/** A frozen reference's recorded hold (baseline.json flags.holdTimers, else timers.hold — reference.mjs's recordedHold), or null. */
+export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Number(b && b.timers && b.timers.hold) || null;
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: envHold(process.env.GATE_HOLD_TIMERS), wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
+  const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
+  let holdOn = false; let holdOff = false; let holdMin = null;
   let widthGiven = false;
   const need = (flag, val) => { if (val == null || val.startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return val; };
   for (let i = 0; i < rest.length; i += 1) {
@@ -234,10 +252,12 @@ export function parseArgs(argv) {
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
-    else if (a === '--hold-timers') o.holdTimers = o.holdTimers ?? 2000; else if (a === '--hold-min') o.holdTimers = Number(need(a, v()));
+    else if (a === '--hold-timers') holdOn = true; else if (a === '--no-hold-timers') holdOff = true; else if (a === '--hold-min') holdMin = Number(need(a, v()));
     else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
+  if (holdOff && (holdOn || holdMin != null)) { console.error('gate-all: --no-hold-timers contradicts --hold-timers / --hold-min — drop one (see --help)'); process.exit(1); }
+  if (holdOff || holdOn || holdMin != null) { o.holdTimers = holdOff ? null : holdMin ?? o.holdTimers ?? HOLD_DEFAULT; o.holdGiven = true; }
   if (o.holdTimers != null && !(Number.isFinite(o.holdTimers) && o.holdTimers >= 2000)) { console.error(`--hold-min / GATE_HOLD_TIMERS needs a number of ms, at least 2000\n\n${HELP}`); process.exit(1); }
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
@@ -436,14 +456,14 @@ export function inheritedOpts(opts, flags) {
   // a setting the run gives that differs from the recorded one: the reference is frozen again under the run's
   // settings (reference.mjs settings), so nothing of the old one is inherited
   const differs = (opts.noDismiss === true) !== (flags.noDismiss === true) && (opts.noDismiss || text(opts.consent) || text(opts.dismiss))
-    || (opts.holdTimers && opts.holdTimers !== (Number(flags.holdTimers) || null))
+    || (opts.holdGiven && (opts.holdTimers || null) !== (Number(flags.holdTimers) || null)) // the default hold never drops the recorded settings
     || ['consent', 'dismiss', 'locale'].some((k) => (k === 'locale' ? opts.localeGiven : true) && text(opts[k]) && text(opts[k]) !== (text(flags[k]) || (k === 'locale' ? 'en-US' : null)));
   if (differs) return opts;
   const gave = opts.noDismiss || text(opts.consent) || text(opts.dismiss); const o = { ...opts };
   if (flags.noDismiss === true && !gave) o.noDismiss = true;
   if (!opts.noDismiss && !o.noDismiss) for (const k of ['consent', 'dismiss']) if (!text(opts[k]) && text(flags[k])) o[k] = text(flags[k]);
   if (!opts.localeGiven && text(flags.locale)) o.locale = text(flags.locale);
-  if (!opts.holdTimers && Number(flags.holdTimers) > 0) o.holdTimers = Number(flags.holdTimers);
+  if (!opts.holdGiven && Number(flags.holdTimers) > 0) o.holdTimers = Number(flags.holdTimers); // no hold named: a held reference's threshold
   return o;
 }
 /** A capture, either side: stitch-shot <url> <out> --width --settle + the overlay / locale flags [+ --vh] [+ tail]. */
@@ -710,11 +730,21 @@ async function main() {
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
   // The capture settings a usable reference was frozen with against this run's (header § SETTINGS): reference.mjs's
-  // own comparison, once per reference dir → { changed: 'consent, locale' | null, unrecorded }. A reference.mjs
-  // without the subcommand answers nothing: reused as before.
+  // own comparison, once per reference dir → { changed: 'consent, locale' | null, unrecorded, why }. A reference.mjs
+  // without the subcommand answers nothing: reused as before. The hold (--help § Timer hold): a run that names none
+  // does not give it against a held reference (its threshold is inherited); one that turns it off never reuses a held
+  // reference; `why` = HOLD_DEFAULT_WHY when the default is what asked for the hold.
   const settingsSeen = new Map();
   const settingsOf = (refDir) => {
-    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : s.code !== 0 && opts.holdTimers ? 'holdTimers (reference.mjs settings gave no answer)' : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
+    if (!settingsSeen.has(refDir)) {
+      const held = refHold(readJsonSafe(join(refDir, 'baseline.json')));
+      settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(!opts.holdGiven && held ? { ...opts, holdTimers: null } : opts)]).then((s) => {
+        const line = lastLine(s.out);
+        const names = [s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : s.code !== 0 && opts.holdTimers ? 'holdTimers (reference.mjs settings gave no answer)' : null, opts.holdGiven && !opts.holdTimers && held ? 'holdTimers' : null].filter(Boolean);
+        const changed = names.join(', ') || null;
+        return { changed, unrecorded: s.code === 0 && line === 'not recorded', why: !opts.holdGiven && s.code === 0 && /holdTimers/.test(changed || '') ? HOLD_DEFAULT_WHY : '' };
+      }));
+    }
     return settingsSeen.get(refDir);
   };
   // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
@@ -791,24 +821,27 @@ async function main() {
     const staleLive = useCached ? staleReason(cachedLive, optsFor(p).holdTimers) : null;
     if (staleLive) { useCached = false; log(`origin ${p.slug}: ${cachedLive} ${staleLive} — not reused, capturing the origin`); }
     if (!opts.liveOrigin && !blocked && !refDir && !freezeInto && !useCached) { if (await usable(d, p)) refDir = d; else freezeInto = d; }
-    let refrozen = null;
+    let refrozen = null; let why = ''; let freezeOpts = opts;
     if (refDir) {
       const st = await settingsOf(refDir);
       if (st.changed) {
-        refrozen = st.changed; freezeInto = refDir; refDir = null; settingsSeen.delete(freezeInto);
+        // frozen again under the settings the build side runs under (optsFor, read before the old reference goes):
+        // the run's — plus, when only the default hold changed, the ones the old reference recorded
+        freezeOpts = optsFor(p);
+        refrozen = st.changed; why = st.why; freezeInto = refDir; refDir = null; settingsSeen.delete(freezeInto);
         for (const f of ['baseline.png', 'baseline.json']) rmSync(join(freezeInto, f), { force: true });
       } else if (st.unrecorded) log(`origin ${p.slug}: reference: reused — settings not recorded (${join(refDir, 'baseline.json')} was frozen by an older version)`);
     }
     let r;
     if (freezeInto) {
-      const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
+      const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', freezeOpts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
       const line = lastLine(s.out).replace(/^reference: /, '');
       // frozen (0) or measured unstable (2): the old reference is superseded; anything else answered nothing
       for (const from of setAside) { if (s.code === 0 || s.code === 2) rmSync(`${from}.prev`, { force: true }); else renameSync(`${from}.prev`, from); }
       if (s.code !== 0 && s.code !== 2 && setAside.length && await usable(freezeInto, p)) { refDir = freezeInto; log(`origin ${p.slug}: re-freeze exit ${s.code} (${line || lastLine(s.err)}) — the previous frozen reference is kept`); }
       else if (s.code === 0) {
         refDir = freezeInto;
-        if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})`);
+        if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})${why}`);
         // the page dir keeps the frozen reference only: reference.mjs's kept captures and their diffs go (#156, disk)
         if (freezeInto === d) for (const f of readdirSync(d)) if (/^ref-(\d|diff-).*\.(png|capture\.json)$/.test(f)) rmSync(join(d, f), { force: true });
       } else if (s.code === 2) { const hint = hintOf(readJsonSafe(join(freezeInto, 'reference-unstable.json'))); r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})`, ...(hint ? { hint } : {}) }; }

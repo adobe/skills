@@ -327,7 +327,7 @@ check('the fonts lines are printed on a failing round too, before the exit', r.s
 r = await gate(['fonts2', 'https://live.example/fonts2', buildUrl, '1440', 'f4', '--marker', 'home-proposed'], { STUB_FONTS_NULL_LIVE: '1' });
 check('a live record whose font check could not run (fontsFailed null) prints NOT CHECKED with the record\'s reason — never "every face loaded"; exit 0', r.status === 0
   && fontsLine('live', 'NOT CHECKED \\(Execution context was destroyed\\) — no face is known to have loaded').test(r.stdout) && !fontsLine('live', 'every declared face loaded').test(r.stdout), `status ${r.status} ${r.stdout}`);
-r = await gate(['fonts3', 'https://live.example/fonts3', buildUrl, '1440', 'f5', '--marker', 'home-proposed'], { STUB_NO_JSON_LIVE: '1', STUB_BAD_JSON_BUILD: '1' });
+r = await gate(['fonts3', 'https://live.example/fonts3', buildUrl, '1440', 'f5', '--marker', 'home-proposed'], { STUB_NO_JSON_LIVE: '1', STUB_BAD_JSON_BUILD: '1', GATE_HOLD_TIMERS: '0' }); // unheld: under the hold a capture with no record is never compared (exit 1)
 check('no record (an older stitch-shot) or an unreadable one prints NOT CHECKED naming the record path and the fix, per side', r.status === 0
   && fontsLine('live', `NOT CHECKED \\(no readable capture record at ${gdir('fonts3')}/live.capture\\.json — delete live\\.png to re-take it with the check\\)`).test(r.stdout)
   && fontsLine('build', `NOT CHECKED \\(no readable capture record at ${gdir('fonts3')}/build.capture\\.json — re-copy stitch-shot\\.mjs \\(replica SKILL\\.md § Setup\\)\\)`).test(r.stdout), `status ${r.status} ${r.stdout}`);
@@ -413,8 +413,8 @@ const CONSENT = '#consent-yes, .consent-box-yes'; const EXTRA = '.promo-close,#n
 resetArgs();
 r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
 check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
-  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`
-  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA} --hold-timers --hold-min 2000`
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA} --hold-timers --hold-min 2000`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
 check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
 check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
 resetArgs();
@@ -426,7 +426,7 @@ check('a default round dismisses with the built-in candidates: no overlay flag o
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c3', '--full', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGS: argsFile });
 check('--no-dismiss reaches both captures and chrome-parity as --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2
-  && stitchArgs().every((l) => / --no-dismiss$/.test(l) && !/--consent|--dismiss /.test(l))
+  && stitchArgs().every((l) => / --no-dismiss --hold-timers --hold-min 2000$/.test(l) && !/--consent|--dismiss /.test(l))
   && !/--dismiss/.test(evidence('consent3', 'content-diff-c3.txt')) && !/--dismiss/.test(evidence('consent3', 'visual-diff-c3.txt')) && / --no-dismiss$/m.test(evidence('consent3', 'chrome-parity-c3.txt')) && !/--consent|--dismiss /.test(evidence('consent3', 'chrome-parity-c3.txt')), `status ${r.status} | ${stitchArgs().join(' | ')}`);
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c4', '--no-dismiss', '--consent', '#consent-yes'], { STUB_STITCH_ARGS: argsFile });
@@ -472,9 +472,12 @@ check('--help names the origin reference: the default, --live-origin, GATE_REFER
 check('--help documents the pixel criterion and its env: aligned % ≤ threshold AND total offset ≤ GATE_OFFSET_MAX_PX (8 prototype; published the larger of 8 and 1 %)', /Pixel criterion/.test(r.stdout) && /GATE_OFFSET_MAX_PX/.test(r.stdout)
   && /larger\s+of 8 and 1 % of the origin height/.test(r.stdout) && /offsets: 3 step\(s\), 37px total/.test(r.stdout), r.stdout.slice(0, 200));
 
+// The blon rounds are a project that never holds (GATE_HOLD_TIMERS=0 on every round): its reference frozen without
+// the hold — here by stitch-shot, no settings recorded — is kept and reused, never frozen again.
+const UNHELD = { GATE_HOLD_TIMERS: '0' };
 resetCount();
 freezeBaseline('blon');
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl1', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl1', '--marker', 'home-proposed', '--gate-against-baseline'], { ...UNHELD, STUB_STITCH_COUNT: countFile });
 check('flag ON with a frozen baseline: the round passes with no live capture — only the build side stitches', r.status === 0 && attempts().join(',') === 'BUILD', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr.slice(0, 300)}`);
 check('the baseline is the pixel-compare origin: live.png is a copy of baseline.png, no temp file left', livePng('blon') === 'baseline-png-bytes' && noTmp('blon'));
 check('live.json records origin "baseline", at = the capture time and originBaseline { capturedAt, height }, written by gate.sh --gate-against-baseline', (() => {
@@ -512,17 +515,17 @@ check('… and the next round reuses that live.png (BUILD only), as on every rou
 
 resetCount();
 writeFileSync(join(root, gdir('blon'), 'live.capture.json'), '{ "stale": "a live round\'s record" }\n');
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--marker', 'home-proposed'], { ...UNHELD, STUB_STITCH_COUNT: countFile });
 check('flag dropped after a flagged round: the baseline-derived live.png is retaken with one line — LIVE then BUILD, live.json removed, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
   && /^gate\.sh: live\.png is the frozen origin reference's copy; this round gates against the live origin \(--live-origin \/ GATE_REFERENCE=live\) — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
   && liveJson('blon') === null && livePng('blon') === 'png', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr} ${liveJson('blon')}`);
 check('… and the stale capture record (live.capture.json) went with the retaken live.png — the retake wrote a fresh one', existsSync(join(root, gdir('blon'), 'live.capture.json')) && !readFileSync(join(root, gdir('blon'), 'live.capture.json'), 'utf8').includes('stale'));
 resetCount();
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl9', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl9', '--marker', 'home-proposed'], { ...UNHELD, STUB_STITCH_COUNT: countFile });
 check('… the next unflagged round reuses that fresh live.png (BUILD only, no retake line)', r.status === 0 && attempts().join(',') === 'BUILD' && !/retaking/.test(r.stderr), `attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
 writeFileSync(join(root, gdir('blon'), 'live.capture.json'), '{ "stale": "the live round\'s record" }\n');
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl10', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl10', '--marker', 'home-proposed', '--gate-against-baseline'], { ...UNHELD, STUB_STITCH_COUNT: countFile });
 check('a flagged round after a live one takes the baseline again: BUILD only, live.png is baseline.png, live.json origin "baseline", no temp file', r.status === 0 && attempts().join(',') === 'BUILD'
   && livePng('blon') === 'baseline-png-bytes' && JSON.parse(liveJson('blon') || '{}').origin === 'baseline' && noTmp('blon'), `attempts ${attempts().join(',')} ${liveJson('blon')}`);
 check('… and the live round\'s capture record (live.capture.json) is removed with the copy — no record describes bytes it did not measure', !existsSync(join(root, gdir('blon'), 'live.capture.json')));
@@ -530,12 +533,12 @@ check('… and the live round\'s capture record (live.capture.json) is removed w
 // A record that cannot be written (STUB_RECORD_FAIL): the round ends (exit 1, one line) with live.png removed, so the
 // baseline bytes never sit under a missing record for the next unflagged round to reuse as a live shot.
 resetCount();
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl11', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile, STUB_RECORD_FAIL: '1' });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl11', '--marker', 'home-proposed', '--gate-against-baseline'], { ...UNHELD, STUB_STITCH_COUNT: countFile, STUB_RECORD_FAIL: '1' });
 check('a flagged round whose live.json write fails: exit 1 with one line, no capture spent, neither live.png nor live.json left', r.status === 1 && attempts().length === 0
   && /^gate\.sh: could not write stardust\/replica\/gates\/blon-1440\/live\.json for the frozen origin — not comparing \(a later round would read the copy as a live shot\); re-run the round$/m.test(r.stderr)
   && livePng('blon') === null && liveJson('blon') === null, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
-r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--marker', 'home-proposed'], { ...UNHELD, STUB_STITCH_COUNT: countFile });
 check('… so the next unflagged round captures live (LIVE,BUILD) instead of reusing baseline bytes', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('blon') === 'png', `attempts ${attempts().join(',')} ${r.stderr}`);
 check('the frozen baseline itself is untouched by every round above', readFileSync(join(root, gdir('blon'), 'baseline.png'), 'utf8') === 'baseline-png-bytes' && JSON.parse(readFileSync(join(root, gdir('blon'), 'baseline.json'), 'utf8')).capturedAt === PROV.capturedAt);
 
@@ -559,8 +562,8 @@ const R1 = ['--consent', '#accept-all', '--dismiss', '.promo .close', '--locale'
 r = await refRound('ref1', 'r1', ['--consent', '#accept-all', '--dismiss', '.promo .close', '--locale', 'en-GB'], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652' });
 check('default origin, first round: a reference is frozen (one freeze, no stitched live capture), then the build is captured and the round passes', r.status === 0 && attempts().join(',') === 'REF,BUILD', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 check('the freeze gets the live URL, the evidence dir, the width, the capture deadline and the round\'s overlay flags and locale', lines(refArgsFile).length === 1
-  && lines(refArgsFile)[0] === `https://live.example/ref1 ${gdir('ref1')} --width 1440 --timeout 300 --consent #accept-all --dismiss .promo .close --locale en-GB`, lines(refArgsFile).join('|'));
-check('… and the build capture gets the same flags and locale', /^BUILD .* --consent #accept-all --dismiss \.promo \.close --locale en-GB$/.test(lines(stitchArgsFile)[0] || ''), lines(stitchArgsFile).join('|'));
+  && lines(refArgsFile)[0] === `https://live.example/ref1 ${gdir('ref1')} --width 1440 --timeout 300 --consent #accept-all --dismiss .promo .close --locale en-GB --hold-timers --hold-min 2000`, lines(refArgsFile).join('|'));
+check('… and the build capture gets the same flags and locale', /^BUILD .* --consent #accept-all --dismiss \.promo \.close --locale en-GB --hold-timers --hold-min 2000$/.test(lines(stitchArgsFile)[0] || ''), lines(stitchArgsFile).join('|'));
 check('the freeze is announced with the reason, and reference.mjs\'s own line is relayed', /^gate\.sh: no usable frozen reference for ref1@1440 \(no frozen baseline in .*\) — freezing one/m.test(r.stdout) && /^gate\.sh: reference: frozen 1440×2000, primed, noise floor 2\.31% in 2 variable region\(s\) → mask 392:56,4000:652$/m.test(r.stdout), r.stdout);
 check('the round gates against the frozen reference: live.png is its copy, live.json says origin "baseline"', livePng('ref1') === 'frozen-reference-bytes' && JSON.parse(liveJson('ref1') || '{}').origin === 'baseline');
 check('one verdict line says what the round was gated against: capture time, noise floor, regions, rows excluded', /^gate\.sh: reference: frozen 2026-11-01T09:00:00\.000Z, noise floor 2\.31% in 2 region\(s\) — 708 rows excluded$/m.test(r.stdout), r.stdout);
@@ -586,12 +589,12 @@ check('a --full round on the default origin: the probes run against the live URL
 check('a finished --full round leaves no pending mark in its verdict file', verdictJson('ref1', 'r3').pending === undefined);
 // An unstable reference: no verdict, a distinct exit, nothing recorded.
 r = await refRound('refunl', 'u0', ['--locale', 'de-DE'], { STUB_REF_RC: '2' });
-check('the forced-freeze command of the exit-5 message carries the round\'s locale and overlay flags', r.status === 5 && /--width 1440 --locale de-DE --force$/m.test(r.stderr), r.stderr);
+check('the forced-freeze command of the exit-5 message carries the round\'s locale and overlay flags', r.status === 5 && /--width 1440 --locale de-DE --hold-timers --hold-min 2000 --force$/m.test(r.stderr), r.stderr);
 resetCount(); resetRefArgs();
 r = await refRound('refun', 'u1', ['--full'], { STUB_REF_RC: '2' });
 check('an UNSTABLE reference ends the round with exit 5 after ONE freeze: no retry, no build capture, no pixel line, no probe', r.status === 5 && attempts().join(',') === 'REF' && !/differing|overflow assert|content-diff/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout}`);
 check('reference.mjs\'s one-line reason is printed, then the way out: pin the state (overlay flags, --locale) or freeze --force after reading reference-unstable.json', /^gate\.sh: reference: UNSTABLE — heights 2000 vs 2640 after priming; not frozen$/m.test(r.stderr)
-  && new RegExp(`^gate\\.sh: REFERENCE UNSTABLE \\(exit 5\\) — .*NO VERDICT, the round is not counted\\. Pin the page's state and re-run — overlay flags \\(--consent <sel> / --dismiss <sel,…>\\), --locale <tag> — or read ${gdir('refun')}/reference-unstable\\.json \\(\\+ ref-\\*\\.png\\) and, when the variation is the page's own, freeze it anyway: node .*reference\\.mjs freeze "https://live\\.example/refun" ${gdir('refun')} --width 1440 --force$`, 'm').test(r.stderr), r.stderr);
+  && new RegExp(`^gate\\.sh: REFERENCE UNSTABLE \\(exit 5\\) — .*NO VERDICT, the round is not counted\\. Pin the page's state and re-run — overlay flags \\(--consent <sel> / --dismiss <sel,…>\\), --locale <tag> — or read ${gdir('refun')}/reference-unstable\\.json \\(\\+ ref-\\*\\.png\\) and, when the variation is the page's own, freeze it anyway: node .*reference\\.mjs freeze "https://live\\.example/refun" ${gdir('refun')} --width 1440 --hold-timers --hold-min 2000 --force$`, 'm').test(r.stderr), r.stderr);
 check('no verdict file, no round recorded, no baseline, no live.png', !readdirSync(join(root, gdir('refun'))).some((f) => /^verdict-|^baseline\.|^live\.png$|^pixel-/.test(f)) && roundsOf('refun').length === 0, `${readdirSync(join(root, gdir('refun'))).join(',')} ${JSON.stringify(roundsOf('refun'))}`);
 resetCount();
 r = await refRound('refun', 'u2');
@@ -758,14 +761,14 @@ check('settings: --locale en-US is the default locale — not a change', r.statu
 writeFileSync(join(root, gdir('set'), 'chrome-live.json'), '{}');
 resetRefArgs(); r = await refRound('set', 's3', ['--consent', '#ok', '--locale', 'de-DE']);
 check('settings: consent and locale changed → re-frozen under the round\'s flags, said in one line', r.status === 0 && freezes() === 1 && (r.stdout.match(/^gate\.sh: reference: re-frozen — capture settings changed \(consent, locale\)$/gm) || []).length === 1 && !/no usable frozen reference/.test(r.stdout), `status ${r.status} ${r.stdout}`);
-check('… the freeze gets the new flags and never --force (an unstable page stays unstable)', / --consent #ok --locale de-DE$/.test(lines(refArgsFile)[0] || '') && !/--force/.test(lines(refArgsFile)[0] || ''), lines(refArgsFile).join('|'));
+check('… the freeze gets the new flags and never --force (an unstable page stays unstable)', / --consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && !/--force/.test(lines(refArgsFile)[0] || ''), lines(refArgsFile).join('|'));
 check('… the new baseline records them, the round gates against it, and the chrome live cache of the old settings is gone', (() => { const b = JSON.parse(readFileSync(join(root, gdir('set'), 'baseline.json'), 'utf8')); return b.flags.consent === '#ok' && b.flags.locale === 'de-DE' && livePng('set') === 'frozen-reference-bytes' && !existsSync(join(root, gdir('set'), 'chrome-live.json')); })());
 resetRefArgs(); r = await refRound('set', 's4', ['--consent', '#ok', '--locale', 'de-DE']);
 check('settings: the same flags again → reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout));
 resetRefArgs(); resetCount(); r = await refRound('set', 's4b');
 check('settings: a round that omits the reference\'s flags reuses it AND runs its build capture under them, said in one line', r.status === 0 && freezes() === 0
   && /^gate\.sh: reference: settings this round omits are the frozen reference's — --consent #ok --locale de-DE /m.test(r.stdout)
-  && lines(stitchArgsFile).some((l) => /build\.png .*--consent #ok --locale de-DE$/.test(l)), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+  && lines(stitchArgsFile).some((l) => /build\.png .*--consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(l)), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
 check('a re-freeze is not a round: four invocations with a verdict, four recorded rounds (first + confirmations), 1 counted', roundsOf('set').map((x) => `${x.label}:${x.kind}`).join() === 's1:first,s2:confirm,s2b:confirm,s3:confirm,s4:confirm,s4b:confirm', JSON.stringify(roundsOf('set')));
 resetRefArgs(); r = await refRound('set', 's5', ['--no-dismiss'], { STUB_REF_RC: '2' });
 check('settings: a re-freeze that finds the page unstable ends the round with exit 5 — no verdict, no round, and no reference of the old settings left to gate against', r.status === 5 && freezes() === 1 && !existsSync(join(root, gdir('set'), 'baseline.json')) && !existsSync(join(root, gdir('set'), 'baseline.png')) && verdictJson('set', 's5') === null && roundsOf('set').length === 6 && !/re-frozen/.test(r.stdout), `status ${r.status} ${r.stdout}`);
@@ -775,57 +778,109 @@ resetRefArgs(); r = await refRound('set', 's7', ['--dismiss', '.other-close']);
 check('… a changed --dismiss list alone', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(dismiss\)$/m.test(r.stdout), r.stdout);
 // a baseline from before flags were recorded (stitch-shot --freeze-baseline, an older reference.mjs): reused, and said so
 freezeBaseline('old', { ...PROV, url: 'https://live.example/old' });
-resetRefArgs(); r = await refRound('old', 'o1', ['--consent', '#ok', '--locale', 'de-DE']);
-check('settings not recorded: the reference is reused as before, with one line saying so', r.status === 0 && freezes() === 0 && (r.stdout.match(/^gate\.sh: reference: reused — settings not recorded \(/gm) || []).length === 1 && livePng('old') === 'baseline-png-bytes', `status ${r.status} ${r.stdout}`);
+resetRefArgs(); r = await refRound('old', 'o1', ['--consent', '#ok', '--locale', 'de-DE'], UNHELD);
+check('settings not recorded (an unheld round): the reference is reused as before, with one line saying so', r.status === 0 && freezes() === 0 && (r.stdout.match(/^gate\.sh: reference: reused — settings not recorded \(/gm) || []).length === 1 && livePng('old') === 'baseline-png-bytes', `status ${r.status} ${r.stdout}`);
 
-// ── Timer hold (--hold-timers): the reference and both captures under one hold, or nothing is compared ──
+// ── Timer hold: ON by default at 2000 ms — the reference and both captures under one hold, or nothing is compared ──
 const HELD = /^gate\.sh: timers held \(≥ 2000 ms\) — live 2 \(5000, 86400000 ms\), build 1 \(5000 ms\)$/m;
-resetRefArgs(); r = await refRound('hold', 'h1', ['--hold-timers']);
-check('hold: --hold-timers reaches the reference freeze and the build capture (--hold-timers --hold-min 2000); one line says what each side held', r.status === 0 && freezes() === 1
-  && / --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && lines(stitchArgsFile).some((l) => /build\.png .*--hold-timers --hold-min 2000$/.test(l)) && HELD.test(r.stdout), `status ${r.status} ${r.stdout}\n${r.stderr}`);
+const HOLD_ARGS = / --hold-timers --hold-min 2000$/;
+const buildArgs = () => lines(stitchArgsFile).filter((l) => /^BUILD /.test(l));
+const recHold = (slug, f) => { try { return (JSON.parse(readFileSync(join(root, gdir(slug), f), 'utf8')).timers || {}).hold ?? null; } catch { return null; } };
+const unheld = (res) => !/--hold/.test(lines(refArgsFile).join(' ')) && !/--hold/.test(lines(stitchArgsFile).join(' ')) && !/timers held/.test(res.stdout + res.stderr);
+const DEFAULT_WHY = 'gate.sh: reference: re-frozen — capture settings changed (holdTimers): the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)';
+const whyLines = (res) => res.stdout.split('\n').filter((l) => l === DEFAULT_WHY).length;
+resetRefArgs(); r = await refRound('hold', 'h1');
+check('hold default: a round that names no hold holds on both sides — the reference freeze and the build capture get --hold-timers --hold-min 2000, both records say 2000, one line says what each side held', r.status === 0 && freezes() === 1
+  && HOLD_ARGS.test(lines(refArgsFile)[0] || '') && buildArgs().length === 1 && HOLD_ARGS.test(buildArgs()[0]) && recHold('hold', 'baseline.json') === 2000 && recHold('hold', 'build.capture.json') === 2000 && HELD.test(r.stdout), `status ${r.status} ${r.stdout}\n${r.stderr}`);
 resetRefArgs(); r = await refRound('hold', 'h2');
-check('hold: a round that omits the flag inherits the held reference\'s — no freeze, the build captured under it, said in one line', r.status === 0 && freezes() === 0
-  && /^gate\.sh: reference: settings this round omits are the frozen reference's — --hold-timers --hold-min 2000 /m.test(r.stdout)
-  && lines(stitchArgsFile).some((l) => /build\.png .*--hold-timers --hold-min 2000$/.test(l)) && HELD.test(r.stdout), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+check('hold default: the next default round reuses the held reference — no freeze, no settings line, the build captured under the hold', r.status === 0 && freezes() === 0 && !/re-frozen|settings this round omits/.test(r.stdout)
+  && HOLD_ARGS.test(buildArgs()[0] || '') && HELD.test(r.stdout), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
 resetRefArgs(); r = await refRound('hold', 'h3', [], { GATE_HOLD_TIMERS: '1' });
-check('hold: GATE_HOLD_TIMERS=1 is the flag — the same hold as the reference\'s: reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && HELD.test(r.stdout), r.stdout);
+check('hold: GATE_HOLD_TIMERS=1 is the default\'s hold — the same as the reference\'s: reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && HELD.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('hold', 'h3b', ['--hold-timers']);
+check('hold: --hold-timers likewise', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && HELD.test(r.stdout), r.stdout);
 resetRefArgs(); r = await refRound('hold', 'h4', ['--hold-min', '3000']);
 check('hold: another threshold → the reference is frozen again (holdTimers)', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(holdTimers\)$/m.test(r.stdout) && / --hold-timers --hold-min 3000$/.test(lines(refArgsFile)[0] || ''), r.stdout);
+resetRefArgs(); r = await refRound('hold', 'h4b');
+check('hold default: a round that names no hold takes a held reference\'s threshold — no freeze, the build captured under it, said in one line', r.status === 0 && freezes() === 0
+  && /^gate\.sh: reference: settings this round omits are the frozen reference's — --hold-timers --hold-min 3000 /m.test(r.stdout)
+  && /build\.png .*--hold-timers --hold-min 3000$/.test(buildArgs()[0] || '') && /^gate\.sh: timers held \(≥ 3000 ms\)/m.test(r.stdout), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
 resetRefArgs(); r = await refRound('hold', 'h5', ['--hold-min', '3000'], { STUB_NO_HOLD_BUILD: '1' });
 check('hold: a build captured without the hold against a held reference is never compared — exit 1, one line, no verdict', r.status === 1 && /^gate\.sh: timer hold differs — origin '3000' \(.*baseline\.json\), build '', this round '3000'/m.test(r.stderr) && verdictJson('hold', 'h5') === null && lines(pixelArgsFile).length === 0, `status ${r.status} ${r.stderr}`);
-resetRefArgs(); r = await refRound('set', 's8', ['--dismiss', '.other-close', '--hold-timers']);
-check('hold: a reference frozen WITHOUT the hold (flags recorded) is frozen again when the round asks for it', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(holdTimers\)$/m.test(r.stdout), r.stdout);
-resetRefArgs(); r = await refRound('old', 'o2', ['--hold-timers']);
-check('hold: a reference with NO recorded settings is not reused under the hold — frozen again, never "settings not recorded"', r.status === 0 && freezes() === 1 && /re-frozen — capture settings changed \(holdTimers\)/.test(r.stdout) && !/settings not recorded/.test(r.stdout) && livePng('old') === 'frozen-reference-bytes', `status ${r.status} ${r.stdout}`);
-resetRefArgs(); r = await refRound('plain', 'n1');
-check('hold: OFF by default — no hold flag on the freeze or the captures, no timers line', r.status === 0 && !/hold/.test(lines(refArgsFile).join(' ')) && !/hold/.test(lines(stitchArgsFile).join(' ')) && !/timer/.test(r.stdout + r.stderr), r.stdout);
-// ── The hint (reference.mjs § HINT): a reference whose captures differed without the hold says so in the round's output ──
-const HINT = 'the page changes on its own between captures (2 self-varying region(s) masked) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates: --hold-timers or GATE_HOLD_TIMERS=1) captures it in one state';
+resetRefArgs(); r = await refRound('holdnb', 'h1', [], { STUB_NO_HOLD_BUILD: '1' });
+check('hold default: the default hold fails closed too — a build capture whose record has no hold is exit 1, nothing compared', r.status === 1 && /^gate\.sh: timer hold differs — origin '2000' \(.*baseline\.json\), build '', this round '2000'/m.test(r.stderr) && verdictJson('holdnb', 'h1') === null && lines(pixelArgsFile).length === 0, `status ${r.status} ${r.stderr}`);
+resetRefArgs(); r = await refRound('hold', 'h6', ['--no-hold-timers']);
+check('hold: --no-hold-timers against a held reference freezes it again without the hold (holdTimers)', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(holdTimers\)$/m.test(r.stdout) && unheld(r) && recHold('hold', 'baseline.json') === null, `${r.stdout}\n${lines(refArgsFile).join(' | ')}`);
+// off: the flag and the variable; a project that never holds keeps its unheld reference
+resetRefArgs(); r = await refRound('nohold', 'n1', ['--no-hold-timers']);
+check('hold off: --no-hold-timers — no hold flag on the freeze or the captures, no hold in either record, no timers line', r.status === 0 && freezes() === 1 && unheld(r) && recHold('nohold', 'baseline.json') === null && recHold('nohold', 'build.capture.json') === null, `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+resetRefArgs(); r = await refRound('noholdenv', 'n1', [], { GATE_HOLD_TIMERS: '0' });
+check('hold off: GATE_HOLD_TIMERS=0 likewise', r.status === 0 && freezes() === 1 && unheld(r) && recHold('noholdenv', 'baseline.json') === null && recHold('noholdenv', 'build.capture.json') === null, `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+resetRefArgs(); r = await refRound('nohold', 'n2', ['--no-hold-timers']); const offAgain = r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && unheld(r);
+resetRefArgs(); r = await refRound('nohold', 'n3', [], { GATE_HOLD_TIMERS: '0' });
+check('hold off: a project whose rounds all run unheld (--no-hold-timers, GATE_HOLD_TIMERS=0) keeps its unheld reference — never frozen again', offAgain && r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && unheld(r), r.stdout);
+// an existing project: a reference frozen before the default (no hold) meets a round that holds
+resetRefArgs(); r = await refRound('nohold', 'n4');
+check('hold default: an old unheld reference is frozen again under the hold, and one line says why', r.status === 0 && freezes() === 1 && whyLines(r) === 1 && (r.stdout.match(/re-frozen/g) || []).length === 1
+  && HOLD_ARGS.test(lines(refArgsFile)[0] || '') && recHold('nohold', 'baseline.json') === 2000 && HELD.test(r.stdout), `status ${r.status} ${r.stdout}`);
+resetRefArgs(); r = await refRound('nohold', 'n5'); const onceA = r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout);
+resetRefArgs(); r = await refRound('nohold', 'n6');
+check('hold default: … once — the rounds after it reuse the held reference, no freeze, no line', onceA && r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && HELD.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('legacy', 'l1', ['--consent', '#ok', '--locale', 'de-DE', '--no-hold-timers']);
+resetRefArgs(); r = await refRound('legacy', 'l2');
+check('hold default: the old reference\'s recorded settings a round omits go into that freeze — frozen again under them plus the hold, the build captured alike', r.status === 0 && freezes() === 1 && whyLines(r) === 1
+  && / --consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && /build\.png .*--consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(buildArgs()[0] || '')
+  && /^gate\.sh: reference: settings this round omits are the frozen reference's — --consent #ok --locale de-DE /m.test(r.stdout), `${r.stdout}\n${lines(refArgsFile).join(' | ')}`);
+resetRefArgs(); r = await refRound('legacy', 'l3');
+check('hold default: … and the round after reuses it', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && /build\.png .*--consent #ok --locale de-DE --hold-timers --hold-min 2000$/.test(buildArgs()[0] || ''), r.stdout);
+resetRefArgs(); r = await refRound('legacy2', 'm1', ['--consent', '#ok', '--locale', 'de-DE', '--no-hold-timers']);
+resetRefArgs(); r = await refRound('legacy2', 'm2', ['--consent', '#other']);
+check('hold default: a default round that ALSO changes a setting inherits nothing from the old reference — frozen under this round\'s flags plus the hold, as gate-all does', r.status === 0 && freezes() === 1
+  && / --consent #other --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && !/de-DE/.test(lines(refArgsFile)[0] || '') && !/de-DE/.test(buildArgs()[0] || ''), `${lines(refArgsFile)[0]}\n${buildArgs()[0]}\n${r.stdout}`);
+resetRefArgs(); r = await refRound('old', 'o2');
+check('hold default: a reference with NO recorded settings (stitch-shot\'s) is not reused under the hold — frozen again with the line, never "settings not recorded"', r.status === 0 && freezes() === 1 && whyLines(r) === 1 && !/settings not recorded/.test(r.stdout) && livePng('old') === 'frozen-reference-bytes', `status ${r.status} ${r.stdout}`);
+resetRefArgs(); r = await refRound('old', 'o3');
+check('hold default: … once', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('legacyun', 'l1', ['--no-hold-timers']);
+resetRefArgs(); r = await refRound('legacyun', 'l2', [], { STUB_REF_RC: '2' });
+check('hold default: an old unheld reference whose re-freeze finds the page unstable — exit 5, and the reason for the freeze is said once (stderr)', r.status === 5 && freezes() === 1
+  && (r.stderr.match(/^gate\.sh: reference: was being frozen again — capture settings changed \(holdTimers\): the gates hold timers by default /gm) || []).length === 1, `status ${r.status} ${r.stderr}`);
+// precedence: a flag over GATE_HOLD_TIMERS over the default
+const holdOfRound = async (label, flags, env) => { resetRefArgs(); const res = await refRound('prec', label, flags, env); const m = /--hold-min (\d+)$/.exec(buildArgs()[0] || ''); return res.status === 0 ? (m ? Number(m[1]) : /--hold/.test(buildArgs()[0] || '--hold') ? 'bad' : 'off') : `exit ${res.status}`; };
+const prec = [await holdOfRound('p1', [], { GATE_HOLD_TIMERS: '2500' }), await holdOfRound('p2', ['--no-hold-timers'], { GATE_HOLD_TIMERS: '2500' }), await holdOfRound('p3', ['--hold-min', '4000'], { GATE_HOLD_TIMERS: '0' }),
+  await holdOfRound('p4', ['--hold-timers'], { GATE_HOLD_TIMERS: '0' }), await holdOfRound('p5', ['--hold-timers'], { GATE_HOLD_TIMERS: '3000' }), await holdOfRound('p6', ['--hold-min', '4000'], { GATE_HOLD_TIMERS: '3000' })];
+check('hold precedence: a flag wins over GATE_HOLD_TIMERS, which wins over the default — env 2500 → 2500; --no-hold-timers over env 2500 → off; --hold-min 4000 over env 0 → 4000; --hold-timers over env 0 → 2000; --hold-timers keeps env 3000\'s threshold; --hold-min 4000 over env 3000 → 4000',
+  JSON.stringify(prec) === JSON.stringify([2500, 'off', 4000, 2000, 3000, 4000]), JSON.stringify(prec));
+for (const bad of [['--no-hold-timers', '--hold-timers'], ['--hold-min', '3000', '--no-hold-timers']]) { r = await refRound('plain', 'n2', bad); check(`hold: ${bad.join(' ')} is a usage error (exit 125)`, r.status === 125 && /--no-hold-timers contradicts/.test(r.stderr), r.stderr); }
+// ── The hint (reference.mjs § HINT): only an unheld round can carry it — a reference whose captures differed without the hold ──
+const HINT = 'the page changes on its own between captures (2 self-varying region(s) masked) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates hold by default: drop --no-hold-timers / GATE_HOLD_TIMERS=0) captures it in one state';
 const hintLines = (s) => (s.match(/^gate\.sh: hint: .*$/gm) || []);
 const sameVerdict = (v) => JSON.stringify({ ...v, at: 0 }).replace(/hint(no)?-1440/g, 'X'); // the record without its time and its dir
 const SELF = { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652', STUB_REF_HINT: HINT };
-resetRefArgs(); r = await refRound('hint', 'i1', [], SELF);
+resetRefArgs(); r = await refRound('hint', 'i1', [], { ...SELF, ...UNHELD });
 const hintFreezes = freezes();
-const plainRound = await refRound('hintno', 'i1', [], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652' });
-check('hint: a self-varying page frozen without the hold — the reference\'s hint once on stdout, after the reference line; the exit code and the verdict are those of the same round without it', r.status === 0 && plainRound.status === 0 && hintFreezes === 1
+const plainRound = await refRound('hintno', 'i1', [], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652', ...UNHELD });
+check('hint: a self-varying page frozen with the hold turned off — the reference\'s hint once on stdout, after the reference line; the exit code and the verdict are those of the same round without it', r.status === 0 && plainRound.status === 0 && hintFreezes === 1
   && hintLines(r.stdout).length === 1 && hintLines(r.stdout)[0] === `gate.sh: hint: ${HINT}` && hintLines(r.stderr).length === 0 && hintLines(plainRound.stdout + plainRound.stderr).length === 0
   && /^gate\.sh: reference: frozen 2026-11-01T09:00:00\.000Z, noise floor 2\.31% in 2 region\(s\) — 708 rows excluded\ngate\.sh: hint: /m.test(r.stdout)
   && sameVerdict(verdictJson('hint', 'i1')) === sameVerdict(verdictJson('hintno', 'i1')), `status ${r.status} ${r.stdout}\n${JSON.stringify(verdictJson('hint', 'i1'))}\n${JSON.stringify(verdictJson('hintno', 'i1'))}`);
-resetRefArgs(); r = await refRound('hint', 'i2');
-check('hint: the next round reuses the reference and repeats its hint, once', r.status === 0 && freezes() === 0 && hintLines(r.stdout).length === 1, r.stdout);
-resetRefArgs(); r = await refRound('hint', 'i3', ['--hold-timers'], SELF);
-check('hint: with --hold-timers the reference is frozen again under the hold and carries no hint — no hint line', r.status === 0 && freezes() === 1 && hintLines(r.stdout + r.stderr).length === 0 && !('hint' in JSON.parse(readFileSync(join(root, gdir('hint'), 'baseline.json'), 'utf8'))), r.stdout);
+resetRefArgs(); r = await refRound('hint', 'i2', ['--no-hold-timers']);
+check('hint: the next unheld round reuses the reference and repeats its hint, once', r.status === 0 && freezes() === 0 && hintLines(r.stdout).length === 1, r.stdout);
+resetRefArgs(); r = await refRound('hint', 'i3', [], SELF);
+check('hint: a default round freezes that reference again under the hold and it carries no hint — no hint line', r.status === 0 && freezes() === 1 && whyLines(r) === 1 && hintLines(r.stdout + r.stderr).length === 0 && !('hint' in JSON.parse(readFileSync(join(root, gdir('hint'), 'baseline.json'), 'utf8'))), r.stdout);
+resetRefArgs(); r = await refRound('hintdef', 'i1', [], SELF); const noHintFirst = r.status === 0 && freezes() === 1 && hintLines(r.stdout + r.stderr).length === 0;
+resetRefArgs(); r = await refRound('hintdef', 'i2', [], SELF);
+check('hint: a default round prints none — neither on the round that freezes a self-varying page nor on the one that reuses the reference', noHintFirst && r.status === 0 && freezes() === 0 && hintLines(r.stdout + r.stderr).length === 0, r.stdout);
 resetRefArgs(); r = await refRound('hintenv', 'i1', [], { ...SELF, GATE_HOLD_TIMERS: '1' });
 check('hint: GATE_HOLD_TIMERS=1 likewise', r.status === 0 && hintLines(r.stdout + r.stderr).length === 0, r.stdout);
-resetRefArgs(); r = await refRound('plain', 'n3');
-check('hint: a stable page has none', r.status === 0 && !/hint/.test(r.stdout + r.stderr), r.stdout);
-resetRefArgs(); r = await refRound('hintun', 'i1', [], { STUB_REF_RC: '2', STUB_REF_HINT: HINT });
-check('hint: an UNSTABLE freeze without the hold — still exit 5 and its two lines, plus the hint once (stderr)', r.status === 5 && hintLines(r.stderr).length === 1 && hintLines(r.stdout).length === 0 && /^gate\.sh: REFERENCE UNSTABLE \(exit 5\)/m.test(r.stderr) && verdictJson('hintun', 'i1') === null, `status ${r.status} ${r.stderr}`);
-resetRefArgs(); r = await refRound('hintun', 'i2', ['--hold-timers'], { STUB_REF_RC: '2', STUB_REF_HINT: HINT });
-check('hint: … and under the hold exit 5 with no hint', r.status === 5 && hintLines(r.stdout + r.stderr).length === 0, r.stderr);
+resetRefArgs(); r = await refRound('plain', 'n3', [], UNHELD);
+check('hint: a stable page has none, unheld either', r.status === 0 && !/hint/.test(r.stdout + r.stderr), r.stdout);
+resetRefArgs(); r = await refRound('hintun', 'i1', [], { STUB_REF_RC: '2', STUB_REF_HINT: HINT, ...UNHELD });
+check('hint: an UNSTABLE freeze with the hold turned off — still exit 5 and its two lines, plus the hint once (stderr)', r.status === 5 && hintLines(r.stderr).length === 1 && hintLines(r.stdout).length === 0 && /^gate\.sh: REFERENCE UNSTABLE \(exit 5\)/m.test(r.stderr) && verdictJson('hintun', 'i1') === null, `status ${r.status} ${r.stderr}`);
+resetRefArgs(); r = await refRound('hintun', 'i2', [], { STUB_REF_RC: '2', STUB_REF_HINT: HINT });
+check('hint: … and on a default round exit 5 with no hint', r.status === 5 && hintLines(r.stdout + r.stderr).length === 0, r.stderr);
 for (const bad of [['--hold-min', '1999'], ['--hold-min', 'soon']]) { r = await refRound('plain', 'n2', bad); check(`hold: ${bad.join(' ')} is a usage error (exit 125)`, r.status === 125 && /at least 2000/.test(r.stderr), r.stderr); }
 r = await gate(['--help']);
-check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status === 0 && /--hold-timers /.test(r.stdout) && /--hold-min <ms>/.test(r.stdout) && /GATE_HOLD_TIMERS/.test(r.stdout));
 // ── The header contract at the prototype stage: the first comparison belongs here (chrome-compare.mjs --status) ──
 {
   const DIFF_SCRIPTS = join(scripts, '..', '..', 'diff', 'scripts');
@@ -895,6 +950,8 @@ check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status ==
   r = await gate(['--help']);
   check('--help documents the header contract probe and its lines', /^Header contract \(--full, the prototype stage/m.test(r.stdout) && /header contract: NOT COMPARED at this stage — /.test(r.stdout) && /CAPPED at this stage/.test(r.stdout) && /header contract: NOT RECORDED — /.test(r.stdout));
 }
+check('--help names the default hold, --no-hold-timers, --hold-min, --hold-timers, GATE_HOLD_TIMERS and the precedence', r.status === 0 && /Timer hold — ON by default at 2000 ms/.test(r.stdout) && /--no-hold-timers /.test(r.stdout) && /--hold-timers /.test(r.stdout) && /--hold-min <ms>/.test(r.stdout)
+  && /Precedence: a flag wins over GATE_HOLD_TIMERS \(0 = off, 1 = 2000, a number = that threshold\)/.test(r.stdout) && /GATE_HOLD_TIMERS=0/.test(r.stdout), r.stdout.slice(0, 200));
 unlinkSync(join(replica, 'rounds.mjs'));
 
 server.close();
