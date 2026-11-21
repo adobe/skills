@@ -264,6 +264,73 @@ for (const s of ['replica', 'stardust', 'migrate', 'diff', 'deploy', 'rollout', 
   if (fs.existsSync(src)) fs.cpSync(src, path.join(SD, 'scripts', s), { recursive: true });
 }
 
+// Delivery is PIPELINED: it starts now, right after the fingerprint matched, and runs while the
+// record phases below write their ledger lines and the runner checkpoints each boundary. The ledger
+// keeps the normal phase order; the C-deliver line and the journal state when delivery actually ran.
+const NO_DELIVER = flag('--no-deliver');
+const deliverT0 = Date.now();
+const nCode = copyTree(path.join(fx.dir, 'repo'), ROOT, null);
+const codePaths = fs.readdirSync(path.join(fx.dir, 'repo'));
+const token = NO_DELIVER ? '' : daToken();
+const mediaDir = path.join(fx.dir, 'da', 'media');
+const media = fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir) : [];
+const tmpDocs = path.join(SD, '.work', 'replay-docs');
+fs.mkdirSync(tmpDocs, { recursive: true });
+const D = { previewOk: false, liveOk: false, codeLive: false, pushed: false, at: {} };
+const mark = (k) => { D.at[k] = since(); };
+const daP = (async () => {
+  if (NO_DELIVER) return;
+  await Promise.all(media.map((f) => daPut(token, ORG, SITE, `media/${m.da.mediaScope}/${f}`, path.join(mediaDir, f))));
+  await Promise.all(m.da.docs.map(async (d) => {
+    const out = path.join(tmpDocs, `${d}.html`);
+    fs.writeFileSync(out, subst(fs.readFileSync(path.join(fx.dir, 'da', `${d}.html`), 'utf8')));
+    await daPut(token, ORG, SITE, `${d}.html`, out);
+  }));
+  mark('da-put');
+  await Promise.all(m.da.docs.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
+  D.previewOk = await pollUntil(async () => {
+    try { const r = await fetch(`${PREVIEW}${m.page.path}?cb=${Date.now()}`); const t = await r.text(); return r.ok && t.includes(m.page.marker); } catch { return false; }
+  }, { every: 500, max: 60000 });
+  mark('first-preview');
+  timing('first-preview', `${D.previewOk ? 'PASS' : 'FAIL'} ${PREVIEW}${m.page.path}`);
+  await Promise.all(m.da.docs.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
+  D.liveOk = await pollUntil(async () => {
+    try { const r = await fetch(`${LIVE}${m.page.path}?cb=${Date.now()}`); return r.ok && (await r.text()).includes(m.page.marker); } catch { return false; }
+  }, { every: 500, max: 60000 });
+  mark('first-live');
+  timing('first-live', `${D.liveOk ? 'PASS' : 'FAIL'} ${LIVE}${m.page.path}`);
+})();
+// code: commit now (before the runner's first checkpoint touches the index), push, then poll
+if (!NO_DELIVER) {
+  try {
+    sh('git', ['add', '-A', ...codePaths]);
+    sh('git', ['commit', '-q', '-m', `replica fixture replay: ${fx.name} code (blocks, styles, fonts, icons)`]);
+  } catch (e) { log('commit:', String(e.stdout || e.message).slice(0, 160)); }
+}
+const codeP = (async () => {
+  if (NO_DELIVER) return;
+  for (let i = 0; i < 4 && !D.pushed; i += 1) {
+    const r = await shBg('git', ['push', '-q', 'origin', `HEAD:${BRANCH}`]);
+    if (r.code === 0) D.pushed = true;
+    else await shBg('git', ['pull', '-q', '--rebase', '--autostash', 'origin', BRANCH]);
+  }
+  mark('code-pushed');
+  timing('code-pushed', D.pushed ? 'ok' : 'FAIL');
+  let synced = false;
+  D.codeLive = await pollUntil(async (i) => {
+    try {
+      const r = await fetch(`${PREVIEW}${m.codeMarker.path}?cb=${Date.now()}`);
+      if (r.ok && (await r.text()).includes(m.codeMarker.contains)) return true;
+    } catch { /* retry */ }
+    if (i === 20 && !synced) { synced = true; try { await admin(token, 'code', ORG, SITE, BRANCH, '*'); } catch { /* best effort */ } }
+    return false;
+  }, { every: 1000, max: 240000 });
+  mark('code-live');
+  timing('code-live', D.codeLive ? 'ok' : 'FAIL');
+})();
+const deliveryP = Promise.all([daP, codeP]).catch((e) => { D.error = e.message; });
+timing('deploy-start', 'pipelined: push + DA media/docs → preview → publish, in parallel with the record phases');
+
 // Phase 1 — extract: the fixture's capture, proven current by the fingerprint
 if (!skip('replica', 'extract')) {
   ledger('replica', 'extract', 'start', `fixture replay: ${url} matched fixture ${fx.name}`);
@@ -293,7 +360,7 @@ for (const [phase, title, detail] of [
   await boundary(phase);
 }
 
-// Phase 5 — handoff: deploy for real on this run's site, then the published-origin gate
+// Phase 5 — handoff: the pipelined delivery is awaited here, then the published-origin gate
 ledger('replica', 'handoff', 'start', 'fixture replay: deploy → publish → published-origin gate → rollout records');
 ledger('migrate', 'render', 'start', 'fixture: approved archetype, no siblings');
 ledger('migrate', 'render', 'end', '1/1 rendered (fixture migrated tree)');
@@ -304,64 +371,11 @@ ledger('rollout', 'B-block', 'start');
 ledger('rollout', 'B-block', 'end', m.evidence?.blocks || 'blocks from the fixture');
 ledger('rollout', 'B2-dynamic', 'start');
 ledger('rollout', 'B2-dynamic', 'end', m.evidence?.dynamics || 'dynamic features triaged in the fixture');
-ledger('rollout', 'C-deliver', 'start', 'foundation + archetype in one unit (fixture)');
-timing('deploy-start');
+ledger('rollout', 'C-deliver', 'start', `foundation + archetype in one unit (fixture); delivery pipelined since +${((deliverT0 - T0) / 1000).toFixed(1)}s`);
 notes('Your rebuilt page is being placed on Adobe Edge Delivery now.', 'Next we publish it and measure it against your live page.');
-
-// code: copy, commit, push (in the background), DA in parallel
-const NO_DELIVER = flag('--no-deliver');
-const nCode = copyTree(path.join(fx.dir, 'repo'), ROOT, null);
-const codePaths = fs.readdirSync(path.join(fx.dir, 'repo'));
-const pushP = NO_DELIVER ? Promise.resolve(false) : (async () => {
-  try {
-    sh('git', ['add', '-A', ...codePaths, 'stardust']);
-    sh('git', ['commit', '-q', '-m', `replica fixture replay: ${fx.name} code (blocks, styles, fonts, icons)`]);
-  } catch (e) { log('commit:', String(e.stdout || e.message).slice(0, 160)); }
-  for (let i = 0; i < 3; i += 1) {
-    const r = await shBg('git', ['push', '-q', 'origin', `HEAD:${BRANCH}`]);
-    if (r.code === 0) return true;
-    await shBg('git', ['pull', '-q', '--rebase', '--autostash', 'origin', BRANCH]);
-  }
-  return false;
-})();
-const token = NO_DELIVER ? '' : daToken();
-const mediaDir = path.join(fx.dir, 'da', 'media');
-const media = fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir) : [];
-if (!NO_DELIVER) await Promise.all(media.map((f) => daPut(token, ORG, SITE, `media/${m.da.mediaScope}/${f}`, path.join(mediaDir, f))));
-log(`DA media: ${media.length} uploaded`);
-const tmpDocs = path.join(SD, '.work', 'replay-docs');
-fs.mkdirSync(tmpDocs, { recursive: true });
-await Promise.all(m.da.docs.map(async (d) => {
-  const out = path.join(tmpDocs, `${d}.html`);
-  fs.writeFileSync(out, subst(fs.readFileSync(path.join(fx.dir, 'da', `${d}.html`), 'utf8')));
-  if (!NO_DELIVER) await daPut(token, ORG, SITE, `${d}.html`, out);
-}));
-log(`DA docs: ${m.da.docs.join(', ')} PUT`);
-if (!NO_DELIVER) await Promise.all(m.da.docs.map((d) => admin(token, 'preview', ORG, SITE, BRANCH, d)));
-const previewOk = NO_DELIVER ? false : await pollUntil(async () => {
-  try { const r = await fetch(`${PREVIEW}${m.page.path}?cb=${Date.now()}`); const t = await r.text(); return r.ok && t.includes(m.page.marker); } catch { return false; }
-}, { every: 1000, max: 60000 });
-timing('first-preview', `${previewOk ? 'PASS' : 'FAIL'} ${PREVIEW}${m.page.path}`);
-log(`first preview ${previewOk ? 'ok' : 'NOT ok'}: ${PREVIEW}${m.page.path}`);
-if (!NO_DELIVER) await Promise.all(m.da.docs.map((d) => admin(token, 'live', ORG, SITE, BRANCH, d)));
-log('published (live)');
-const pushed = await pushP;
-timing('code-pushed', pushed ? 'ok' : 'FAIL');
-let synced = false;
-const codeLive = NO_DELIVER ? false : await pollUntil(async (i) => {
-  try {
-    const r = await fetch(`${PREVIEW}${m.codeMarker.path}?cb=${Date.now()}`);
-    if (r.ok && (await r.text()).includes(m.codeMarker.contains)) return true;
-  } catch { /* retry */ }
-  if (i === 10 && !synced) { synced = true; try { await admin(token, 'code', ORG, SITE, BRANCH, '*'); } catch { /* best effort */ } }
-  return false;
-}, { every: 2000, max: 240000 });
-timing('code-live', codeLive ? 'ok' : 'FAIL');
-log(`code live: ${codeLive}`);
-const liveOk = NO_DELIVER ? false : await pollUntil(async () => {
-  try { const r = await fetch(`${LIVE}${m.page.path}?cb=${Date.now()}`); return r.ok && (await r.text()).includes(m.page.marker); } catch { return false; }
-}, { every: 1000, max: 60000 });
-timing('first-live', `${liveOk ? 'PASS' : 'FAIL'} ${LIVE}${m.page.path}`);
+await deliveryP;
+log(`delivery: ${JSON.stringify(D)}`);
+if (D.error) throw new Error(`delivery failed: ${D.error}`);
 
 // coverage + published-origin gate
 sh('node', ['stardust/scripts/rollout/update-coverage.mjs', slug, '--status', 'deployed', '--url', `${LIVE}${m.page.path}`]);
@@ -369,18 +383,22 @@ let gateLine = 'skipped (--skip-gate)';
 if (!flag('--skip-gate')) {
   const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', ...(m.gate?.args || [])]);
   const sum = path.join(SD, 'replica', 'gates', 'all-1440', 'summary.json');
-  gateLine = (g.out.split('\n').filter((l) => /PASS|FAIL|pct|%/.test(l)).slice(-3).join(' | ') || `exit ${g.code}`).slice(0, 300);
-  if (fs.existsSync(sum)) sh('node', ['stardust/scripts/rollout/update-coverage.mjs', '--gate', sum]);
-  timing('published-gate-end', `${g.code === 0 ? 'PASS' : 'FAIL'} ${gateLine}`);
+  if (fs.existsSync(sum)) {
+    const row = (JSON.parse(fs.readFileSync(sum, 'utf8')).rows || [])[0] || {};
+    gateLine = `${row.pass ? 'PASS' : 'FAIL'} pixel ${row.pct}% (aligned ${row.alignedPct}%), height delta ${row.heightDelta}px, clipped ${row.clipped}, content missing ${row.content?.missing ?? '?'}${row.reasons?.length ? `, reasons: ${row.reasons.join('; ')}` : ''}`;
+    sh('node', ['stardust/scripts/rollout/update-coverage.mjs', '--gate', sum]);
+  } else gateLine = `no summary (gate-all exit ${g.code}): ${g.out.slice(-200)}`;
+  timing('published-gate-end', gateLine);
   log(`gate-all exit ${g.code}: ${gateLine}`);
 }
 try { sh('node', ['stardust/scripts/rollout/verify.mjs', '--base', LIVE, '--all']); } catch (e) { log('verify:', String(e.stdout || e.message).slice(0, 300)); }
 journal('C-deliver — fixture code and content delivered on this run\'s site', [
-  `${nCode} code files from the fixture committed and pushed; code served on ${PREVIEW} (${codeLive ? 'confirmed' : 'NOT confirmed'}).`,
-  `${media.length} media files and ${m.da.docs.length} documents (${m.da.docs.join(', ')}) PUT to DA ${ORG}/${SITE}, previewed and published.`,
+  `Delivery pipelined from +${((deliverT0 - T0) / 1000).toFixed(1)}s, in parallel with the record phases: ${JSON.stringify(D.at)}.`,
+  `${nCode} code files from the fixture committed and pushed; code served on ${PREVIEW} (${D.codeLive ? 'confirmed' : 'NOT confirmed'}).`,
+  `${media.length} media files and ${m.da.docs.length} documents (${m.da.docs.join(', ')}) PUT to DA ${ORG}/${SITE}, previewed and published (preview ${D.previewOk ? 'ok' : 'NOT ok'}, live ${D.liveOk ? 'ok' : 'NOT ok'}).`,
   `Published-origin gate @1440: ${gateLine}.`,
 ]);
-ledger('rollout', 'C-deliver', 'end', `1/1 page live at ${m.page.path}; gate 1440: ${gateLine}`.slice(0, 400));
+ledger('rollout', 'C-deliver', 'end', `1/1 page live at ${m.page.path} (live at ${D.at['first-live'] || '?'}); gate 1440: ${gateLine}`.slice(0, 400));
 await boundary('C-deliver');
 
 // D–I: light, real steps for one page
@@ -390,7 +408,7 @@ for (const [phase, fn] of [
   ['D2-dynamic', async () => m.evidence?.dynamicsParity || 'carousel/scroll behaviours ship in block JS (fixture); no host-bound APIs'],
   ['E-full-site', async () => 'verify.mjs --all on aem.live: 1/1'],
   ['E2-link-audit', async () => 'links stay absolute to the source host (fixture decision); no internal targets outside the page'],
-  ['F-optimize', async () => 'single page; no optimize findings recorded'],
+  ['F-optimize', async () => { try { const o = sh('node', ['stardust/scripts/rollout/optimize.mjs', '--all']); return (o.split('\n').filter((l) => /GATE|health|P1/.test(l)).slice(-2).join(' ') || 'optimize run').slice(0, 300); } catch (e) { return `optimize: ${String(e.stdout || e.message).slice(-200)}`; } }],
   ['G-aem', async () => 'no AEM autofix candidates for a single replayed page'],
   ['H-report', async () => '1 page / 1 template delivered'],
   ['I-dashboard', async () => { try { sh('node', ['stardust/scripts/rollout/dashboard.mjs']); return 'dashboard written (stardust/rollout/dashboard/)'; } catch { return 'dashboard skipped'; } }],
