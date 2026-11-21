@@ -1,0 +1,175 @@
+{
+  "extensions": {
+    "breakpoints": {
+      "containerMaxWidth": "1120px",
+      "probeWidth": 2560,
+      "shellMaxWidth": null,
+      "caps": [
+        {
+          "kind": "module",
+          "px": 1120,
+          "via": "max-width",
+          "selector": "#main > section.hero > div.container.hero__inner",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 900,
+          "via": "max-width",
+          "selector": "#main > section.voices > div.container > blockquote.voices__lead.reveal",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 849,
+          "via": "max-width",
+          "selector": "#main > section.cta > div.container.cta__inner > p.cta__promise.reveal",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 620,
+          "via": "max-width",
+          "selector": "#cafe > div.container.cafe__inner",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 528,
+          "via": "fixed",
+          "selector": "section.cta > div.container.cta__inner > p.cta__promise.reveal > em",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 496,
+          "via": "fixed",
+          "selector": "#intro > div.container.intro__grid > div.intro__lead.reveal",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 474,
+          "via": "fixed",
+          "selector": "div.container.intro__grid > div.intro__lead.reveal > h2.intro__statement > em",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 448,
+          "via": "fixed",
+          "selector": "#intro > div.container.intro__grid > div.intro__body.reveal",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 384,
+          "via": "fixed",
+          "selector": "#mood > div.container.mood__grid > div.mood__panel.reveal > div.cal",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 326,
+          "via": "fixed",
+          "selector": "div.learn__copy.reveal > ul.learn__points > li > span.learn__pt-text",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        },
+        {
+          "kind": "module",
+          "px": 280,
+          "via": "max-width",
+          "selector": "div.dna > div.dna__frame > div.dna__readout > p",
+          "pages": [
+            "https://markszulc.github.io/frescopa-atelier/index.html"
+          ]
+        }
+      ],
+      "modules": [
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 0,
+          "selector": "#main > section.hero",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 1,
+          "selector": "#intro",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 2,
+          "selector": "#learn",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 3,
+          "selector": "#mood",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 4,
+          "selector": "#feed",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 5,
+          "selector": "#main > section.sustain",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 6,
+          "selector": "#main > section.voices",
+          "px": 1120
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 7,
+          "selector": "#cafe",
+          "px": 620
+        },
+        {
+          "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+          "section": 8,
+          "selector": "#main > section.cta",
+          "px": 1120
+        }
+      ],
+      "capRegister": [],
+      "capProvenance": {
+        "writtenBy": "skills/replica/scripts/cap-probe.mjs",
+        "writtenAt": "2026-11-21T07:07:24.568Z",
+        "baseWidth": 1440,
+        "urls": [
+          "https://markszulc.github.io/frescopa-atelier/index.html"
+        ]
+      }
+    }
+  }
+}

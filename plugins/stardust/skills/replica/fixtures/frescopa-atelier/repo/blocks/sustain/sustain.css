@@ -1,0 +1,62 @@
+/* Sustain — prototype `.sustain` + `.chips`, re-scoped under the block; mobile-first (901). */
+.sustain {
+  padding-block: var(--section-pad);
+  background: var(--paper);
+}
+
+.sustain .sustain-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: center;
+}
+
+.sustain .sustain-media {
+  order: -1;
+}
+
+.sustain .sustain-media img {
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  object-fit: cover;
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.sustain .sustain-title {
+  margin-top: 1rem;
+}
+
+.sustain .sustain-title :is(h1, h2, h3) {
+  font-size: var(--fs-h2);
+}
+
+.sustain .sustain-chips ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.8rem 0 0;
+  list-style: none;
+}
+
+.sustain .sustain-chips li {
+  padding: 0.55em 0.95em;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--paper-2);
+  color: var(--burgundy);
+  font-family: var(--font-label);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (width >= 901px) {
+  .sustain .sustain-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sustain .sustain-media {
+    order: 0;
+  }
+}

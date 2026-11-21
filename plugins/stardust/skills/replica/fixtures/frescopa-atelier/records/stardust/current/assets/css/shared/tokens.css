@@ -1,0 +1,290 @@
+/* ============================================================
+   FRÉSCOPA — Design System  (shared foundation)
+   One system, three expressions. Warm, crafted, intelligent.
+   Colours in OKLCH; neutrals tinted toward the brand hue.
+   Grounded in the real brand palette:
+     Burgundy #58181d · Amber #eaa33a · Terracotta · Cream · Charcoal
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- Brand colour ---------- */
+  --burgundy:        oklch(0.34 0.093 25);    /* ~#5b1c22  brand core, headlines, logo   */
+  --burgundy-deep:   oklch(0.275 0.082 26);   /* ~#431217  pressed / deep fills          */
+  --terracotta:      oklch(0.605 0.116 44);   /* ~#b7613e  B2C lead accent               */
+  --terracotta-deep: oklch(0.515 0.108 40);   /* ~#96482a  hover                         */
+  --amber:           oklch(0.79 0.128 74);    /* ~#eaa33a  the beans — detail, never body*/
+  --amber-soft:      oklch(0.865 0.083 80);   /* ~#f4cd93  glow / wash                   */
+  --teal:            oklch(0.55 0.05 205);    /* ~#3f787f  B2B nod, used sparingly       */
+
+  /* ---------- Warm neutrals ---------- */
+  --paper:      oklch(0.970 0.010 82);   /* ~#f8f2e8  page canvas          */
+  --paper-2:    oklch(0.948 0.015 78);   /* ~#f1e8d8  raised panel         */
+  --paper-3:    oklch(0.918 0.020 74);   /* ~#e7d9c3  deeper sand          */
+  --sand:       oklch(0.884 0.025 71);   /* ~#dccbb0  strongest light tone */
+  --line:       oklch(0.855 0.018 68);   /* ~#d3c6b2  hairline on light    */
+  --ink:        oklch(0.262 0.021 52);   /* ~#2f271f  body text            */
+  --ink-soft:   oklch(0.430 0.022 52);   /* ~#5b4f42  secondary text       */
+  --charcoal:   oklch(0.222 0.016 52);   /* ~#241d17  dark section canvas  */
+  --charcoal-2: oklch(0.282 0.020 50);   /* ~#312820  dark raised panel    */
+  --line-dark:  oklch(0.400 0.020 55);   /* hairline on dark               */
+  --cream:      oklch(0.945 0.016 80);   /* ~#f1e9db  text on dark         */
+  --cream-soft: oklch(0.795 0.021 78);   /* ~#c8bba6  secondary on dark    */
+
+  /* ---------- Semantic ---------- */
+  --bg: var(--paper);
+  --fg: var(--ink);
+  --accent: var(--terracotta);
+  --focus: var(--terracotta);
+
+  /* ---------- Type families ---------- */
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* ---------- Type scale (fluid, ratio ~1.28) ---------- */
+  --fs-eyebrow: 0.75rem;
+  --fs-sm:      0.9375rem;
+  --fs-body:    1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4:      clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h3:      clamp(1.6rem, 1.25rem + 1.4vw, 2.3rem);
+  --fs-h2:      clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --fs-h1:      clamp(2.9rem, 1.7rem + 4.6vw, 5.4rem);
+  --fs-display: clamp(3.4rem, 1.1rem + 8.4vw, 8rem);
+
+  --lh-tight: 1.03;
+  --lh-snug:  1.15;
+  --lh-body:  1.62;
+
+  --tracking-eyebrow: 0.2em;
+  --tracking-tight: -0.02em;
+
+  /* ---------- Spacing ---------- */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs:  0.75rem;
+  --space-sm:  1rem;
+  --space-md:  1.5rem;
+  --space-lg:  2.5rem;
+  --space-xl:  4rem;
+  --space-2xl: 6rem;
+  --section-y: clamp(4.5rem, 3rem + 6vw, 9.5rem);
+
+  /* ---------- Layout ---------- */
+  --content:        1120px;
+  --content-wide:   1320px;
+  --content-narrow: 760px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+
+  /* ---------- Radius ---------- */
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   22px;
+  --r-xl:   32px;
+  --r-pill: 999px;
+
+  /* ---------- Elevation (warm, soft) ---------- */
+  --shadow-sm: 0 1px 2px oklch(0.3 0.03 50 / 0.06), 0 2px 8px oklch(0.3 0.03 50 / 0.05);
+  --shadow-md: 0 4px 14px oklch(0.3 0.03 50 / 0.07), 0 14px 34px oklch(0.3 0.03 50 / 0.08);
+  --shadow-lg: 0 14px 34px oklch(0.26 0.03 50 / 0.10), 0 34px 80px oklch(0.26 0.03 50 / 0.13);
+
+  /* ---------- Motion ---------- */
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+}
+
+/* ============================================================
+   Reset & base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 400;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--burgundy);
+  text-wrap: balance;
+}
+
+p { text-wrap: pretty; }
+
+img, svg, video { display: block; max-width: 100%; }
+img { height: auto; }
+
+a { color: inherit; text-decoration: none; }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { background: none; border: none; cursor: pointer; }
+
+::selection { background: var(--amber-soft); color: var(--burgundy-deep); }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* ============================================================
+   Shared primitives
+   ============================================================ */
+.container {
+  width: 100%;
+  max-width: var(--content);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.container--wide   { max-width: var(--content-wide); }
+.container--narrow { max-width: var(--content-narrow); }
+
+/* Eyebrow / kicker label */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--terracotta);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+}
+.eyebrow::before {
+  content: "";
+  width: 1.6em;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+.eyebrow--plain::before { display: none; }
+
+/* Italic brand promise */
+.promise { font-style: italic; font-weight: 500; }
+
+/* Buttons */
+.btn {
+  --_bg: var(--burgundy);
+  --_fg: var(--cream);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.95em 1.6em;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--_fg);
+  background: var(--_bg);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  transition: transform var(--dur-1) var(--ease-quint),
+              background-color var(--dur-1) var(--ease-quint),
+              box-shadow var(--dur-1) var(--ease-quint),
+              color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+.btn .arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.btn:hover .arrow { transform: translateX(3px); }
+.btn:active { transform: translateY(0); }
+
+.btn--primary { --_bg: var(--burgundy); --_fg: var(--cream); }
+.btn--primary:hover { --_bg: var(--burgundy-deep); }
+
+.btn--terracotta { --_bg: var(--terracotta); --_fg: var(--cream); }
+.btn--terracotta:hover { --_bg: var(--terracotta-deep); }
+
+.btn--cream { --_bg: var(--paper); --_fg: var(--burgundy); box-shadow: var(--shadow-sm); }
+.btn--cream:hover { --_bg: #fff; }
+
+.btn--ghost {
+  --_fg: currentColor;
+  background: transparent;
+  border-color: color-mix(in oklch, currentColor 32%, transparent);
+}
+.btn--ghost:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  box-shadow: none;
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, currentColor 55%, transparent);
+}
+
+/* Text link with animated underline */
+.link {
+  color: var(--terracotta);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size var(--dur-2) var(--ease-quint);
+  padding-bottom: 2px;
+}
+.link:hover { background-size: 100% 1.5px; }
+.link .arrow { transition: transform var(--dur-1) var(--ease-quint); }
+.link:hover .arrow { transform: translateX(3px); }
+
+/* Hairline */
+.rule { height: 1px; background: var(--line); border: 0; }
+
+/* ============================================================
+   Scroll reveal
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity var(--dur-3) var(--ease-expo),
+              transform var(--dur-3) var(--ease-expo);
+  transition-delay: var(--reveal-delay, 0s);
+}
+.reveal.is-in { opacity: 1; transform: none; }
+
+/* ============================================================
+   Accessibility
+   ============================================================ */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: absolute; left: 1rem; top: -3rem;
+  background: var(--burgundy); color: var(--cream);
+  padding: 0.6rem 1rem; border-radius: var(--r-sm); z-index: 200;
+  transition: top var(--dur-1) var(--ease-quint);
+}
+.skip-link:focus { top: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}

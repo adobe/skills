@@ -1,0 +1,51 @@
+{
+  "round": "pub1",
+  "width": 1440,
+  "stage": "published",
+  "pixel": {
+    "rc": 0,
+    "diff": "stardust/replica/gates/frescopa-atelier-index-html-1440/diff-pub1.png",
+    "json": "stardust/replica/gates/frescopa-atelier-index-html-1440/pixel-pub1.json",
+    "pct": 0.75,
+    "alignedPct": 0.75,
+    "alignedUsed": false,
+    "totalShift": 0,
+    "steps": [],
+    "offsetBound": null,
+    "maskedRows": 0,
+    "noiseFloor": 0,
+    "reason": null
+  },
+  "reference": {
+    "origin": "frozen",
+    "capturedAt": "2026-11-21T07:15:36.465Z",
+    "primed": true,
+    "stable": true,
+    "maskArg": ""
+  },
+  "probes": {
+    "content-diff": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-index-html-1440/content-diff-pub1.txt"
+    },
+    "visual-diff": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-index-html-1440/visual-diff-pub1.txt"
+    },
+    "chrome-parity": {
+      "rc": 2,
+      "evidence": "stardust/replica/gates/frescopa-atelier-index-html-1440/chrome-parity-pub1.txt"
+    },
+    "clip-probe": {
+      "rc": 0,
+      "evidence": "stardust/replica/gates/frescopa-atelier-index-html-1440/clip-pub1.txt"
+    },
+    "content-presence": {
+      "rc": 2,
+      "evidence": "stardust/replica/gates/frescopa-atelier-index-html-1440/content-presence-pub1.txt"
+    }
+  },
+  "structural": 0,
+  "nothingLost": 7,
+  "at": "2026-11-21T07:54:10.082Z"
+}

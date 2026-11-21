@@ -1,0 +1,62 @@
+/* Voices — prototype `.voices`, re-scoped under the block; mobile-first (901). */
+.voices {
+  padding-block: var(--section-pad);
+  background: var(--paper-2);
+}
+
+.voices blockquote {
+  margin: 0;
+}
+
+.voices .voices-lead {
+  max-width: 900px;
+  margin-top: 1.4rem;
+}
+
+.voices .voices-lead .voices-quote p {
+  color: var(--burgundy);
+  font-family: var(--font-display);
+  font-size: clamp(1.85rem, 4.2vw, 3.1rem);
+  font-weight: 600;
+  line-height: 1.18;
+}
+
+.voices .voices-lead em {
+  color: var(--terracotta);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.voices .voices-cite {
+  display: block;
+  margin-top: 1.1rem;
+  color: var(--terracotta);
+  font-family: var(--font-label);
+  font-size: 0.76rem;
+  font-style: normal;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.voices .voices-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  margin-top: clamp(2.5rem, 5vw, 3.8rem);
+  padding-top: clamp(2rem, 4vw, 3rem);
+  border-top: 1px solid var(--line);
+}
+
+.voices .voices-item .voices-quote p {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+@media (width >= 901px) {
+  .voices .voices-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

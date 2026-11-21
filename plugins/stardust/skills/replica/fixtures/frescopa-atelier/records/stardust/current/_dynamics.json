@@ -1,0 +1,117 @@
+{
+ "_provenance": {
+  "writtenBy": "stardust:dynamics detect",
+  "writtenAt": "2026-11-21T07:20:06.112Z",
+  "settleMs": 5000,
+  "width": 1440,
+  "urls": [
+   "https://markszulc.github.io/frescopa-atelier/index.html"
+  ],
+  "reachSource": "stardust/current/pages"
+ },
+ "pages": {
+  "/frescopa-atelier/index.html": {
+   "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+   "status": 200,
+   "host": "markszulc.github.io",
+   "title": "Fréscopa Atelier — Every morning, perfected.",
+   "forms": [
+    {
+     "name": "signup",
+     "action": "https://markszulc.github.io/frescopa-atelier/index.html#",
+     "method": "get",
+     "role": "",
+     "inChrome": true,
+     "fields": 1,
+     "signature": [
+      "email:email"
+     ],
+     "hidden": [],
+     "tokens": [],
+     "search": false,
+     "inlineHandler": true
+    }
+   ],
+   "controlGroups": [],
+   "triggers": [],
+   "dialogs": [],
+   "dialogCount": 0,
+   "media": [],
+   "iframes": [],
+   "mounts": [],
+   "auth": [],
+   "commerce": {
+    "cart": true,
+    "prices": 3
+   },
+   "locale": {
+    "lang": "en",
+    "hreflang": [],
+    "switcher": []
+   },
+   "cms": {},
+   "framework": null,
+   "globals": [],
+   "clientRendered": [],
+   "listingCandidates": [],
+   "inlineScripts": 0,
+   "inlineFetch": false,
+   "mainText": 3375,
+   "domAddedAfterLoad": 5,
+   "hosts": {
+    "markszulc.github.io": 15,
+    "fonts.googleapis.com": 1,
+    "fonts.gstatic.com": 2
+   },
+   "thirdPartyHosts": [
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+   ],
+   "scripts": [
+    "https://markszulc.github.io/frescopa-atelier/shared/hero.js",
+    "https://markszulc.github.io/frescopa-atelier/shared/flavor-dna.js",
+    "https://markszulc.github.io/frescopa-atelier/shared/app.js"
+   ],
+   "firstPartyApi": [],
+   "thirdPartyXhr": [],
+   "postBodies": [],
+   "textAtLoad": 3395,
+   "mainEmptyAtLoad": false
+  }
+ },
+ "findings": [
+  {
+   "id": "f-form-signup-origin-frescopa-atelier-index-html-1-fields",
+   "class": "F",
+   "feature": "form \"signup\" → origin /frescopa-atelier/index.html (1 fields)",
+   "signature": [
+    "email:email"
+   ],
+   "hint": "forms",
+   "evidence": [
+    "email:email"
+   ],
+   "pages": [
+    "/frescopa-atelier/index.html"
+   ]
+  },
+  {
+   "id": "x-commerce-signals-cart-true-prices-3",
+   "class": "X",
+   "feature": "commerce signals (cart: true, prices: 3)",
+   "hint": "decided-out",
+   "evidence": [],
+   "pages": [
+    "/frescopa-atelier/index.html"
+   ]
+  }
+ ],
+ "reach": {
+  "pagesWithEvidence": 1,
+  "of": 1,
+  "endpoints": {},
+  "searchFormPages": 0,
+  "formPages": 1,
+  "triggerPages": {}
+ }
+}

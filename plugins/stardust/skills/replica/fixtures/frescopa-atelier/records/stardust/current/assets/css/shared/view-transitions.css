@@ -1,0 +1,52 @@
+/* Cross-document view transitions — app-like navigation between the Fréscopa
+   pages (index, machines, atelier, myatelier).
+
+   Progressive enhancement: browsers without cross-document view transitions
+   simply ignore the @view-transition rule and navigate instantly, so there is
+   no fallback to maintain. */
+
+@view-transition {
+  navigation: auto;
+}
+
+/* Baseline — a calm cross-fade of the whole page on every navigation. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Shared elements. Named via a data-vt hook rather than a structural selector
+   so the rules don't depend on the design system's generated DOM.
+
+   - site-header: the identical header on machines/atelier/myatelier stays
+     anchored (a crisp shell) instead of fading, the way a native app keeps its
+     chrome while the content swaps.
+   - atelier-hero: the product image frame carries between the Machines flagship
+     card and the Atelier PDP hero, so it grows/shrinks into place. */
+[data-vt="site-header"] {
+  view-transition-name: site-header;
+}
+[data-vt="atelier-hero"] {
+  view-transition-name: atelier-hero;
+}
+
+/* Give the morphing pairs a touch more time and a soft ease so the movement
+   reads as intentional rather than snappy. */
+::view-transition-group(atelier-hero) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-group(site-header) {
+  animation-duration: 300ms;
+}
+
+/* Respect reduced-motion — collapse every transition to a near-instant swap. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+  }
+}

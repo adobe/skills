@@ -1,0 +1,536 @@
+/*
+ * Copyright 2020 Adobe. All rights reserved.
+ * This file is licensed to you under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License. You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under
+ * the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR REPRESENTATIONS
+ * OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ */
+
+/*
+ * Fréscopa Atelier — foundation (replica C0).
+ * Tokens lifted verbatim from the gated prototype
+ * (stardust/prototypes/frescopa-atelier-index-html.css, itself lifted from the source).
+ * Mobile-first on the source breakpoints: 561 / 761 / 901 / 981.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* palette */
+  --burgundy: oklch(34% 0.093 25deg);
+  --burgundy-deep: oklch(27.5% 0.082 26deg);
+  --terracotta: oklch(60.5% 0.116 44deg);
+  --terracotta-deep: oklch(51.5% 0.108 40deg);
+  --amber: oklch(79% 0.128 74deg);
+  --amber-soft: oklch(86.5% 0.083 80deg);
+  --paper: oklch(97% 0.010 82deg);
+  --paper-2: oklch(94.8% 0.015 78deg);
+  --paper-3: oklch(91.8% 0.020 74deg);
+  --line: oklch(85.5% 0.018 68deg);
+  --ink: oklch(26.2% 0.021 52deg);
+  --ink-soft: oklch(43% 0.022 52deg);
+  --charcoal: oklch(22.2% 0.016 52deg);
+  --charcoal-2: oklch(28.2% 0.020 50deg);
+  --line-dark: oklch(40% 0.020 55deg);
+  --cream: oklch(94.5% 0.016 80deg);
+  --cream-soft: oklch(79.5% 0.021 78deg);
+
+  /* type */
+  --font-display: "Schibsted Grotesk", schibsted-grotesk-fallback, system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", hanken-grotesk-fallback, system-ui, sans-serif;
+  --font-label: "Hanken Grotesk", hanken-grotesk-fallback, system-ui, sans-serif;
+  --fs-eyebrow: 0.75rem;
+  --fs-sm: 0.9375rem;
+  --fs-body: 1.0625rem;
+  --fs-body-lg: clamp(1.125rem, 0.98rem + 0.5vw, 1.3125rem);
+  --fs-h4: clamp(1.25rem, 1.08rem + 0.7vw, 1.6rem);
+  --fs-h2: clamp(2.1rem, 1.45rem + 2.6vw, 3.5rem);
+  --lh-tight: 1.03;
+  --lh-snug: 1.15;
+  --lh-body: 1.62;
+
+  /* layout */
+  --content: 1120px;
+  --gutter: clamp(1.25rem, 0.4rem + 3vw, 3rem);
+  --section-pad: clamp(3rem, 2rem + 4vw, 6rem);
+
+  /* radii + shadows */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px oklch(30% 0.03 50deg / 6%), 0 2px 8px oklch(30% 0.03 50deg / 5%);
+  --shadow-md: 0 4px 14px oklch(30% 0.03 50deg / 7%), 0 14px 34px oklch(30% 0.03 50deg / 8%);
+  --shadow-lg: 0 14px 34px oklch(26% 0.03 50deg / 10%), 0 34px 80px oklch(26% 0.03 50deg / 13%);
+
+  /* motion */
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 0.35s;
+  --dur-2: 0.6s;
+  --dur-3: 0.9s;
+
+  /* boilerplate aliases (kept so stock code that reads them stays on-brand) */
+  --background-color: var(--paper);
+  --text-color: var(--ink);
+  --link-color: var(--terracotta);
+  --link-hover-color: var(--terracotta-deep);
+  --body-font-family: var(--font-body);
+  --heading-font-family: var(--font-display);
+
+  /* the header floats over the hero (overlay chrome, #108): nothing reserved in flow */
+  --nav-height: 0;
+}
+
+/* metric-matched fallbacks (Linux-available Arial-class faces first; computed from the woff2) */
+@font-face {
+  font-family: hanken-grotesk-fallback;
+  src: local("Liberation Sans"), local("Arimo"), local("Arial");
+  size-adjust: 97.65%;
+  ascent-override: 102.41%;
+  descent-override: 31.03%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: schibsted-grotesk-fallback;
+  src: local("Liberation Sans"), local("Arimo"), local("Arial");
+  size-adjust: 101.77%;
+  ascent-override: 95.96%;
+  descent-override: 25.33%;
+  line-gap-override: 0%;
+}
+
+/* ---------- reset (lifted from the prototype base) ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+html.nav-open {
+  overflow: hidden;
+}
+
+body {
+  display: none;
+  overflow-x: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizelegibility;
+  font-feature-settings: "kern" 1;
+}
+
+body.appear {
+  display: block;
+}
+
+/* chrome reservation (boilerplate structural layer; overlay header → 0) */
+header {
+  height: var(--nav-height);
+}
+
+header .header,
+footer .footer {
+  visibility: hidden;
+}
+
+header .header[data-block-status="loaded"],
+footer .footer[data-block-status="loaded"] {
+  visibility: visible;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--burgundy);
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  scroll-margin: 92px;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+img {
+  height: auto;
+}
+
+picture {
+  display: contents;
+}
+
+a:any-link {
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+input,
+textarea,
+select,
+button {
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+ul,
+ol {
+  padding: 0;
+}
+
+::selection {
+  background: var(--amber-soft);
+  color: var(--burgundy-deep);
+}
+
+:focus-visible {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+}
+
+.icon img {
+  width: 100%;
+  height: 100%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* skip link (inserted by the header block before the header landmark) */
+.skip-link {
+  position: absolute;
+  top: -3rem;
+  left: 1rem;
+  z-index: 200;
+  padding: 0.6rem 1rem;
+  border-radius: var(--r-sm);
+  background: var(--burgundy);
+  color: var(--cream);
+  transition: top var(--dur-1) var(--ease-quint);
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* ---------- sections ---------- */
+main > .section {
+  position: relative;
+  margin: 0;
+}
+
+main > .section:empty {
+  display: none;
+}
+
+/* default content sits in the prototype's container; blocks are full-bleed and cap themselves */
+main > .section > .default-content-wrapper,
+.container {
+  width: 100%;
+  max-width: var(--content);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+main > .section > div:not(.default-content-wrapper) {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- shared primitives (prototype .eyebrow / .lede / .link / .reveal) ---------- */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  color: var(--terracotta);
+  font-family: var(--font-label);
+  font-size: var(--fs-eyebrow);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 1.6em;
+  height: 1px;
+  background: currentcolor;
+  opacity: 0.5;
+}
+
+.eyebrow-light {
+  color: var(--amber);
+}
+
+.lede-wrap {
+  max-width: 46ch;
+  margin-top: 1.2rem;
+  color: var(--ink-soft);
+  font-size: var(--fs-body-lg);
+}
+
+.link,
+.link-wrap :where(a:any-link) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding-bottom: 2px;
+  background: linear-gradient(currentcolor, currentcolor) 0 100% / 0% 1.5px no-repeat;
+  color: var(--terracotta);
+  font-weight: 600;
+  transition: background-size var(--dur-2) var(--ease-quint);
+}
+
+/* the arrow is text, as on the source: blocks append <span class="arrow" aria-hidden="true">→ */
+.link .arrow,
+.link-wrap :where(a:any-link) .arrow {
+  transition: transform var(--dur-1) var(--ease-quint);
+}
+
+.link:hover,
+.link-wrap :where(a:any-link):hover {
+  background-size: 100% 1.5px;
+}
+
+.link:hover .arrow,
+.link-wrap :where(a:any-link):hover .arrow {
+  transform: translateX(3px);
+}
+
+.link-sm {
+  font-size: 0.85rem;
+}
+
+/* scroll reveal — scripts/reveal.js adds .reveal and .is-in on intersection */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity var(--dur-3) var(--ease-expo), transform var(--dur-3) var(--ease-expo);
+  transition-delay: var(--reveal-delay, 0s);
+}
+
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- buttons (prototype .btn; strong = terracotta, em = ghost, strong+em = cream) ---- */
+p.button-wrapper {
+  display: inline-flex;
+  margin: 0;
+}
+
+a.button:any-link,
+button.button {
+  --btn-bg: var(--burgundy);
+  --btn-fg: var(--cream);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.95em 1.6em;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: var(--lh-body);
+  letter-spacing: 0.005em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-quint),
+    background-color var(--dur-1) var(--ease-quint),
+    box-shadow var(--dur-1) var(--ease-quint),
+    color var(--dur-1) var(--ease-quint);
+  will-change: transform;
+}
+
+a.button:hover,
+button.button:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+a.button:active,
+button.button:active {
+  transform: translateY(0);
+}
+
+a.button:any-link .arrow {
+  transition: transform var(--dur-1) var(--ease-quint);
+}
+
+a.button:any-link:hover .arrow {
+  transform: translateX(3px);
+}
+
+a.button.primary {
+  --btn-bg: var(--terracotta);
+  --btn-fg: var(--cream);
+}
+
+a.button.primary:hover {
+  --btn-bg: var(--terracotta-deep);
+}
+
+a.button.secondary {
+  --btn-fg: currentcolor;
+
+  border-color: color-mix(in oklch, currentcolor 32%, transparent);
+  background: transparent;
+}
+
+a.button.secondary:hover {
+  border-color: color-mix(in oklch, currentcolor 55%, transparent);
+  background: color-mix(in oklch, currentcolor 8%, transparent);
+  box-shadow: none;
+}
+
+a.button.accent,
+button.button.accent {
+  --btn-bg: var(--paper);
+  --btn-fg: var(--burgundy);
+
+  box-shadow: var(--shadow-sm);
+}
+
+a.button.accent:hover,
+button.button.accent:hover {
+  --btn-bg: #fff;
+}
+
+/* ghost on media (hero) / on dark (cta) — prototype .btn--on-media / .btn--on-dark */
+main .hero a.button.secondary {
+  border-color: color-mix(in oklch, var(--cream) 42%, transparent);
+  color: var(--cream);
+}
+
+main .cta a.button.secondary {
+  border-color: color-mix(in oklch, var(--cream) 34%, transparent);
+  color: var(--cream);
+}
+
+main :is(.hero, .cta) a.button.secondary:hover {
+  border-color: var(--cream);
+  background: color-mix(in oklch, var(--cream) 12%, transparent);
+}
+
+/* ---------- Experience Workspace edit mode (Step 3 a/b) ---------- */
+/* stylelint-disable no-descending-specificity -- verbatim edit-mode snippet, editor-only */
+.prosemirror-editor p > :is(strong, em) > a:any-link,
+.prosemirror-editor p > a:any-link:has(> :is(strong, em):only-child) {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.95em 1.6em;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.prosemirror-editor p > a:any-link > :is(strong, em) {
+  font-style: inherit;
+  font-weight: inherit;
+}
+
+.prosemirror-editor p > strong > a:any-link,
+.prosemirror-editor p > a:any-link:has(> strong:only-child) {
+  background: var(--terracotta);
+  color: var(--cream);
+}
+
+.prosemirror-editor p > em > a:any-link,
+.prosemirror-editor p > a:any-link:has(> em:only-child) {
+  border-color: color-mix(in oklch, currentcolor 32%, transparent);
+  background: transparent;
+}
+
+a .prosemirror-editor a:any-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* stylelint-enable no-descending-specificity */
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* on-media edit-mode repaint goes last (Step 3 a) */
+main :is(.hero, .cta) .prosemirror-editor p > em > a:any-link {
+  color: var(--cream);
+}

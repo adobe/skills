@@ -1,0 +1,142 @@
+{
+  "source": "https://markszulc.github.io/frescopa-atelier/index.html",
+  "fetchedAt": "2026-11-21T07:06:41.367Z",
+  "css": [
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap",
+      "file": "stardust/current/assets/fonts/google-fonts.css"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/shared/tokens.css",
+      "file": "stardust/current/assets/css/shared/tokens.css",
+      "status": 200
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/atelier.css",
+      "file": "stardust/current/assets/css/atelier.css",
+      "status": 200
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/shared/view-transitions.css",
+      "file": "stardust/current/assets/css/shared/view-transitions.css",
+      "status": 200
+    }
+  ],
+  "js": [
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/shared/flavor-dna.js",
+      "file": "stardust/current/assets/js/shared/flavor-dna.js",
+      "status": 200
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/shared/hero.js",
+      "file": "stardust/current/assets/js/shared/hero.js",
+      "status": 200
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/shared/app.js",
+      "file": "stardust/current/assets/js/shared/app.js",
+      "status": 200
+    }
+  ],
+  "media": [
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo-light.svg",
+      "file": "stardust/current/assets/media/frescopa-logo-light-feb5a895.svg",
+      "status": 200,
+      "bytes": 6930,
+      "contentType": "image/svg+xml"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/frescopa-logo.svg",
+      "file": "stardust/current/assets/media/frescopa-logo-b804ee94.svg",
+      "status": 200,
+      "bytes": 6930,
+      "contentType": "image/svg+xml"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/hero-machine.jpg",
+      "file": "stardust/current/assets/media/hero-machine-0921b616.jpg",
+      "status": 200,
+      "bytes": 236780,
+      "contentType": "image/jpeg"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/espresso-pour.jpg",
+      "file": "stardust/current/assets/media/espresso-pour-daefc341.jpg",
+      "status": 200,
+      "bytes": 244380,
+      "contentType": "image/jpeg"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/tea-moment.jpg",
+      "file": "stardust/current/assets/media/tea-moment-defc317a.jpg",
+      "status": 200,
+      "bytes": 274113,
+      "contentType": "image/jpeg"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/citrus-juice.jpg",
+      "file": "stardust/current/assets/media/citrus-juice-14dff725.jpg",
+      "status": 200,
+      "bytes": 215396,
+      "contentType": "image/jpeg"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/sustainability.jpg",
+      "file": "stardust/current/assets/media/sustainability-6e8fa6f4.jpg",
+      "status": 200,
+      "bytes": 262737,
+      "contentType": "image/jpeg"
+    },
+    {
+      "url": "https://markszulc.github.io/frescopa-atelier/assets/images/cafe-interior.jpg",
+      "file": "stardust/current/assets/media/cafe-interior-56b92ca5.jpg",
+      "status": 200,
+      "bytes": 331926,
+      "contentType": "image/jpeg"
+    }
+  ],
+  "fonts": [
+    {
+      "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpQ59CjCQ.woff2",
+      "file": "stardust/current/assets/fonts/ieVn2YZDLWuGJpnzaiwFXS9tYtpQ59CjCQ.woff2",
+      "bytes": 1668,
+      "license": "OFL (Google Fonts)"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpS59CjCQ.woff2",
+      "file": "stardust/current/assets/fonts/ieVn2YZDLWuGJpnzaiwFXS9tYtpS59CjCQ.woff2",
+      "bytes": 9320,
+      "license": "OFL (Google Fonts)"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpT59CjCQ.woff2",
+      "file": "stardust/current/assets/fonts/ieVn2YZDLWuGJpnzaiwFXS9tYtpT59CjCQ.woff2",
+      "bytes": 19588,
+      "license": "OFL (Google Fonts)"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2",
+      "file": "stardust/current/assets/fonts/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2",
+      "bytes": 34704,
+      "license": "OFL (Google Fonts)"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9Iayoxdg.woff2",
+      "file": "stardust/current/assets/fonts/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9Iayoxdg.woff2",
+      "bytes": 20924,
+      "license": "OFL (Google Fonts)"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/schibstedgrotesk/v7/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9Gayo.woff2",
+      "file": "stardust/current/assets/fonts/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9Gayo.woff2",
+      "bytes": 46752,
+      "license": "OFL (Google Fonts)"
+    }
+  ],
+  "fontResponsesSeen": [
+    "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2",
+    "https://fonts.gstatic.com/s/schibstedgrotesk/v7/Jqz55SSPQuCQF3t8uOwiUL-taUTtap9Gayo.woff2"
+  ]
+}

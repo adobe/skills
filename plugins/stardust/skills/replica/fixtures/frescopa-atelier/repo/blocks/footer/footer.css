@@ -1,0 +1,167 @@
+/* Footer — lifted from the gated prototype's chrome (.footer / .signup / .footer__cols). */
+
+footer .footer {
+  padding-top: clamp(3.5rem, 6vw, 5.5rem);
+  background: var(--charcoal);
+  color: var(--cream-soft);
+}
+
+footer .footer .footer-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.5rem;
+  padding-bottom: 3rem;
+}
+
+footer .footer .footer-brand img {
+  width: auto;
+  height: 40px;
+  margin-bottom: 1.3rem;
+}
+
+footer .footer .footer-brand p {
+  max-width: 42ch;
+  color: var(--cream-soft);
+  font-size: 0.95rem;
+}
+
+footer .footer .signup {
+  margin-top: 1.9rem;
+}
+
+footer .footer .signup-label {
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+footer .footer .signup-label p {
+  max-width: none;
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+footer .footer .signup-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+footer .footer .signup-input {
+  flex: 1;
+  min-width: 190px;
+  padding: 0.85em 1.25em;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-pill);
+  background: var(--charcoal-2);
+  color: var(--cream);
+  transition: border-color var(--dur-1);
+}
+
+footer .footer .signup-input::placeholder {
+  color: color-mix(in oklch, var(--cream-soft) 70%, transparent);
+}
+
+footer .footer .signup-input:focus-visible {
+  border-color: var(--amber);
+  outline: none;
+}
+
+footer .footer .footer-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+footer .footer .footer-col h1,
+footer .footer .footer-col h2,
+footer .footer .footer-col h3,
+footer .footer .footer-col h4 {
+  margin-bottom: 1rem;
+  color: var(--amber);
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+footer .footer .footer-col ul {
+  list-style: none;
+}
+
+footer .footer .footer-col a {
+  display: block;
+  padding: 0.36rem 0;
+  color: var(--cream-soft);
+  font-size: 0.95rem;
+  transition: color var(--dur-1);
+}
+
+footer .footer .footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  padding-block: 1.5rem 2rem;
+  border-top: 1px solid var(--line-dark);
+}
+
+footer .footer .footer-social ul {
+  display: flex;
+  gap: 0.7rem;
+  list-style: none;
+}
+
+footer .footer .footer-social a {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line-dark);
+  border-radius: 50%;
+  color: var(--cream-soft);
+  transition: color var(--dur-1), border-color var(--dur-1);
+}
+
+footer .footer .footer-social a:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+footer .footer .footer-col a:hover {
+  color: var(--cream);
+}
+
+footer .footer .footer-social .icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+footer .footer .footer-meta p {
+  color: var(--cream-soft);
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+@media (width >= 561px) {
+  footer .footer .footer-cols {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (width >= 901px) {
+  footer .footer .footer-legal {
+    justify-content: space-between;
+  }
+}
+
+@media (width >= 981px) {
+  footer .footer .footer-inner {
+    grid-template-columns: 1.3fr 2fr;
+    gap: clamp(2rem, 6vw, 5rem);
+  }
+}
