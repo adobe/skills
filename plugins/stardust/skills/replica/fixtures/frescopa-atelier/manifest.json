@@ -40,7 +40,9 @@
     "mediaScope": "frescopa-atelier"
   },
   "gate": {
-    "args": []
+    "args": [
+      "--parallel-probes"
+    ]
   },
   "evidence": {
     "direction": "bounded-single spec (PRODUCT/DESIGN/DESIGN.json) + empty register, from the fixture build run",
