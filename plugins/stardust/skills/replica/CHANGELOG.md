@@ -1,3 +1,15 @@
+# [1.6.0](https://github.com/adobe/skills/compare/replica-v1.5.2...replica-v1.6.0) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
 ## [1.5.2](https://github.com/adobe/skills/compare/replica-v1.5.1...replica-v1.5.2) (2026-11-20)
 
 
