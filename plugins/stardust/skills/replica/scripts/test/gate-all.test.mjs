@@ -27,6 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
 import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
@@ -319,7 +320,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       const r = runAll('dead-source', [], { STUB_FONTS_ORIGIN: 'Brand Sans,Brand Serif', STUB_FONTS_EDS: 'Brand Serif' });
       assert.equal(r.status, 0, r.stderr);
       const row = r.summary.rows[0];
-      assert.deepEqual([row.pass, row.reasons, row.notes, row.fontsNotLoaded], [true, [], ['font-dead-on-source:Brand Sans', 'font-dead-on-both:Brand Serif'], [{ family: 'Brand Sans', side: 'origin' }, { family: 'Brand Serif', side: 'both' }]]);
+      assert.deepEqual([row.pass, row.reasons, row.notes, row.fontsNotLoaded], [true, [], ['font-dead-on-source:Brand Sans', 'font-dead-on-both:Brand Serif', unitsNote(0)], [{ family: 'Brand Sans', side: 'origin' }, { family: 'Brand Serif', side: 'both' }]]);
       assert.deepEqual([r.summary.totals.fontsNotLoaded, r.summary.totals.fontsDeadOnSource, r.summary.totals.pass], [0, 1, 1]);
       assert.match(readFileSync(join(r.out, 'summary.md'), 'utf8'), /fonts dead on the source — reported, not failing: 1 \(Brand Sans \[origin\], Brand Serif \[both\]\)/);
     });
@@ -358,7 +359,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], fixedLayers: layers, height: 2000 }));
       const some = runAll('proto-some', protoArgs, {}, proto);
       assert.equal(some.status, 0, some.stderr);
-      assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons, some.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif']], 'the cached capture\'s dead face is the source\'s: reported, the row passes');
+      assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons, some.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif', unitsNote(0)]], 'the cached capture\'s dead face is the source\'s: reported, the row passes');
       writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], fixedLayers: layers, height: 2000 }));
       const clean = runAll('proto-clean', protoArgs, {}, proto);
       assert.equal(clean.status, 0, clean.stderr);
@@ -374,7 +375,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       const r = runAll('proto-baseline', protoArgs, {}, proto);
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.origin.note, /^reused .*live\.png/);
-      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons, r.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif']], 'the baseline\'s dead face is read and reported');
+      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons, r.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif', unitsNote(0)]], 'the baseline\'s dead face is read and reported');
       assert.deepEqual(r.record, { writtenBy: 'gate-all.mjs', copiedFrom: 'stardust/replica/gates/a-1440/live.png', fixedLayers: { capture: 'once', count: 1, late: 0 }, fontsFailed: ['Brand Serif'] });
       writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: [], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
       const clean = runAll('proto-baseline-clean', protoArgs, {}, proto);
@@ -1244,6 +1245,60 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node gate-all\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
+});
+check('units not declared: a page no family applies to is a named state — unitsDeclared 0, one note, the recorded repeat groups when its schema has them; never a reason', () => {
+  const schema = { sections: [{ section: 'hero', repeats: [] }, { section: 'cards', repeats: [{ unitSelector: 'LI.card', count: 3 }, { unitSelector: 'A.pill', count: 1 }] }, { section: 'rows', repeats: [{ unitSelector: 'DIV.row', count: 2 }] }, { section: 'bare' }] };
+  assert.deepEqual([repeatGroups(schema), repeatGroups({ sections: [] }), repeatGroups(null), repeatGroups({ sections: 'x' })], [2, 0, null, null]);
+  const plain = 'units: no family declared for this page — the repeated-unit check did not run';
+  assert.deepEqual([unitsNote(0), unitsNote(0, 0), unitsNote(0, null), unitsNote(2, 5)], [plain, plain, plain, null]);
+  assert.equal(unitsNote(0, 2, 'a'), `${plain} (2 repeated module(s) recorded for this page in stardust/eds-schema/a.json, 0 unit families declared in stardust/replica/units.json)`);
+  assert.deepEqual(unitsState(0, schema, 'a', ['font-dead-on-source:X']), { unitsDeclared: 0, unitsRecorded: 2, notes: ['font-dead-on-source:X', unitsNote(0, 2, 'a')] });
+  assert.deepEqual(unitsState(0, null, 'a'), { unitsDeclared: 0, unitsRecorded: null, notes: [plain] });
+  assert.deepEqual(unitsState(3, schema, 'a', ['n']), { unitsDeclared: 3, unitsRecorded: null, notes: ['n'] }, 'a family applies: no note, the schema is not read');
+});
+check('formatSummary: the units cell names the state (not declared / N families checked / no result) and the calibration line counts the pages that took no unit check', () => {
+  const base = { pct: 1, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, pixelOnlyPass: true, reasons: [], override: null, error: null };
+  const rows = [
+    { ...base, slug: 'a', path: '/a', units: null, ...unitsState(0, { sections: [{ repeats: [{ count: 3 }] }] }, 'a') },
+    { ...base, slug: 'b', path: '/b', units: { off: 0, hidden: 0, missing: 0 }, unitsRequired: true, ...unitsState(3, null, 'b') },
+    { ...base, slug: 'c', path: '/c', units: { off: 1, hidden: 0, missing: 0 }, unitsRequired: false, ...unitsState(1, null, 'c') },
+    { ...base, slug: 'd', path: '/d', units: null, ...unitsState(2, null, 'd') },
+    { ...base, slug: 'e', path: '/e', units: null },
+  ];
+  const totals = { pages: 5, pass: 5, pixelOnlyPass: 5, overridePass: 0, fail: 0, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, unitsNotDeclared: 1, unitsRecordedNotDeclared: 1 };
+  const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals, rows });
+  assert.match(md, /; \*\*units not declared 1 of 5\*\* \(no repeated-unit family applies: the check did not run on them; 1 of them have repeated modules recorded\)/);
+  assert.match(md, /\| `\/a` \|.*\| not declared \| PASS \| \(reported\) units: no family declared for this page — the repeated-unit check did not run \(1 repeated module\(s\) recorded for this page in stardust\/eds-schema\/a\.json, 0 unit families declared in stardust\/replica\/units\.json\) \|/);
+  assert.match(md, /\| `\/b` \|.*\| off 0 hidden 0 missing 0 \(3 families checked\) \| PASS \| - \|/);
+  assert.match(md, /\| `\/c` \|.*\| off 1 hidden 0 missing 0 \(advisory\) \(1 family checked\) \| PASS \|/);
+  assert.match(md, /\| `\/d` \|.*\| no result \(2 declared\) \| PASS \|/);
+  assert.match(md, /\| `\/e` \|.*\| - \| PASS \| - \|/, 'a row from before the state reads as it did');
+  assert.doesNotMatch(formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals: { ...totals, unitsNotDeclared: 0 }, rows: rows.slice(1) }), /units not declared/);
+});
+check('runner: pages with no family carry unitsDeclared 0, the note and the totals; declaring a family or recording repeat groups changes the row, never the verdict or the exit code', () => {
+  const { root, out, gateAll, rows, totals, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    const before = Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass]));
+    assert.deepEqual([rows().good.unitsDeclared, rows().good.unitPass, rows().good.pass, rows().good.reasons, rows().good.notes], [0, null, true, [], [unitsNote(0)]]);
+    assert.deepEqual([totals().unitsNotDeclared, totals().unitsRecordedNotDeclared, totals().pass], [2, 0, 1]);
+    assert.match(r.stdout, /\*\*units not declared 2 of 2\*\*/, 'the calibration line on stdout says so');
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /\| not declared \| PASS \| \(reported\) units: no family declared for this page/);
+    mkdirSync(join(root, 'stardust/eds-schema'), { recursive: true });
+    writeFileSync(join(root, 'stardust/eds-schema/good.json'), JSON.stringify({ sections: [{ section: 'cards', repeats: [{ unitSelector: 'LI.card', count: 3 }] }] }));
+    writeFileSync(join(root, 'stardust/eds-schema/bad.json'), '{ not json');
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().good.unitsRecorded, rows().good.notes, rows().bad.unitsRecorded], [1, [unitsNote(0, 1, 'good')], null], 'an unreadable schema is no record');
+    assert.deepEqual([totals().unitsNotDeclared, totals().unitsRecordedNotDeclared], [2, 1]);
+    assert.deepEqual(Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass])), before);
+    writeFileSync(join(out, 'units.json'), JSON.stringify({ good: { units: [{ origin: '.card' }] } }));
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().good.unitsDeclared, rows().good.notes, rows().bad.unitsDeclared, totals().unitsNotDeclared], [1, [], 0, 1], 'a declared page loses the note');
+    assert.deepEqual(Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass])), before);
+  } finally { done(); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

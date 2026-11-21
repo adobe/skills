@@ -117,8 +117,8 @@
 #            (text / controls cut or hidden by an overflow ancestor — no live hit;
 #            #125, a fixed-height card clipped every link on a pixel-PASS page),
 #            content-presence live vs build in the PUBLISHED stage only (§ Stage), and unit-geometry when stardust/replica/units.json declares a
-#            repeated-unit family for the slug — and only their verdict lines are
-#            printed. Evidence per probe lands next to the pixel evidence:
+#            repeated-unit family for the slug (none: one `unit-geometry: NOT RUN` line, not a verdict) — and only
+#            their verdict lines are printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
 #            chrome-parity-<label>.txt, clip-<label>.{txt,json},
 #            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
@@ -764,6 +764,11 @@ fi
 if [ -n "$P_UG" ]; then
   UNITS=$(grep -E '^(Units:|unit-geometry: none declared)' "$UG" | head -1 | cut -c1-200)
   verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
+  # no family for this slug: the check did not run, and the round says so (not a verdict, the exit code does not read it)
+  case "$UNITS" in *'none declared'*) echo "unit-geometry: NOT RUN — no family in $UNITS_FILE applies to $SLUG: the repeated-unit check did not run" ;; esac
+else
+  if [ -f "$UNITS_FILE" ]; then echo "unit-geometry: NOT RUN — $DIFF/unit-geometry.mjs is missing: the repeated-unit check did not run"
+  else echo "unit-geometry: NOT RUN — no $UNITS_FILE: no repeated-unit family is declared, the repeated-unit check did not run"; fi
 fi
 echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
 write_verdict content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \

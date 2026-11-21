@@ -33,6 +33,10 @@
  * Advisory, after the verdict line — never a gap, the verdict and the exit code do not read it:
  *   wide_report:N: <w>px — <slugs>   N pages the wide report (replica's gate-all.mjs --wide, <gates>/wide-<w>/summary.json)
  *                                  flags as over its threshold or off in height; --json: `advisories` [..]
+ *   units_not_declared:N: <w>px — <slugs>   N pages of the published gate (gate-all.mjs, <gates>/all-<w>/summary.json)
+ *                                  no repeated-unit family applies to: they passed without the repeated-unit check
+ *                                  (stardust/replica/units.json); `(M with repeated modules recorded)` when the
+ *                                  table says so. A page with no repeated unit stays listed: information, not a gap
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline).
  */
@@ -115,6 +119,27 @@ export function wideAdvisories(tables = []) {
   }
   return lines;
 }
+/**
+ * The published gate's advisory lines, one per table with a page that took no repeated-unit check:
+ * `units_not_declared:N: <w>px — <slugs>`. `tables` = the parsed <gates>/all-<w>/summary.json files; a table from
+ * before the count (no `unitsDeclared` on its rows) gives no line. Never a gap.
+ */
+export function unitsAdvisories(tables = []) {
+  const lines = [];
+  for (const t of tables) {
+    if (!t || !t._provenance || t._provenance.wide || !Array.isArray(t.rows)) continue;
+    const rows = t.rows.filter((r) => r && r.unitsDeclared === 0);
+    const recorded = rows.filter((r) => r.unitsRecorded > 0).length;
+    if (rows.length) lines.push(`units_not_declared:${rows.length}: ${t._provenance.breakpoint}px — ${listed(rows.map((r) => r.slug))}${recorded ? ` (${recorded} with repeated modules recorded)` : ''}`);
+  }
+  return lines;
+}
+/** The published-gate tables under a gates dir, by width (none when the dir or the table is absent). */
+export function readGateTables(gates) {
+  let names = [];
+  try { names = readdirSync(gates).filter((n) => /^all-\d+$/.test(n)).sort((a, b) => Number(a.slice(4)) - Number(b.slice(4))); } catch { return []; }
+  return names.map((n) => readJSON(join(gates, n, 'summary.json'))).filter(Boolean);
+}
 /** The wide tables under a gates dir (none when the dir or the report is absent). */
 export function readWideTables(gates) {
   let names = [];
@@ -174,7 +199,8 @@ async function main() {
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
   const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library });
-  const advisories = wideAdvisories(readWideTables(arg('gates', 'stardust/replica/gates')));
+  const GATES = arg('gates', 'stardust/replica/gates');
+  const advisories = [...wideAdvisories(readWideTables(GATES)), ...unitsAdvisories(readGateTables(GATES))];
 
   if (JSON_OUT) console.log(JSON.stringify({ ...verdict, ...(config.scope ? { scope: config.scope } : {}), ...(advisories.length ? { advisories } : {}) }));
   else {
@@ -182,7 +208,7 @@ async function main() {
     console.log(`${verdict.complete ? '✓ complete' : `✗ ${verdict.gaps.length} gap(s)`}${verdict.liveChecked ? '' : ' (live probe skipped: --offline)'}`);
     // "complete" is about the roster; a subset roster says so on the verdict
     if (config.scope) console.log(`scope: ${scopeLine(config.scope)}`);
-    // advisory: the wide report's flagged pages — printed for the operator, not a gap
+    // advisory: the wide report's flagged pages, the pages gated without a unit check — printed for the operator, not a gap
     for (const a of advisories) console.log(a);
   }
   process.exit(verdict.complete ? 0 : 1);

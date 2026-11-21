@@ -437,13 +437,13 @@ r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'pub1', '--fu
 check('--full in the published regime runs content-presence live vs build and a HIDDEN link fails the round', r.status === 2 && /^content-presence: Content: MISSING 0 .*HIDDEN 284/m.test(r.stdout) && existsSync(join(root, 'stardust/replica/gates/home-1440/content-presence-pub1.txt')), `status ${r.status} ${r.stdout}`);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'pub2', '--full'], { GATE_REGIME: 'published' });
 check('--full in the published regime passes when content-presence is clean', r.status === 0 && /^content-presence: Content: MISSING 0 .*HIDDEN 0/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
-check('no unit-geometry line without a families file', !/^unit-geometry:/m.test(r.stdout));
+check('without a families file the round says the repeated-unit check did not run — one NOT RUN line, the exit code as it was', r.status === 0 && /^unit-geometry: NOT RUN — no stardust\/replica\/units\.json: no repeated-unit family is declared, the repeated-unit check did not run$/m.test(r.stdout) && (r.stdout.match(/^unit-geometry:/gm) || []).length === 1, `status ${r.status} ${r.stdout}`);
 mkdirSync(join(root, 'stardust/replica'), { recursive: true });
 writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', pages: ['home'] } }));
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u1', '--full']);
-check('with stardust/replica/units.json the round runs unit-geometry --families --stage --slug and prints its line', r.status === 0 && /^unit-geometry: unit-geometry: none declared/m.test(r.stdout) && /--families stardust\/replica\/units.json --stage prototype --slug home/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/units-u1.txt'), 'utf8')), `status ${r.status} ${r.stdout}`);
+check('with stardust/replica/units.json the round runs unit-geometry --families --stage --slug and prints its line', r.status === 0 && /^unit-geometry: unit-geometry: none declared/m.test(r.stdout) && /^unit-geometry: NOT RUN — no family in stardust\/replica\/units\.json applies to home: the repeated-unit check did not run$/m.test(r.stdout) && /--families stardust\/replica\/units.json --stage prototype --slug home/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/units-u1.txt'), 'utf8')), `status ${r.status} ${r.stdout}`);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u2', '--full'], { STUB_UNITS_RC: '2' });
-check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout) && !/NOT RUN/.test(r.stdout), `status ${r.status} ${r.stdout}`);
 unlinkSync(join(root, 'stardust/replica/units.json'));
 
 // --gate-against-baseline (the opt-in origin baseline; default OFF). Flag ON with a frozen baseline: no live capture,
