@@ -176,6 +176,9 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             larger of 8 and 1 % of the origin height)
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
+  --parallel-probes         run the content / clip / unit probes concurrently with the captures instead of after them
+                            (the probes make their own navigations and never read the captures; same criteria, shorter
+                            wall clock — one page: max(capture, probes) instead of capture + probes)
   --compare-only            no captures, no probes, no browser: pixel-compare over the existing PNGs (a passed page:
                             its recorded pass), the recorded probe results (<slug>/probes.json), the sidecars
   --warmup <url>            origin warm-up for the probes
@@ -231,7 +234,7 @@ export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Numb
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, parallelProbes: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
   // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
   const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
   let holdOn = false; let holdOff = false; let holdMin = null;
@@ -248,7 +251,7 @@ export function parseArgs(argv) {
     else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
-    else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
+    else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--parallel-probes') o.parallelProbes = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
@@ -989,11 +992,14 @@ async function main() {
     const shoot = batch.filter((p) => !reused.has(p.slug));
     if (!opts.compareOnly) measured.push(...shoot);
     for (const p of shoot) forgetDroppedPass(dir(p));
-    if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds)]);
-    else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
+    const wantProbes = opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length;
+    if (!opts.compareOnly) {
+      await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds),
+        opts.parallelProbes && wantProbes ? pool(batch, opts.pc, probe) : null]);
+    } else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
     // --compare-only opens no browser and runs no probe: the recorded results, the sidecars re-applied
     if (opts.compareOnly) for (const p of batch) recallProbes(p);
-    else if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(batch, opts.pc, probe);
+    else if (wantProbes && !opts.parallelProbes) await pool(batch, opts.pc, probe);
     await pool(shoot, 4, compare);
     for (const p of batch) if (rowOf(p).pass) dropped += dropPassedCaptures(dir(p), measuredWith(p));
   }
