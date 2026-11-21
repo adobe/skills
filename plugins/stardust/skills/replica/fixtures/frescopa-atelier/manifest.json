@@ -1,0 +1,53 @@
+{
+  "name": "frescopa-atelier",
+  "sourceUrls": [
+    "https://markszulc.github.io/frescopa-atelier/index.html",
+    "https://markszulc.github.io/frescopa-atelier/"
+  ],
+  "builtAt": "2026-11-21T10:23:11Z",
+  "provenance": {
+    "run": "d4a9e620-cb7a-488c-9a25-7148fc04a9ca",
+    "repo": "aemcoder/d4a9e620",
+    "commit": "afe2ffde5bc94ce18f307c790cd39b922d461a09"
+  },
+  "fingerprint": {
+    "page": "https://markszulc.github.io/frescopa-atelier/index.html",
+    "pageSha": "2f27e7666456ea18e443b997bfeb6ffefbe6239b7537aa6f44e6c03ade417449",
+    "assets": {
+      "./shared/tokens.css": "9b4bc809e4d53f2a15c5b248c07bc721b7a2f3c9e3530a4516f2cc352ec88af7",
+      "./atelier.css": "222a0057d08dce79f95782c12a64211d87142b03dc33be3f0cd873ce0e95f34c",
+      "./shared/view-transitions.css": "86f00feb39fd45757d703f2094fed24b88e044cbb6c381e67bee27001ef04f7c",
+      "./shared/flavor-dna.js": "daab906d6fa26c364d66ac29332865e04405757803ae0f3e77eb3577f80d87ce",
+      "./shared/hero.js": "7574e5b1f144d6c4177915682a4d3a85481ff2a4cfe9bd2cc46166944b8e90b5",
+      "./shared/app.js": "68f7c588af9e355230873523a04755f3d15986ada7a4220000f854756a08469d"
+    }
+  },
+  "page": {
+    "slug": "frescopa-atelier-index-html",
+    "path": "/",
+    "marker": "Every morning"
+  },
+  "codeMarker": {
+    "path": "/blocks/hero/hero.js",
+    "contains": "hero-scrim"
+  },
+  "da": {
+    "docs": [
+      "footer",
+      "index",
+      "nav"
+    ],
+    "mediaScope": "frescopa-atelier"
+  },
+  "gate": {
+    "args": []
+  },
+  "evidence": {
+    "direction": "bounded-single spec (PRODUCT/DESIGN/DESIGN.json) + empty register, from the fixture build run",
+    "recreate": "archetype frescopa-atelier-index-html; source-spec compare 6474=6474, 0 sections off (fixture build run)",
+    "gate": "1440: pixel 0.29% (aligned 0.29%), height delta 0, content 0/0, clipped 0 (fixture build run gate evidence)",
+    "blocks": "9 blocks (hero, intro, learn, mood, feed, sustain, voices, cafe, cta) + header/footer, from the fixture",
+    "dynamics": "8 features triaged in the fixture build (parity 8/8 on aem.live there); 2 interim: newsletter endpoint, commerce backend (owner)",
+    "dynamicsParity": "8 features ship in block JS as in the fixture build (parity 8/8 there); 2 interim (newsletter endpoint, commerce backend)"
+  }
+}

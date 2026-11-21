@@ -1,0 +1,22 @@
+[live-session] waiting to pace live navigations to {{BRANCH}}--{{SITE}}--{{ORG}}.aem.page (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 627 ms
+chrome-parity @ 1440px, tolerance 1px
+  live:  https://markszulc.github.io/frescopa-atelier/index.html (live side from cache stardust/replica/gates/frescopa-atelier-index-html-1440/chrome-live.json, probed 2026-11-21T07:09:40.902Z — delete the file to re-probe)
+  build: https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/
+
+■ header: 6 delta(s) — 5 paired of 5/5 texts, 5/5 icons
+  region live:  header.header — outermost <header>, box 0,0 1440×75; selector body > header
+  region build: div.header.block — auto-detected (no usable <header> landmark), box 0,0 1440×75; selector body > header > div
+  REGION STYLE backgroundColor oklab(0.97 0.00139173 0.00990268 / 0.0000800844) → oklab(0.97 0.00139173 0.00990268 / 0.000400128)
+  PAIR         "The Atelier"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944689 0.00278299 0.0157573)
+  PAIR         "Machines"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944689 0.00278299 0.0157573)
+  PAIR         "Beverages"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944689 0.00278299 0.0157573)
+  PAIR         "Café"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944689 0.00278299 0.0157573)
+  PAIR         "Journal"  color oklab(0.944938 0.0027793 0.015757) → oklab(0.944689 0.00278299 0.0157573)
+  advisory     NAMES: 3 carried by another channel (aria-label ↔ hidden text)
+
+■ footer: ✓ parity — 21 paired of 21/21 texts, 4/4 icons
+  region live:  footer.footer — outermost <footer>, box 0,5978 1440×497; selector body > footer
+  region build: footer.footer-wrapper — outermost <footer>, box 0,5978 1440×497; selector body > footer
+  advisory     NAMES: 3 carried by another channel (aria-label ↔ hidden text)
+
+✗ 6 delta(s), 2 advisory group(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.

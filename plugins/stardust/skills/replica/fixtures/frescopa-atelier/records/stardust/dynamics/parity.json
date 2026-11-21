@@ -1,0 +1,155 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:dynamics",
+    "writtenAt": "2026-11-21T08:15:18Z"
+  },
+  "method": "all features rebuilt natively in blocks (no APIs, no sheets); interim rows replicate the source's inert behaviour pending owner decisions",
+  "features": [
+    {
+      "id": "f-form-signup",
+      "feature": "footer newsletter form (1 email field)",
+      "class": "F",
+      "pages": 1,
+      "disposition": "rebuild-native (UI)",
+      "reproducibility": "self (as captured)",
+      "status": "interim",
+      "verifiedBy": "footer form with 1 email input renders on /; submit prevented (source: action=#, onsubmit=return false)",
+      "owner": "production newsletter endpoint",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": "footer form.signup input[type=email]",
+          "min": 1
+        }
+      ]
+    },
+    {
+      "id": "x-commerce-signals",
+      "feature": "cart icon + 3 add-to-cart buttons + prices",
+      "class": "X",
+      "pages": 1,
+      "disposition": "rebuild-native (UI)",
+      "reproducibility": "self (as captured)",
+      "status": "interim",
+      "verifiedBy": "3 × button[type=button].card-cart with text arrow (role parity with source <button class=link>); inert as on the source",
+      "owner": "commerce backend",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": ".feed button.card-cart[type=button]",
+          "min": 3
+        }
+      ]
+    },
+    {
+      "id": "w-flavor-radar",
+      "feature": "flavour DNA radar (bloom, 3 profiles, morph, autocycle)",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "3 profile controls; motion-compare is-active parity (archetype unit)",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": ".learn .dna-btn",
+          "min": 3
+        }
+      ]
+    },
+    {
+      "id": "w-mood-calendar",
+      "feature": "mood calendar (day controls set the brew card, autocycle)",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "7 day cells; motion-compare parity (archetype unit)",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": ".mood .cal-day",
+          "min": 7
+        }
+      ]
+    },
+    {
+      "id": "w-reveal",
+      "feature": "reveal-on-scroll",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "is-in ×20 parity (motion-compare)",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": ".reveal",
+          "min": 10
+        }
+      ]
+    },
+    {
+      "id": "w-header-morph",
+      "feature": "header is-scrolled / is-hidden morph + mobile drawer",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "is-hidden 2×/2×, transform transitions 28/28 parity (motion-compare)",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": "header .header",
+          "min": 1
+        }
+      ]
+    },
+    {
+      "id": "w-hero-art",
+      "feature": "art-directed hero copy position",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "published gate Δh 0, pixel 0.82 %",
+      "checks": [
+        {
+          "type": "dom-count",
+          "path": "/",
+          "selector": ".hero picture img",
+          "min": 1
+        }
+      ]
+    },
+    {
+      "id": "w-parallax",
+      "feature": "parallax on hero + café images (pointer devices)",
+      "class": "—",
+      "pages": 1,
+      "disposition": "rebuild-native",
+      "reproducibility": "self",
+      "status": "done",
+      "verifiedBy": "implemented in hero/cafe blocks; page runs without errors",
+      "checks": [
+        {
+          "type": "no-page-errors",
+          "paths": [
+            "/"
+          ]
+        }
+      ]
+    }
+  ]
+}

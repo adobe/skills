@@ -1,0 +1,1 @@
+crop y0+75: 0 px = 0.00% diff → match 100.00% — PASS

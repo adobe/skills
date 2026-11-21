@@ -1,0 +1,89 @@
+{
+  "slug": "frescopa-atelier-index-html",
+  "type": "landing",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "hero",
+    "intro",
+    "learn",
+    "mood",
+    "feed",
+    "sustain",
+    "voices",
+    "cafe",
+    "cta"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "hero",
+    "intro",
+    "learn",
+    "mood",
+    "feed",
+    "sustain",
+    "voices",
+    "cafe",
+    "cta"
+  ],
+  "canonShas": {
+    "header": "b6818d6782fc",
+    "footer": "3cbe3084ba17",
+    "css": "958f93d0b7e1"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fréscopa Atelier — Every morning, perfected.",
+    "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fréscopa Atelier — Every morning, perfected.",
+    "description": "The first Fréscopa coffee machine with a feel for your mornings. It learns your taste, matches your mood, and takes care of the rest.",
+    "url": "https://markszulc.github.io/frescopa-atelier/index.html"
+  },
+  "migratedAt": "2026-11-21T07:22:44Z",
+  "designMdSha": "a7dc5c02c077",
+  "designJsonSha": "42156069d613",
+  "sourceCurrentSha": "50949af72e47",
+  "sourceProposedSha": "cc582d04cfaa",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [],
+  "gateEvidence": {},
+  "contentDeviations": [],
+  "assetsBundled": 17,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "https://markszulc.github.io/frescopa-atelier/landing.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "https://markszulc.github.io/frescopa-atelier/machines.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "https://markszulc.github.io/frescopa-atelier/beverages.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "https://markszulc.github.io/frescopa-atelier/cafe.html",
+      "reason": "not-in-inventory"
+    },
+    {
+      "href": "https://markszulc.github.io/frescopa-atelier/blog.html",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "frescopa-atelier/index.html",
+  "outputPathDefault": null,
+  "sidecar": "frescopa-atelier/_meta.json",
+  "driverVersion": "1"
+}

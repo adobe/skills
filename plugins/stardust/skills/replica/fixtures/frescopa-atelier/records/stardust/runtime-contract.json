@@ -1,0 +1,22 @@
+{
+  "runtime": "vanilla-eds",
+  "probedAt": "2026-11-21",
+  "probedFrom": ["scripts/scripts.js", "scripts/aem.js"],
+  "blockWrapperClass": "block",
+  "blockDom": "div.<name>-wrapper > div.<name>.block[data-block-name]; section gains .<name>-container",
+  "buttonClasses": ".button / .button.primary / .button.secondary / .button.accent, in p.button-wrapper",
+  "buttonization": "formatted-only",
+  "buttonMap": {
+    "strong": "primary = prototype .btn--terracotta + trailing arrow",
+    "em": "secondary = prototype .btn--ghost (on-media / on-dark inside .hero / .cta)",
+    "strong+em": "accent = prototype .btn--cream + trailing arrow"
+  },
+  "fragmentScriptPolicy": "inert-innerHTML",
+  "emptySectionCollapse": true,
+  "sectionScaffold": "main > .section margin 0; default-content-wrapper capped at --content (1120px) with --gutter; block wrappers full-bleed, blocks cap their own inner .container",
+  "chrome": "overlay header (--nav-height 0, fixed .header block bar, morph is-scrolled >12px, is-hidden scrolling down past 480px, drawer < 901px); footer block = prototype .footer",
+  "sharedPrimitives": [".container", ".eyebrow / .eyebrow-light", ".lede-wrap", ".link / .link-wrap :where(a)", ".reveal (scripts/reveal.js)", ".sr-only"],
+  "reveal": "import { reveal } from '../../scripts/reveal.js'; reveal(el, delaySeconds) — adds .reveal + --reveal-delay and observes (threshold 0.14, rootMargin 0 0 -8% 0); apply on wrappers, never on authored elements (EW2)",
+  "breakpoints": "mobile-first min-width 561 / 761 / 901 / 981 (source max-width 560 / 760 / 900 / 980)",
+  "fonts": "styles/fonts.css (Schibsted Grotesk 400-800, Hanken Grotesk 400-700, OFL) + metric-matched fallbacks on Liberation Sans/Arimo in styles.css"
+}

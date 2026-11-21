@@ -1,0 +1,517 @@
+[live-session] waiting to pace live navigations to markszulc.github.io (1000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 504 ms
+
+Visual diff @ 1440px (profile "generic") — screenshots in stardust/replica/gates/frescopa-atelier-index-html-1440/vdiff-iter1/
+
+build red flags (advisory): none
+
+Full metrics JSON (compare source vs build: heading colors, eyebrow colors, image dims, full-bleed):
+{
+ "source": {
+  "viewport": 1440,
+  "blankRender": false,
+  "mainHeight": 6114,
+  "textLen": 3442,
+  "images": [
+   {
+    "src": "frescopa-logo-light.svg",
+    "natural": "1391x378",
+    "rendered": "118x32",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "frescopa-logo.svg",
+    "natural": "1391x378",
+    "rendered": "118x32",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "hero-machine.jpg",
+    "natural": "1408x768",
+    "rendered": "1526x954",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "espresso-pour.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "tea-moment.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "citrus-juice.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "sustainability.jpg",
+    "natural": "1408x768",
+    "rendered": "472x378",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "cafe-interior.jpg",
+    "natural": "1408x768",
+    "rendered": "1526x678",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "frescopa-logo-light.svg",
+    "natural": "1391x378",
+    "rendered": "147x40",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   }
+  ],
+  "headings": [
+   {
+    "tag": "h1",
+    "text": "Every morning,perfected.",
+    "color": "oklch(0.945 0.016 80)",
+    "fontSize": "64px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Barista craft, with a mind of it",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Your taste, drawn one cup at a t",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "It reads the room. And the calen",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "New favourites, found for you.",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "The house pour",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "Honeybush & orange peel",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "Cold-pressed citrus",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Nothing wasted, right down to th",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Every Atelier begins at the Frés",
+    "color": "oklch(0.945 0.016 80)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   }
+  ],
+  "eyebrows": [
+   {
+    "text": "Meet the Atelier",
+    "color": "oklch(0.79 0.128 74)"
+   },
+   {
+    "text": "Scroll",
+    "color": "oklch(0.945 0.016 80)"
+   },
+   {
+    "text": "Ritual, meet intelligenc",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "How it learns you",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Remembered",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Adaptive",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Yours everywhere",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Mood-aware brewing",
+    "color": "oklch(0.605 0.116 44)"
+   }
+  ],
+  "flushText": [],
+  "contentBoxes": [
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "feed__head",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "feed__grid",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "voices__lead",
+    "width": 900,
+    "left": 208
+   },
+   {
+    "sel": "voices__grid",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "cafe",
+    "width": 1440,
+    "left": 0
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   }
+  ]
+ },
+ "build": {
+  "viewport": 1440,
+  "blankRender": false,
+  "mainHeight": 6114,
+  "textLen": 3442,
+  "images": [
+   {
+    "src": "frescopa-logo-light.svg",
+    "natural": "1391x378",
+    "rendered": "118x32",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "frescopa-logo.svg",
+    "natural": "1391x378",
+    "rendered": "118x32",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "hero-machine.jpg",
+    "natural": "1408x768",
+    "rendered": "1526x954",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "espresso-pour.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "tea-moment.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "citrus-juice.jpg",
+    "natural": "1408x768",
+    "rendered": "320x240",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "sustainability.jpg",
+    "natural": "1408x768",
+    "rendered": "472x378",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "cafe-interior.jpg",
+    "natural": "1408x768",
+    "rendered": "1526x678",
+    "fit": "cover",
+    "stretched": false,
+    "failedToLoad": false
+   },
+   {
+    "src": "frescopa-logo-light.svg",
+    "natural": "1391x378",
+    "rendered": "147x40",
+    "fit": "fill",
+    "stretched": false,
+    "failedToLoad": false
+   }
+  ],
+  "headings": [
+   {
+    "tag": "h1",
+    "text": "Every morning,perfected.",
+    "color": "oklch(0.945 0.016 80)",
+    "fontSize": "64px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Barista craft, with a mind of it",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Your taste, drawn one cup at a t",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "It reads the room. And the calen",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "New favourites, found for you.",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "The house pour",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "Honeybush & orange peel",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h3",
+    "text": "Cold-pressed citrus",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "24px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Nothing wasted, right down to th",
+    "color": "oklch(0.34 0.093 25)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   },
+   {
+    "tag": "h2",
+    "text": "Every Atelier begins at the Frés",
+    "color": "oklch(0.945 0.016 80)",
+    "fontSize": "56px",
+    "family": "Schibsted Grotesk",
+    "fontLoaded": true
+   }
+  ],
+  "eyebrows": [
+   {
+    "text": "Meet the Atelier",
+    "color": "oklch(0.79 0.128 74)"
+   },
+   {
+    "text": "Scroll",
+    "color": "oklch(0.945 0.016 80)"
+   },
+   {
+    "text": "Ritual, meet intelligenc",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "How it learns you",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Remembered",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Adaptive",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Yours everywhere",
+    "color": "oklch(0.605 0.116 44)"
+   },
+   {
+    "text": "Mood-aware brewing",
+    "color": "oklch(0.605 0.116 44)"
+   }
+  ],
+  "flushText": [],
+  "contentBoxes": [
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "feed__head",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "feed__grid",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   },
+   {
+    "sel": "voices__lead",
+    "width": 900,
+    "left": 208
+   },
+   {
+    "sel": "voices__grid",
+    "width": 1024,
+    "left": 208
+   },
+   {
+    "sel": "cafe",
+    "width": 1440,
+    "left": 0
+   },
+   {
+    "sel": "container",
+    "width": 1120,
+    "left": 160
+   }
+  ]
+ }
+}

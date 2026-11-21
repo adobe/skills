@@ -1,0 +1,120 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-11-21T07:57:41Z",
+    "stardustVersion": "0.43.4"
+  },
+  "site": {
+    "originUrl": "https://markszulc.github.io/frescopa-atelier/",
+    "deployUrl": null,
+    "extractedAt": "2026-11-21T07:06:54Z",
+    "pageCap": 1,
+    "totalDiscovered": 1,
+    "crawled": 1
+  },
+  "direction": {
+    "resolvedAt": "2026-11-21T07:08:24Z",
+    "phrase": "replica --hands-off (preserve, bounded-single)",
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "verbatim"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-21T07:06:54Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "frescopa-atelier-index-html",
+      "url": "https://markszulc.github.io/frescopa-atelier/index.html",
+      "title": "Fréscopa Atelier — Every morning, perfected.",
+      "type": "landing",
+      "status": "deployed",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T07:06:54Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-11-21T07:08:49Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-21T07:19:02Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T07:20:51Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T07:57:41Z"
+        },
+        {
+          "status": "deployed",
+          "at": "2026-11-21T07:52:30Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/frescopa-atelier-index-html.json",
+      "prototypePath": "stardust/prototypes/frescopa-atelier-index-html-proposed.html",
+      "migratedPath": "stardust/migrated/index.html",
+      "liveUrl": "https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.live/",
+      "previewUrl": "https://{{BRANCH}}--{{SITE}}--{{ORG}}.aem.page/",
+      "daPath": "/index"
+    }
+  ],
+  "migrate": {
+    "at": "2026-11-21T07:22:44Z",
+    "outputDir": "stardust/migrated/",
+    "selfContained": true,
+    "pageMap": [
+      {
+        "sourceUrl": "/frescopa-atelier/index.html",
+        "outputPath": "frescopa-atelier/index.html",
+        "slug": "frescopa-atelier-index-html",
+        "outputPathDefault": null
+      }
+    ],
+    "totalAssetsBundled": 17,
+    "bundledAssets": [
+      "fonts/fonts.css",
+      "fonts/hanken-grotesk-cyrillic-ext.woff2",
+      "fonts/hanken-grotesk-latin-ext.woff2",
+      "fonts/hanken-grotesk-latin.woff2",
+      "fonts/hanken-grotesk-vietnamese.woff2",
+      "fonts/schibsted-grotesk-latin-ext.woff2",
+      "fonts/schibsted-grotesk-latin.woff2",
+      "frescopa-atelier-index-html.css",
+      "frescopa-atelier-index-html.js",
+      "media/cafe-interior.jpg",
+      "media/citrus-juice.jpg",
+      "media/espresso-pour.jpg",
+      "media/frescopa-logo-light.svg",
+      "media/frescopa-logo.svg",
+      "media/hero-machine.jpg",
+      "media/sustainability.jpg",
+      "media/tea-moment.jpg"
+    ],
+    "pages": [
+      {
+        "slug": "frescopa-atelier-index-html",
+        "file": "stardust/migrated/index.html",
+        "assetsBundled": 17
+      }
+    ],
+    "missingAssets": [],
+    "cleanedAssets": [],
+    "lastRun": {
+      "at": "2026-11-21T07:22:44Z",
+      "rendered": [
+        "frescopa-atelier-index-html"
+      ],
+      "unchanged": [],
+      "refused": [],
+      "passthrough": []
+    }
+  }
+}

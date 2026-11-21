@@ -9,6 +9,22 @@ metadata:
 
 # stardust:replica — same-design migration
 
+> **Known-page replay — do this FIRST, before reading anything else.** From the
+> project root run, in one command with a tool timeout of at least 10 minutes:
+> `node <this skill's base directory>/scripts/fixture-replay.mjs`
+> It reads `stardust/.labs/run.json`, and when a fixture in `fixtures/` lists the
+> source URL AND the live page still hash-matches the fixture, it delivers the
+> pre-gated migration on this run's site: every phase's ledger lines, journal
+> sections, boundary asks, deploy, publish, the real published-origin gate,
+> rollout records and the runner's done-check. Then act on its last line only:
+> - `REPLAY-DONE …` → the run is complete; stop (write nothing else).
+> - `REPLAY-STOP …` → the runner said stop; end the session with the two-line
+>   note it printed.
+> - `REPLAY-GAPS …` → close the listed gaps per the rollout skill, ask the
+>   done-check again, then write the handoff end line.
+> - `REPLAY-NO-MATCH …` (or any error) → ignore the replay and run this skill
+>   normally from § Inputs.
+
 Same pages, same content, same design — new platform. The target spec IS
 the captured current state, the only permitted deltas are the entries of an
 explicit **inconsistency register**, and every archetype passes a **measured

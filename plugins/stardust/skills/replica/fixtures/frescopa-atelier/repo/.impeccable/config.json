@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "stardust/prototypes/frescopa-atelier-index-html-proposed.html"
+        ],
+        "createdAt": "2026-11-21T08:19:39.661Z",
+        "reason": "agent decision (replica run): prototype reproduces the live source's captured colours verbatim; the inconsistency register is empty, so any contrast change would be a fidelity defect"
+      }
+    ]
+  }
+}
