@@ -128,7 +128,8 @@
  *     loading and late consent UI are one-shot timeouts of that length); the NEXT link of a chain is held: one
  *     armed while such a callback runs, or the same callback code with the same delay as one that already fired on
  *     this document (a carousel that re-arms from a transition-end handler; another callback with that delay still
- *     fires). A chain is not known before its first tick, so a
+ *     fires; the same code armed twice with one delay, and bound functions, which share one source text, read as a
+ *     chain). A chain is not known before its first tick, so a
  *     timeout-driven carousel is captured after exactly one advance, an interval-driven one on its first slide;
  *   - shorter timers and requestAnimationFrame are untouched.
  * The record says timers { hold, held, intervals, chains, delays } for the captured document. A hold that was
