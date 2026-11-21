@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
 # [0.45.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.2...plugin/stardust/v0.45.0) (2026-11-21)
 
 
