@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/adobe/skills/compare/replica-v1.7.0...replica-v1.8.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
 # [1.7.0](https://github.com/adobe/skills/compare/replica-v1.6.1...replica-v1.7.0) (2026-11-21)
 
 
