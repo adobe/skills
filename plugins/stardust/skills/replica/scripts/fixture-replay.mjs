@@ -247,19 +247,57 @@ async function pollUntil(fn, { every = 2000, max = 240000 } = {}) {
   return false;
 }
 
+// ---------- demo branch: a run with no fixture is ONE page ----------
+// Deterministic, before the model reads anything else: the runner's own rule is that pages not in the
+// site plan are out of scope for every phase, so the plan is rewritten to the one fast page (the submitted
+// URL's page when it has a path, else the home page). Then the runner's "extract --pages <selected>"
+// instruction covers exactly that page. Writes nothing under --match-only or without a run.json.
+function scopeToOnePage(run, url) {
+  if (flag('--match-only') || flag('--no-scope') || !run?.scope) return null;
+  const planPath = path.join(SD, '.labs', 'site-plan.json');
+  const prev = (() => { try { return JSON.parse(fs.readFileSync(planPath, 'utf8')); } catch { return null; } })();
+  const selected = (prev?.pages || []).filter((pg) => pg.selected);
+  if (run.scope.mode !== 'site' && selected.length <= 1) return null;
+  let page = url;
+  try { const u = new URL(url); if (u.pathname === '' || u.pathname === '/') page = `${u.origin}/`; } catch { /* keep */ }
+  const slug = (() => { try { const p2 = new URL(page).pathname.replace(/^\/|\/$/g, '').replace(/\.html?$/, ''); return p2 ? p2.replace(/[^a-z0-9]+/gi, '-').toLowerCase() : 'index'; } catch { return 'index'; } })();
+  const plan = {
+    version: prev?.version || 1, mode: prev?.mode || run.scope.mode, sourceUrl: prev?.sourceUrl || url,
+    pageCap: prev?.pageCap ?? run.scope.pageCap ?? 1, discoveredAt: prev?.discoveredAt || iso(),
+    discovery: { ...(prev?.discovery || {}), total: 1, note: `demo branch fast-first-page: one page (${page}); ${selected.length} discovered page(s) out of scope` },
+    pages: [{ url: page, slug, score: 10, selected: true }],
+  };
+  fs.mkdirSync(path.dirname(planPath), { recursive: true });
+  fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  fs.writeFileSync(path.join(SD, '.labs', 'site-plan.pages'), `${page}\n`);
+  fs.appendFileSync(path.join(SD, 'journal.md'), `\n## scope — demo branch: one page (${iso().slice(0, 10)})\n- No fixture for ${url}. The run is scoped to ONE page, ${page}: stardust/.labs/site-plan.json and site-plan.pages now select only it (${selected.length} discovered page(s) out of scope). Fast first page profile: reference/fast-first-page.md.\n`);
+  return page;
+}
+function noMatch(msg) {
+  const run0 = readRunJson();
+  const url0 = opt('--url') || run0?.scope?.sourceUrl || run0?.sourceUrl;
+  const page = url0 ? scopeToOnePage(run0, url0) : null;
+  console.log(`REPLAY-NO-MATCH: ${msg} — continue with the normal replica flow${page ? ` for ONE page`: ''}`);
+  if (page) {
+    console.log(`SCOPE-ONE-PAGE ${page} — the runner's site plan (stardust/.labs/site-plan.json + site-plan.pages) now selects only this page; every phase covers it alone.`);
+    console.log(`Next: stardust:extract ${page} --single --dynamics (the bounded entry), then the fast first page profile (reference/fast-first-page.md): 1440 gate only, at most 2 rounds, one delivery unit, then the done-check. Do not crawl or extract other pages.`);
+  }
+  process.exit(3);
+}
+
 // ---------- main ----------
 const run = readRunJson();
 const url = opt('--url') || run?.scope?.sourceUrl || run?.sourceUrl;
 if (!url) { console.log('REPLAY-NO-MATCH: no source URL (no --url, no stardust/.labs/run.json scope)'); process.exit(3); }
 const fx = findFixture(url, opt('--fixture'));
-if (!fx) { console.log(`REPLAY-NO-MATCH: no fixture lists ${url} — continue with the normal replica flow`); process.exit(3); }
+if (!fx) noMatch(`no fixture lists ${url}`);
 const sel = selectPages(fx, run, url);
-if (sel.missing?.length || !sel.pages.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} has no prepared page for ${(sel.missing || [url]).join(', ')} — continue with the normal replica flow`); process.exit(3); }
+if (sel.missing?.length || !sel.pages.length) noMatch(`fixture ${fx.name} has no prepared page for ${(sel.missing || [url]).join(', ')}`);
 const PAGES = sel.pages;
 try {
   const diffs = await checkFingerprints(fx.m, PAGES);
-  if (diffs.length) { console.log(`REPLAY-NO-MATCH: fixture ${fx.name} does not match the live site (${diffs.join('; ')}) — continue with the normal replica flow`); process.exit(3); }
-} catch (e) { console.log(`REPLAY-NO-MATCH: live page unreachable for the fingerprint (${e.message}) — continue with the normal flow`); process.exit(3); }
+  if (diffs.length) noMatch(`fixture ${fx.name} does not match the live site (${diffs.join('; ')})`);
+} catch (e) { noMatch(`live page unreachable for the fingerprint (${e.message})`); }
 const FIRST = PAGES[0];
 log(`fixture ${fx.name} matches the live site: ${PAGES.length} page(s) ${PAGES.map((p) => p.path).join(' ')} (built ${fx.m.builtAt} from run ${fx.m.provenance?.run || '?'})`);
 if (fx.via === 'alias') log(`run URL ${url} is an alias of ${FIRST.url}: ${fx.alias.note || ''}`);

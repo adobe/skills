@@ -29,10 +29,13 @@ metadata:
 > - `REPLAY-NO-MATCH …` (or any error) → ignore the replay and run this skill
 >   normally from § Inputs, with the **fast first page** profile
 >   (`reference/fast-first-page.md`, read it now): the run is scoped to ONE page
->   even when it asks for the full site (aem.new sends these) — rewrite the site
->   plan to that page first, then bounded single-page extract, 1440 gate, one
->   delivery unit, done. This overrides § Inputs/Procedure wherever they differ
->   (first page first, `--prep`, both breakpoints, subagent delivery units).
+>   even when it asks for the full site (aem.new sends these). The replay has
+>   already rewritten the runner's site plan to that page (its `SCOPE-ONE-PAGE`
+>   line): the runner's "extract `--pages <selected>`" now means that page alone —
+>   never crawl, census or extract the pages the plan dropped. Then bounded
+>   single-page extract, 1440 gate, one delivery unit, done. This overrides
+>   § Inputs/Procedure wherever they differ (first page first, `--prep` over many
+>   pages, both breakpoints, subagent delivery units).
 
 Same pages, same content, same design — new platform. The target spec IS
 the captured current state, the only permitted deltas are the entries of an
