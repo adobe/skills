@@ -10,8 +10,8 @@
  *   identified → prototyped → migrated → deployed → optimised
  *
  * spanning stardust/state.json (agnostic stages) + rollout coverage (deployed) +
- * optimize (optimised = verified & no open findings). Template archetypes (the
- * pages that define a template for their siblings) are marked distinctly.
+ * optimize (optimised = verified & no open finding outside `out-of-scope`, the source-parity
+ * class). Template archetypes (the pages that define a template for their siblings) are marked distinctly.
  *
  * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]   (default stardust/rollout)
  *
@@ -22,7 +22,7 @@
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { readJSON, writeJSON, blockCounts } from './lib.mjs';
+import { readJSON, writeJSON, blockCounts, blocksOptimised } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -78,9 +78,11 @@ const STAGE_COLOR = { identified: '#9aa3ad', prototyped: '#5b8def', deployed: '#
 const AG = { rostered: 0, extracted: 0, directed: 0, prototyped: 1, approved: 1, migrated: 1 };
 const rankOf = (stage) => STAGES.indexOf(stage);
 
+// Open findings per page, as optimize counts them: `out-of-scope` (source parity) is informational there —
+// out of the health score and the open P1/P2/P3 counts — so it never holds a page back from "optimised".
 const openByPage = {};
 for (const f of findings) {
-  if ((f.status === 'open' || f.status === 'in-progress') && f.scope.level === 'page') {
+  if (blocksOptimised(f) && f.scope.level === 'page') {
     for (const id of f.scope.ids) openByPage[id] = (openByPage[id] || 0) + 1;
   }
 }

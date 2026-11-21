@@ -13,7 +13,10 @@
  *   reasons, table, at} and flips a failing page (no documented override) from deployed / verified to
  *   `failed` (error `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs
  *   never marks a page `verified` while its `delivery.gate.pass` is false (#125 — completion derives
- *   from one place: a page the pixel table failed cannot read as verified).
+ *   from one place: a page the pixel table failed cannot read as verified). A row whose pixel step
+ *   errored (`error` set, no percentage — a capture that never happened, an unstable reference) is not
+ *   a verdict: it records `delivery.gate.pass: null` with the error and changes no status; a page that
+ *   such a row failed earlier (its `gate: …` error names only capture errors) returns to `deployed`.
  *   --pin (replica's first page first: a page delivered by its own track before rollout ran): each
  *   matched row that passes is also pinned — `delivery.pinned` {by: 'first-page', table, at} — and a
  *   pending / content-pending / stale one moves to `deployed` (deployedUrl from the table's eds
@@ -53,7 +56,7 @@
  */
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock, gateRowVerdict, gateFailureIsCaptureErrorOnly } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -208,11 +211,11 @@ if (gateFile) {
     matched += 1;
     p.delivery = p.delivery || {};
     // gate-all decides whether the override covers every failing criterion (overrideScope); a table from before
-    // passWithOverride existed keeps the old reading.
-    const pass = !!(r.pass || ('passWithOverride' in r ? r.passWithOverride : r.override));
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at: now };
-    if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
-    else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
+    // passWithOverride existed keeps the old reading. An errored capture is no verdict (null): never a failure.
+    const pass = gateRowVerdict(r);
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, ...(pass === null ? { error: r.error } : {}), table: gateFile, at: now };
+    if (pass === false && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
+    else if (p.delivery.status === 'failed' && (pass === true ? /^gate: /.test(p.delivery.error || '') : pass === null && gateFailureIsCaptureErrorOnly(p.delivery.error))) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
     if (PIN && pass) {
       p.delivery.pinned = { by: 'first-page', table: gateFile, at: now };
       if (['pending', 'content-pending', 'stale'].includes(p.delivery.status)) {

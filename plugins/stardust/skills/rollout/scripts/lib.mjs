@@ -200,6 +200,33 @@ export const ASSESSED_BY_BASELINE = ['accessibility', 'seo', 'ai-search', 'cross
 export const SEV_WEIGHT = { P1: 25, P2: 10, P3: 4 };
 
 /**
+ * An open finding that keeps a page from "optimised": open or in progress and not `out-of-scope` — the
+ * informational class (source parity: the source has the same condition) that optimize already leaves out of
+ * the health score and the open P1/P2/P3 counts. Pure.
+ */
+export const blocksOptimised = (f) => !!f && (f.status === 'open' || f.status === 'in-progress') && f.fixability !== 'out-of-scope';
+
+/**
+ * The verdict a gate-all row carries for update-coverage --gate. A row whose pixel step errored (`error` set,
+ * no percentage: a capture that never happened, an unstable reference) has NO verdict — `null` — unless an
+ * override decided it; otherwise the row's pass / passWithOverride reading. Pure.
+ */
+export function gateRowVerdict(r) {
+  if (!r) return null;
+  const override = 'passWithOverride' in r ? r.passWithOverride : r.override;
+  if (r.error && (r.pct === null || r.pct === undefined) && !override) return null;
+  return !!(r.pass || override);
+}
+
+/** True when a page's `gate: …` failure text names only capture errors (no measured criterion). Pure. */
+export const gateFailureIsCaptureErrorOnly = (error) => {
+  const m = /^gate: (.*)$/s.exec(error || '');
+  if (!m) return false;
+  const parts = m[1].split(/;\s*/).filter(Boolean);
+  return parts.length > 0 && parts.every((p) => /pixel error|missing capture|reference-unstable/i.test(p));
+};
+
+/**
  * AEM autofix registry: maps a finding's `check` to the EDS fixer that resolves it.
  * kind: 'deterministic' (mechanical edit) | 'content-draft' (generates copy needing
  * review — applied under the aggressive policy, logged) | 'manual' (autofix prepares

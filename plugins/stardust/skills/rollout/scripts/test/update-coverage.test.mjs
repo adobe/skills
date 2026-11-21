@@ -259,6 +259,31 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });
 
+await check('--gate: a row whose pixel step errored (error, no percentage) is no verdict — pass null, the error kept, no status flip; a failure only capture errors recorded goes back to deployed, a measured one stays', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([
+    run(['page-0', '--status', 'deployed'], proj),
+    run(['page-1', '--status', 'verified'], proj),
+    run(['page-2', '--status', 'failed', '--error', 'gate: 1440: pixel error: missing capture; 360: pixel error: missing capture'], proj),
+    run(['page-3', '--status', 'failed', '--error', 'gate: clipped 3'], proj),
+    run(['page-4', '--status', 'deployed'], proj),
+  ])) assert.equal(r.code, 0, r.err);
+  const table = join(proj, 'summary.json');
+  const errored = (slug, error = 'missing capture') => ({ slug, pct: null, heightDelta: null, pass: false, error, reasons: [`pixel error: ${error}`] });
+  writeFileSync(table, JSON.stringify({ rows: [
+    errored('page-0'), errored('page-1'), errored('page-2'), errored('page-3'),
+    { ...errored('page-4'), override: { verdict: 'PASS (source capture)', reason: 'origin unreachable' }, passWithOverride: true },
+  ] }));
+  const r = await run(['--gate', table], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /5 of 5 rows matched, 1 status flip\(s\)/);
+  const by = Object.fromEntries(JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.delivery]));
+  assert.equal(by['page-0'].status, 'deployed', 'an errored capture never fails a deployed page'); assert.equal(by['page-0'].gate.pass, null); assert.equal(by['page-0'].gate.error, 'missing capture');
+  assert.equal(by['page-1'].status, 'verified', 'nor a verified one');
+  assert.equal(by['page-2'].status, 'deployed', 'a failure only capture errors recorded is lifted'); assert.equal(by['page-2'].error, null);
+  assert.equal(by['page-3'].status, 'failed', 'a measured failure stays until a passing row'); assert.equal(by['page-3'].error, 'gate: clipped 3');
+  assert.equal(by['page-4'].gate.pass, true, 'an override still decides an errored row');
+});
+
 await check('--gate --pin (first page first): a passing row matched by PATH (the inventory slug differs) is pinned and moved to deployed with the table\'s eds URL; a failing one is not pinned; --status stale unpins', async () => {
   const { proj, out } = fixture();
   const pj = join(out, 'coverage', 'pages.json');
