@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/adobe/skills/compare/replica-v1.6.0...replica-v1.6.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
 # [1.6.0](https://github.com/adobe/skills/compare/replica-v1.5.2...replica-v1.6.0) (2026-11-21)
 
 
