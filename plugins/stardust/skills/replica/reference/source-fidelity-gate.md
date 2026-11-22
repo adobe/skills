@@ -806,8 +806,7 @@ clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #
 
 1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`);
    published offsets pass within the height tolerance, no step over 200 px.
-2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop hides a
-   much taller render; a union metric was rejected (white gaps score as matches).
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %).
 3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
    in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
    ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
