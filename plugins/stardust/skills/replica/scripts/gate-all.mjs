@@ -46,15 +46,20 @@
  * --warmup, --vh, and the overlay, locale and timer-hold flags as its captures and probes get them); its frozen
  * reference (dir, baseline.json, baseline.png there) and the archetype gate dir's baseline.json (prototype stage: its
  * live.json and live.capture.json too); origin.json and eds.json; the instrument files (this one, pixel-compare,
- * stitch-shot, reference, the three probes); at the prototype stage the prototype file. It is written — after the
+ * stitch-shot, reference, the three probes); at the prototype stage the prototype file; and the page's LOCAL BUILD
+ * INPUTS (`localInputs`, by content): `page content` (its delivered content file and migrated HTML; the prototype
+ * and the local files it links), `block <name>` (every file of each block it uses) and `shared code` (the
+ * foundation manifest's file set and the nav / footer fragments). It is written — after the
  * page's round — the moment the page's verdict is a pass, so a killed job keeps every page that finished, and a
  * --skip-existing run takes such a page from the record: no capture, no probe, no compare, the row rebuilt from it
  * (`recordedPass`; log `<slug> → recorded pass reused …`). Fail closed — `<slug> → recorded pass not reused (<what>
  * changed, …) — gated again`: any ingredient differs, the key cannot be computed, the record has no key or probe
  * results (an older version's, or --compare-only's pixel pass) or would not pass, or its reference's capture settings
  * changed (§ SETTINGS). A page with no pass on record — failed, or killed before its verdict, its probe in flight —
- * is gated again, reusing only its finished captures. NOT in the key: what the build or the source SERVES at the same
- * URL — after a deploy, gate the page without --skip-existing (or with --recapture-eds, which reuses no pass).
+ * is gated again, reusing only its finished captures. A page whose local inputs cannot be resolved is never reused
+ * (`… cannot be resolved: …`) — there is no weaker key. The key is LOCAL: a file changed in the working tree gates
+ * its pages again whether or not it was pushed; a change made on the content source or the CDN without touching a
+ * local file is not seen, nor is one of the source site — gate those pages without --skip-existing.
  * summary.* is written once, at the end: a killed job leaves the previous one (or none), never a partial one.
  *
  * VERDICT (all four): the PIXEL CRITERION (pixel-compare.mjs --offset-max owns the rule, `pixelVerdict`: the compare
@@ -136,7 +141,7 @@
  * captures and every probe that takes them (CHILD_FLAGS — the three probes take --locale only today).
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
- *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
+ *        [--state f] [--coverage f] [--content-dir d] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
  *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--max-browsers <n>] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
@@ -146,15 +151,16 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `rosterOffsets`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `digest`, `fileDigest`
+ * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `localInputs`, `digest`, `fileDigest`
  * are exported.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
+import { DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -216,6 +222,7 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --state <file>            stardust/state.json — rows with status deployed + liveUrl + url
   --coverage <file>         stardust/rollout/coverage/pages.json — its delivered rows (deployed | verified | failed on
                             a gate) are merged in: a page is ungated only when neither file names it
+  --content-dir <dir>       content — the delivered content tree (a page's file there is part of its reuse key)
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
   --wide                    REPORT at a wide width (DESIGN.json's extensions.breakpoints.probeWidth, else 2560; an
@@ -310,9 +317,16 @@ Reuse (--skip-existing): a page's pass is recorded the moment its verdict is kno
   a page that failed, or had a capture or probe in flight, is gated again (finished captures reused). The key: build
   and source URL; the page's masks.json, presence.json, clip-allow.json and overrides.json entries; its unit
   families; the verdict and capture options of the run; its frozen reference; its capture records; the instrument
-  files; the prototype file (prototype stage). Anything else: "<slug> → recorded pass not reused (<what> changed) —
-  gated again"; so is a record from an older version or from --compare-only. NOT in the key: what the build serves
-  at the same URL — after a deploy gate the page without --skip-existing, or with --recapture-eds (reuses no pass).
+  files; the prototype file (prototype stage); and the page's LOCAL build inputs, by content: "page content" (its
+  file under --content-dir and its migrated HTML; a prototype and the local files it links), "block <name>" (every
+  file of each block it uses: the ledger row's blocks and the block classes of its content file) and "shared code"
+  (styles/ fonts/ blocks/header/ blocks/footer/ head.html scripts/, nav.html and footer.html of the content dir).
+  Anything else: "<slug> → recorded pass not reused (<what> changed) — gated again"; so is a record from an older
+  version or from --compare-only, and a page whose local inputs cannot be resolved ("page content cannot be
+  resolved: …" — no content file and no migrated HTML, no blocks/ directory, none of the shared paths): never a
+  weaker key. The key is local: a file changed in the working tree gates its pages again, pushed or not; a change
+  made directly on the content source or the CDN, with no local file touched, is NOT seen — gate those pages
+  without --skip-existing, or with --recapture-eds (reuses no pass).
   summary.* is written at the end only: a killed job leaves the previous one, never a partial one.
 Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.`;
 
@@ -329,7 +343,7 @@ export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Numb
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, maxBrowsers: null, maxBrowsersFrom: 'default', threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, maxBrowsers: null, maxBrowsersFrom: 'default', threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', contentDir: 'content', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
   // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
   const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
   let holdOn = false; let holdOff = false; let holdMin = null;
@@ -347,7 +361,7 @@ export function parseArgs(argv) {
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
-    else if (a === '--coverage') o.coverage = need(a, v());
+    else if (a === '--coverage') o.coverage = need(a, v()); else if (a === '--content-dir') o.contentDir = need(a, v());
     else if (a === '--max-browsers') maxFlag = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
@@ -777,16 +791,84 @@ export const fileDigest = (f) => { try { return digest(readFileSync(f)); } catch
 /**
  * THE REUSE KEY of a recorded pass (header § REUSE): one digest per ingredient, so a refused reuse names what changed.
  * passKey(parts) → { v, build, source, masks, presence, clipAllow, override, units, options, reference, archetype,
- * captures, instruments[, prototype] }, or null when an ingredient that must be read cannot be (`parts.captures` /
- * `parts.instruments` holding a null, a `reference` whose baseline.json is unreadable, a `prototype` file that is) —
- * a key that cannot be computed is never written and never matches.
+ * captures, instruments[, prototype], 'page content'[, 'shared code'][, 'block <name>' …] }, or null when an ingredient that must be read cannot be (`parts.captures` /
+ * `parts.instruments` holding a null, a `reference` whose baseline.json is unreadable, a `prototype` file that is,
+ * `parts.inputs` — localInputs' answer for the page — missing or naming something unresolved) — a key that cannot
+ * be computed is never written and never matches.
  */
-export const PASS_FORMAT = 2;
-export function passKey({ build, source, masks = null, presence = null, clipAllow = null, override = null, units = [], options = {}, reference = null, archetype = [], captures = [], instruments = [], prototype }) {
+export const PASS_FORMAT = 3;
+export function passKey({ build, source, masks = null, presence = null, clipAllow = null, override = null, units = [], options = {}, reference = null, archetype = [], captures = [], instruments = [], prototype, inputs = null }) {
   if (!build || !source || captures.length !== 2 || captures.some((c) => !c) || !instruments.length || instruments.some((c) => !c)) return null;
   if (reference && !reference.baseline) return null;
   if (prototype === null) return null; // a prototype file was named and could not be read
-  return { v: PASS_FORMAT, build, source, masks: digest(masks), presence: digest(presence), clipAllow: digest(clipAllow), override: digest(override), units: digest(units), options: digest(options), reference: digest(reference), archetype: digest(archetype), captures: digest(captures), instruments: digest(instruments), ...(prototype ? { prototype } : {}) };
+  if (!inputs || (inputs.unresolved || []).length || !inputs.content) return null; // the page's local build inputs: never the weaker key
+  return { v: PASS_FORMAT, build, source, masks: digest(masks), presence: digest(presence), clipAllow: digest(clipAllow), override: digest(override), units: digest(units), options: digest(options), reference: digest(reference), archetype: digest(archetype), captures: digest(captures), instruments: digest(instruments), ...(prototype ? { prototype } : {}),
+    'page content': inputs.content, ...(inputs.shared ? { 'shared code': inputs.shared } : {}), ...Object.fromEntries(Object.entries(inputs.blocks || {}).map(([name, d]) => [`block ${name}`, d])) };
+}
+/**
+ * THE PAGE'S LOCAL BUILD INPUTS (header § REUSE): what the page is built from in the project's working tree, by
+ * content — never an mtime, never a fetch. localInputs({ root, contentDir, stage, coverage }) → inputsOf(page) →
+ * { content, blocks: { <name>: digest }, shared, unresolved: [why, …] }; `unresolved` non-empty = no key.
+ * Published stage — page content: the delivered content file (`<contentDir>/<path>.html`, else `<path>/index.html`,
+ * the root page `index.html` — the deploy tree, as rollout's da-library and gate-evidence resolve it) and the
+ * migrated HTML it is rendered from (the ledger row's source.migratedHtml, else the state row's migratedPath) — the
+ * files that exist; neither = unresolved. Blocks: the ledger row's `blocks` and the first class of every
+ * `<div class>` of the content file, kept when `blocks/<name>/` exists — every file under it; no `blocks/` directory
+ * = unresolved. Shared code: foundation-freeze's file set (styles/, fonts/, blocks/header/, blocks/footer/,
+ * head.html, scripts/) plus the header and footer fragments (`nav.html`, `footer.html` in the content dir and one
+ * level down); none of them in the project = unresolved. Prototype stage — page content: the prototype file and
+ * the local files it links (href / src, relative to it; one level, not what a stylesheet imports); no blocks, no
+ * shared set. Directories are walked as the foundation manifest walks them (`snapshot`: dot-entries and node_modules
+ * skipped, a symlink by its link text). The shared digest is computed once per resolver, a block's once per block
+ * (`stats` counts them).
+ */
+export function localInputs({ root = '.', contentDir = 'content', stage = 'published', coverage = null, snap = snapshot } = {}) {
+  const stats = { shared: 0, blocks: 0, content: 0 };
+  const rows = new Map((Array.isArray(coverage) ? coverage : (coverage && Array.isArray(coverage.pages) ? coverage.pages : [])).filter((r) => r && r.slug).map((r) => [r.slug, r]));
+  const at = (f) => (isAbsolute(f) ? f : join(root, f));
+  const isFile = (f) => { try { return statSync(at(f)).isFile(); } catch { return false; } };
+  const isDir = (f) => { try { return statSync(at(f)).isDirectory(); } catch { return false; } };
+  const of = (paths) => { const files = snap(root, paths); return Object.keys(files).length ? digest(files) : null; };
+  let shared; const blockOf = new Map();
+  const sharedDigest = () => {
+    if (shared === undefined) {
+      stats.shared += 1;
+      const fragments = isDir(contentDir) ? ['', ...readdirSync(at(contentDir)).filter((n) => !n.startsWith('.') && isDir(join(contentDir, n)))].flatMap((d) => ['nav.html', 'footer.html'].map((n) => join(contentDir, d, n))).filter(isFile) : [];
+      // the foundation set must hold something: the fragments alone are not the shared code
+      try { const base = snap(root, FOUNDATION_PATHS); shared = Object.keys(base).length ? digest({ ...base, ...snap(root, fragments) }) : null; } catch { shared = null; }
+    }
+    return shared;
+  };
+  const blockDigest = (name) => {
+    if (!blockOf.has(name)) { stats.blocks += 1; let d = null; try { d = of([`blocks/${name}/`]); } catch { d = null; } blockOf.set(name, d); }
+    return blockOf.get(name);
+  };
+  return Object.assign((p) => {
+    stats.content += 1;
+    const unresolved = [];
+    if (stage === 'prototype') {
+      const proto = p.prototypePath;
+      if (!proto || !isFile(proto)) return { content: null, blocks: {}, shared: null, unresolved: [`page content cannot be resolved: no prototype file${proto ? ` at ${proto}` : ''}`] };
+      const html = readFileSync(at(proto), 'utf8');
+      const linked = [...new Set([...html.matchAll(/\b(?:href|src)\s*=\s*["']([^"'#?]+)/g)].map((m) => m[1]).filter((u) => !/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(u)).map((u) => (u.startsWith('/') ? u.slice(1) : join(dirname(proto), u))))].filter(isFile).sort();
+      return { content: digest([proto, ...linked].map((f) => [f, fileDigest(at(f))])), blocks: {}, shared: null, unresolved };
+    }
+    const row = rows.get(p.slug) || {};
+    let path; try { path = p.deployedPath || row.path || new URL(p.liveUrl).pathname; } catch { path = null; }
+    const rel = path == null ? null : (path.replace(/^\/+|\/+$/g, '').replace(/\.html$/, '') || 'index');
+    const delivered = rel == null ? null : [`${rel}.html`, `${rel}/index.html`].map((c) => join(contentDir, c)).find(isFile) || null;
+    const migrated = [row.source && row.source.migratedHtml, p.migratedPath].find((f) => typeof f === 'string' && f.includes('/') && isFile(f)) || null;
+    const files = [delivered, migrated].filter(Boolean);
+    if (!files.length) unresolved.push(`page content cannot be resolved: no content file for ${path || p.slug} under ${contentDir}/ and no migrated HTML`);
+    if (!isDir('blocks')) unresolved.push('blocks cannot be resolved: no blocks/ directory in the project');
+    const sharedD = sharedDigest();
+    if (!sharedD) unresolved.push(`shared code cannot be resolved: none of ${FOUNDATION_PATHS.join(' ')} in the project`);
+    if (unresolved.length) return { content: null, blocks: {}, shared: null, unresolved };
+    const named = [...(Array.isArray(row.blocks) ? row.blocks : []), ...(delivered ? [...readFileSync(at(delivered), 'utf8').matchAll(/<div[^>]*\bclass\s*=\s*["']\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]) : [])];
+    const blocks = {};
+    for (const name of [...new Set(named.filter((n) => typeof n === 'string' && /^[A-Za-z0-9_-]+$/.test(n)))].sort()) { if (name !== 'header' && name !== 'footer' && isDir(`blocks/${name}`)) { const d = blockDigest(name); if (d) blocks[name] = d; } }
+    return { content: digest(files.map((f) => [f, fileDigest(at(f))])), blocks, shared: sharedD, unresolved };
+  }, { stats });
 }
 /**
  * recordedPass(d, key) → { origin, eds, pixel, probes } — the page's whole recorded verdict — or { miss: [why, …] }
@@ -1152,6 +1234,9 @@ async function main() {
   // The reuse key of a page's pass (passKey; header § REUSE), from what this run would gate it with and the capture
   // metas on disk — computed alike when the pass is written and when a later run asks whether it still stands.
   const INSTRUMENTS = [fileURLToPath(import.meta.url), PIXEL, STITCH, REFERENCE, ...(DIFF_DIR ? ['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(DIFF_DIR, f)) : [])].map(fileDigest);
+  const inputsOf = localInputs({ contentDir: opts.contentDir, stage: opts.stage, coverage });
+  const inputsSeen = new Map(); // once per page and job: the key written is the one the run started with
+  const inputsFor = (p) => { if (!inputsSeen.has(p.slug)) inputsSeen.set(p.slug, inputsOf(p)); return inputsSeen.get(p.slug); };
   const keyOf = (p, originMeta) => {
     const d = dir(p); const o = optsFor(p); const ref = (originMeta && originMeta.reference) || null;
     const gateDir = join('stardust/replica/gates', `${p.slug}-${opts.width}`);
@@ -1159,7 +1244,7 @@ async function main() {
       options: { stage: opts.stage, width: opts.width, wide: opts.wide, threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, offsetMax: opts.offsetMax, clip: opts.clip, content: opts.content, liveOrigin: opts.liveOrigin, warmup: opts.warmup, vh: opts.vh, blocked: !!(opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked), flags: passThrough('stitch-shot', o) },
       reference: ref && ref.dir ? { dir: ref.dir, baseline: fileDigest(join(ref.dir, 'baseline.json')), png: existsSync(join(ref.dir, 'baseline.png')) } : null,
       archetype: ['baseline.json', ...(opts.stage === 'prototype' ? ['live.json', 'live.capture.json'] : [])].map((f) => fileDigest(join(gateDir, f))),
-      captures: [fileDigest(join(d, 'origin.json')), fileDigest(join(d, 'eds.json'))], instruments: INSTRUMENTS,
+      captures: [fileDigest(join(d, 'origin.json')), fileDigest(join(d, 'eds.json'))], instruments: INSTRUMENTS, inputs: inputsFor(p),
       ...(opts.stage === 'prototype' ? { prototype: p.prototypePath ? fileDigest(p.prototypePath) : null } : {}) });
   };
   const reused = new Set();
@@ -1176,7 +1261,8 @@ async function main() {
     for (const p of pages) {
       const kept = recordedPass(dir(p), keyOf(p, readJsonSafe(join(dir(p), 'origin.json'))));
       if (!kept) continue;
-      let miss = kept.miss || (await referenceMoved(kept.origin) ? ['the reference\'s capture settings changed'] : null);
+      const { unresolved } = inputsFor(p);
+      let miss = (unresolved.length ? unresolved : null) || kept.miss || (await referenceMoved(kept.origin) ? ['the reference\'s capture settings changed'] : null);
       if (!miss) {
         rec(p, 'origin', kept.origin); rec(p, 'eds', kept.eds); rec(p, 'pixel', kept.pixel); for (const k of ['content', 'clip', 'units']) rec(p, k, kept.probes[k]);
         if (!rowOf(p).pass) { delete results[p.slug]; miss = ['the record does not pass']; }
