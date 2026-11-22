@@ -9,7 +9,7 @@
  * per-node findings were false. This probe asks the smaller question the pixel gate cannot: is every
  * VISIBLE heading, link, button, image and text block of the origin present AND visible on the served
  * page, band by band, and does every control show the same state? Both pages load in the same
- * window-free real-Chrome tier and settle the same way (measure-live.mjs). Visibility = rendered,
+ * window-free real-Chrome tier (at once when on two hosts, `separateHosts`; else origin first) and settle the same way (measure-live.mjs). Visibility = rendered,
  * non-zero box, on-page, not clipped past 50 % (clip-probe's model): in the DOM but clipped = HIDDEN.
  * Bands: the visible h1–h3 sequences aligned by text (LCS); items fall into bands by y.
  *
@@ -27,7 +27,7 @@
  * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
  *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
  *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>]
- * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm` are exported.
+ * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm`, `separateHosts` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -328,6 +328,9 @@ export function parseArgs(argv) {
   return opts;
 }
 
+/** The two sides are on different hosts (host:port) — nothing of the shared live session (pace, lease, state jar) is common to them. */
+export const separateHosts = (a, b) => { try { return new URL(a).host.toLowerCase() !== new URL(b).host.toLowerCase(); } catch { return false; } };
+
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
 export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, overlay = {} }) {
   const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
@@ -348,8 +351,15 @@ async function main() {
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, overlay: overlayOf(opts), rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, overlay: overlayOf(opts), rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    const originSide = () => inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, overlay: overlayOf(opts), rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+    const servedSide = () => inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, overlay: overlayOf(opts), rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    if (separateHosts(opts.origin, opts.eds)) {
+      // two hosts: each side has its own context, pace, lease and state jar — both at once; the origin's error first, as in order
+      const [ro, re] = await Promise.allSettled([originSide(), servedSide()]);
+      if (ro.status === 'rejected') throw ro.reason;
+      if (re.status === 'rejected') throw re.reason;
+      o = ro.value; e = re.value;
+    } else { o = await originSide(); e = await servedSide(); }
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });

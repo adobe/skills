@@ -12,7 +12,7 @@ import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignHeadings, diffPresence, formatReport } from '../content-presence.mjs';
+import { alignHeadings, diffPresence, formatReport, separateHosts } from '../content-presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'content-presence.mjs');
@@ -86,6 +86,9 @@ check('formatReport: band table + Content/Findings lines', () => {
   const r = diffPresence(o, inv([it('heading', 'H', 10, { level: 1 })]));
   const s = formatReport(r);
   assert.match(s, /\| band \| heading/); assert.match(s, /MISSING LINK: "A"/); assert.match(s, /Content: MISSING 1/); assert.match(s, /Findings: 1 \(1 structural/);
+});
+check('separateHosts: the two sides load at once only on two hosts (host:port, case-insensitive); the same host or an unreadable URL keeps the origin first', () => {
+  assert.deepEqual([['https://www.origin.example/a', 'https://main--site--org.aem.page/a'], ['http://10.0.0.5:8781/a', 'http://10.0.0.5:8782/a'], ['https://Origin.example/a', 'https://origin.example/b'], ['http://localhost:8791/a.html', 'http://localhost:8791/b.html'], ['not a url', 'https://origin.example/']].map(([o, e]) => separateHosts(o, e)), [true, true, false, false, false]);
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'content-presence-help-'));
