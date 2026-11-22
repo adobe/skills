@@ -19,15 +19,16 @@
 // probe error is an error row, never a pass or a FAIL; --compare-only spawns no capture and no probe and re-reads
 // probes.json; a failed re-capture leaves no PNG to diff.
 // Disk (#156): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
-// stub instruments, no browser.
+// stub instruments, no browser. Reuse: the recorded pass is the whole verdict (no probe), each key ingredient
+// invalidates it, an incomplete or older record is not reused, it is on disk before the batch ends, kill and resume.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
+import { PASS_FORMAT, passKey, recordedPass, repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
 import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, browserBudget, maxBrowsersOf, budgetLine, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
@@ -484,8 +485,10 @@ console.log('reference: frozen, primed');\n`);
   // (STUB_ARGV), then exits STUB_<CONTENT|CLIP|UNITS>_RC without a result ("kill" = killed mid-run, what a timeout
   // leaves) or writes a clean one. STUB_BY_SLUG = { "<slug>": { "<probe>": { rc, ms, missing, off } } } gives one page's
   // probe its own exit code, duration and findings; STUB_PROBE_MS is every probe's duration, STUB_SHOT_MS a capture's;
-  // STUB_TIMES logs { kind, slug, t0, t1 } per capture and probe (what ran beside what).
-  const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, writeFileSync } from 'node:fs';
+  // STUB_TIMES logs { kind, slug, t0, t1 } per capture and probe (what ran beside what). `killGate` (per slug and
+  // probe) kills gate-all while that probe is in flight; STUB_SNAP logs, as each probe ends, { kind, slug, passes }
+  // — the pages whose whole pass is on disk at that moment — and whether a summary exists.
+  const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 export const inPage = () => ({}); // unit-geometry imports it from clip-probe
 const a = process.argv.slice(2); const main = (process.argv[1] || '').endsWith('${name}.mjs');
 if (main) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['${name}', ...a]) + '\\n');
@@ -494,6 +497,8 @@ const t0 = Date.now(); const ms = by.ms ?? Number(process.env.STUB_PROBE_MS || 0
 if (main && ms) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 if (main && process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: '${name}', slug, t0, t1: Date.now() }) + '\\n');
 const rc = by.rc ?? process.env.${envKey};
+if (main && process.env.STUB_SNAP) { const g = 'stardust/replica/gates/all-1440'; appendFileSync(process.env.STUB_SNAP, JSON.stringify({ kind: '${name}', slug, passes: readdirSync(g).filter((d) => { try { return !!JSON.parse(readFileSync(g + '/' + d + '/pixel.json', 'utf8')).capturesDropped.key; } catch { return false; } }).sort(), summary: existsSync(g + '/summary.json') }) + '\\n'); }
+if (main && by.killGate) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
 if (!main) { /* imported, not run */ }
 else if (rc === 'kill') process.kill(process.pid, 'SIGKILL');
 else if (rc) { console.error('${name} error: stub exit ' + rc); process.exit(Number(rc)); }
@@ -1568,6 +1573,175 @@ check('runner: pages with no family carry unitsDeclared 0, the note and the tota
     assert.equal(r.status, 2, r.stderr);
     assert.deepEqual([rows().good.unitsDeclared, rows().good.notes, rows().bad.unitsDeclared, totals().unitsNotDeclared], [1, [], 0, 1], 'a declared page loses the note');
     assert.deepEqual(Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass])), before);
+  } finally { done(); }
+});
+// ---- reuse: a recorded pass is the page's whole verdict, written when the page has it (--skip-existing) -------------
+const kinds = (spawned) => spawned.map((a) => `${a[0]} ${a[0] === 'reference' ? a[2] : a[1]}`.replace(/https:\/\/(origin|eds)\.example\//, '$1:')).sort();
+const dropOf = (out, slug) => { try { return JSON.parse(readFileSync(join(out, slug, 'pixel.json'), 'utf8')).capturesDropped; } catch { return undefined; } };
+const wait = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+check('reuse: a reusable recorded pass launches no probe, no capture and no compare under --skip-existing, and its row is the recorded one', () => {
+  const { out, gateAll, spawned, shots, compares, rows, done } = sandbox(['a', 'b', 'bad'], { probes: true, units: true });
+  try {
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    const first = rows();
+    assert.deepEqual([first.a.pass, first.b.pass, first.bad.pass], [true, true, false]);
+    assert.deepEqual(Object.keys(dropOf(out, 'a')), ['masks', 'edsUrl', 'key', 'probes', 'at'], 'the record: the pixel pass, its key and the probe results');
+    assert.deepEqual(Object.keys(dropOf(out, 'a').probes), ['content', 'clip', 'units']);
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(kinds(spawned()), ['content-presence origin:bad', 'unit-geometry origin:bad'], 'probes for the failed page only');
+    assert.deepEqual([shots(), Object.keys(compares())], [[], ['bad']], 'no capture (the failed page reuses its own), one compare');
+    assert.deepEqual(rows(), first, 'the rows, the reused ones from the record');
+    assert.match(r.stdout, /a → recorded pass reused/); assert.match(r.stdout, /b → recorded pass reused/); assert.doesNotMatch(r.stdout, /bad → recorded pass/);
+    assert.deepEqual([rows().a.content.missing, rows().a.clipped, rows().a.units.off, rows().a.unitsRequired, rows().a.browser], [0, 0, 0, true, 'chrome'], 'probe results and all');
+  } finally { done(); }
+});
+check('reuse: each key ingredient invalidates it — a mask, the presence allow-list, the clip allowance, an override, the unit families, a verdict option, a capture flag, the build URL, the reference, a capture record, an instrument file — for the page it concerns only, and names it', () => {
+  const { root, out, gateAll, spawned, shots, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    let args = []; // the options every later run keeps
+    const run = (extra = []) => { const r = gateAll(['--skip-existing', ...args, ...extra], { ...REF }); assert.equal(r.status, 0, r.stderr + r.stdout); return r; };
+    const probed = () => [...new Set(spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => a[1].split('/').pop()))].sort();
+    assert.equal(gateAll([], { ...REF }).status, 0);
+    assert.deepEqual([probed(), run() && probed()], [['a', 'b'], []], 'recorded, then reused');
+    const edit = (file, fn) => { const f = join(root, file); writeFileSync(f, JSON.stringify(fn(existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : {}))); };
+    const G = 'stardust/replica/gates/all-1440';
+    const steps = [
+      ['masks', ['a'], () => edit(`${G}/masks.json`, () => ({ a: { masks: ['0:100'], reason: 'a rotating banner' } }))],
+      ['masks', ['a'], () => edit(`${G}/masks.json`, (m) => ({ a: { ...m.a, reason: 'another reason' } }))],
+      ['presence', ['a'], () => edit(`${G}/presence.json`, () => ({ a: { variable: ['.ticker'], reason: 'session-variable' } }))],
+      ['clipAllow', ['a'], () => edit(`${G}/clip-allow.json`, () => ({ a: { max: 2, reason: 'a designed truncation' } }))],
+      ['override', ['a'], () => edit(`${G}/overrides.json`, () => ({ a: { verdict: 'accepted', reason: 'a tier shift', waives: ['pixel'] } }))],
+      ['units', ['a', 'b'], () => edit('stardust/replica/units.json', (u) => ({ card: { ...u.card, n: 4 } }))],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9']; }],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9', '--unit-tol', '6']; }],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9', '--unit-tol', '6', '--no-content']; }],
+      ['build', ['a', 'b'], () => { args = [...args, '--eds-host', 'branch--site--org.example']; }],
+      ['reference', ['a'], () => edit(`${G}/a/baseline.json`, (b) => ({ ...b, capturedAt: '2026-11-02T10:00:00.000Z' }))],
+      ['archetype', ['b'], () => { mkdirSync(join(root, 'stardust/replica/gates/b-1440'), { recursive: true }); edit('stardust/replica/gates/b-1440/baseline.json', () => ({ note: 'an archetype round froze a reference here' })); }],
+      ['captures', ['a'], () => edit(`${G}/a/eds.json`, (m) => ({ ...m, at: 'later' }))],
+      ['instruments', ['a', 'b'], () => { const f = join(root, 'stardust/scripts/diff/clip-probe.mjs'); writeFileSync(f, `${readFileSync(f, 'utf8')}// a newer probe\n`); }],
+    ];
+    for (const [name, pages, change] of steps) {
+      change();
+      const r = run();
+      assert.deepEqual(probed(), pages, `${name}: probed again — ${r.stdout.split('\n').filter((l) => /recorded pass/.test(l)).join(' | ')}`);
+      for (const s of pages) assert.match(r.stdout, new RegExp(`${s} → recorded pass not reused \\([^)]*${name} changed[^)]*\\) — gated again`), `${name} named for ${s}`);
+      for (const s of ['a', 'b'].filter((x) => !pages.includes(x))) assert.match(r.stdout, new RegExp(`${s} → recorded pass reused`), `${name}: ${s} is not concerned`);
+      assert.ok(pages.every((s) => shots().some((u) => u.endsWith(`/${s}`))), `${name}: its build captured again`);
+      assert.deepEqual([run() && probed(), rows().a.pass, rows().b.pass], [[], true, true], `${name}: recorded under the new key, reused after`);
+    }
+    // the reference's capture settings (today's rule, kept): frozen again, the pass not reused
+    args = [...args, '--locale', 'de-DE'];
+    const r = run();
+    assert.deepEqual(probed(), ['a', 'b']); assert.match(r.stdout, /re-frozen — capture settings changed \(locale\)/);
+  } finally { done(); }
+});
+check('reuse: an incomplete or old-format record is not reused — no key, no probe results, another format, a key that cannot be computed, a capture record gone or in error; passKey is null when an ingredient is unreadable', () => {
+  const parts = { build: 'https://eds.example/a', source: 'https://origin.example/a', captures: ['o1', 'e1'], instruments: ['i1'], reference: { dir: 'd', baseline: 'b1', png: true } };
+  const key = passKey(parts);
+  assert.deepEqual([key.v, PASS_FORMAT, Object.keys(key)], [2, 2, ['v', 'build', 'source', 'masks', 'presence', 'clipAllow', 'override', 'units', 'options', 'reference', 'archetype', 'captures', 'instruments']]);
+  for (const [why, bad] of [['origin.json unreadable', { captures: [null, 'e1'] }], ['eds.json unreadable', { captures: ['o1', null] }], ['an instrument file unreadable', { instruments: ['i1', null] }], ['the reference\'s baseline.json unreadable', { reference: { dir: 'd', baseline: null, png: false } }], ['the prototype file unreadable', { prototype: null }], ['no build URL', { build: '' }]]) assert.equal(passKey({ ...parts, ...bad }), null, why);
+  assert.equal(passKey({ ...parts, prototype: 'p1' }).prototype, 'p1');
+  for (const [k, v] of [['masks', { masks: ['0:10'] }], ['presence', { main: 'main' }], ['clipAllow', { max: 1 }], ['override', { verdict: 'x' }], ['units', [{ origin: '.c' }]], ['options', { threshold: 9 }], ['archetype', ['x']]]) assert.notEqual(passKey({ ...parts, [k]: v })[k], key[k], k);
+  const at = { masks: [], edsUrl: 'https://eds.example/a' }; const probes = { content: { totals: { missing: 0, hidden: 0 } } };
+  const d = pageDir(RECORDS);
+  try {
+    assert.equal(recordedPass(d, key), null, 'no pass on record');
+    dropPassedCaptures(d, at);
+    assert.match(recordedPass(d, key).miss[0], /without its probe results or in another format/, 'the older record: masks and eds URL only');
+    assert.notEqual(droppedPass(d, at), null, '--compare-only still reads it');
+    dropPassedCaptures(d, { ...at, key });
+    assert.deepEqual(dropOf(dirname(d), basename(d)), at, 'a key without probe results is not written');
+    dropPassedCaptures(d, { ...at, key: { ...key, v: 1 }, probes });
+    assert.match(recordedPass(d, key).miss[0], /another format/);
+    dropPassedCaptures(d, { ...at, key, probes });
+    assert.deepEqual(recordedPass(d, key).probes, probes, 'the complete record');
+    assert.deepEqual(readdirSync(d).filter((f) => f.includes('.tmp')), [], 'written through a temp file that is gone');
+    assert.match(recordedPass(d, null).miss[0], /key cannot be computed/);
+    assert.deepEqual(recordedPass(d, { ...key, masks: 'x', units: 'y' }).miss, ['masks changed', 'units changed']);
+    assert.deepEqual(recordedPass(d, { ...key, prototype: 'p1' }).miss, ['prototype changed']);
+    writeFileSync(join(d, 'eds.json'), JSON.stringify({ instrument: 'none', error: 'stitch exit 1' }));
+    assert.match(recordedPass(d, key).miss[0], /capture record is gone or holds an error/);
+    writeFileSync(join(d, 'pixel.json'), '{ "pct": 1, "capturesDropped": { "masks": [], "edsUrl"'); // a write cut short
+    assert.equal(recordedPass(d, key), null, 'an unreadable pixel.json records nothing');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+  // the runner: an older version's record, and --compare-only's pixel pass of a page that was never probed
+  const { out, gateAll, spawned, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => a[1].split('/').pop()))].sort();
+    assert.equal(gateAll().status, 0);
+    const f = join(out, 'a/pixel.json'); const pixel = JSON.parse(readFileSync(f, 'utf8'));
+    writeFileSync(f, JSON.stringify({ ...pixel, capturesDropped: { masks: pixel.capturesDropped.masks, edsUrl: pixel.capturesDropped.edsUrl } }));
+    let r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed()], [0, ['a']], r.stdout);
+    assert.match(r.stdout, /a → recorded pass not reused \(recorded without its probe results or in another format\) — gated again/);
+    r = gateAll(['--compare-only']);
+    assert.deepEqual([r.status, spawned(), dropOf(out, 'a').key, dropOf(out, 'b').key], [0, [], JSON.parse(readFileSync(f, 'utf8')).capturesDropped.key, dropOf(out, 'b').key], '--compare-only keeps a reused record as it is');
+    assert.ok(dropOf(out, 'a').key && dropOf(out, 'a').probes);
+    assert.deepEqual([gateAll(['--skip-existing']).status, probed()], [0, []], 'and it is still reusable');
+    // a page with captures and no probe record, passed by --compare-only: its pass is the pixel pass, not a verdict
+    for (const s of ['a']) { rmSync(join(out, s), { recursive: true }); mkdirSync(join(out, s)); for (const side of ['origin', 'eds']) { writeFileSync(join(out, s, `${side}.png`), 'png'); writeFileSync(join(out, s, `${side}.json`), JSON.stringify({ instrument: 'stitch-live' })); writeFileSync(join(out, s, `${side}.capture.json`), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] })); } }
+    r = gateAll(['--compare-only']);
+    assert.deepEqual([r.status, rows().a.pass, rows().a.contentNA, Object.keys(dropOf(out, 'a'))], [0, true, 'not probed', ['masks', 'edsUrl']]);
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed(), rows().a.contentNA], [0, ['a'], null], 'the next --skip-existing run gates it');
+  } finally { done(); }
+});
+check('a page\'s pass is on disk before the batch ends: while a later page of the same batch is still being probed, the finished page has its whole record and no PNG, and no summary exists yet', () => {
+  const { root, out, gateAll, pngs, done } = sandbox(['a', 'b', 'c'], { probes: true, units: true });
+  try {
+    const snap = join(root, 'snap.log');
+    const slow = { 'content-presence': { ms: 1200 }, 'unit-geometry': { ms: 1200 } };
+    const r = gateAll([], { STUB_SNAP: snap, STUB_BY_SLUG: JSON.stringify({ b: slow, c: { 'content-presence': { ms: 1200 }, 'unit-geometry': { ms: 2000 } } }) });
+    assert.equal(r.status, 0, r.stderr);
+    const seen = readFileSync(snap, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const at = (slug, kind) => seen.find((x) => x.slug === slug && x.kind === kind);
+    assert.deepEqual(at('b', 'unit-geometry').passes, ['a'], 'a is recorded while b and c (the same batch) are in flight');
+    assert.deepEqual(at('c', 'unit-geometry').passes, ['a', 'b'], 'and b before c ends');
+    assert.ok(seen.every((x) => x.summary === false), 'the summary is written at the end only');
+    assert.deepEqual([pngs('a'), pngs('c'), existsSync(join(out, 'summary.json'))], [[], [], true]);
+  } finally { done(); }
+});
+check('kill and resume: a job killed while a probe is in flight leaves no summary and keeps the pass (and the round) of every page that finished; the --skip-existing resume launches instruments only for the pages without a complete verdict, and the page whose probe was in flight is probed and compared again', () => {
+  const { root, out, gateAll, spawned, shots, compares, rows, tableOf, done } = sandbox(['a', 'b', 'c', 'd'], { probes: true, units: true });
+  try {
+    copyFileSync(join(HERE, '..', 'rounds.mjs'), join(root, 'stardust/scripts/replica/rounds.mjs')); // the real ledger
+    const rounds = (s) => { const f = join(root, `stardust/replica/gates/${s}-1440/rounds.json`); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')).stages['all-pages'].rounds.map((x) => x.verdict) : []; };
+    // a and b finish; c's unit probe kills the job at 900 ms while its content probe (1500 ms) and d's probes are in flight
+    const by = { c: { 'content-presence': { ms: 1500 }, 'unit-geometry': { ms: 900, killGate: true } }, d: { 'content-presence': { ms: 1300 }, 'unit-geometry': { ms: 1300 } } };
+    let r = gateAll(['--probe-concurrency', '4'], { STUB_BY_SLUG: JSON.stringify(by) });
+    assert.equal(r.signal, 'SIGKILL', 'the job was killed');
+    wait(900); // the orphaned probes end
+    assert.equal(tableOf('all-1440'), null, 'no summary: nothing reads as complete');
+    assert.deepEqual(['a', 'b', 'c', 'd'].map((s) => !!(dropOf(out, s) || {}).key), [true, true, false, false], 'the finished pages are on disk');
+    assert.deepEqual(['a', 'b', 'c', 'd'].map(rounds), [['pass'], ['pass'], [], []]);
+    assert.ok(existsSync(join(out, 'c/content.json')), 'the in-flight content probe even left a result: not a verdict');
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(kinds(spawned()), ['content-presence origin:c', 'content-presence origin:d', 'unit-geometry origin:c', 'unit-geometry origin:d'], 'probes for c and d only');
+    assert.deepEqual([Object.keys(compares()).sort(), shots()], [['c', 'd'], []], 'compared again; their finished captures are reused (--skip-existing)');
+    assert.match(r.stdout, /a → recorded pass reused/); assert.match(r.stdout, /b → recorded pass reused/);
+    assert.deepEqual([Object.values(rows()).map((x) => x.pass), tableOf('all-1440').totals.pass], [[true, true, true, true], 4]);
+    assert.deepEqual(['a', 'b', 'c', 'd'].map(rounds), [['pass'], ['pass'], ['pass'], ['pass']], 'one round per page: a reused pass records none');
+    assert.deepEqual([gateAll(['--skip-existing']).status, spawned(), shots()], [0, [], []], 'and a further resume launches nothing');
+  } finally { done(); }
+});
+check('without --skip-existing nothing is reused: every page is captured, probed and compared whatever is on record, with the same instrument calls and the same rows as the first run', () => {
+  const { gateAll, spawned, shots, compares, rows, done } = sandbox(['a', 'b', 'bad'], { probes: true, units: true });
+  try {
+    const calls = () => [spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => JSON.stringify(a)).sort(), spawned().filter((a) => a[0] === 'stitch-shot').map((a) => JSON.stringify(a)).sort(), Object.values(compares()).map((a) => a.join(' ')).sort()];
+    assert.equal(gateAll().status, 2);
+    const first = { calls: calls(), rows: rows() };
+    assert.deepEqual([first.calls[0].length, first.calls[1].length, first.calls[2].length], [6, 6, 3], 'content + units, two captures and one compare per page');
+    const r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual({ calls: calls(), rows: rows() }, first);
+    assert.doesNotMatch(r.stdout, /recorded pass/);
+    assert.equal(gateAll(['--only', 'a']).status, 0); assert.deepEqual([calls()[0].length, shots()], [2, ['https://eds.example/a', 'https://origin.example/a']], '--only: its page, in full');
+    assert.equal(gateAll(['--skip-existing', '--recapture-eds']).status, 2);
+    assert.deepEqual([calls()[0].length, shots().filter((u) => u.includes('eds.example')).length, calls()[2].length], [6, 3, 3], '--recapture-eds reuses no pass: every build shot, probed and compared again');
   } finally { done(); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
