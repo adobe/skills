@@ -14,7 +14,8 @@
  *   node stardust/scripts/replica/smoke-check.mjs --origin <https://host> --pages '<json [{slug,path}]>'
  *        [--width 1440] [--height 900] [--max-pct 10] [--out stardust/replica/gates/smoke-1440]
  * Writes: <out>/summary.json ({ rows: [{slug, path, pass, http, aboutError, blocks, blocksLoaded,
- *         pageErrors, fontsFailed, topPct, reasons}], pass, at }) and <out>/<slug>-top.png.
+ *         pageErrors, fontsFailed, topPct, reasons}], pass, at }); screenshots to --shots (default
+ *         stardust/.work/smoke-<width>/<slug>-top.png, scratch, not committed).
  * Exit: 0 every page passes · 2 any page fails · 1 error.
  */
 import fs from 'node:fs';
@@ -37,6 +38,9 @@ const MAX = Number(opt('--max-pct', 10));
 const OUT = opt('--out', `stardust/replica/gates/smoke-${W}`);
 if (!ORIGIN || !PAGES.length) { console.error('usage: --origin <url> --pages <json>'); process.exit(1); }
 fs.mkdirSync(OUT, { recursive: true });
+// screenshots are scratch (not committed: a checkpoint pushing six full-width PNGs cost ~15 s); the summary is the record
+const SHOTS = opt('--shots', `stardust/.work/smoke-${W}`);
+fs.mkdirSync(SHOTS, { recursive: true });
 
 async function one(browser, pg) {
   const row = { slug: pg.slug, path: pg.path, pass: false, reasons: [] };
@@ -69,7 +73,7 @@ async function one(browser, pg) {
     });
     Object.assign(row, st);
     row.pageErrors = errors;
-    const shot = path.join(OUT, `${pg.slug}-top.png`);
+    const shot = path.join(SHOTS, `${pg.slug}-top.png`);
     await page.screenshot({ path: shot, clip: { x: 0, y: 0, width: W, height: H } });
     const ref = path.join('stardust/replica/gates', `${pg.slug}-${W}`, 'baseline.png');
     if (fs.existsSync(ref)) {
