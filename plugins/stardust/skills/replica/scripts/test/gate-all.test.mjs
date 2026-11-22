@@ -28,7 +28,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS } from '../gate-all.mjs';
-import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, probeDefault, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -426,7 +426,7 @@ check('droppedPass: the records for the same masks and eds URL; null when either
 // A project root with the real gate-all.mjs, the real diff scripts and stub instruments. The stitch stub logs each
 // URL (STUB_LOG), fails one (STUB_FAIL, exit 1), kills gate-all on one (STUB_KILL — an interrupted run) and logs how
 // many gate PNGs exist when it is called (STUB_PNGS — the peak a run reaches). pixel-compare fails `/bad` pages.
-function sandbox(slugs, { probes = false } = {}) {
+function sandbox(slugs, { probes = false, units = false } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const rep = join(root, 'stardust/scripts/replica');
   mkdirSync(rep, { recursive: true });
@@ -436,6 +436,8 @@ function sandbox(slugs, { probes = false } = {}) {
   writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
 if (process.argv[2] === 'baseline') { const { spawnSync } = await import('node:child_process'); process.exit(spawnSync(process.execPath, [${JSON.stringify(REAL_STITCH)}, ...process.argv.slice(2)], { stdio: 'inherit' }).status ?? 1); }
 const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, url + '\\n');
+const t0 = Date.now(); if (process.env.STUB_SHOT_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.STUB_SHOT_MS));
+if (process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: 'stitch-shot', slug: url.split('/').pop(), t0, t1: Date.now() }) + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['stitch-shot', ...process.argv.slice(2)]) + '\\n');
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
 if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
@@ -476,29 +478,44 @@ const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
 writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, ...(hold ? { timers: { hold, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] } } : {}), primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, ...(hint ? { hint } : {}), flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed'), ...(hold ? { holdTimers: hold } : {}) } }));
 console.log('reference: frozen, primed');\n`);
-  // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
-  // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
+  // Stub probes (probes: true; units: true adds unit-geometry and a family for every page): each logs its argv
+  // (STUB_ARGV), then exits STUB_<CONTENT|CLIP|UNITS>_RC without a result ("kill" = killed mid-run, what a timeout
+  // leaves) or writes a clean one. STUB_BY_SLUG = { "<slug>": { "<probe>": { rc, ms, missing, off } } } gives one page's
+  // probe its own exit code, duration and findings; STUB_PROBE_MS is every probe's duration, STUB_SHOT_MS a capture's;
+  // STUB_TIMES logs { kind, slug, t0, t1 } per capture and probe (what ran beside what).
   const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, writeFileSync } from 'node:fs';
 export const inPage = () => ({}); // unit-geometry imports it from clip-probe
 const a = process.argv.slice(2); const main = (process.argv[1] || '').endsWith('${name}.mjs');
 if (main) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['${name}', ...a]) + '\\n');
-const rc = process.env.${envKey};
+const slug = (a[0] || '').split('/').pop(); const by = main ? (JSON.parse(process.env.STUB_BY_SLUG || '{}')[slug] || {})['${name}'] || {} : {};
+const t0 = Date.now(); const ms = by.ms ?? Number(process.env.STUB_PROBE_MS || 0);
+if (main && ms) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+if (main && process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: '${name}', slug, t0, t1: Date.now() }) + '\\n');
+const rc = by.rc ?? process.env.${envKey};
 if (!main) { /* imported, not run */ }
 else if (rc === 'kill') process.kill(process.pid, 'SIGKILL');
 else if (rc) { console.error('${name} error: stub exit ' + rc); process.exit(Number(rc)); }
 else { const counts = { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }; writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify(${body})); }\n`);
   if (probes) {
-    probeStub('content-presence', 'STUB_CONTENT_RC', `{ _provenance: { at: 'now', tier: 'chrome' }, totals: { missing: 0, hidden: 0, controlState: 0 }, scope: 'main', eds: { clip: { counts, groups: [] } }, origin: { clip: { counts } } }`);
+    probeStub('content-presence', 'STUB_CONTENT_RC', `{ _provenance: { at: 'now', tier: 'chrome' }, totals: { missing: by.missing ?? 0, hidden: 0, controlState: 0 }, scope: 'main', eds: { clip: { counts, groups: [] } }, origin: { clip: { counts } } }`);
     probeStub('clip-probe', 'STUB_CLIP_RC', `{ counts, groups: [], tier: 'chrome' }`);
+  }
+  if (units) {
+    probeStub('unit-geometry', 'STUB_UNITS_RC', `{ verdict: { units: 1, within: 1, off: by.off ?? 0, hidden: 0, missing: 0, errors: 0, requiredOff: by.off ?? 0 }, results: [] }`);
+    writeFileSync(join(root, 'stardust/scripts/diff/unit-geometry.mjs'), `export const unitsFor = (families, slug) => Object.values(families).filter((f) => f.pages.includes(slug)).map((f) => ({ origin: f.origin, eds: f.build, n: f.n, required: true }));\n${readFileSync(join(root, 'stardust/scripts/diff/unit-geometry.mjs'), 'utf8')}`);
+    mkdirSync(join(root, 'stardust/replica'), { recursive: true });
+    writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ card: { origin: '.cards > li', build: '.cards > li', n: 3, required: true, pages: slugs } }));
   }
   const page = (slug) => ({ slug, url: `https://origin.example/${slug}`, status: 'deployed', liveUrl: `https://eds.example/${slug}` });
   writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: slugs.map(page) }));
   const out = join(root, 'stardust/replica/gates/all-1440');
   const log = join(root, 'stitch.log');
   const argvLog = join(root, 'argv.log'); const pxLog = join(root, 'px-argv.log');
-  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); writeFileSync(pxLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, GATE_REFERENCE: 'live', STUB_LOG: log, STUB_ARGV: argvLog, STUB_PX_ARGV: pxLog, ...env } }); };
+  const timesLog = join(root, 'times.log');
+  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); writeFileSync(pxLog, ''); writeFileSync(timesLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, GATE_REFERENCE: 'live', STUB_LOG: log, STUB_ARGV: argvLog, STUB_PX_ARGV: pxLog, STUB_TIMES: timesLog, ...env } }); };
   return {
     root, out, gateAll,
+    times: () => readFileSync(timesLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
     compares: () => Object.fromEntries(readFileSync(pxLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((a) => [a[0].split('/').slice(-2)[0], a])),
     files: (d) => (existsSync(join(root, d)) ? readdirSync(join(root, d)).sort() : []),
     tableOf: (d) => { const f = join(root, 'stardust/replica/gates', d, 'summary.json'); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; },
@@ -782,6 +799,106 @@ check('--compare-only spawns no capture and no probe: it re-reads the recorded p
     rmSync(join(out, 'bad/probes.json'));
     r = gateAll(['--compare-only']);
     assert.deepEqual([spawned(), rows().bad.content.missing, rows().bad.clipped], [[], 0, 0], 'a page dir from before probes.json: the probes\' own JSON');
+  } finally { done(); }
+});
+// ---- the schedule: probes beside the captures and beside each other, under one cap; the rows do not depend on it ----
+const PROBE_KINDS = ['content-presence', 'clip-probe', 'unit-geometry'];
+const overlap = (x, y) => x.t0 < y.t1 && y.t0 < x.t1;
+const maxInFlight = (spans) => Math.max(0, ...spans.map((x) => spans.filter((y) => y.t0 <= x.t0 && x.t0 < y.t1).length));
+check('schedule: the content and unit probes of a page overlap in time; the clip probe runs after a content probe that gave no clip result', () => {
+  const { gateAll, times, rows, done } = sandbox(['a'], { probes: true, units: true });
+  try {
+    let r = gateAll([], { STUB_PROBE_MS: '500' });
+    assert.equal(r.status, 0, r.stderr);
+    const of = (kind) => times().find((t) => t.kind === kind);
+    assert.ok(overlap(of('content-presence'), of('unit-geometry')), JSON.stringify(times()));
+    assert.equal(of('clip-probe'), undefined, 'content gave the clip result');
+    assert.deepEqual([rows().a.pass, rows().a.units.off, rows().a.content.missing, rows().a.clipped], [true, 0, 0, 0]);
+    r = gateAll([], { STUB_PROBE_MS: '300', STUB_CONTENT_RC: '4' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(of('clip-probe').t0 >= of('content-presence').t1, 'clip only once content has answered without one');
+    assert.ok(overlap(of('content-presence'), of('unit-geometry')));
+  } finally { done(); }
+});
+check('schedule: probes start before the batch\'s captures have all finished', () => {
+  const { gateAll, times, done } = sandbox(['a', 'b', 'c'], { probes: true, units: true });
+  try {
+    const r = gateAll(['--eds-concurrency', '1'], { STUB_SHOT_MS: '400', STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 0, r.stderr);
+    const shots = times().filter((t) => t.kind === 'stitch-shot'); const probes = times().filter((t) => PROBE_KINDS.includes(t.kind));
+    assert.deepEqual([shots.length, probes.length], [6, 6]);
+    const lastShot = Math.max(...shots.map((t) => t.t1));
+    assert.ok(Math.min(...probes.map((t) => t.t0)) < lastShot, 'the first probe did not wait for the captures');
+    assert.ok(probes.filter((t) => t.t1 <= lastShot).length >= 2, 'probes ended while captures were still running');
+  } finally { done(); }
+});
+check('schedule: --probe-concurrency caps the probe processes in flight across pages (2 → at most 2, 1 → one at a time); the default is 2 to 4 by CPU count', () => {
+  const { gateAll, times, done } = sandbox(['a', 'b', 'c', 'd'], { probes: true, units: true });
+  try {
+    const run = (n) => { const r = gateAll(['--probe-concurrency', String(n)], { STUB_PROBE_MS: '250' }); assert.equal(r.status, 0, r.stderr); return times().filter((t) => PROBE_KINDS.includes(t.kind)); };
+    let probes = run(2);
+    assert.equal(probes.length, 8, 'content + units for each of the four pages');
+    assert.equal(maxInFlight(probes), 2, JSON.stringify(probes));
+    probes = run(1);
+    assert.equal(maxInFlight(probes), 1, JSON.stringify(probes));
+    assert.deepEqual([1, 2, 4, 5, 8, 12, 64].map((c) => probeDefault(c)), [2, 2, 2, 2, 4, 4, 4]);
+    assert.equal(parseArgs(['node', 'x']).pc, probeDefault()); assert.equal(parseArgs(['node', 'x', '--probe-concurrency', '7']).pc, 7);
+    assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--probe-concurrency <n>\s+probe processes in flight, each a browser: [234] here[^]*at most origin \+ eds \+ probe concurrency browsers/);
+  } finally { done(); }
+});
+await checkAsync('limiter: at most n in flight, first come first served; a rejection frees its slot; n < 1 or not a number runs one at a time', async () => {
+  const trace = async (n) => {
+    const slot = limiter(n); let active = 0; let peak = 0; const started = [];
+    const job = (i) => slot(async () => { started.push(i); active += 1; peak = Math.max(peak, active); await new Promise((res) => { setTimeout(res, 5); }); active -= 1; if (i === 1) throw new Error('boom'); return i; });
+    const settled = await Promise.allSettled([0, 1, 2, 3, 4].map(job));
+    return { peak, started, settled: settled.map((x) => x.status === 'fulfilled' ? x.value : x.reason.message) };
+  };
+  assert.deepEqual(await trace(2), { peak: 2, started: [0, 1, 2, 3, 4], settled: [0, 'boom', 2, 3, 4] });
+  assert.equal((await trace(9)).peak, 5);
+  for (const n of [1, 0, NaN, undefined]) assert.equal((await trace(n)).peak, 1, String(n));
+});
+check('schedule: rows, their order and the probe records are the same whichever probe ends first — one at a time (the serial order) against the default, with the durations reversed', () => {
+  const slugs = ['a', 'b', 'c', 'd', 'e'];
+  // fixed results: b misses content, c's content probe errors (the clip probe then runs), d's units are off, e's unit probe is killed
+  const results = { b: { 'content-presence': { missing: 2 } }, c: { 'content-presence': { rc: 1 } }, d: { 'unit-geometry': { off: 1 } }, e: { 'unit-geometry': { rc: 'kill' } } };
+  const timed = (order) => Object.fromEntries(slugs.map((s, i) => [s, { 'content-presence': { ...(results[s] || {})['content-presence'], ms: 60 * (order ? i + 1 : slugs.length - i) }, 'unit-geometry': { ...(results[s] || {})['unit-geometry'], ms: 60 * (order ? slugs.length - i : i + 1) } }]));
+  const outcome = (args, by) => {
+    const { gateAll, tableOf, out, done } = sandbox(slugs, { probes: true, units: true });
+    try {
+      const r = gateAll(args, { STUB_BY_SLUG: JSON.stringify(by) });
+      assert.equal(r.status, 2, r.stderr);
+      const t = tableOf('all-1440');
+      const records = Object.fromEntries(slugs.map((s) => [s, Object.fromEntries(['probes.json', 'clip.json', 'content.json', 'units.json'].filter((f) => existsSync(join(out, s, f))).map((f) => [f, readFileSync(join(out, s, f), 'utf8').replace(/"at": ?"[^"]*"/g, '"at":""')]))]));
+      return { rows: t.rows, totals: t.totals, table: readFileSync(join(out, 'summary.md'), 'utf8').split('\n').slice(8).join('\n'), records, files: Object.fromEntries(slugs.map((s) => [s, readdirSync(join(out, s)).sort()])) };
+    } finally { done(); }
+  };
+  const serial = outcome(['--probe-concurrency', '1', '--eds-concurrency', '1', '--origin-concurrency', '1'], timed(true));
+  assert.deepEqual(serial.rows.map((r) => r.slug), slugs, 'the roster\'s order');
+  assert.deepEqual(serial.rows.map((r) => [r.pass, r.failing.join()]), [[true, ''], [false, 'content'], [false, 'probe'], [false, 'units'], [false, 'probe']]);
+  assert.deepEqual(serial.rows.map((r) => r.probeErrors.map((e) => e.probe).join()), ['', '', 'content', '', 'units']);
+  assert.deepEqual([serial.totals.pass, serial.totals.fail, serial.totals.error], [1, 2, 2]);
+  assert.deepEqual(Object.keys(JSON.parse(serial.records.a['probes.json'])), ['writtenBy', 'at', 'content', 'clip', 'units'], 'the record\'s key order');
+  for (const [name, args, by] of [['default cap, same durations', [], timed(true)], ['default cap, units end first', [], timed(false)], ['cap 3, units end first', ['--probe-concurrency', '3'], timed(false)]]) {
+    assert.deepEqual(outcome(args, by), serial, name);
+  }
+});
+check('schedule: a failing probe and a failing capture read as before — the unit probe\'s error is an error row beside a recorded content result; a page whose capture failed is an error row with no percentage, its probes recorded', () => {
+  const { gateAll, rows, totals, out, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    let r = gateAll([], { STUB_BY_SLUG: JSON.stringify({ a: { 'unit-geometry': { rc: 1 } } }), STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().a.pass, rows().a.pct, rows().a.probeErrors.map((e) => e.probe), rows().a.content.missing, rows().a.clipped, rows().b.pass], [false, 1, ['units'], 0, 0, true]);
+    assert.match(rows().a.reasons[0], /^probe-error:units: unit-geometry exit 1: unit-geometry error: stub exit 1/);
+    assert.deepEqual([totals().pass, totals().fail, totals().error, totals().probeErrors], [1, 0, 1, 1]);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(out, 'a/probes.json'), 'utf8'))).slice(2), ['content', 'clip', 'units']);
+    assert.ok(existsSync(join(out, 'a/origin.png')) && !existsSync(join(out, 'b/origin.png')), 'the error row keeps its captures, the pass drops them');
+
+    r = gateAll([], { STUB_FAIL: 'https://eds.example/b', STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().b.pct, rows().b.pass, rows().b.reasons, rows().b.error, rows().a.pass], [null, false, ['pixel error: missing capture'], 'missing capture', true]);
+    assert.match(JSON.parse(readFileSync(join(out, 'b/eds.json'), 'utf8')).error, /stitch exit 1: capture failed/);
+    assert.deepEqual([rows().b.content.missing, rows().b.units.off, rows().b.probeErrors], [0, 0, []], 'its probes ran and are recorded, as before');
+    assert.deepEqual([totals().pass, totals().fail, totals().error, totals().probeErrors], [1, 0, 1, 0]);
   } finally { done(); }
 });
 check('a failed re-capture leaves no old PNG to diff: the capture is removed first, so the row is an error with no percentage', () => {

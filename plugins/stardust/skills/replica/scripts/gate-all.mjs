@@ -16,10 +16,14 @@
  * the state row of its slug (else source.sourceUrl) and its build URL from delivery.deployedUrl (else --eds-host, or
  * the delivered rows' commonest deployed origin, + path); one with neither is listed as skipped, never guessed.
  *
- * Per page: stitched captures of both sides (stitch-shot, --settle), pixel-compare, then the DOM probes
+ * Per page: stitched captures of both sides (stitch-shot, --settle), pixel-compare, and the DOM probes
  * — clip-probe on the served side (D1, both stages), content-presence (D2, published stage; the
  * prototype is authored from the same capture content-diff already reconciles) and unit-geometry (D3)
- * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
+ * for the repeated-unit families stardust/replica/units.json declares for the page. SCHEDULE (per batch): the probes
+ * read no capture, so they run beside the two capture pools, and a page's content and unit probes run at once (the
+ * clip probe only after a content probe that gave no clip result); --probe-concurrency caps the probe processes in
+ * flight across the pages (`limiter`; default `probeDefault`). The compares follow, when both are done. One job holds
+ * at most origin + eds + probe concurrency browsers. Rows, records and their order do not depend on the schedule. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
  * records, not its PNGs (#156, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
@@ -110,18 +114,19 @@
  *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
  *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
- *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
+ *        [--eds-concurrency 4] [--probe-concurrency <2–4>] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `rosterOffsets`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `limiter`, `probeDefault`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
@@ -134,6 +139,18 @@ const { siblingPath } = await import(CONTRACTS.href);
 
 // Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
 export const BATCH = 25;
+/**
+ * The default --probe-concurrency: half the CPUs the process may use, at least 2 (what it was) and at most 4 — each
+ * probe is a browser and they now run beside the captures (source-fidelity-gate.md § Capture exit 1: parallel
+ * Chromium load on a small machine), so a small machine keeps 2.
+ */
+export const probeDefault = (cpus = availableParallelism()) => Math.max(2, Math.min(4, Math.floor(cpus / 2) || 0));
+/** limiter(n) → slot(fn): runs `fn` (→ a promise) with at most n in flight, first come first served; n < 1 or not a number = 1. */
+export function limiter(n) {
+  const max = n >= 1 ? Math.floor(n) : 1; let active = 0; const waiting = [];
+  const next = () => { if (active < max && waiting.length) { active += 1; waiting.shift()(); } };
+  return (fn) => new Promise((res, rej) => { waiting.push(() => Promise.resolve().then(fn).then(res, rej).finally(() => { active -= 1; next(); })); next(); });
+}
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
@@ -175,7 +192,13 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
-  --origin-concurrency <n>  2      --eds-concurrency <n>  4      --probe-concurrency <n>  2
+  --origin-concurrency <n>  2      --eds-concurrency <n>  4
+  --probe-concurrency <n>   probe processes in flight, each a browser: ${probeDefault()} here (half the CPUs, at least 2, at
+                            most 4). A page's content and unit probes run at once, and the probes run beside the
+                            batch's captures, so one job holds at most origin + eds + probe concurrency browsers
+                            (${2 + 4 + probeDefault()} at these defaults; eds + probe = ${4 + probeDefault()} once the references are frozen — an origin slot
+                            opens a browser only to freeze or stitch). Several jobs at once multiply it: lower the
+                            three flags on a small machine
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --offset-max <px>         total offset the pixel criterion allows (default: 8 at the prototype stage; published the
                             larger of 8 and 1 % of the origin height, then the roster tolerance below); given, it is
@@ -242,7 +265,7 @@ export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Numb
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: probeDefault(), threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
   // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
   const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
   let holdOn = false; let holdOff = false; let holdMin = null;
@@ -917,6 +940,8 @@ async function main() {
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
     log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
+  // The probe processes in flight, across the pages of the job (--probe-concurrency).
+  const probeSlot = limiter(opts.pc);
   // One page's probes. A result the probe returned is recorded as is; origin not probed (content-presence exit 3 / 4)
   // is n/a as before; anything else — a crash, a timeout, an unreadable result — is a probe ERROR ({ error }, content:
   // + probeError), which the verdict never lets pass. Each probe's previous JSON goes first, and the page's results,
@@ -927,47 +952,53 @@ async function main() {
     const got = {};
     const put = (k, v) => { got[k] = v; rec(p, k, v); };
     for (const k of ['content', 'clip', 'units']) rec(p, k, undefined);
-    if (opts.content) {
-      for (const f of ['content.json', 'clip.json']) rmSync(join(d, f), { force: true });
-      const s = await run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), optsFor(p), pr));
-      const content = readJsonSafe(join(d, 'content.json'));
-      let ok = false;
-      if (content && (s.code === 0 || s.code === 2)) {
-        try {
-          const c = contentResult(content, pr); const cl = clipOfContent(content);
-          writeFileSync(join(d, 'clip.json'), JSON.stringify({ url: edsUrl(p), at: content._provenance.at, source: 'content-presence', counts: content.eds.clip.counts, groups: content.eds.clip.groups, origin: { counts: content.origin.clip.counts } }, null, 1));
-          if (content.textBoxes && content.textBoxes.origin) writeFileSync(join(d, 'text-boxes.json'), JSON.stringify({ side: 'origin', boxes: content.textBoxes.origin }));
-          put('content', c); put('clip', cl); ok = true;
-          log(`content ${p.slug} → MISSING ${content.totals.missing} HIDDEN ${content.totals.hidden} state ${content.totals.controlState}; clipped ${content.eds.clip.counts.total}`);
-        } catch (e) { s.err += `\ncontent.json unreadable: ${e.message}`; }
+    // content, then clip only when content gave no clip result — beside the units probe (it shares no file with them)
+    const contentThenClip = async () => {
+      if (opts.content) {
+        for (const f of ['content.json', 'clip.json']) rmSync(join(d, f), { force: true });
+        const s = await probeSlot(() => run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), optsFor(p), pr)));
+        const content = readJsonSafe(join(d, 'content.json'));
+        let ok = false;
+        if (content && (s.code === 0 || s.code === 2)) {
+          try {
+            const c = contentResult(content, pr); const cl = clipOfContent(content);
+            writeFileSync(join(d, 'clip.json'), JSON.stringify({ url: edsUrl(p), at: content._provenance.at, source: 'content-presence', counts: content.eds.clip.counts, groups: content.eds.clip.groups, origin: { counts: content.origin.clip.counts } }, null, 1));
+            if (content.textBoxes && content.textBoxes.origin) writeFileSync(join(d, 'text-boxes.json'), JSON.stringify({ side: 'origin', boxes: content.textBoxes.origin }));
+            put('content', c); put('clip', cl); ok = true;
+            log(`content ${p.slug} → MISSING ${content.totals.missing} HIDDEN ${content.totals.hidden} state ${content.totals.controlState}; clipped ${content.eds.clip.counts.total}`);
+          } catch (e) { s.err += `\ncontent.json unreadable: ${e.message}`; }
+        }
+        if (!ok && (s.code === 3 || s.code === 4)) {
+          const why = s.code === 3 ? 'origin bot challenge' : `origin ${lastLine(s.err).replace(/^content-presence error: /, '')}`;
+          put('content', { error: why });
+          log(`content ${p.slug} → n/a (${why})`);
+        } else if (!ok) {
+          const why = `content-presence exit ${s.code}: ${lastLine(s.err)}`;
+          put('content', { error: why, probeError: true });
+          log(`content ${p.slug} → ERROR ${why}`);
+        }
       }
-      if (!ok && (s.code === 3 || s.code === 4)) {
-        const why = s.code === 3 ? 'origin bot challenge' : `origin ${lastLine(s.err).replace(/^content-presence error: /, '')}`;
-        put('content', { error: why });
-        log(`content ${p.slug} → n/a (${why})`);
-      } else if (!ok) {
-        const why = `content-presence exit ${s.code}: ${lastLine(s.err)}`;
-        put('content', { error: why, probeError: true });
-        log(`content ${p.slug} → ERROR ${why}`);
+      if (opts.clip && !got.clip) {
+        rmSync(join(d, 'clip.json'), { force: true });
+        const s = await probeSlot(() => run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), optsFor(p))));
+        const clip = readJsonSafe(join(d, 'clip.json'));
+        if (clip && clip.counts && (s.code === 0 || s.code === 2)) { put('clip', clipResult(clip)); log(`clip ${p.slug} → ${clip.counts.total}`); }
+        else { put('clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
       }
-    }
-    if (opts.clip && !got.clip) {
-      rmSync(join(d, 'clip.json'), { force: true });
-      const s = await run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), optsFor(p)));
-      const clip = readJsonSafe(join(d, 'clip.json'));
-      if (clip && clip.counts && (s.code === 0 || s.code === 2)) { put('clip', clipResult(clip)); log(`clip ${p.slug} → ${clip.counts.total}`); }
-      else { put('clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
-    }
-    const units = unitsOf(p);
-    if (units.length) {
+    };
+    const unitsProbe = async () => {
+      const units = unitsOf(p);
+      if (!units.length) return;
       rmSync(join(d, 'units.json'), { force: true });
-      const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p)));
+      const s = await probeSlot(() => run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p))));
       const res = readJsonSafe(join(d, 'units.json'));
       const required = units.some((x) => x.required);
       if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required, errors: (res.results || []).filter((x) => x.error).map((x) => `${String(x.sel).slice(0, 80)} — ${x.error}`) }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
       else { put('units', { error: `unit-geometry exit ${s.code}: ${lastLine(s.err)}`, required }); log(`units ${p.slug} → ERROR ${lastLine(s.err)}`); }
-    }
-    writeFileSync(join(d, 'probes.json'), JSON.stringify({ writtenBy: 'gate-all.mjs', at: new Date().toISOString(), ...got }, null, 1));
+    };
+    await Promise.all([contentThenClip(), unitsProbe()]);
+    // the record keeps its key order (content, clip, units) whichever probe ended first
+    writeFileSync(join(d, 'probes.json'), JSON.stringify({ writtenBy: 'gate-all.mjs', at: new Date().toISOString(), ...Object.fromEntries(['content', 'clip', 'units'].filter((k) => k in got).map((k) => [k, got[k]])) }, null, 1));
   }
   // --compare-only: the recorded results stand in for the probes — no browser, no child. The units' `required` is
   // re-read from the declarations (a sidecar); a page whose declarations are gone has no unit criterion.
@@ -1023,11 +1054,12 @@ async function main() {
     const shoot = batch.filter((p) => !reused.has(p.slug));
     if (!opts.compareOnly) measured.push(...shoot);
     for (const p of shoot) forgetDroppedPass(dir(p));
-    if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds)]);
+    // the probes read no capture: they start with the batch's captures, under their own cap (probeSlot)
+    const probing = !opts.compareOnly && (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length);
+    if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds), probing ? Promise.all(batch.map(probe)) : null]);
     else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
     // --compare-only opens no browser and runs no probe: the recorded results, the sidecars re-applied
     if (opts.compareOnly) for (const p of batch) recallProbes(p);
-    else if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(batch, opts.pc, probe);
     await pool(shoot, 4, compare);
     for (const p of batch) if (rowOf(p).pass) dropped += dropPassedCaptures(dir(p), measuredWith(p));
   }
