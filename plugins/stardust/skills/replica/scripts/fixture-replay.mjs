@@ -23,6 +23,9 @@
  *   --no-runner  do not call localhost:8080 (local testing: boundary = continue, done-check = local script)
  *   --skip-gate  (local testing only) skip gate-all
  *   --no-deliver (local testing only) skip push, DA, preview/live and the polls
+ *   --verify smoke|gate  delivery proof: smoke (default; fast delivery smoke check, falls back to the full
+ *                published gate when any page fails it) or gate (full published-origin gate). Also
+ *                STARDUST_REPLAY_VERIFY=smoke|gate, or the fixture manifest's "verify".
  *
  * Exit: 0 delivered and complete · 3 no fixture / fingerprint mismatch (nothing written — run the normal
  * flow) · 4 delivered but the done-check lists gaps (printed) · 75 the runner said stop at a boundary
@@ -315,6 +318,7 @@ const subst = (s) => s.replaceAll('{{ORG}}', ORG).replaceAll('{{SITE}}', SITE).r
   .replaceAll('{{NOW}}', iso());
 const m = fx.m;
 const V2 = Array.isArray(m.pages) && m.pages.length > 0;
+const VERIFY = (opt('--verify') || process.env.STARDUST_REPLAY_VERIFY || m.verify || 'smoke').toLowerCase() === 'gate' ? 'gate' : 'smoke';
 const NPG = PAGES.length;
 const done = lastEnded();
 const skip = (skill, phase) => done.has(`stardust:${skill}|${phase}`);
@@ -461,6 +465,17 @@ const gateP = (async () => {
   if (D.error || flag('--skip-gate')) return { skipped: true };
   sh('node', ['stardust/scripts/rollout/inventory.mjs']);
   coverageDeployed();
+  if (VERIFY === 'smoke') {
+    mark('smoke-start');
+    timing('smoke-start', `${NPG} page(s), delivery smoke check (fidelity proven at build time)`);
+    const sm = await shBg('node', ['stardust/scripts/replica/smoke-check.mjs', '--origin', LIVE, '--pages', JSON.stringify(PAGES.map((pg) => ({ slug: pg.slug, path: pg.path }))), '--width', '1440']);
+    mark('smoke-end');
+    const smSum = (() => { try { return JSON.parse(fs.readFileSync(path.join(SD, 'replica', 'gates', 'smoke-1440', 'summary.json'), 'utf8')); } catch { return null; } })();
+    if (sm.code === 0 && smSum?.pass) return { smoke: true, summary: smSum };
+    log(`smoke check failed (exit ${sm.code}) — falling back to the full published gate: ${sm.out.split('\n').filter((l) => /FAIL/.test(l)).join(' | ').slice(0, 300)}`);
+    timing('smoke-end', `FAIL → full published gate: ${sm.out.split('\n').filter((l) => /FAIL/.test(l)).join(' | ').slice(0, 200)}`);
+    D.smokeFallback = true;
+  }
   mark('gate-start');
   timing('published-gate-start', `${NPG} page(s)`);
   const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', '--eds-concurrency', String(Math.min(8, Math.max(4, NPG))), '--probe-concurrency', String(Math.min(8, Math.max(4, NPG))), ...(m.gate?.args || [])]);
@@ -520,7 +535,12 @@ if (D.error) throw new Error(`delivery failed: ${D.error}`);
 coverageDeployed();
 let gateLine = 'skipped (--skip-gate)';
 const g = await gateP;
-if (!g.skipped) {
+if (g.smoke) {
+  const rows = g.summary.rows || [];
+  gateLine = `delivery smoke check ${rows.filter((r) => r.pass).length}/${rows.length} PASS (200, no broken media, every block loaded, no page error, fonts loaded, top viewport vs frozen source reference ≤ ${g.summary.maxPct}%: ${rows.map((r) => `${r.path} ${r.topPct}%`).join(', ')}); fidelity: published-origin gate of the fixture build run ${m.provenance?.run || ''}`;
+  timing('smoke-end', `PASS ${rows.length}/${rows.length}: ${rows.map((r) => `${r.path} ${r.topPct}%`).join(', ')}`);
+  log(gateLine);
+} else if (!g.skipped) {
   const sum = path.join(SD, 'replica', 'gates', 'all-1440', 'summary.json');
   if (fs.existsSync(sum)) {
     const rows = JSON.parse(fs.readFileSync(sum, 'utf8')).rows || [];
@@ -539,9 +559,9 @@ journal('C-deliver — fixture code and content delivered on this run\'s site', 
   `Delivery pipelined from +${((deliverT0 - T0) / 1000).toFixed(1)}s, in parallel with the record phases: ${JSON.stringify(D.at)}.`,
   `${nCode} code files from the fixture committed and pushed; code served on ${PREVIEW} (${D.codeLive ? 'confirmed' : 'NOT confirmed'}).`,
   `${mediaFiles.length} media files and ${DOCS.length} documents (${DOCS.join(', ')}) PUT to DA ${ORG}/${SITE}, previewed and published; the first page (${FIRST.path}) first (preview ${D.previewOk ? 'ok' : 'NOT ok'}, live ${D.liveOk ? 'ok' : 'NOT ok'}, all pages live ${D.allLive ? 'ok' : 'NOT ok'}).`,
-  `Published-origin gate @1440: ${gateLine}.`,
+  `${g.smoke ? 'Delivery verification' : 'Published-origin gate @1440'}: ${gateLine}.`,
 ]);
-ledger('rollout', 'C-deliver', 'end', `${NPG}/${NPG} page(s) live (first ${FIRST.path} at ${D.at['first-live'] || '?'}); gate 1440: ${gateLine}`.slice(0, 400));
+ledger('rollout', 'C-deliver', 'end', `${NPG}/${NPG} page(s) live (first ${FIRST.path} at ${D.at['first-live'] || '?'}); ${g.smoke ? '' : 'gate 1440: '}${gateLine}`.slice(0, 400));
 await boundary('C-deliver');
 
 // D–I: light, real steps
