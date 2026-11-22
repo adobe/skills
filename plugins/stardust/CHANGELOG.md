@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
 ## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
 
 
