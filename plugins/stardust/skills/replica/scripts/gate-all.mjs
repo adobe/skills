@@ -101,16 +101,21 @@
  * Overlays and locale (gate.sh's flags, same spelling): --consent / --dismiss / --no-dismiss / --locale reach both
  * captures and every probe that takes them (CHILD_FLAGS — the three probes take --locale only today).
  *
+ * DEADLINE HINT (--deadline-hint; marker run-bg:deadline-hint — run-bg.mjs's convention, its header § Deadline): prints
+ * the seconds this job may take (`deadlineHint`, the formula and its calibration in --help § Deadline hint) and exits 0;
+ * it reads the two rosters and launches nothing. run-bg.mjs asks it when a job is started without --timeout, so a
+ * roster job's deadline follows its pages instead of the flat 900 s.
+ *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
  *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
- *        [--compare-only] [--warmup <url>] [--vh <px>]
+ *        [--compare-only] [--warmup <url>] [--vh <px>] [--deadline-hint]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
+ * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `deadlineHint`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
  * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
@@ -129,6 +134,16 @@ const { siblingPath } = await import(CONTRACTS.href);
 
 // Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
 export const BATCH = 25;
+// The deadline hint (--help § Deadline hint): seconds = fixed + perPage × pages ÷ c, held between floor and ceiling.
+// perPage is per page-execution at concurrency 1: the worst recorded job above 15 pages took 170 s × c per page
+// (published stage), the worst prototype-stage one 10 s × c. c is capped at the default 2: nothing faster was recorded.
+export const HINT = { fixed: 300, perPage: { published: 180, prototype: 20 }, floor: 900, ceiling: 14400, maxConcurrency: 2 };
+/** deadlineHint(pages, { stage, oc, ec, pc }) → the seconds a job over `pages` selected pages may take. Pure. */
+export function deadlineHint(pages, { stage = 'published', oc = 2, ec = 4, pc = 2 } = {}) {
+  const c = Math.max(1, Math.min(...[oc, ec, pc, HINT.maxConcurrency].map((n) => (Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1))));
+  const sec = HINT.fixed + (HINT.perPage[stage] ?? HINT.perPage.published) * Math.max(0, Number(pages) || 0) / c;
+  return Math.min(HINT.ceiling, Math.max(HINT.floor, Math.ceil(sec)));
+}
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
@@ -180,6 +195,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             its recorded pass), the recorded probe results (<slug>/probes.json), the sidecars
   --warmup <url>            origin warm-up for the probes
   --vh <px>                 stitch chunk height
+  --deadline-hint           print the seconds this job may take (§ Deadline hint below) and exit 0: the rosters are
+                            read, nothing is captured. run-bg.mjs asks it when a job is started without --timeout
   --help                    this text
 Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
   Pixel criterion (pixel-compare.mjs --offset-max): the compare is ALIGNED — aligned % ≤ threshold AND total offset ≤
@@ -216,6 +233,14 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
 A page that passes keeps its records, not its PNGs (#156): --recapture-eds / --recapture-origin, or a run
 without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}: a passed batch's PNGs are deleted
 before the next batch is captured.
+Deadline hint (--deadline-hint): the larger of ${HINT.floor} and ${HINT.fixed} + B × pages ÷ c seconds, at most ${HINT.ceiling} (4 h).
+  pages = the pages this run selects (state + ledger, after --only); B = ${HINT.perPage.published} s a page at the published stage
+  (--wide too), ${HINT.perPage.prototype} s at the prototype stage; c = the smallest of --origin-concurrency, --eds-concurrency and
+  --probe-concurrency, at most ${HINT.maxConcurrency} (the default; nothing faster was recorded). A --skip-existing or --compare-only
+  page counts in full: how many recorded passes a run reused was never recorded, so no discount could be calibrated.
+  Calibration, 1,149 completed jobs of 23 recorded sessions with a known page count: the worst job above 15 pages took
+  170 s × c a page (published), 10 s × c (prototype); the hint covers every one of them and 99 % or more of each
+  smaller size class (1, 2–5, 6–15 pages). 20 pages → 2100 s, 53 → 5070 s, 100 → 9300 s (c = 2).
 Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.`;
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
@@ -251,6 +276,7 @@ export function parseArgs(argv) {
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--deadline-hint') o.deadlineHint = true;
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
     else if (a === '--hold-timers') holdOn = true; else if (a === '--no-hold-timers') holdOff = true; else if (a === '--hold-min') holdMin = Number(need(a, v()));
     else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
@@ -695,6 +721,13 @@ const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || ''
 
 async function main() {
   const opts = parseArgs(process.argv);
+  if (opts.deadlineHint) { // run-bg.mjs's question: one integer, no capture, no file written
+    const st = readJsonSafe(opts.state);
+    if (!st) { console.error(`gate-all: ${opts.state} not found or unreadable — no deadline hint`); process.exit(1); }
+    const sel = selectPages({ state: st, coverage: opts.stage === 'prototype' ? null : readJsonSafe(opts.coverage), stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
+    console.log(String(deadlineHint(sel.pages.length, opts)));
+    return;
+  }
   const ignoreNote = referenceIgnoreNote(readTextSafe('stardust/.gitignore'));
   if (ignoreNote) console.error(`gate-all: ${ignoreNote}`);
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
