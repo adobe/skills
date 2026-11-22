@@ -21,6 +21,7 @@
 // Disk (#156): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
 // stub instruments, no browser. Reuse: the recorded pass is the whole verdict (no probe), each key ingredient
 // invalidates it, an incomplete or older record is not reused, it is on disk before the batch ends, kill and resume.
+// Local build inputs in the key: the page's content file, its blocks, the shared code; unresolvable = never reused.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -28,7 +29,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PASS_FORMAT, passKey, recordedPass, repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
+import { PASS_FORMAT, localInputs, passKey, recordedPass, repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
 import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, browserBudget, maxBrowsersOf, budgetLine, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
@@ -273,7 +274,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const replica = join(root, 'stardust/scripts/replica');
   mkdirSync(replica, { recursive: true });
-  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755);
+  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs'));
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true }); // Setup step 7: the shared contracts
   const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\n${body}\n`);
   stub('stitch-shot.mjs', `
@@ -427,11 +428,20 @@ check('droppedPass: the records for the same masks and eds URL; null when either
 // A project root with the real gate-all.mjs, the real diff scripts and stub instruments. The stitch stub logs each
 // URL (STUB_LOG), fails one (STUB_FAIL, exit 1), kills gate-all on one (STUB_KILL — an interrupted run) and logs how
 // many gate PNGs exist when it is called (STUB_PNGS — the peak a run reaches). pixel-compare fails `/bad` pages.
-function sandbox(slugs, { probes = false, units = false } = {}) {
+function sandbox(slugs, { probes = false, units = false, inputs = true } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const rep = join(root, 'stardust/scripts/replica');
   mkdirSync(rep, { recursive: true });
-  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs'));
+  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs')); copyFileSync(join(HERE, '..', 'foundation-freeze.mjs'), join(rep, 'foundation-freeze.mjs'));
+  // the project a page is built from (its local build inputs): a content file per page (`a` and `good` use the cards
+  // block, every page the teaser block), two more blocks, the shared code and the header fragment
+  if (inputs) {
+    const put = (f, body) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), body); };
+    for (const s of slugs) put(`content/${s}.html`, `<main><div><h1>${s}</h1><div class="teaser"><div>t</div></div>${['a', 'good'].includes(s) ? '<div class="cards wide"><div>c</div></div>' : ''}</div></main>`);
+    for (const b of ['cards', 'teaser', 'quote', 'header']) { put(`blocks/${b}/${b}.js`, `export default function decorate() {} // ${b}\n`); put(`blocks/${b}/${b}.css`, `.${b} { color: red; }\n`); }
+    put('styles/styles.css', 'body { margin: 0; }\n'); put('scripts/scripts.js', '// aem\n'); put('head.html', '<meta name="viewport" content="width=device-width">\n');
+    put('content/nav.html', '<div><p>Brand</p></div>\n'); put('content/footer.html', '<div><p>Legal</p></div>\n');
+  }
   cpSync(join(HERE, '../../../diff/scripts'), join(root, 'stardust/scripts/diff'), { recursive: true });
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true });
   writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -1593,6 +1603,7 @@ check('reuse: a reusable recorded pass launches no probe, no capture and no comp
     assert.deepEqual(kinds(spawned()), ['content-presence origin:bad', 'unit-geometry origin:bad'], 'probes for the failed page only');
     assert.deepEqual([shots(), Object.keys(compares())], [[], ['bad']], 'no capture (the failed page reuses its own), one compare');
     assert.deepEqual(rows(), first, 'the rows, the reused ones from the record');
+    assert.match(r.stdout, /browser budget: 1 at once \(default for this job: the larger of min\(0 page\(s\) to capture, --eds-concurrency 4\) and min\(1 page\(s\) to probe, --probe-concurrency 2\)\)/, 'the budget counts the pages the reuse decision left to gate');
     assert.match(r.stdout, /a → recorded pass reused/); assert.match(r.stdout, /b → recorded pass reused/); assert.doesNotMatch(r.stdout, /bad → recorded pass/);
     assert.deepEqual([rows().a.content.missing, rows().a.clipped, rows().a.units.off, rows().a.unitsRequired, rows().a.browser], [0, 0, 0, true, 'chrome'], 'probe results and all');
   } finally { done(); }
@@ -1639,10 +1650,10 @@ check('reuse: each key ingredient invalidates it — a mask, the presence allow-
   } finally { done(); }
 });
 check('reuse: an incomplete or old-format record is not reused — no key, no probe results, another format, a key that cannot be computed, a capture record gone or in error; passKey is null when an ingredient is unreadable', () => {
-  const parts = { build: 'https://eds.example/a', source: 'https://origin.example/a', captures: ['o1', 'e1'], instruments: ['i1'], reference: { dir: 'd', baseline: 'b1', png: true } };
+  const parts = { build: 'https://eds.example/a', source: 'https://origin.example/a', captures: ['o1', 'e1'], instruments: ['i1'], reference: { dir: 'd', baseline: 'b1', png: true }, inputs: { content: 'c1', blocks: { cards: 'k1' }, shared: 's1', unresolved: [] } };
   const key = passKey(parts);
-  assert.deepEqual([key.v, PASS_FORMAT, Object.keys(key)], [2, 2, ['v', 'build', 'source', 'masks', 'presence', 'clipAllow', 'override', 'units', 'options', 'reference', 'archetype', 'captures', 'instruments']]);
-  for (const [why, bad] of [['origin.json unreadable', { captures: [null, 'e1'] }], ['eds.json unreadable', { captures: ['o1', null] }], ['an instrument file unreadable', { instruments: ['i1', null] }], ['the reference\'s baseline.json unreadable', { reference: { dir: 'd', baseline: null, png: false } }], ['the prototype file unreadable', { prototype: null }], ['no build URL', { build: '' }]]) assert.equal(passKey({ ...parts, ...bad }), null, why);
+  assert.deepEqual([key.v, PASS_FORMAT, Object.keys(key)], [3, 3, ['v', 'build', 'source', 'masks', 'presence', 'clipAllow', 'override', 'units', 'options', 'reference', 'archetype', 'captures', 'instruments', 'page content', 'shared code', 'block cards']]);
+  for (const [why, bad] of [['origin.json unreadable', { captures: [null, 'e1'] }], ['eds.json unreadable', { captures: ['o1', null] }], ['an instrument file unreadable', { instruments: ['i1', null] }], ['the reference\'s baseline.json unreadable', { reference: { dir: 'd', baseline: null, png: false } }], ['the prototype file unreadable', { prototype: null }], ['no build URL', { build: '' }], ['no local inputs', { inputs: null }], ['an unresolved local input', { inputs: { content: 'c1', blocks: {}, shared: 's1', unresolved: ['page content cannot be resolved'] } }], ['no page content digest', { inputs: { content: null, blocks: {}, shared: 's1', unresolved: [] } }]]) assert.equal(passKey({ ...parts, ...bad }), null, why);
   assert.equal(passKey({ ...parts, prototype: 'p1' }).prototype, 'p1');
   for (const [k, v] of [['masks', { masks: ['0:10'] }], ['presence', { main: 'main' }], ['clipAllow', { max: 1 }], ['override', { verdict: 'x' }], ['units', [{ origin: '.c' }]], ['options', { threshold: 9 }], ['archetype', ['x']]]) assert.notEqual(passKey({ ...parts, [k]: v })[k], key[k], k);
   const at = { masks: [], edsUrl: 'https://eds.example/a' }; const probes = { content: { totals: { missing: 0, hidden: 0 } } };
@@ -1743,6 +1754,95 @@ check('without --skip-existing nothing is reused: every page is captured, probed
     assert.equal(gateAll(['--skip-existing', '--recapture-eds']).status, 2);
     assert.deepEqual([calls()[0].length, shots().filter((u) => u.includes('eds.example')).length, calls()[2].length], [6, 3, 3], '--recapture-eds reuses no pass: every build shot, probed and compared again');
   } finally { done(); }
+});
+// ---- reuse: the page's local build inputs are in the key — a build that changed in the working tree is gated again ----
+check('local inputs: editing the page\'s content file, a file of a block it uses, a shared style or the header fragment gates the page again and names the group (page content, block <name>, shared code); a file of a block it does NOT use leaves it reused; so does its migrated HTML once the ledger names it', () => {
+  const { root, gateAll, spawned, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((x) => PROBE_KINDS.includes(x[0])).map((x) => x[1].split('/').pop()))].sort();
+    const run = () => { const r = gateAll(['--skip-existing']); assert.equal(r.status, 0, r.stderr + r.stdout); return r; };
+    const touch = (f) => writeFileSync(join(root, f), `${existsSync(join(root, f)) ? readFileSync(join(root, f), 'utf8') : ''}/* edited */\n`);
+    assert.equal(gateAll().status, 0);
+    assert.deepEqual([run() && probed()], [[]], 'recorded, then reused');
+    // a uses cards + teaser, b teaser only; quote is used by neither
+    for (const [file, pages, group] of [['content/a.html', ['a'], 'page content'], ['blocks/cards/cards.css', ['a'], 'block cards'], ['blocks/quote/quote.js', [], null], ['blocks/teaser/teaser.js', ['a', 'b'], 'block teaser'], ['blocks/cards/extra/part.js', ['a'], 'block cards'],
+      ['styles/styles.css', ['a', 'b'], 'shared code'], ['content/nav.html', ['a', 'b'], 'shared code'], ['blocks/header/header.js', ['a', 'b'], 'shared code'], ['scripts/scripts.js', ['a', 'b'], 'shared code'], ['fonts/brand.woff2', ['a', 'b'], 'shared code'], ['content/fr/footer.html', ['a', 'b'], 'shared code'], ['content/b.html', ['b'], 'page content']]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true }); touch(file);
+      const r = run();
+      assert.deepEqual(probed(), pages, `${file}: ${r.stdout.split('\n').filter((l) => /recorded pass/.test(l)).join(' | ')}`);
+      for (const s of pages) assert.match(r.stdout, new RegExp(`${s} → recorded pass not reused \\(${group} changed\\) — gated again`), `${file}: ${group} named for ${s}`);
+      for (const s of ['a', 'b'].filter((x) => !pages.includes(x))) assert.match(r.stdout, new RegExp(`${s} → recorded pass reused`), `${file}: ${s} reused`);
+      assert.deepEqual([run() && probed(), rows().a.pass, rows().b.pass], [[], true, true], `${file}: recorded under the new key`);
+    }
+    // an mtime alone is not a change: the same bytes written again
+    writeFileSync(join(root, 'styles/styles.css'), readFileSync(join(root, 'styles/styles.css')));
+    assert.deepEqual(run() && probed(), [], 'contents, not mtimes');
+    // the ledger: its row's blocks and migrated HTML join the page's inputs
+    mkdirSync(join(root, 'stardust/migrated'), { recursive: true }); writeFileSync(join(root, 'stardust/migrated/b.html'), '<main>b</main>');
+    mkdirSync(join(root, 'stardust/rollout/coverage'), { recursive: true });
+    writeFileSync(join(root, 'stardust/rollout/coverage/pages.json'), JSON.stringify({ pages: [{ slug: 'b', path: '/b', blocks: ['quote'], source: { migratedHtml: 'stardust/migrated/b.html' }, delivery: { status: 'deployed', deployedUrl: 'https://eds.example/b' } }] }));
+    let r = run();
+    assert.deepEqual(probed(), ['b']); assert.match(r.stdout, /b → recorded pass not reused \((?=[^)]*page content changed)(?=[^)]*block quote changed)[^)]*\)/);
+    touch('stardust/migrated/b.html'); r = run();
+    assert.deepEqual(probed(), ['b'], 'the migrated HTML'); assert.match(r.stdout, /b → recorded pass not reused \(page content changed\)/);
+    touch('blocks/quote/quote.js'); r = run();
+    assert.deepEqual(probed(), ['b'], 'a block the ledger names for it'); assert.match(r.stdout, /b → recorded pass not reused \(block quote changed\)/);
+  } finally { done(); }
+});
+check('local inputs: unresolvable inputs are never reused and the log says which — no content file and no migrated HTML, no blocks/ directory, none of the shared paths; a project with none of them records no reusable pass at all', () => {
+  const { root, out, gateAll, spawned, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((x) => PROBE_KINDS.includes(x[0])).map((x) => x[1].split('/').pop()))].sort();
+    assert.equal(gateAll().status, 0);
+    rmSync(join(root, 'content/a.html'));
+    let r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed()], [0, ['a']]);
+    assert.match(r.stdout, /a → recorded pass not reused \(page content cannot be resolved: no content file for \/a under content\/ and no migrated HTML\) — gated again/);
+    assert.equal(dropOf(out, 'a').key, undefined, 'and the pass it earns now has no key: not the weaker one');
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual(probed(), ['a'], 'gated on every run while it cannot be resolved');
+    writeFileSync(join(root, 'content/a.html'), '<main><div><h1>a</h1></div></main>');
+    assert.deepEqual([gateAll(['--skip-existing']).status, probed(), gateAll(['--skip-existing']).status, probed()], [0, ['a'], 0, []], 'resolvable again: keyed, then reused');
+    for (const [gone, why] of [[['blocks'], /blocks cannot be resolved: no blocks\/ directory in the project/], [['styles', 'scripts', 'head.html'], /shared code cannot be resolved: none of styles\/ fonts\/ blocks\/header\/ blocks\/footer\/ head\.html scripts\/ in the project/]]) {
+      for (const g of gone) rmSync(join(root, g), { recursive: true });
+      r = gateAll(['--skip-existing']);
+      assert.deepEqual(probed(), ['a', 'b'], String(why)); assert.match(r.stdout, why);
+    }
+  } finally { done(); }
+  const bare = sandbox(['a'], { probes: true, units: true, inputs: false });
+  try {
+    assert.equal(bare.gateAll().status, 0);
+    const r = bare.gateAll(['--skip-existing']);
+    assert.equal(r.status, 0); assert.equal(bare.spawned().filter((x) => PROBE_KINDS.includes(x[0])).length, 2, 'probed again');
+    assert.match(r.stdout, /a → recorded pass not reused \(page content cannot be resolved: [^)]*, blocks cannot be resolved: [^)]*, shared code cannot be resolved: [^)]*\) — gated again/);
+  } finally { bare.done(); }
+});
+check('local inputs: the shared-code digest is computed once per job and a block\'s once per block, whatever the number of pages; the prototype stage keys the prototype and the local files it links', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-inputs-')));
+  try {
+    const put = (f, body) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), body); };
+    const pages = Array.from({ length: 40 }, (_, i) => ({ slug: `p${i}`, liveUrl: `https://eds.example/p${i}` }));
+    for (const p of pages) put(`content/${p.slug}.html`, `<main><div><div class="hero"></div><div class="${p.slug.endsWith('1') ? 'cards' : 'teaser'}"></div></div></main>`);
+    for (const b of ['hero', 'cards', 'teaser', 'unused']) put(`blocks/${b}/${b}.js`, b);
+    put('styles/styles.css', 'x'); put('scripts/aem.js', 'x');
+    const walked = [];
+    const inputsOf = localInputs({ root, snap: (r, paths) => { walked.push(paths.join(' ')); const files = {}; for (const p of paths) { const f = join(r, p); if (!existsSync(f)) continue; for (const n of (p.endsWith('/') ? readdirSync(f) : [''])) files[join(p, n)] = readFileSync(join(f, n), 'utf8'); } return files; } });
+    const got = pages.map(inputsOf);
+    assert.ok(got.every((x) => x.unresolved.length === 0 && x.content && x.shared === got[0].shared), JSON.stringify(got[0]));
+    assert.deepEqual([inputsOf.stats.shared, inputsOf.stats.blocks, inputsOf.stats.content], [1, 3, 40], 'shared once, each used block once, the unused one never');
+    assert.deepEqual([walked.filter((w) => w.startsWith('styles/')).length, walked.filter((w) => w === 'blocks/hero/').length, walked.includes('blocks/unused/')], [1, 1, false]);
+    assert.deepEqual([Object.keys(got[1].blocks), Object.keys(got[2].blocks)], [['cards', 'hero'], ['hero', 'teaser']]);
+    // prototype stage
+    put('stardust/prototypes/home-proposed.html', '<link rel="stylesheet" href="proto.css"><script src="./js/app.js"></script><img src="https://cdn.example/x.png"><a href="#top">x</a>');
+    put('stardust/prototypes/proto.css', 'a'); put('stardust/prototypes/js/app.js', 'b');
+    const proto = (page = { slug: 'home', prototypePath: 'stardust/prototypes/home-proposed.html' }) => localInputs({ root, stage: 'prototype' })(page);
+    const first = proto();
+    assert.deepEqual([first.unresolved, first.blocks, first.shared], [[], {}, null]);
+    put('stardust/prototypes/js/app.js', 'c'); const second = proto(); assert.notEqual(second.content, first.content, 'a linked script');
+    put('stardust/prototypes/proto.css', 'd'); assert.notEqual(proto().content, second.content, 'a linked stylesheet');
+    put('stardust/prototypes/other.css', 'e'); assert.equal(proto().content, localInputs({ root, stage: 'prototype' })({ slug: 'home', prototypePath: 'stardust/prototypes/home-proposed.html' }).content, 'a file it does not link');
+    assert.match(proto({ slug: 'x', prototypePath: 'stardust/prototypes/none.html' }).unresolved[0], /page content cannot be resolved: no prototype file at stardust\/prototypes\/none\.html/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
