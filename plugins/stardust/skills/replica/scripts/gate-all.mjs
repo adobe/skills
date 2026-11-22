@@ -22,8 +22,13 @@
  * for the repeated-unit families stardust/replica/units.json declares for the page. SCHEDULE (per batch): the probes
  * read no capture, so they run beside the two capture pools, and a page's content and unit probes run at once (the
  * clip probe only after a content probe that gave no clip result); --probe-concurrency caps the probe processes in
- * flight across the pages (`limiter`; default `probeDefault`). The compares follow, when both are done. One job holds
- * at most origin + eds + probe concurrency browsers. Rows, records and their order do not depend on the schedule. Writes
+ * flight across the pages (`limiter`). The compares follow, when both are done. BROWSERS: every child that opens a
+ * browser (a build capture, an origin freeze or live stitch, a probe — one browser each; content-presence loads its
+ * two pages in that one) takes a unit of the job's one budget (`browserBudget`): --max-browsers, else
+ * STARDUST_MAX_BROWSERS, else what the phases held when they ran in turn — the larger of the eds and probe
+ * concurrency, plus one per origin capture that has a browser open (at most the origin concurrency; none once the
+ * references are frozen). The three concurrency flags are per-kind limits inside it; the first log line names the
+ * budget and its source. Rows, records and their order do not depend on the schedule. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
  * records, not its PNGs (#156, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
@@ -109,19 +114,18 @@
  *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
  *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
- *        [--eds-concurrency 4] [--probe-concurrency <2–4>] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
+ *        [--eds-concurrency 4] [--probe-concurrency 2] [--max-browsers <n>] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `limiter`, `probeDefault`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
@@ -134,17 +138,46 @@ const { siblingPath } = await import(CONTRACTS.href);
 
 // Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
 export const BATCH = 25;
-/**
- * The default --probe-concurrency: half the CPUs the process may use, at least 2 (what it was) and at most 4 — each
- * probe is a browser and they now run beside the captures (source-fidelity-gate.md § Capture exit 1: parallel
- * Chromium load on a small machine), so a small machine keeps 2.
- */
-export const probeDefault = (cpus = availableParallelism()) => Math.max(2, Math.min(4, Math.floor(cpus / 2) || 0));
 /** limiter(n) → slot(fn): runs `fn` (→ a promise) with at most n in flight, first come first served; n < 1 or not a number = 1. */
 export function limiter(n) {
   const max = n >= 1 ? Math.floor(n) : 1; let active = 0; const waiting = [];
   const next = () => { if (active < max && waiting.length) { active += 1; waiting.shift()(); } };
   return (fn) => new Promise((res, rej) => { waiting.push(() => Promise.resolve().then(fn).then(res, rej).finally(() => { active -= 1; next(); })); next(); });
+}
+
+/**
+ * browserBudget({ max, eds, probe }) → slot(kind, fn): the job's one cap on open browsers. `kind` is 'origin' | 'eds' |
+ * 'probe'; `fn` (→ a promise) runs while it holds a unit, first come first served among those that fit. `max` = the
+ * cap given (--max-browsers / STARDUST_MAX_BROWSERS). Without one the cap is what the phases held when they ran in
+ * turn: max(eds + the origin browsers open, probe) — so an origin capture that opens a browser adds its own unit, as
+ * it stood beside the build pool, and frozen references leave max(eds, probe). slot.peak() = the most held at once.
+ */
+export function browserBudget({ max = null, eds = 4, probe = 2 } = {}) {
+  let open = 0; let origin = 0; let peak = 0; const waiting = [];
+  const cap = (o) => (max != null ? max : Math.max(eds + o, probe));
+  const fits = (kind) => open + 1 <= Math.max(1, cap(origin + (kind === 'origin' ? 1 : 0)));
+  const next = () => {
+    for (let i = 0; i < waiting.length;) {
+      if (!fits(waiting[i].kind)) { i += 1; continue; }
+      const w = waiting.splice(i, 1)[0]; open += 1; if (w.kind === 'origin') origin += 1; peak = Math.max(peak, open); w.start();
+    }
+  };
+  const slot = (kind, fn) => new Promise((res, rej) => { waiting.push({ kind, start: () => Promise.resolve().then(fn).then(res, rej).finally(() => { open -= 1; if (kind === 'origin') origin -= 1; next(); }) }); next(); });
+  slot.peak = () => peak;
+  return slot;
+}
+/** --max-browsers, else STARDUST_MAX_BROWSERS → { max, from: 'flag' | 'env' | 'default' }; a value that is not a whole number ≥ 1 → { error }: a cap that cannot be read is never "no cap". */
+export function maxBrowsersOf(flag, env = process.env) {
+  const whole = (v) => (/^\d+$/.test(String(v).trim()) && Number(v) >= 1 ? Number(v) : null);
+  if (flag != null) return whole(flag) ? { max: whole(flag), from: 'flag' } : { error: `--max-browsers needs a whole number, at least 1 (got ${flag})` };
+  const e = env.STARDUST_MAX_BROWSERS;
+  if (e != null && e !== '') return whole(e) ? { max: whole(e), from: 'env' } : { error: `STARDUST_MAX_BROWSERS needs a whole number, at least 1 (got ${e})` };
+  return { max: null, from: 'default' };
+}
+/** The first log line of a job that opens browsers: the budget in force and where it came from. */
+export function budgetLine(o) {
+  if (o.maxBrowsers != null) return `browser budget: ${o.maxBrowsers} at once (${o.maxBrowsersFrom === 'flag' ? '--max-browsers' : 'STARDUST_MAX_BROWSERS'})`;
+  return `browser budget: ${Math.max(o.ec, o.pc)} at once (default from the flags: the larger of --eds-concurrency ${o.ec} and --probe-concurrency ${o.pc}), plus one per origin capture that opens a browser (a freeze or a live stitch; at most ${o.oc}, none once the references are frozen) — what the phases held in turn; --max-browsers or STARDUST_MAX_BROWSERS sets one cap`;
 }
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
@@ -187,13 +220,12 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
-  --origin-concurrency <n>  2      --eds-concurrency <n>  4
-  --probe-concurrency <n>   probe processes in flight, each a browser: ${probeDefault()} here (half the CPUs, at least 2, at
-                            most 4). A page's content and unit probes run at once, and the probes run beside the
-                            batch's captures, so one job holds at most origin + eds + probe concurrency browsers
-                            (${2 + 4 + probeDefault()} at these defaults; eds + probe = ${4 + probeDefault()} once the references are frozen — an origin slot
-                            opens a browser only to freeze or stitch). Several jobs at once multiply it: lower the
-                            three flags on a small machine
+  --origin-concurrency <n>  2      --eds-concurrency <n>  4      --probe-concurrency <n>  2   (per-kind limits)
+  --max-browsers <n>        browser processes this job holds at once, over origin captures, build captures and probes
+                            (one per child; content-presence loads its two pages in that one). Default:
+                            STARDUST_MAX_BROWSERS, else what the phases held in turn — the larger of the eds and probe
+                            concurrency, plus one per origin capture that opens a browser (a freeze or a live stitch).
+                            Inside it the probes run beside the captures; the first log line names the budget
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --offset-max <px>         total offset the pixel criterion allows (default: 8 at the prototype stage; published the
                             larger of 8 and 1 % of the origin height)
@@ -254,11 +286,11 @@ export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Numb
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: probeDefault(), threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, maxBrowsers: null, maxBrowsersFrom: 'default', threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
   // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
   const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
   let holdOn = false; let holdOff = false; let holdMin = null;
-  let widthGiven = false;
+  let widthGiven = false; let maxFlag = null;
   const need = (flag, val) => { if (val == null || val.startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return val; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
@@ -273,6 +305,7 @@ export function parseArgs(argv) {
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a === '--coverage') o.coverage = need(a, v());
+    else if (a === '--max-browsers') maxFlag = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
     else if (a === '--hold-timers') holdOn = true; else if (a === '--no-hold-timers') holdOff = true; else if (a === '--hold-min') holdMin = Number(need(a, v()));
@@ -282,6 +315,9 @@ export function parseArgs(argv) {
   if (holdOff && (holdOn || holdMin != null)) { console.error('gate-all: --no-hold-timers contradicts --hold-timers / --hold-min — drop one (see --help)'); process.exit(1); }
   if (holdOff || holdOn || holdMin != null) { o.holdTimers = holdOff ? null : holdMin ?? o.holdTimers ?? HOLD_DEFAULT; o.holdGiven = true; }
   if (o.holdTimers != null && !(Number.isFinite(o.holdTimers) && o.holdTimers >= 2000)) { console.error(`--hold-min / GATE_HOLD_TIMERS needs a number of ms, at least 2000\n\n${HELP}`); process.exit(1); }
+  const mb = maxBrowsersOf(maxFlag);
+  if (mb.error) { console.error(`gate-all: ${mb.error}\n\n${HELP}`); process.exit(1); }
+  o.maxBrowsers = mb.max; o.maxBrowsersFrom = mb.from;
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   // --wide: a report table at the derived probe width — its own dir, no content probe (the base width measured it).
@@ -747,6 +783,7 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template, opts.stage) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
+  if (!opts.compareOnly) log(budgetLine(opts));
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const measuredWith = (p) => ({ masks: (MASKS[p.slug] && MASKS[p.slug].masks) || [], edsUrl: edsUrl(p) });
@@ -804,7 +841,9 @@ async function main() {
     }
     return optsOf.get(p.slug);
   };
-  const stitch = (url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return run('node', stitchArgs(STITCH, url, out, o, tail)); };
+  // Every child that opens a browser holds a unit of the job's budget while it runs (header § BROWSERS).
+  const browsers = browserBudget({ max: opts.maxBrowsers, eds: opts.ec, probe: opts.pc });
+  const stitch = (kind, url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return browsers(kind, () => run('node', stitchArgs(STITCH, url, out, o, tail))); };
   // Before a side is captured again its previous PNG, record and diff go: a capture that fails leaves no picture, so
   // the row is a missing capture (an error, no percentage) — never a diff of the old PNG against the other side.
   const forgetCapture = (d, out) => { for (const f of [out, captureRecordOf(out), join(d, 'diff.png')]) rmSync(f, { force: true }); };
@@ -857,7 +896,7 @@ async function main() {
     }
     let r;
     if (freezeInto) {
-      const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', freezeOpts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
+      const s = await browsers('origin', () => run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', freezeOpts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 }));
       const line = lastLine(s.out).replace(/^reference: /, '');
       // frozen (0) or measured unstable (2): the old reference is superseded; anything else answered nothing
       for (const from of setAside) { if (s.code === 0 || s.code === 2) rmSync(`${from}.prev`, { force: true }); else renameSync(`${from}.prev`, from); }
@@ -886,7 +925,7 @@ async function main() {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
-      const s = await stitch(p.url, out, ['--headed']);
+      const s = await stitch('origin', p.url, out, ['--headed']);
       if (s.code !== 0) rmSync(out, { force: true }); // a stitch that died mid-write leaves no partial PNG to diff
       if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, log: s.out.trim().split('\n').slice(-2), ...shotFonts(readJsonSafe(captureRecordOf(out))) };
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `stitch exit ${s.code}: ${lastLine(s.err)} — crawl screenshot used` }; }
@@ -902,14 +941,15 @@ async function main() {
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (opts.skip && !opts.recaptureEds && reusable(p, 'eds', out, meta)) { rec(p, 'eds', readJson(meta)); return; }
     forgetCapture(d, out);
-    const s = await stitch(edsUrl(p), out, [], optsFor(p));
+    const s = await stitch('eds', edsUrl(p), out, [], optsFor(p));
     if (s.code !== 0) rmSync(out, { force: true }); // a stitch that died mid-write leaves no partial PNG to diff
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotFonts(readJsonSafe(captureRecordOf(out))) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
     log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
-  // The probe processes in flight, across the pages of the job (--probe-concurrency).
-  const probeSlot = limiter(opts.pc);
+  // The probe processes in flight, across the pages of the job (--probe-concurrency), each inside the browser budget.
+  const probeLimit = limiter(opts.pc);
+  const probeSlot = (fn) => probeLimit(() => browsers('probe', fn));
   // One page's probes. A result the probe returned is recorded as is; origin not probed (content-presence exit 3 / 4)
   // is n/a as before; anything else — a crash, a timeout, an unreadable result — is a probe ERROR ({ error }, content:
   // + probeError), which the verdict never lets pass. Each probe's previous JSON goes first, and the page's results,
@@ -1020,7 +1060,7 @@ async function main() {
     const shoot = batch.filter((p) => !reused.has(p.slug));
     if (!opts.compareOnly) measured.push(...shoot);
     for (const p of shoot) forgetDroppedPass(dir(p));
-    // the probes read no capture: they start with the batch's captures, under their own cap (probeSlot)
+    // the probes read no capture: they start with the batch's captures, under their own limit and the browser budget
     const probing = !opts.compareOnly && (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length);
     if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds), probing ? Promise.all(batch.map(probe)) : null]);
     else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }

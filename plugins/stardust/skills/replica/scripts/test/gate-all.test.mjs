@@ -28,7 +28,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
-import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, probeDefault, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, browserBudget, maxBrowsersOf, budgetLine, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -467,6 +467,8 @@ if (cmd === 'settings') { const { spawnSync } = await import('node:child_process
 const flag = (f) => (rest.includes(f) ? rest[rest.indexOf(f) + 1] : null);
 appendFileSync(process.env.STUB_LOG, cmd + ' ' + url + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['reference', ...process.argv.slice(2)]) + '\\n');
+const t0 = Date.now(); if (process.env.STUB_SHOT_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.STUB_SHOT_MS));
+if (process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: 'reference', slug: url.split('/').pop(), t0, t1: Date.now() }) + '\\n');
 mkdirSync(dir, { recursive: true });
 for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
 if (url === process.env.STUB_REF_FAIL) { console.log('reference: not frozen — the capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
@@ -832,7 +834,7 @@ check('schedule: probes start before the batch\'s captures have all finished', (
     assert.ok(probes.filter((t) => t.t1 <= lastShot).length >= 2, 'probes ended while captures were still running');
   } finally { done(); }
 });
-check('schedule: --probe-concurrency caps the probe processes in flight across pages (2 → at most 2, 1 → one at a time); the default is 2 to 4 by CPU count', () => {
+check('schedule: --probe-concurrency caps the probe processes in flight across pages (2 → at most 2, 1 → one at a time); the default is 2', () => {
   const { gateAll, times, done } = sandbox(['a', 'b', 'c', 'd'], { probes: true, units: true });
   try {
     const run = (n) => { const r = gateAll(['--probe-concurrency', String(n)], { STUB_PROBE_MS: '250' }); assert.equal(r.status, 0, r.stderr); return times().filter((t) => PROBE_KINDS.includes(t.kind)); };
@@ -841,9 +843,7 @@ check('schedule: --probe-concurrency caps the probe processes in flight across p
     assert.equal(maxInFlight(probes), 2, JSON.stringify(probes));
     probes = run(1);
     assert.equal(maxInFlight(probes), 1, JSON.stringify(probes));
-    assert.deepEqual([1, 2, 4, 5, 8, 12, 64].map((c) => probeDefault(c)), [2, 2, 2, 2, 4, 4, 4]);
-    assert.equal(parseArgs(['node', 'x']).pc, probeDefault()); assert.equal(parseArgs(['node', 'x', '--probe-concurrency', '7']).pc, 7);
-    assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--probe-concurrency <n>\s+probe processes in flight, each a browser: [234] here[^]*at most origin \+ eds \+ probe concurrency browsers/);
+    assert.equal(parseArgs(['node', 'x']).pc, 2); assert.equal(parseArgs(['node', 'x', '--probe-concurrency', '7']).pc, 7);
   } finally { done(); }
 });
 await checkAsync('limiter: at most n in flight, first come first served; a rejection frees its slot; n < 1 or not a number runs one at a time', async () => {
@@ -878,7 +878,7 @@ check('schedule: rows, their order and the probe records are the same whichever 
   assert.deepEqual(serial.rows.map((r) => r.probeErrors.map((e) => e.probe).join()), ['', '', 'content', '', 'units']);
   assert.deepEqual([serial.totals.pass, serial.totals.fail, serial.totals.error], [1, 2, 2]);
   assert.deepEqual(Object.keys(JSON.parse(serial.records.a['probes.json'])), ['writtenBy', 'at', 'content', 'clip', 'units'], 'the record\'s key order');
-  for (const [name, args, by] of [['default cap, same durations', [], timed(true)], ['default cap, units end first', [], timed(false)], ['cap 3, units end first', ['--probe-concurrency', '3'], timed(false)]]) {
+  for (const [name, args, by] of [['default cap, same durations', [], timed(true)], ['default cap, units end first', [], timed(false)], ['cap 3, units end first', ['--probe-concurrency', '3'], timed(false)], ['one browser at a time', ['--max-browsers', '1'], timed(false)], ['three browsers', ['--max-browsers', '3'], timed(true)]]) {
     assert.deepEqual(outcome(args, by), serial, name);
   }
 });
@@ -899,6 +899,71 @@ check('schedule: a failing probe and a failing capture read as before — the un
     assert.match(JSON.parse(readFileSync(join(out, 'b/eds.json'), 'utf8')).error, /stitch exit 1: capture failed/);
     assert.deepEqual([rows().b.content.missing, rows().b.units.off, rows().b.probeErrors], [0, 0, []], 'its probes ran and are recorded, as before');
     assert.deepEqual([totals().pass, totals().fail, totals().error, totals().probeErrors], [1, 0, 1, 0]);
+  } finally { done(); }
+});
+// ---- the browser budget: one cap per job over every child that opens a browser -----------------------------------
+await checkAsync('browserBudget: a given cap holds over every kind; without one the cap is the larger of eds and probe, plus one per origin browser open — what the phases held in turn', async () => {
+  const trace = async (opts, jobs) => {
+    const slot = browserBudget(opts); let open = 0; let peak = 0; let originPeak = 0; let origin = 0;
+    await Promise.all(jobs.map((kind) => slot(kind, async () => { open += 1; if (kind === 'origin') origin += 1; peak = Math.max(peak, open); originPeak = Math.max(originPeak, origin); await new Promise((res) => { setTimeout(res, 5); }); open -= 1; if (kind === 'origin') origin -= 1; })));
+    return [peak, slot.peak()];
+  };
+  const mix = (o, e, p) => [...Array(o).fill('origin'), ...Array(e).fill('eds'), ...Array(p).fill('probe')];
+  assert.deepEqual(await trace({ max: 3, eds: 4, probe: 4 }, mix(4, 6, 6)), [3, 3]);
+  assert.deepEqual(await trace({ max: 1, eds: 4, probe: 2 }, mix(2, 3, 3)), [1, 1]);
+  assert.deepEqual(await trace({ eds: 1, probe: 1 }, mix(0, 5, 5)), [1, 1], '1/1/1, references frozen: one browser at a time');
+  assert.deepEqual(await trace({ eds: 1, probe: 1 }, mix(1, 5, 5)), [2, 2], '1/1/1, one origin capture with a browser: two, as the capture phase held');
+  assert.deepEqual(await trace({ eds: 4, probe: 2 }, mix(0, 9, 9)), [4, 4], 'the defaults, frozen: the build pool\'s four');
+  assert.deepEqual(await trace({ eds: 4, probe: 2 }, mix(2, 9, 9)), [6, 6], 'the defaults, first pass: origin 2 + eds 4');
+  assert.deepEqual(await trace({ eds: 1, probe: 4 }, mix(2, 9, 9)), [4, 4], 'probe above origin + eds: the probe phase\'s four');
+  assert.deepEqual([maxBrowsersOf('3', {}), maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: '2' }), maxBrowsersOf('3', { STARDUST_MAX_BROWSERS: '2' }), maxBrowsersOf(null, {}), maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: '' })], [{ max: 3, from: 'flag' }, { max: 2, from: 'env' }, { max: 3, from: 'flag' }, { max: null, from: 'default' }, { max: null, from: 'default' }]);
+  for (const bad of ['0', 'x', '1.5', '-2']) { assert.match(maxBrowsersOf(bad, {}).error, /--max-browsers needs a whole number/); assert.match(maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: bad }).error, /STARDUST_MAX_BROWSERS needs a whole number/); }
+  assert.equal(spawnSync(process.execPath, [SCRIPT, '--max-browsers', '0'], { encoding: 'utf8' }).status, 1);
+  assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, STARDUST_MAX_BROWSERS: 'many' } }).status, 1, 'a cap that cannot be read stops the job');
+  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--max-browsers <n>\s+browser processes this job holds at once[^]*STARDUST_MAX_BROWSERS, else what the phases held in turn/);
+  assert.equal(budgetLine({ maxBrowsers: 3, maxBrowsersFrom: 'env', oc: 2, ec: 4, pc: 2 }), 'browser budget: 3 at once (STARDUST_MAX_BROWSERS)');
+});
+check('browser budget: the stub browsers open at once never exceed the budget — 1/1/1 frozen holds one, 1/1/1 on a first pass two, the defaults four (frozen, 12 pages) or six (first pass), --max-browsers and STARDUST_MAX_BROWSERS what they say; the first log line names the budget and its source', () => {
+  const slugs = Array.from({ length: 12 }, (_, i) => `p${String(i + 1).padStart(2, '0')}`);
+  const { gateAll, times, totals, out, done } = sandbox(slugs, { probes: true, units: true });
+  const ONE = ['--origin-concurrency', '1', '--eds-concurrency', '1', '--probe-concurrency', '1'];
+  try {
+    const peak = (args, env = {}) => {
+      const r = gateAll(args, { STUB_SHOT_MS: '90', STUB_PROBE_MS: '90', ...env });
+      assert.equal(r.status, 0, r.stderr); assert.equal(totals().pass, 12);
+      const firstLine = r.stdout.split('\n')[0].replace(/^\S+ /, '');
+      return [maxInFlight(times()), times().filter((t) => t.kind === 'reference').length, firstLine];
+    };
+    // first pass: every origin is frozen now (reference.mjs: a browser each)
+    let [n, freezes, line] = peak(ONE, REF);
+    assert.deepEqual([n, freezes], [2, 12], '1/1/1, first pass: the origin freeze beside one other browser, as the capture phase held');
+    assert.match(line, /^browser budget: 1 at once \(default from the flags: the larger of --eds-concurrency 1 and --probe-concurrency 1\), plus one per origin capture that opens a browser/);
+    // the references are frozen from here on: no origin browser
+    [n, freezes] = peak(ONE, REF);
+    assert.deepEqual([n, freezes], [1, 0], '1/1/1, frozen: ONE browser at a time');
+    [n, freezes, line] = peak([...ONE, '--max-browsers', '2'], REF);
+    assert.deepEqual([n, freezes, line], [2, 0, 'browser budget: 2 at once (--max-browsers)']);
+    [n] = peak([...ONE, '--max-browsers', '3'], REF);
+    assert.equal(n, 2, 'the per-kind limits hold inside a larger budget: one build capture, one probe');
+    [n] = peak(['--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1'], REF);
+    assert.equal(n, 2, '1/2/1, frozen: the build pool\'s two');
+    [n, freezes, line] = peak([], REF);
+    assert.deepEqual([n, freezes], [4, 0], 'the defaults, frozen, 12 pages: four');
+    assert.match(line, /^browser budget: 4 at once \(default from the flags: the larger of --eds-concurrency 4 and --probe-concurrency 2\)/);
+    [n] = peak(['--max-browsers', '3'], REF);
+    assert.equal(n, 3);
+    [n] = peak(['--max-browsers', '1'], REF);
+    assert.equal(n, 1);
+    [n, , line] = peak([], { ...REF, STARDUST_MAX_BROWSERS: '2' });
+    assert.deepEqual([n, line], [2, 'browser budget: 2 at once (STARDUST_MAX_BROWSERS)']);
+    [n, , line] = peak(['--max-browsers', '3'], { ...REF, STARDUST_MAX_BROWSERS: '2' });
+    assert.deepEqual([n, line], [3, 'browser budget: 3 at once (--max-browsers)'], 'the flag wins over the variable');
+    // a first pass at the defaults: the origin is stitched live on every run (GATE_REFERENCE=live), two at a time
+    [n] = peak([]);
+    assert.ok(n > 4 && n <= 6, `origin 2 + eds 4 at most, got ${n}`);
+    [n] = peak(['--max-browsers', '3']);
+    assert.equal(n, 3, 'a given cap covers the origin captures too');
+    assert.ok(existsSync(join(out, 'summary.json')));
   } finally { done(); }
 });
 check('a failed re-capture leaves no old PNG to diff: the capture is removed first, so the row is an error with no percentage', () => {
