@@ -22,21 +22,40 @@
  * for the repeated-unit families stardust/replica/units.json declares for the page. SCHEDULE (per batch): the probes
  * read no capture, so they run beside the two capture pools, and a page's content and unit probes run at once (the
  * clip probe only after a content probe that gave no clip result); --probe-concurrency caps the probe processes in
- * flight across the pages (`limiter`). The compares follow, when both are done. BROWSERS: every child that opens a
+ * flight across the pages (`limiter`). A page is compared when its captures and probes are
+ * done, and its pass is written then (§ REUSE), not when the batch is. BROWSERS: every child that opens a
  * browser (a build capture, an origin freeze or live stitch, a probe — one browser each; content-presence loads its
  * two pages in that one) takes a unit of the job's one budget (`browserBudget`): --max-browsers, else
  * STARDUST_MAX_BROWSERS, else what the phases held in turn FOR THIS JOB — the larger of min(pages to capture on the
- * build side, eds concurrency) and min(pages to probe, probe concurrency), plus one per origin capture that has a
+ * build side, eds concurrency) and min(pages to probe, probe concurrency) — pages with a reusable recorded pass (§ REUSE) count in neither, plus one per origin capture that has a
  * browser open (a freeze or live stitch; at most the origin concurrency). One page: 1, and 2 only while its origin is
  * frozen; --max-browsers / STARDUST_MAX_BROWSERS replaces it and is how a caller opts in to more. The three
  * concurrency flags are per-kind limits inside it; a log line at the start names the budget and its source. Rows, records and their order do not depend on the schedule. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
- * records, not its PNGs (#156, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
- * eds URL it was measured with, and a --skip-existing / --compare-only run reuses that pass while both hold. Pages go
- * through in batches of BATCH, so a passed batch's PNGs are gone before the next is captured; a page captured again
- * loses its recorded pass first, and a missing capture is written to pixel.json — a failed or interrupted re-capture
- * never leaves the old pass to be reused.
+ * records, not its PNGs (#156, disk): every PNG in its dir is deleted and pixel.json notes the drop — the page's
+ * RECORDED PASS (§ REUSE). Pages go through in batches of BATCH, a passed page's PNGs gone as soon as it passes; a page
+ * captured again loses its recorded pass first, and a missing capture is written to pixel.json — a failed or
+ * interrupted re-capture never leaves the old pass to be reused.
+ * REUSE (--skip-existing): a recorded pass is the page's WHOLE verdict — pixel.json `capturesDropped` { masks, edsUrl,
+ * key, probes, at }: the probe results the verdict read, and `key` (`passKey`), one digest per thing the verdict or an
+ * instrument reads that can change while the build URL stays: the build and source URLs; the page's entries in
+ * masks.json, presence.json, clip-allow.json and overrides.json; its unit families (stardust/replica/units.json or
+ * the legacy file, resolved for its slug, template and stage); the run's options (stage, width, wide, threshold,
+ * offset bound, height / clip / unit tolerances, the criteria on or off, the origin mode, --blocked for its URL,
+ * --warmup, --vh, and the overlay, locale and timer-hold flags as its captures and probes get them); its frozen
+ * reference (dir, baseline.json, baseline.png there) and the archetype gate dir's baseline.json (prototype stage: its
+ * live.json and live.capture.json too); origin.json and eds.json; the instrument files (this one, pixel-compare,
+ * stitch-shot, reference, the three probes); at the prototype stage the prototype file. It is written — after the
+ * page's round — the moment the page's verdict is a pass, so a killed job keeps every page that finished, and a
+ * --skip-existing run takes such a page from the record: no capture, no probe, no compare, the row rebuilt from it
+ * (`recordedPass`; log `<slug> → recorded pass reused …`). Fail closed — `<slug> → recorded pass not reused (<what>
+ * changed, …) — gated again`: any ingredient differs, the key cannot be computed, the record has no key or probe
+ * results (an older version's, or --compare-only's pixel pass) or would not pass, or its reference's capture settings
+ * changed (§ SETTINGS). A page with no pass on record — failed, or killed before its verdict, its probe in flight —
+ * is gated again, reusing only its finished captures. NOT in the key: what the build or the source SERVES at the same
+ * URL — after a deploy, gate the page without --skip-existing (or with --recapture-eds, which reuses no pass).
+ * summary.* is written once, at the end: a killed job leaves the previous one (or none), never a partial one.
  *
  * VERDICT (all four): the PIXEL CRITERION (pixel-compare.mjs --offset-max owns the rule, `pixelVerdict`: the compare
  * runs ALIGNED; aligned % ≤ --threshold AND the total offset ≤ the bound — --offset-max <px>, default 8 at the
@@ -127,10 +146,11 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `rosterOffsets`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `digest`, `fileDigest`
  * are exported.
  */
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -209,7 +229,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
   --skip-existing           reuse captures in the page dir (a stitch with no fixedLayers in its capture record —
                             taken before fixed layers were captured once — is retaken, as is such a cached live.png),
-                            and a passed page's recorded pass while its masks and eds URL are unchanged
+                            and a passed page's recorded pass — its whole verdict: no capture, no probe, no compare —
+                            while everything it was measured with is unchanged (§ Reuse below)
   --recapture-eds           (with --skip-existing) re-shoot eds.png only
   --recapture-origin        delete the page's frozen reference and freeze it again, in the same place (the previous
                             origin.png is removed first: a failed or unstable freeze is an error row; never --force)
@@ -283,8 +304,16 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   overrides.json: {"<slug>": {"verdict", "reason", "waives": [capture|pixel|height|clip|content|units|fonts, …]}}
   waives only what it names; no "waives" = capture, pixel, height, fonts; clip, content and units only by name.
 A page that passes keeps its records, not its PNGs (#156): --recapture-eds / --recapture-origin, or a run
-without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}: a passed batch's PNGs are deleted
-before the next batch is captured.
+without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}; a page's PNGs are deleted when it passes.
+Reuse (--skip-existing): a page's pass is recorded the moment its verdict is known (pixel.json capturesDropped: the
+  probe results and a key), so a killed job keeps every page that finished and the re-run gates only the others —
+  a page that failed, or had a capture or probe in flight, is gated again (finished captures reused). The key: build
+  and source URL; the page's masks.json, presence.json, clip-allow.json and overrides.json entries; its unit
+  families; the verdict and capture options of the run; its frozen reference; its capture records; the instrument
+  files; the prototype file (prototype stage). Anything else: "<slug> → recorded pass not reused (<what> changed) —
+  gated again"; so is a record from an older version or from --compare-only. NOT in the key: what the build serves
+  at the same URL — after a deploy gate the page without --skip-existing, or with --recapture-eds (reuses no pass).
+  summary.* is written at the end only: a killed job leaves the previous one, never a partial one.
 Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.`;
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
@@ -729,16 +758,57 @@ export function holdMismatch(originRec, buildRec) {
 // there too) — except baseline.png, the page's frozen reference: the next run gates against it instead of spending
 // three live captures on a new one; pixel.json records the drop with the masks and eds URL the pass was measured
 // with → PNGs deleted.
-export function dropPassedCaptures(d, { masks = [], edsUrl }) {
+// `key` + `probes` (a live run's pass: passKey, and the probe results the verdict read) make the record the page's
+// WHOLE verdict, which --skip-existing reuses without a probe (recordedPass); without them it is the pixel pass alone.
+// Written through a sibling temp file + rename: a run killed here leaves the previous pixel.json, never half of one.
+export function dropPassedCaptures(d, { masks = [], edsUrl, key = null, probes = null, at = null }) {
   const pixel = readJsonSafe(join(d, 'pixel.json'));
   if (!pixel) return 0;
   const pngs = readdirSync(d).filter((f) => f.endsWith('.png') && f !== 'baseline.png');
   for (const f of pngs) rmSync(join(d, f), { force: true });
-  writeFileSync(join(d, 'pixel.json'), JSON.stringify({ ...pixel, capturesDropped: { masks, edsUrl } }, null, 2));
+  const tmp = join(d, `pixel.json.${process.pid}.tmp`);
+  writeFileSync(tmp, JSON.stringify({ ...pixel, capturesDropped: { masks, edsUrl, ...(key && probes ? { key, probes, at: at || new Date().toISOString() } : {}) } }, null, 2));
+  renameSync(tmp, join(d, 'pixel.json'));
   return pngs.length;
 }
-// The recorded pass a reuse run (--skip-existing, --compare-only) takes instead of re-capturing: null when nothing
-// was dropped, a record is gone, or the masks or eds URL differ from the ones the pass was measured with.
+/** A short digest of a value (canonical enough: the same code builds both sides) or of a file's bytes (null: unreadable). */
+export const digest = (v) => createHash('sha256').update(Buffer.isBuffer(v) ? v : JSON.stringify(v ?? null)).digest('hex').slice(0, 16);
+export const fileDigest = (f) => { try { return digest(readFileSync(f)); } catch { return null; } };
+/**
+ * THE REUSE KEY of a recorded pass (header § REUSE): one digest per ingredient, so a refused reuse names what changed.
+ * passKey(parts) → { v, build, source, masks, presence, clipAllow, override, units, options, reference, archetype,
+ * captures, instruments[, prototype] }, or null when an ingredient that must be read cannot be (`parts.captures` /
+ * `parts.instruments` holding a null, a `reference` whose baseline.json is unreadable, a `prototype` file that is) —
+ * a key that cannot be computed is never written and never matches.
+ */
+export const PASS_FORMAT = 2;
+export function passKey({ build, source, masks = null, presence = null, clipAllow = null, override = null, units = [], options = {}, reference = null, archetype = [], captures = [], instruments = [], prototype }) {
+  if (!build || !source || captures.length !== 2 || captures.some((c) => !c) || !instruments.length || instruments.some((c) => !c)) return null;
+  if (reference && !reference.baseline) return null;
+  if (prototype === null) return null; // a prototype file was named and could not be read
+  return { v: PASS_FORMAT, build, source, masks: digest(masks), presence: digest(presence), clipAllow: digest(clipAllow), override: digest(override), units: digest(units), options: digest(options), reference: digest(reference), archetype: digest(archetype), captures: digest(captures), instruments: digest(instruments), ...(prototype ? { prototype } : {}) };
+}
+/**
+ * recordedPass(d, key) → { origin, eds, pixel, probes } — the page's whole recorded verdict — or { miss: [why, …] }
+ * (null when the dir records no pass at all). Fail closed: a record without a key or probe results (written before
+ * the key, or by --compare-only), of another format, a `key` that could not be computed, any differing ingredient
+ * (named), or a capture meta that is gone or holds an error is a miss.
+ */
+export function recordedPass(d, key) {
+  const pixel = readJsonSafe(join(d, 'pixel.json'));
+  const drop = pixel && pixel.capturesDropped;
+  if (!drop) return null;
+  const was = drop.key;
+  if (!was || typeof was !== 'object' || was.v !== PASS_FORMAT || !drop.probes || typeof drop.probes !== 'object') return { miss: ['recorded without its probe results or in another format'] };
+  if (!key) return { miss: ['this run\'s key cannot be computed'] };
+  const names = [...new Set([...Object.keys(was), ...Object.keys(key)])].filter((k) => was[k] !== key[k]);
+  if (names.length) return { miss: names.map((k) => `${k} changed`) };
+  const origin = readJsonSafe(join(d, 'origin.json')); const eds = readJsonSafe(join(d, 'eds.json'));
+  if (!origin || !eds || origin.error || eds.error) return { miss: ['a capture record is gone or holds an error'] };
+  return { origin, eds, pixel, probes: drop.probes };
+}
+// The recorded PIXEL pass --compare-only takes instead of the PNGs it no longer has: null when nothing was dropped, a
+// record is gone, or the masks or eds URL differ from the ones the pass was measured with (--skip-existing: recordedPass).
 export function droppedPass(d, { masks = [], edsUrl }) {
   const pixel = readJsonSafe(join(d, 'pixel.json'));
   const drop = pixel && pixel.capturesDropped;
@@ -843,15 +913,6 @@ async function main() {
   };
   // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
   const referenceMoved = async (meta) => !opts.liveOrigin && !opts.compareOnly && !!(meta && meta.reference && meta.reference.dir) && existsSync(join(meta.reference.dir, 'baseline.json')) && !!(await settingsOf(meta.reference.dir)).changed;
-  const reused = new Set();
-  if ((opts.skip || opts.compareOnly) && !opts.recaptureEds && !opts.recaptureOrigin) {
-    for (const p of pages) {
-      const kept = droppedPass(dir(p), measuredWith(p));
-      if (!kept || await referenceMoved(kept.origin)) continue;
-      reused.add(p.slug); for (const [k, v] of Object.entries(kept)) rec(p, k, v);
-      log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
-    }
-  }
   // --skip-existing reuses a capture and its meta — unless it is a stitch taken before fixed layers were captured once
   // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
   const reusable = (p, side, png, meta, quiet = false) => {
@@ -875,14 +936,7 @@ async function main() {
     }
     return optsOf.get(p.slug);
   };
-  // Every child that opens a browser holds a unit of the job's budget while it runs (header § BROWSERS).
-  // The default is sized to THIS job: the build captures it will really take and the pages it will probe.
-  const jobSize = {
-    capture: opts.compareOnly ? 0 : pages.filter((p) => !reused.has(p.slug) && !(opts.skip && !opts.recaptureEds && reusable(p, 'eds', join(dir(p), 'eds.png'), join(dir(p), 'eds.json'), true))).length,
-    probe: opts.compareOnly || !(opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) ? 0 : pages.length,
-  };
-  const browsers = browserBudget({ max: opts.maxBrowsers, eds: Math.min(jobSize.capture, opts.ec), probe: Math.min(jobSize.probe, opts.pc) });
-  if (!opts.compareOnly) log(budgetLine(opts, jobSize));
+  // Every child that opens a browser holds a unit of the job's budget (`browsers`, sized below once the reuse is decided).
   const stitch = (kind, url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return browsers(kind, () => run('node', stitchArgs(STITCH, url, out, o, tail))); };
   // Before a side is captured again its previous PNG, record and diff go: a capture that fails leaves no picture, so
   // the row is a missing capture (an error, no percentage) — never a diff of the old PNG against the other side.
@@ -1095,26 +1149,97 @@ async function main() {
       reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0, hint: (ref && ref.hint) || (r.origin && r.origin.hint) || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null };
   };
+  // The reuse key of a page's pass (passKey; header § REUSE), from what this run would gate it with and the capture
+  // metas on disk — computed alike when the pass is written and when a later run asks whether it still stands.
+  const INSTRUMENTS = [fileURLToPath(import.meta.url), PIXEL, STITCH, REFERENCE, ...(DIFF_DIR ? ['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(DIFF_DIR, f)) : [])].map(fileDigest);
+  const keyOf = (p, originMeta) => {
+    const d = dir(p); const o = optsFor(p); const ref = (originMeta && originMeta.reference) || null;
+    const gateDir = join('stardust/replica/gates', `${p.slug}-${opts.width}`);
+    return passKey({ build: edsUrl(p), source: p.url, masks: MASKS[p.slug], presence: PRESENCE[p.slug], clipAllow: CLIP_ALLOW[p.slug], override: OVERRIDES[p.slug], units: unitsOf(p),
+      options: { stage: opts.stage, width: opts.width, wide: opts.wide, threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, offsetMax: opts.offsetMax, clip: opts.clip, content: opts.content, liveOrigin: opts.liveOrigin, warmup: opts.warmup, vh: opts.vh, blocked: !!(opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked), flags: passThrough('stitch-shot', o) },
+      reference: ref && ref.dir ? { dir: ref.dir, baseline: fileDigest(join(ref.dir, 'baseline.json')), png: existsSync(join(ref.dir, 'baseline.png')) } : null,
+      archetype: ['baseline.json', ...(opts.stage === 'prototype' ? ['live.json', 'live.capture.json'] : [])].map((f) => fileDigest(join(gateDir, f))),
+      captures: [fileDigest(join(d, 'origin.json')), fileDigest(join(d, 'eds.json'))], instruments: INSTRUMENTS,
+      ...(opts.stage === 'prototype' ? { prototype: p.prototypePath ? fileDigest(p.prototypePath) : null } : {}) });
+  };
+  const reused = new Set();
+  if (opts.compareOnly && !opts.recaptureEds && !opts.recaptureOrigin) {
+    for (const p of pages) {
+      const kept = droppedPass(dir(p), measuredWith(p));
+      if (!kept || await referenceMoved(kept.origin)) continue;
+      reused.add(p.slug); for (const [k, v] of Object.entries(kept)) rec(p, k, v);
+      log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
+    }
+  } else if (opts.skip && !opts.recaptureEds && !opts.recaptureOrigin) {
+    // --skip-existing: the recorded pass is the page's whole verdict — no capture, no probe, no compare — while its
+    // key holds; the row is rebuilt from the record, and a record that would not pass under this run is not reused.
+    for (const p of pages) {
+      const kept = recordedPass(dir(p), keyOf(p, readJsonSafe(join(dir(p), 'origin.json'))));
+      if (!kept) continue;
+      let miss = kept.miss || (await referenceMoved(kept.origin) ? ['the reference\'s capture settings changed'] : null);
+      if (!miss) {
+        rec(p, 'origin', kept.origin); rec(p, 'eds', kept.eds); rec(p, 'pixel', kept.pixel); for (const k of ['content', 'clip', 'units']) rec(p, k, kept.probes[k]);
+        if (!rowOf(p).pass) { delete results[p.slug]; miss = ['the record does not pass']; }
+      }
+      if (miss) { log(`${p.slug} → recorded pass not reused (${miss.join(', ')}) — gated again`); continue; }
+      reused.add(p.slug);
+      log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
+    }
+  }
+  // Every child that opens a browser holds a unit of the job's budget while it runs (header § BROWSERS).
+  // The default is sized to THIS job: the build captures it will really take and the pages it will probe.
+  // ONE decision feeds both: `reused` (above) is the set the batches skip (`shoot`) and the set the budget leaves out —
+  // a page with a reusable recorded pass opens no browser, so it is neither a page to capture nor a page to probe.
+  const toGate = pages.filter((p) => !reused.has(p.slug));
+  const jobSize = {
+    capture: opts.compareOnly ? 0 : toGate.filter((p) => !(opts.skip && !opts.recaptureEds && reusable(p, 'eds', join(dir(p), 'eds.png'), join(dir(p), 'eds.json'), true))).length,
+    probe: opts.compareOnly || !(opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) ? 0 : toGate.length,
+  };
+  const browsers = browserBudget({ max: opts.maxBrowsers, eds: Math.min(jobSize.capture, opts.ec), probe: Math.min(jobSize.probe, opts.pc) });
+  if (!opts.compareOnly) log(budgetLine(opts, jobSize));
   let dropped = 0;
   const measured = [];
+  const stamp = new Date().toISOString(); // one round label for the job, whenever each page's round is written
+  // A page's verdict is known: a pass is on disk NOW — its round, then its record (key + probe results) and its PNGs
+  // gone — so a job killed later keeps it. A failing page keeps its captures and its records, as it has them already.
+  const settle = async (p) => {
+    const row = rowOf(p); if (!row.pass) return;
+    if (!opts.wide) await recordRounds([row], opts, { now: () => stamp });
+    const r = results[p.slug] || {}; const key = keyOf(p, r.origin);
+    dropped += dropPassedCaptures(dir(p), { ...measuredWith(p), key, probes: Object.fromEntries(['content', 'clip', 'units'].filter((k) => r[k] !== undefined).map((k) => [k, r[k]])) });
+  };
   for (let i = 0; i < pages.length; i += BATCH) {
     const batch = pages.slice(i, i + BATCH);
-    const shoot = batch.filter((p) => !reused.has(p.slug));
+    const shoot = batch.filter((p) => toGate.includes(p));
     if (!opts.compareOnly) measured.push(...shoot);
     for (const p of shoot) forgetDroppedPass(dir(p));
-    // the probes read no capture: they start with the batch's captures, under their own limit and the browser budget
-    const probing = !opts.compareOnly && (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length);
-    if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds), probing ? Promise.all(batch.map(probe)) : null]);
-    else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
-    // --compare-only opens no browser and runs no probe: the recorded results, the sidecars re-applied
-    if (opts.compareOnly) for (const p of batch) recallProbes(p);
+    if (!opts.compareOnly) {
+      // the probes read no capture: they start with the batch's captures, under their own limit and the browser budget; a page is
+      // compared when its two captures and its probes are done, and settled then — not when the batch is
+      const probing = opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length;
+      const originSlot = limiter(opts.oc); const edsSlot = limiter(opts.ec); const compareSlot = limiter(4);
+      await Promise.all(shoot.map(async (p) => {
+        await Promise.all([originSlot(() => captureOrigin(p)), edsSlot(() => captureEds(p)), probing ? probe(p) : null]);
+        await compareSlot(() => compare(p));
+        await settle(p);
+      }));
+      continue;
+    }
+    // --compare-only opens no browser and runs no probe: the recorded results, the sidecars re-applied. Its pass is
+    // the pixel pass (no key: a later --skip-existing gates the page), a reused record keeps the key it has.
+    for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
+    for (const p of batch) recallProbes(p);
     await pool(shoot, 4, compare);
-    for (const p of batch) if (rowOf(p).pass) dropped += dropPassedCaptures(dir(p), measuredWith(p));
+    for (const p of batch) {
+      if (!rowOf(p).pass) continue;
+      const prev = reused.has(p.slug) ? ((readJsonSafe(join(dir(p), 'pixel.json')) || {}).capturesDropped || {}) : {};
+      dropped += dropPassedCaptures(dir(p), { ...measuredWith(p), key: prev.key, probes: prev.probes, at: prev.at });
+    }
   }
   if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#156)`);
   const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
-  const overCap = opts.wide ? [] : await recordRounds(measured.map((p) => rowOf(p)), opts); // a report records no round
+  const overCap = opts.wide ? [] : await recordRounds(measured.map((p) => rowOf(p)).filter((r) => !r.pass), opts, { now: () => stamp }); // a report records no round; a pass has its round already (settle)
   if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — fix per § What a failing row means, or record the decision: rounds.mjs decide ${join(dirname(opts.out), `<slug>-${opts.width}`)} --stage all-pages --decision accept-residual|re-prototype --reason "<why>" (a closed page is not listed again)`);
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), unitsNotDeclared: n((r) => r.unitsDeclared === 0), unitsRecordedNotDeclared: n((r) => r.unitsDeclared === 0 && r.unitsRecorded > 0), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
