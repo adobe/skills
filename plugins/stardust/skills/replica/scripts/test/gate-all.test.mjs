@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
+import { repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS } from '../gate-all.mjs';
 import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
@@ -986,6 +986,102 @@ check('verdict: alignment not used, or a pixel.json from before --align → the 
   assert.equal(verdict({ pixel: pxa(9.9, 4, st(3, -5)) }, { stage: 'prototype' }).pixelPass, true, '8 px of offsets: within the bound');
   assert.equal(verdict({ pixel: pxa(9.9, 4, st(3, -6)) }, { stage: 'prototype' }).pixelPass, false, '9 px: the one new way to fail');
   assert.deepEqual(verdict({ pixel: pxa(30.1, 12, st(4)) }, { stage: 'prototype' }).reasons, ['pixel aligned 12% (unaligned 30.1%) > 10%']);
+});
+// ---- the roster tolerance on the offsets (published stage; gate.sh and the prototype stage keep the strict bound) ----
+check('roster tolerance: a published row over the strict bound and within height-tol × origin height passes — both numbers, the judge, the note with the total shift', () => {
+  const v = verdict({ pixel: pxa(16.62, 4.7, st(-54, 40, -23)) }); // 5000 px page: strict bound 50, tolerance 250; 117 px
+  assert.deepEqual([v.pixelPass, v.pixelOnlyPass, v.pass, v.failing, v.reasons], [true, true, true, [], []]);
+  assert.deepEqual([v.totalShift, v.offsetBound, v.offsetTolerance, v.offsetJudge, v.offsetsWithinTolerance], [117, 50, 250, 'tolerance', true]);
+  assert.deepEqual(v.notes, ['offsets within the roster tolerance: 117px total, largest step 54px (strict bound 50px, tolerance 250px)']);
+  const strict = verdict({ pixel: pxa(16.62, 1.23, st(-5, -20, -12)) }); // 37 px ≤ 50: the strict bound judged it, no note
+  assert.deepEqual([strict.pass, strict.offsetBound, strict.offsetTolerance, strict.offsetJudge, strict.offsetsWithinTolerance, strict.notes], [true, 50, 250, 'bound', false, []]);
+  const edge = verdict({ pixel: pxa(16.62, 4, st(200, -50)) });
+  assert.deepEqual([edge.pass, edge.totalShift, edge.offsetsWithinTolerance], [true, 250, true], 'exactly the tolerance, one step of exactly 200 px: within');
+  assert.deepEqual([verdict({ pixel: pxa(16.62, 4, st(-60, 60)) }, { heightTol: 0.02 }).pass, verdict({ pixel: pxa(16.62, 4, st(-60, 60)) }, { heightTol: 0.03 }).offsetTolerance], [false, 150], 'the tolerance is --height-tol: one number for the height and the offsets');
+  const plain = verdict({ pixel: px(4, 0, 5000) });
+  assert.deepEqual([plain.offsetBound, plain.offsetTolerance, plain.offsetJudge, plain.offsetsWithinTolerance], [null, null, null, false], 'alignment not used: no offsets to judge');
+});
+check('roster tolerance: over the tolerance fails on the offsets as before, and so does one step over 200 px within it — the reason names which', () => {
+  const over = verdict({ pixel: pxa(16.62, 4.7, st(-120, -90, 41)) }); // 251 px > 250
+  assert.deepEqual([over.pixelPass, over.pass, over.failing, over.offsetBound, over.offsetTolerance, over.offsetJudge, over.offsetsWithinTolerance, over.notes], [false, false, ['pixel'], 50, 250, 'tolerance', false, []]);
+  assert.deepEqual(over.reasons, ['offsets: 3 step(s), 251px total — −120px at y=103, −90px at y=1103, +41px at y=2103 (bound 50px) — over the roster tolerance 250px']);
+  const step = verdict({ pixel: pxa(16.62, 2.1, st(-236, 1), 10000) }); // 237 px ≤ 500, but one step is a section's worth
+  assert.deepEqual([step.pixelPass, step.pass, step.offsetJudge, step.offsetsWithinTolerance], [false, false, 'tolerance', false]);
+  assert.deepEqual(step.reasons, [`offsets: 2 step(s), 237px total — −236px at y=103, +1px at y=1103 (bound 100px) — one step of 236px, over ${ROSTER_OFFSETS.step}px (roster tolerance 500px)`]);
+  const late = { ...pxa(16.62, 3, st(...Array(13).fill(5), -201), 10000) };
+  assert.equal(verdict({ pixel: late }).pixelPass, false, 'the large step is found past the 12 steps the row keeps');
+  assert.equal(verdict({ pixel: late }).steps.length, 12);
+  assert.deepEqual(verdict({ pixel: pxa(30.1, 12, st(-54, 40)) }).reasons, ['pixel aligned 12% (unaligned 30.1%) > 10%'], 'aligned % over the threshold: the percentage is the reason, the tolerance is not consulted');
+  assert.equal(verdict({ pixel: pxa(30.1, 12, st(-54, 40)) }).offsetsWithinTolerance, false);
+});
+check('roster tolerance: a row failing another criterion still fails; no override is involved', () => {
+  const p = pxa(16.62, 4.7, st(-54, 40, -23));
+  const clipped = verdict({ pixel: p, clip: clip(3) });
+  assert.deepEqual([clipped.pixelPass, clipped.pass, clipped.failing, clipped.passWithOverride, clipped.offsetsWithinTolerance], [true, false, ['clip'], false, true]);
+  assert.equal(clipped.notes.length, 1, 'the note stays on the failing row');
+  const tall = verdict({ pixel: { ...p, heightDelta: -300 } }); // 5000 px origin, 6 % taller build
+  assert.deepEqual([tall.pixelPass, tall.heightPass, tall.pass, tall.failing], [true, false, false, ['height']]);
+  const fonts = verdict({ pixel: p, capture: { fonts: [{ family: 'Brand Sans', side: 'eds' }], fontsSkipped: [] } });
+  assert.deepEqual([fonts.pass, fonts.failing], [false, ['fonts']]);
+  const within = verdict({ pixel: p });
+  assert.deepEqual([within.pass, within.passWithOverride, within.unwaived], [true, true, []], 'a pass, not an override pass');
+  const waived = verdict({ pixel: pxa(16.62, 4.7, st(-120, -90, 41)), override: { verdict: 'ACCEPTED', reason: 'r' } });
+  assert.deepEqual([waived.pass, waived.pixelPass], [false, false], 'over the tolerance an override changes nothing about the row\'s own verdict');
+});
+check('roster tolerance: the prototype stage and an explicit --offset-max keep the one strict bound', () => {
+  const p = pxa(16.62, 4.7, st(-54, 40, -23));
+  const proto = verdict({ pixel: p }, { stage: 'prototype' });
+  assert.deepEqual([proto.pixelPass, proto.offsetBound, proto.offsetTolerance, proto.offsetJudge, proto.offsetsWithinTolerance], [false, 8, null, 'bound', false]);
+  assert.deepEqual(proto.reasons, ['offsets: 3 step(s), 117px total — −54px at y=103, +40px at y=1103, −23px at y=2103 (bound 8px)']);
+  const given = verdict({ pixel: p }, { stage: 'published', offsetMax: 100 });
+  assert.deepEqual([given.pixelPass, given.offsetBound, given.offsetTolerance, given.offsetJudge], [false, 100, null, 'bound']);
+  assert.equal(verdict({ pixel: p }, { stage: 'published', offsetMax: 117 }).pixelPass, true);
+  assert.deepEqual(rosterOffsets(null), { tolerance: null, judge: null, pass: true, within: false, largest: 0, over: null });
+});
+check('roster tolerance: formatSummary shows both numbers on the row, the note as (reported), and the calibration line counts the rows', () => {
+  const base = { template: 't', tier: 'thin', origin: 'stitch-live', heightDelta: 0, clipped: 0, clipAllowance: 0, content: null, units: null, masked: false, override: null, error: null };
+  const v = verdict({ pixel: pxa(16.62, 4.7, st(-54, 40, -23)) });
+  const rows = [{ ...base, slug: 'a', path: '/a', pct: 16.62, ...v }, { ...base, slug: 'b', path: '/b', pct: 16.62, ...verdict({ pixel: pxa(16.62, 1.23, st(-5)) }) }];
+  const totals = { pages: 2, pass: 2, pixelOnlyPass: 2, overridePass: 0, fail: 0, error: 0, failPixel: 0, failOffsets: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, alignedOnlyPass: 2, offsetsWithinTolerance: 1 };
+  const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals, rows });
+  assert.match(md, /\| `\/a` \|.*\| 4\.7 \(16\.62\) \| 3 step\(s\), 117px \(bound 50, tolerance 250\) \|.*\| PASS \| \(reported\) offsets within the roster tolerance: 117px total, largest step 54px \(strict bound 50px, tolerance 250px\) \|/);
+  assert.match(md, /\| `\/b` \|.*\| 1 step\(s\), 5px \(bound 50\) \|.*\| PASS \| - \|/);
+  assert.match(md, /; offsets over the strict bound, within the roster tolerance: 1[;.]/);
+  assert.doesNotMatch(formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals: { ...totals, offsetsWithinTolerance: 0 }, rows: rows.slice(1) }), /roster tolerance/);
+});
+check('roster tolerance, the runner: the row passes (exit 0), totals.offsetsWithinTolerance counts it, summary.md carries the note, the recorded pass is reused; over the tolerance, --stage prototype or --offset-max: exit 2 as before', () => {
+  const within = { page: { pct: 16.62, aligned: { used: true, pct: 4.7, steps: st(-54, 40, -23) } } };
+  const env = sandbox(['page']); const proto = sandbox(['page']);
+  try {
+    let r = env.gateAll([], { STUB_PX: JSON.stringify(within) });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const row = env.rows().page;
+    assert.deepEqual([row.pass, row.passWithOverride, row.override, row.totalShift, row.offsetBound, row.offsetTolerance, row.offsetJudge, row.offsetsWithinTolerance], [true, true, null, 117, 50, 250, 'tolerance', true]);
+    assert.ok(row.notes.includes('offsets within the roster tolerance: 117px total, largest step 54px (strict bound 50px, tolerance 250px)'));
+    assert.deepEqual([env.totals().pass, env.totals().overridePass, env.totals().failOffsets, env.totals().offsetsWithinTolerance], [1, 0, 0, 1]);
+    assert.match(readFileSync(join(env.out, 'summary.md'), 'utf8'), /\(bound 50, tolerance 250\) \|.*\| PASS \| .*\(reported\) offsets within the roster tolerance: 117px total/);
+    assert.match(r.stdout, /offsets over the strict bound, within the roster tolerance: 1/);
+    assert.match(JSON.parse(readFileSync(join(env.out, 'summary.json'), 'utf8'))._provenance.offsetMax, /roster tolerance: 5% of the origin height with no step over 200px/);
+    assert.deepEqual(env.compares().page.slice(env.compares().page.indexOf('--offset-max'), env.compares().page.indexOf('--offset-max') + 2), ['--offset-max', 'published'], 'pixel-compare is asked for the strict rule, as before');
+    r = env.gateAll(['--skip-existing'], { STUB_PX: JSON.stringify(within) });
+    assert.equal(r.status, 0, r.stdout + r.stderr); assert.deepEqual(env.shots(), [], 'the pass under the tolerance is a recorded pass');
+    assert.equal(env.rows().page.offsetsWithinTolerance, true);
+
+    r = env.gateAll(['--recapture-eds'], { STUB_PX: JSON.stringify({ page: { pct: 16.62, aligned: { used: true, pct: 4.7, steps: st(-120, -90, 41) } } }) });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.deepEqual([env.rows().page.pass, env.rows().page.failing, env.totals().failOffsets, env.totals().offsetsWithinTolerance], [false, ['pixel'], 1, 0]);
+    assert.match(env.rows().page.reasons[0], /^offsets: 3 step\(s\), 251px total — .* \(bound 50px\) — over the roster tolerance 250px$/);
+    r = env.gateAll(['--recapture-eds', '--offset-max', '100'], { STUB_PX: JSON.stringify(within) });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.deepEqual([env.rows().page.pass, env.rows().page.offsetBound, env.rows().page.offsetTolerance, env.totals().offsetsWithinTolerance], [false, 100, null, 0]);
+
+    writeFileSync(join(proto.root, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'page', url: 'https://origin.example/page', prototypePath: 'stardust/prototypes/page.html' }] }));
+    mkdirSync(join(proto.root, 'stardust/prototypes'), { recursive: true }); writeFileSync(join(proto.root, 'stardust/prototypes/page.html'), '<html></html>');
+    r = proto.gateAll(['--stage', 'prototype', '--proto-base', 'http://localhost:1'], { STUB_PX: JSON.stringify(within) });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    const prow = proto.tableOf('prototypes-1440').rows[0];
+    assert.deepEqual([prow.pass, prow.offsetBound, prow.offsetTolerance, prow.offsetJudge, prow.offsetsWithinTolerance], [false, 8, null, 'bound', false]);
+  } finally { env.done(); proto.done(); }
 });
 check('verdict / isErrorRow: an unstable reference is the row\'s reason as it stands — an error row, never a FAIL; no aligned numbers', () => {
   const v = verdict({ pixel: { error: 'reference-unstable: heights 5000 vs 5640 after priming; not frozen (d/reference-unstable.json)' } });

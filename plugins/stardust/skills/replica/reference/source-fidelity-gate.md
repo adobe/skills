@@ -804,10 +804,10 @@ and settle them the same way (`measure-live.mjs`), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
 clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #156). **Verdict, per page — all four:**
 
-1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`).
-2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
-   a render thousands of px too tall; a union (white-padded) metric was tried and rejected
-   (white gaps score as matches), so the guard is explicit.
+1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`);
+   published offsets pass within the height tolerance, no step over 200 px.
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop hides a
+   much taller render; a union metric was rejected (white gaps score as matches).
 3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
    in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
    ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
