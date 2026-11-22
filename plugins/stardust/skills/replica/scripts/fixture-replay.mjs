@@ -463,7 +463,7 @@ const gateP = (async () => {
   coverageDeployed();
   mark('gate-start');
   timing('published-gate-start', `${NPG} page(s)`);
-  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', '--probe-concurrency', String(Math.min(4, NPG * 2)), ...(m.gate?.args || [])]);
+  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', '--eds-concurrency', String(Math.min(8, Math.max(4, NPG))), '--probe-concurrency', String(Math.min(8, Math.max(4, NPG))), ...(m.gate?.args || [])]);
   mark('gate-end');
   return g;
 })();
