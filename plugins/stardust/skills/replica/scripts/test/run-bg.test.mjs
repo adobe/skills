@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
 // concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max clamped to 110), instrument
-// deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
+// deadline (124; --timeout, else the launched script's --deadline-hint, else 900 s; --timeout above 24 h refused), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument).
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 10 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE } from '../run-bg.mjs';
+import { DEFAULT_SLOTS, DEFAULT_TIMEOUT_SEC, HINT_FLAG, HINT_MARKER, HINT_MAX_SEC, MAX_CEILING_SEC, MAX_TIMEOUT_SEC, STILL_RUNNING_EXIT, VERDICT_RE, deadlineHint } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -206,6 +206,107 @@ await check('VERDICT_RE covers the gate instruments and skips prose', () => {
     'gate.sh: reaped stale instrument pid 4 (running 16:02): stitch-shot.mjs', 'stitch-shot WARNING: FONT LOAD FAILED for declared face(s) Asar', '🔴 3 structural']) assert.match(l, VERDICT_RE, l);
   for (const l of ['consent dismissed via #onetrust-accept-btn-handler', 'passing 3 selectors through', 'no errors so far', 'diff image: stardust/replica/gates/home-1440/diff-iter2.png']) assert.doesNotMatch(l, VERDICT_RE, l);
 });
+
+
+// ---- the deadline: --timeout, else the launched script's hint, else 900 s (header § Deadline) ----
+// Stub scripts: asked with --deadline-hint a stub records the question (<name>.asked) and answers as its body says;
+// run as the job it only waits `STUB_JOB_MS` (default 50 ms).
+const stubs = mkdtempSync(join(tmpdir(), 'run-bg-stubs-'));
+const stub = (name, answer, { marker = true } = {}) => {
+  const f = join(stubs, `${name}.mjs`);
+  writeFileSync(f, `${marker ? `// ${HINT_MARKER}\n` : ''}import { writeFileSync } from 'node:fs';
+if (process.argv.includes('${HINT_FLAG}')) { writeFileSync(${JSON.stringify(join(stubs, `${name}.asked`))}, process.argv.slice(2).join(' ')); ${answer} }
+else setTimeout(() => console.log('job done'), Number(process.env.STUB_JOB_MS) || 50);\n`);
+  return f;
+};
+const asked = (name) => (existsSync(join(stubs, `${name}.asked`)) ? readFileSync(join(stubs, `${name}.asked`), 'utf8') : null);
+const finish = (...names) => { let r; for (let i = 0; i < 60; i += 1) { r = bg('wait', '--max', '5', ...names); if (r.code === 0) break; } return r; };
+
+await check('no --timeout and a script that answers the hint: that deadline, with its source on the start line, the launched line and in the state', () => {
+  const f = stub('sized', "console.log('1234'); process.exit(0);");
+  const r = bg('start', '--name', 'h1', '--', process.execPath, f, '--only', 'a,b');
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /queued h1 → .*h1\.log {3}\(deadline 1234s, hint from sized\.mjs; next step: /); assert.equal(r.err, '');
+  assert.equal(asked('sized'), `--only a,b ${HINT_FLAG}`, 'asked with the same arguments plus the flag');
+  assert.equal(finish('h1').code, 0);
+  const st = state('h1'); assert.deepEqual([st.timeoutSec, st.timeoutSource, st.exit, st.timedOut], [1234, 'hint from sized.mjs', 0, false]);
+  assert.match(readFileSync(join(dir, 'h1.log'), 'utf8'), /^run-bg: h1 launched \S+ \(timeout 1234s, hint from sized\.mjs\): /m);
+});
+await check('a script that does not carry the marker is never run for a hint: default 900 s, source default', () => {
+  const f = stub('plain', "console.log('7777'); process.exit(0);", { marker: false });
+  const r = bg('start', '--name', 'h2', '--', process.execPath, f);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\(deadline 900s, default; next step: /); assert.equal(r.err, '');
+  assert.equal(asked('plain'), null, 'a script that does not know the flag would have started its work');
+  assert.equal(finish('h2').code, 0);
+  assert.deepEqual([state('h2').timeoutSec, state('h2').timeoutSource], [DEFAULT_TIMEOUT_SEC, 'default']);
+  assert.match(readFileSync(join(dir, 'h2.log'), 'utf8'), /\(timeout 900s, default\): /);
+});
+await check('a marked script that errors, prints garbage, answers out of range or hangs leaves 900 s and one line says why', () => {
+  const cases = [
+    ['errs', "console.log('1234'); process.exit(3);", /errs\.mjs gave no usable deadline hint \(exit 3\) — the default 900s applies/, {}],
+    ['garbage', "console.log('about 20 minutes'); process.exit(0);", /garbage\.mjs gave no usable deadline hint \(its answer is not one integer\)/, {}],
+    ['twolines', "console.log('gate-all: 3 page(s)\\n1234'); process.exit(0);", /twolines\.mjs gave no usable deadline hint \(its answer is not one integer\)/, {}],
+    ['silent', 'process.exit(0);', /silent\.mjs gave no usable deadline hint \(its answer is not one integer\)/, {}],
+    ['huge', `console.log('${HINT_MAX_SEC + 1}'); process.exit(0);`, new RegExp(`huge\\.mjs gave no usable deadline hint \\(${HINT_MAX_SEC + 1}s is outside 1–${HINT_MAX_SEC}\\)`), {}],
+    ['zero', "console.log('0'); process.exit(0);", /zero\.mjs gave no usable deadline hint \(0s is outside/, {}],
+    ['hangs', 'setTimeout(() => {}, 60000);', /hangs\.mjs gave no usable deadline hint \(no answer within 0\.3s\)/, { RUN_BG_HINT_MS: '300' }],
+  ];
+  for (const [name, answer, why, extra] of cases) {
+    const f = stub(name, answer); const job = `h3-${name}`;
+    const t0 = Date.now();
+    const r = run(extra, 'start', '--name', job, '--', process.execPath, f);
+    assert.equal(r.code, 0, r.err); assert.match(r.out, /\(deadline 900s, default; next step: /, name); assert.match(r.err, why, name);
+    assert.ok(Date.now() - t0 < 4000, `${name}: start returned in ${Date.now() - t0} ms`);
+    assert.notEqual(asked(name), null, name);
+    assert.deepEqual([state(job).timeoutSec, state(job).timeoutSource], [DEFAULT_TIMEOUT_SEC, 'default'], name);
+  }
+  assert.equal(finish(...cases.map(([name]) => `h3-${name}`)).code, 0);
+});
+await check('only `node <script> …` is asked: a wrapper in front, a node option before the script or a missing file gets the default, unasked', () => {
+  const f = stub('wrapped', "console.log('1234'); process.exit(0);");
+  assert.equal(deadlineHint('/usr/bin/env', [process.execPath, f]), null);
+  assert.equal(deadlineHint(process.execPath, ['--no-warnings', f]), null);
+  assert.equal(deadlineHint(process.execPath, [join(stubs, 'missing.mjs')]), null);
+  assert.equal(deadlineHint('sh', ['-c', `node ${f}`]), null);
+  assert.equal(asked('wrapped'), null);
+  assert.deepEqual(deadlineHint(process.execPath, [f]), { script: 'wrapped.mjs', seconds: 1234 });
+  const r = bg('start', '--name', 'h4', '--', '/usr/bin/env', process.execPath, f);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\(deadline 900s, default; /); assert.equal(finish('h4').code, 0);
+});
+await check('an explicit --timeout wins over the hint and the script is not asked; --timeout 0 still disables the deadline', () => {
+  const f = stub('explicit', "console.log('1234'); process.exit(0);");
+  const r = bg('start', '--name', 'h5', '--timeout', '77', '--', process.execPath, f);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\(deadline 77s, --timeout; next step: /);
+  const z = bg('start', '--name', 'h6', '--timeout', '0', '--', process.execPath, f);
+  assert.equal(z.code, 0, z.err); assert.match(z.out, /\(deadline none, --timeout; next step: /);
+  assert.equal(asked('explicit'), null);
+  assert.equal(finish('h5', 'h6').code, 0);
+  assert.deepEqual([state('h5').timeoutSec, state('h5').timeoutSource, state('h6').timeoutSec, state('h6').timeoutSource], [77, '--timeout', 0, '--timeout']);
+  assert.match(readFileSync(join(dir, 'h6.log'), 'utf8'), /\(timeout nones, --timeout\): /);
+});
+await check(`a --timeout above ${MAX_TIMEOUT_SEC} s (24 h) is refused before anything starts (exit 125) and the message names the unit`, () => {
+  const f = stub('units', "console.log('1234'); process.exit(0);");
+  for (const v of ['3600000', String(MAX_TIMEOUT_SEC + 1)]) {
+    const r = bg('start', '--name', 'h7', '--timeout', v, '--', process.execPath, f);
+    assert.equal(r.code, 125, r.out); assert.match(r.err, new RegExp(`--timeout ${v} refused, nothing started — the value is in SECONDS and the most is ${MAX_TIMEOUT_SEC} \\(24 h\\)`)); assert.equal(r.out, '');
+  }
+  assert.match(bg('start', '--name', 'h7', '--timeout', '3600000', '--', process.execPath, f).err, /reads as milliseconds \(3600 s\?\)/);
+  assert.deepEqual([existsSync(join(dir, 'h7.json')), existsSync(join(dir, 'h7.log')), asked('units')], [false, false, null], 'no state, no log, no question');
+  const ok = bg('start', '--name', 'h8', '--timeout', String(MAX_TIMEOUT_SEC), '--', process.execPath, f);
+  assert.equal(ok.code, 0, ok.err); assert.equal(finish('h8').code, 0);
+});
+await check('the kill at a hinted deadline: exit 124, the same deadline message, timedOut in the state', () => {
+  const f = stub('short', "console.log('1'); process.exit(0);");
+  const r = run({ STUB_JOB_MS: '8000' }, 'start', '--name', 'h9', '--', process.execPath, f);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\(deadline 1s, hint from short\.mjs; /);
+  const w = finish('h9');
+  assert.equal(w.code, 0, w.out); assert.match(w.out, /^h9 {2}deadline 1s exceeded \(exit 124: no verdict — re-run, or raise --timeout for a legitimately huge page\) in \ds$/m); assert.match(w.out, /run-capped: h9 exceeded 1s — killed \(exit 124\)/);
+  const st = state('h9'); assert.deepEqual([st.exit, st.timedOut, st.timeoutSec, st.timeoutSource], [124, true, 1, 'hint from short.mjs']);
+});
+await check('--help states the deadline order, the marker, the flag and the 24 h maximum', () => {
+  const r = bg('--help');
+  assert.equal(r.code, 0); for (const t of [HINT_MARKER, HINT_FLAG, String(MAX_TIMEOUT_SEC), String(HINT_MAX_SEC), 'SECONDS']) assert.ok(r.out.includes(t), t);
+});
+rmSync(stubs, { recursive: true, force: true });
 
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failing` : '\nrun-bg: all checks passed');
