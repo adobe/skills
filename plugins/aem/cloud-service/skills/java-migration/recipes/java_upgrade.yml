@@ -1,0 +1,7 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: adobe.aem.Java25Evaluation
+displayName: Evaluate an AEM Maven project on Java 25
+description: Invoke the upstream Java 25 chain once, including its intermediate migrations.
+recipeList:
+  - org.openrewrite.java.migrate.UpgradeToJava25

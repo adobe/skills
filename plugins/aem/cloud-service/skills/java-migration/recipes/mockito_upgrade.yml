@@ -1,0 +1,7 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: adobe.aem.MockitoMigration
+displayName: Migrate Mockito tests
+description: Invoke the upstream Mockito migration once after the target JDK build.
+recipeList:
+  - org.openrewrite.java.testing.mockito.Mockito1to5Migration

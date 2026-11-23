@@ -57,6 +57,12 @@
       "matchPackageNames": ["@adobe/aio-cli-plugin-certificate"],
       "matchFileNames": ["plugins/app-builder/**"],
       "enabled": false
+    },
+    {
+      "description": "Java migration evaluation intentionally pins its Maven recipe/plugin/dependency combination and verified classifier replacement. Update these together only after compatibility, license and real AEM regression checks; see java-migration/references/version-pins.md. CI action updates remain enabled.",
+      "matchFileNames": ["plugins/aem/cloud-service/skills/java-migration/**"],
+      "matchDatasources": ["maven"],
+      "enabled": false
     }
   ],
   "customManagers": [

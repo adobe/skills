@@ -1,0 +1,30 @@
+name: AEM Java migration regression tests
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/aem/cloud-service/skills/java-migration/**'
+      - 'plugins/aem/cloud-service/test/java-migration/**'
+      - '.github/workflows/java-migration.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/aem/cloud-service/skills/java-migration/**'
+      - 'plugins/aem/cloud-service/test/java-migration/**'
+      - '.github/workflows/java-migration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Deterministic XML and simulated workflow scenarios
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s plugins/aem/cloud-service/test/java-migration -p 'test_*.py' -v

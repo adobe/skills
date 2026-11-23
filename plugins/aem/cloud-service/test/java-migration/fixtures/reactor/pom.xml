@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>example</groupId><artifactId>migration-fixture</artifactId><version>1.0</version>
+  <packaging>pom</packaging>
+  <!-- This is a deterministic XML fixture, not an accepted AEM integration project. -->
+  <properties>
+    <java.version>11</java.version>
+    <compiler.level>11</compiler.level>
+    <compiler.plugin>3.8.1</compiler.plugin>
+    <asm.version>9.2</asm.version>
+    <maven.compiler.source>${java.version}</maven.compiler.source>
+    <maven.compiler.target>${java.version}</maven.compiler.target>
+  </properties>
+  <modules><module>core</module></modules>
+  <dependencyManagement><dependencies>
+    <dependency><groupId>com.adobe.aem</groupId><artifactId>aem-sdk-api</artifactId><version>2024.1.14804.20240116T144946Z-231200</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.ow2.asm</groupId><artifactId>asm</artifactId><version>${asm.version}</version></dependency>
+    <dependency><groupId>org.example</groupId><artifactId>untouched</artifactId><version>${asm.version}</version><classifier>jdk11</classifier></dependency>
+  </dependencies></dependencyManagement>
+  <build><pluginManagement><plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>${compiler.plugin}</version>
+      <configuration><release>${compiler.level}</release><compilerArgs><arg>-parameters</arg></compilerArgs></configuration>
+      <dependencies><dependency><groupId>org.example</groupId><artifactId>nested</artifactId><version>1.2.3</version></dependency></dependencies>
+    </plugin>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.1.2</version>
+      <configuration>
+        <argLine combine.self="override"><![CDATA[@{argLine} -Dmessage="a & b" -javaagent:custom.jar]]></argLine>
+        <systemPropertyVariables combine.children="append"><message>a &amp; b</message></systemPropertyVariables>
+      </configuration>
+    </plugin>
+    <plugin><groupId>org.example</groupId><artifactId>unrelated-plugin</artifactId><version>2.3</version><configuration><source>leave me</source><argLine combine.children="append">-Dhello=world</argLine></configuration></plugin>
+    <plugin>
+      <groupId>org.apache.jackrabbit</groupId><artifactId>filevault-package-maven-plugin</artifactId><version>1.3.6</version>
+      <configuration><properties><javaVersion>custom metadata</javaVersion><description>a &amp; b</description></properties><failOnDependencyErrors>true</failOnDependencyErrors></configuration>
+    </plugin>
+  </plugins></pluginManagement></build>
+</project>
