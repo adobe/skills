@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { statusOf } from './tessl-eval.mjs';
+import { commitFixtures, fetchFixtureCommits, statusOf } from './tessl-eval.mjs';
 import { fakeBin, run, tree } from './lib/testing.mjs';
 
 test('a run is completed or failed as it says, unknown while it is not there, failed on any other error', () => {
@@ -70,17 +70,24 @@ test('no run started: no comment file, and has_results is false', (t) => {
   assert.equal(existsSync(join(root, 'comment.md')), false);
 });
 
-test('an organization out of credits is skipped, not failed, and the plugins after it are not started', (t) => {
-  const root = tree(t, { 'dirs.txt': 'plugins/ok\nplugins/broke\nplugins/bad\n' });
+test('an organization out of credits is skipped, not failed, and every plugin is still asked', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/ok\nplugins/broke\nplugins/other/broke\n' });
   const result = run(t, 'tessl-eval.mjs', ['dirs.txt', 'comment.md'], { cwd: root, env: env(t, root) });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.output, /^outcome=no-credits$/m);
   assert.match(result.summary, /\| ok \| passed \| ✅ \|/);
-  assert.match(result.summary, /\| broke \| not run \| ⏭️ no credits \|/);
-  assert.match(result.summary, /\| bad \| not run \| ⏭️ no credits \|/);
+  assert.equal(result.summary.match(/\| broke \| not run \| ⏭️ no credits \|/g).length, 2);
   assert.match(result.summary, /2 plugin\(s\) were not evaluated: the Tessl organization has run out of credits/);
   assert.match(result.stdout, /::warning::2 plugin\(s\) were not evaluated/);
-  assert.equal(readFileSync(join(root, 'calls'), 'utf8').split('\n').filter((line) => line.startsWith('eval run')).length, 2, 'the third eval is not started');
+  assert.equal(readFileSync(join(root, 'calls'), 'utf8').split('\n').filter((line) => line.startsWith('eval run')).length, 3, 'the plugin after the first skip is asked too');
+});
+
+test('a setup error after the credits ran out still fails', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/broke\nplugins/refused\n' });
+  const result = run(t, 'tessl-eval.mjs', ['dirs.txt', 'comment.md'], { cwd: root, env: env(t, root) });
+  assert.equal(result.status, 1);
+  assert.match(result.output, /^outcome=failed$/m);
+  assert.match(result.summary, /\| refused \| error \| ❌ \|/);
 });
 
 test('a failed eval before the credits run out still fails; a clean run has the outcome passed', (t) => {
@@ -90,4 +97,35 @@ test('a failed eval before the credits run out still fails; a clean run has the 
   assert.match(failed.output, /^outcome=failed$/m);
   const clean = run(t, 'tessl-eval.mjs', ['clean.txt', 'comment.md'], { cwd: root, env: { ...env(t, root), CALLS: join(root, 'calls-clean') } });
   assert.match(clean.output, /^outcome=passed$/m);
+});
+
+test('commit fixtures come from fixtures of type commit and from the older single fixture', (t) => {
+  const root = tree(t, {
+    'evals/a/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'aaa' } }),
+    'evals/group/b/scenario.json': JSON.stringify({ fixtures: { c: { type: 'commit', repoUrl: 'https://github.com/o/s.git', ref: 'bbb' }, d: { type: 'directory', path: './x', installPath: 'x' } } }),
+    'evals/c/scenario.json': JSON.stringify({ description: 'no fixture' }),
+    'evals/d/scenario.json': 'not json',
+  });
+  assert.deepEqual(commitFixtures(root).sort((x, y) => x.ref.localeCompare(y.ref)), [
+    { repoUrl: 'https://github.com/o/r.git', ref: 'aaa' },
+    { repoUrl: 'https://github.com/o/s.git', ref: 'bbb' },
+  ]);
+  assert.deepEqual(commitFixtures(join(root, 'missing')), []);
+});
+
+test('a commit fixture the repository lacks is fetched from its https repoUrl, once', (t) => {
+  const root = tree(t, {
+    'evals/a/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'missing' } }),
+    'evals/b/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'missing' } }),
+    'evals/c/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'present' } }),
+    'evals/d/scenario.json': JSON.stringify({ fixture: { repoUrl: 'file:///etc', ref: 'local' } }),
+    'evals/e/scenario.json': JSON.stringify({ fixture: { ref: 'own' } }),
+  });
+  const calls = [];
+  const git = (args) => {
+    calls.push(args.join(' '));
+    return { status: args[0] === 'cat-file' && args[2] !== 'present^{commit}' ? 1 : 0, stderr: '' };
+  };
+  fetchFixtureCommits(root, git);
+  assert.deepEqual(calls.filter((call) => call.startsWith('fetch')), ['fetch --quiet --no-tags https://github.com/o/r.git missing']);
 });

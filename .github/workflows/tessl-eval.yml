@@ -83,7 +83,8 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           # the plugins this pull request touches that have scenarios in evals/; all of
-          # those if it changes something under plugins/ that belongs to no plugin
+          # those if it changes something under plugins/ that belongs to no plugin, or the
+          # eval tooling itself
           node scripts/changed.mjs tessl-plugins "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/plugin-dirs.txt"
           if [ -s "$RUNNER_TEMP/plugin-dirs.txt" ]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -106,7 +107,25 @@ jobs:
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         if: steps.detect.outputs.skip != 'true'
         with:
+          # renovate: datasource=npm depName=@tessl/cli
+          version: '0.122.0'
           token: ${{ secrets.TESSL_TOKEN }}
+
+      # tessl eval run reads a plugin from its .tessl-plugin/plugin.json, which x927 generates
+      # from the root plugin.json after the merge: a new plugin has none on its own pull
+      # request. Evaluate the manifests as they will be on main. Nothing here is committed.
+      - name: Build the plugin manifests in this checkout
+        if: steps.detect.outputs.skip != 'true'
+        run: npm ci --ignore-scripts && npm run plugins:build
+
+      # tessl eval run saves a run to the Tessl project of the nearest tessl.json above the
+      # plugin, and fails without one. Only edge-delivery-services brings its own. Every other
+      # plugin uses a tessl.json at the root of this checkout, linked to the project of this
+      # repository in the adobe workspace: the command links the one that matches, or creates
+      # it on the first run.
+      - name: Link this checkout to its Tessl project
+        if: steps.detect.outputs.skip != 'true'
+        run: tessl project create skills --workspace adobe
 
       - name: Run evals
         id: run-evals

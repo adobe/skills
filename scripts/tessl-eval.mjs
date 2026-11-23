@@ -4,11 +4,16 @@
 // POLL_INTERVAL (default 30) and TIMEOUT (default 900), both in seconds, come from the environment.
 //
 // An organization without credits is not a failed eval: nothing ran. Those plugins count as
-// skipped and don't fail the run. The step output `outcome` is `failed`, `no-credits` or
-// `passed`, in that order of precedence.
+// skipped and don't fail the run. Each plugin is still asked: the answer costs nothing, and
+// what the CLI checks before the credits (the Tessl project, the fixtures) shows up for every
+// plugin. The step output `outcome` is `failed`, `no-credits` or `passed`, in that order of
+// precedence.
+//
+// The CLI packs a commit fixture with `git archive` from the local repository, also one with a
+// repoUrl of another repository. Such a commit is fetched from its repoUrl first.
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { error, group, setOutput, summary, table, warning } from './lib/actions.mjs';
 import { readDirs } from './lib/dirs.mjs';
@@ -26,6 +31,47 @@ export function statusOf(view) {
     return JSON.parse(view.stdout).data.attributes.status;
   } catch {
     return 'unknown';
+  }
+}
+
+// The commit fixtures of a plugin's scenarios, as { repoUrl, ref }: a fixture of type commit
+// under `fixtures`, or the older single `fixture`, which is a commit fixture without a type.
+export function commitFixtures(dir) {
+  const found = [];
+  const visit = (path) => {
+    if (!existsSync(path)) return;
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      if (entry.isDirectory()) visit(join(path, entry.name));
+      else if (entry.name === 'scenario.json') {
+        let scenario;
+        try {
+          scenario = JSON.parse(readFileSync(join(path, entry.name), 'utf8'));
+        } catch {
+          continue; // the CLI reports it
+        }
+        const fixtures = scenario.fixtures ? Object.values(scenario.fixtures) : scenario.fixture ? [{ type: 'commit', ...scenario.fixture }] : [];
+        for (const fixture of fixtures) {
+          if (fixture?.type === 'commit' && typeof fixture.ref === 'string') found.push({ repoUrl: fixture.repoUrl, ref: fixture.ref });
+        }
+      }
+    }
+  };
+  visit(join(dir, 'evals'));
+  return found;
+}
+
+// Fetches the commit fixtures that the local repository lacks from their https repoUrl.
+// One that can't be fetched is left to the CLI, which names it.
+export function fetchFixtureCommits(dir, git = (args) => spawnSync('git', args, { encoding: 'utf8' })) {
+  const seen = new Set();
+  for (const { repoUrl, ref } of commitFixtures(dir)) {
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    if (git(['cat-file', '-e', `${ref}^{commit}`]).status === 0) continue;
+    if (typeof repoUrl !== 'string' || !repoUrl.startsWith('https://')) continue;
+    console.log(`Fetching commit fixture ${ref} from ${repoUrl}`);
+    const fetched = git(['fetch', '--quiet', '--no-tags', repoUrl, ref]);
+    if (fetched.status !== 0) warning(`Could not fetch commit fixture ${ref} from ${repoUrl}: ${(fetched.stderr ?? '').trim()}`);
   }
 }
 
@@ -49,7 +95,6 @@ async function main() {
   const rows = [];
   const links = [];
   const count = { passed: 0, failed: 0, skipped: 0 };
-  let credits = true;
   const skip = (name) => {
     count.skipped += 1;
     rows.push([name, 'not run', '⏭️ no credits']);
@@ -62,18 +107,13 @@ async function main() {
   };
   for (const dir of readDirs(dirsFile)) {
     const name = basename(dir);
-    if (!credits) {
-      // the next eval would get the same answer
-      skip(name);
-      continue;
-    }
     const run = group(`Evaluating ${name} (${dir})`, () => {
+      fetchFixtureCommits(dir);
       const started = tessl(['eval', 'run', dir]);
       console.log(`${started.stdout ?? ''}${started.stderr ?? ''}`);
       return started;
     });
     if (run.status !== 0 && outOfCredits(`${run.stdout ?? ''}${run.stderr ?? ''}`)) {
-      credits = false;
       skip(name);
       continue;
     }

@@ -114,6 +114,8 @@ jobs:
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         if: steps.prereq.outputs.skip != 'true'
         with:
+          # renovate: datasource=npm depName=@tessl/cli
+          version: '0.122.0'
           token: ${{ secrets.TESSL_TOKEN }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
