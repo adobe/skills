@@ -68,7 +68,7 @@ These copy skills, not plugins: an MCP server, a hook or a dependency that a plu
 | --- | --- | --- |
 | [`adobe-analytics`](plugins/adobe-analytics/README.md) | KPI monitoring, funnels, segment comparison and readouts in Adobe Analytics | [MCP server](#mcp-servers-and-the-clients-they-work-with) |
 | [`adobe-cja`](plugins/adobe-cja/README.md) | The same for Customer Journey Analytics, plus dimension analysis | [MCP server](#mcp-servers-and-the-clients-they-work-with) |
-| [`adobe-for-developers`](plugins/adobe-for-developers/README.md) | Search developer.adobe.com; manage Developer Console projects, credentials and I/O Events | [MCP server](#mcp-servers-and-the-clients-they-work-with) |
+| [`adobe-for-developers`](plugins/adobe-for-developers/README.md) | Search developer.adobe.com; manage Developer Console and I/O Events; build, deploy and troubleshoot App Builder apps | [MCP server](#mcp-servers-and-the-clients-they-work-with); Node.js and `aio` CLI for App Builder |
 | [`aem-edge-delivery-services`](plugins/aem/edge-delivery-services/README.md) | Build sites on Edge Delivery Services: blocks, content models, local development, page import | Node.js. Some skills use a Figma or DA MCP server if one is connected |
 | [`aem-eds-content-ops`](plugins/aem/edge-delivery-services-content-ops/skills) | Content operations on Edge Delivery Services: audits, SEO, accessibility, metadata, sitemaps | |
 | [`aem-eds-personalization`](plugins/aem/edge-delivery-services-personalization/README.md) | Section-based personalization on Edge Delivery Services: rules, a decision API, an A/B split or Adobe Target pick the fragment a section shows | Node.js and Playwright for the checks; a Cloudflare edge worker is optional |

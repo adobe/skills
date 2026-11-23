@@ -244,6 +244,25 @@ export function withoutDependencies(pluginDir) {
 }
 
 // The files below dir, as { path, bytes, hash }, without what a client keeps for itself.
+// Claude Code does not load a plugin whose dependencies are not installed ("dependency-unsatisfied"), and the home
+// of a run is empty: a plugin that depends on another one loaded none of its skills, so both arms were the same
+// agent. The plugin is therefore loaded from a copy whose manifest names no dependencies. The skills of the
+// dependencies are not there; the report says so. → { dir, dropped: ['name@marketplace', …], cleanup }.
+export function withoutDependencies(pluginDir) {
+  const same = { dir: pluginDir, dropped: [], cleanup: () => {} };
+  const manifestPath = join(pluginDir, '.claude-plugin', 'plugin.json');
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); } catch { return same; }
+  const dependencies = Array.isArray(manifest.dependencies) ? manifest.dependencies : [];
+  if (dependencies.length === 0) return same;
+  const dir = mkdtempSync(join(tmpdir(), 'skill-eval-plugin-'));
+  cpSync(pluginDir, dir, { recursive: true, filter: (src) => !['node_modules', '.git'].includes(basename(src)) });
+  const { dependencies: _dropped, ...rest } = manifest;
+  writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), `${JSON.stringify(rest, null, 2)}\n`);
+  const name = (d) => (typeof d === 'string' ? d : [d.name, d.marketplace].filter(Boolean).join('@'));
+  return { dir, dropped: dependencies.map(name), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
 export function listFiles(dir, base = dir, found = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (['.git', 'node_modules', '.claude', '.codex', '.grok', '.gemini'].includes(entry.name)) continue;
@@ -397,7 +416,6 @@ function main() {
   // only Claude Code loads the plugin from its directory; the other clients install it
   const loaded = options.client === 'claude' ? withoutDependencies(described.dir) : { dir: described.dir, dropped: [], cleanup: () => {} };
   const plugin = { ...described, dir: loaded.dir };
-  process.on('exit', loaded.cleanup); // every way out, the exits before a run included, removes the copy
   if (loaded.dropped.length > 0) notes.push(`The plugin depends on ${loaded.dropped.join(', ')}, which the home of a run does not have. It was loaded from a copy without that dependency, so its own skills load; the skills of ${loaded.dropped.length === 1 ? 'that plugin' : 'those plugins'} are not there.`);
   let prompt = options.prompt;
   let start = options.workdir ? resolve(options.workdir) : null;
@@ -504,6 +522,7 @@ function main() {
       rmSync(setupHome, { recursive: true, force: true });
     }
   }
+  loaded.cleanup();
   console.log(JSON.stringify(result, null, 2));
   if (failed) process.exit(1);
 }

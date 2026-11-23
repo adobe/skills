@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "adobe-for-developers",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.",
   "author": {
     "name": "Adobe Inc.",

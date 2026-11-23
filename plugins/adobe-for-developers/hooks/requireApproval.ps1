@@ -17,11 +17,19 @@ $destructiveTools = @(
   'delete_project',
   'delete_subscriber_filter',
   'delete_workspace',
+  'edit_project',
+  'patch_event_registration',
+  'subscribe_admin_enterprise_credential_to_services',
+  'subscribe_credential_to_services',
+  'unsubscribe_admin_enterprise_credential_from_service',
   'unsubscribe_credential_from_service',
-  'unsubscribe_admin_enterprise_credential_from_service'
+  'update_admin_enterprise_credential',
+  'update_event_registration',
+  'update_subscriber_filter'
 )
 
-$ask = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This permanently deletes or removes Adobe Developer Console resources and cannot be undone. Confirm the exact resource before approving."}}'
+$ask = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This changes, overwrites, or removes Adobe resources or settings. Deletions cannot be undone; configuration changes have no automatic undo. Review the resource and changes before approving."}}'
+$askTerms = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This records your agreement to the Adobe Developer Terms and cannot be undone by this connector. Review https://www.adobe.com/go/developer-terms and approve only if you agree."}}'
 $pass = '{"continue":true}'
 
 # The tool name must end with a destructive tool, preceded by a separator so that
@@ -53,7 +61,11 @@ $payload = $reader.ReadToEnd()
 
 foreach ($match in [regex]::Matches($payload, '"tool_name"\s*:\s*"([^"\\]*)"')) {
   if (Test-DestructiveConnectorTool $match.Groups[1].Value) {
-    [Console]::Out.Write($ask)
+    if ($match.Groups[1].Value.EndsWith('accept_developer_terms', [System.StringComparison]::Ordinal)) {
+      [Console]::Out.Write($askTerms)
+    } else {
+      [Console]::Out.Write($ask)
+    }
     exit 0
   }
 }

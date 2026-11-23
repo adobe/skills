@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^(?:mcp__.*[Aa][Dd][Oo][Bb][Ee].*[Ff][Oo][Rr].*[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss].*__|[Aa][Dd][Oo][Bb][Ee]-[Ff][Oo][Rr]-[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]-)(delete_credential|delete_event_registration|delete_project|delete_subscriber_filter|delete_workspace|unsubscribe_credential_from_service|unsubscribe_admin_enterprise_credential_from_service)$",
+        "matcher": "^(?:mcp__.*[Aa][Dd][Oo][Bb][Ee].*[Ff][Oo][Rr].*[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss].*__|[Aa][Dd][Oo][Bb][Ee]-[Ff][Oo][Rr]-[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]-)(delete_credential|delete_event_registration|delete_project|delete_subscriber_filter|delete_workspace|edit_project|patch_event_registration|subscribe_admin_enterprise_credential_to_services|subscribe_credential_to_services|unsubscribe_admin_enterprise_credential_from_service|unsubscribe_credential_from_service|update_admin_enterprise_credential|update_event_registration|update_subscriber_filter)$",
         "hooks": [
           {
             "type": "command",

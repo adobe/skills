@@ -13,9 +13,10 @@
 LC_ALL=C
 export LC_ALL
 
-DESTRUCTIVE_TOOLS="delete_credential delete_event_registration delete_project delete_subscriber_filter delete_workspace unsubscribe_credential_from_service unsubscribe_admin_enterprise_credential_from_service"
+DESTRUCTIVE_TOOLS="delete_credential delete_event_registration delete_project delete_subscriber_filter delete_workspace edit_project patch_event_registration subscribe_admin_enterprise_credential_to_services subscribe_credential_to_services unsubscribe_admin_enterprise_credential_from_service unsubscribe_credential_from_service update_admin_enterprise_credential update_event_registration update_subscriber_filter"
 
-ASK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This permanently deletes or removes Adobe Developer Console resources and cannot be undone. Confirm the exact resource before approving."}}'
+ASK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This changes, overwrites, or removes Adobe resources or settings. Deletions cannot be undone; configuration changes have no automatic undo. Review the resource and changes before approving."}}'
+ASK_TERMS='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This records your agreement to the Adobe Developer Terms and cannot be undone by this connector. Review https://www.adobe.com/go/developer-terms and approve only if you agree."}}'
 PASS='{"continue":true}'
 
 # The tool name must end with a destructive tool, preceded by a separator so that
@@ -59,7 +60,10 @@ names=$(cat | tr '\r\n' '  ' | grep -oE '"tool_name"[[:space:]]*:[[:space:]]*"[^
 
 while IFS= read -r name; do
   if is_destructive_connector_tool "$name"; then
-    printf '%s' "$ASK"
+    case $name in
+      *accept_developer_terms) printf '%s' "$ASK_TERMS" ;;
+      *) printf '%s' "$ASK" ;;
+    esac
     exit 0
   fi
 done <<EOF

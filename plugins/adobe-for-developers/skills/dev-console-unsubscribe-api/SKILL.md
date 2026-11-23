@@ -20,8 +20,8 @@ Remove one or more API subscriptions from a credential in the selected workspace
 2. **Explain the change and request approval** — Before calling a tool, summarize the API name(s), credential name, and project name that will be affected, and say that the change has no automatic undo. Do not ask the user to type a name or provide a typed confirmation. The client's Yes/No approval prompt is the confirmation.
 
 3. **Remove the subscription**:
-   - For credential types `adobeid`, `analytics`, `entp`, and `oauth_server_to_server`, call `unsubscribe_credential_from_service` with `orgId`, `projectId`, `workspaceId`, the credential's actual `credentialType`, `credentialId`, and the selected API's `sdkCode` in `sdkCodes`.
-   - For **Admin Enterprise** (`admin_entp`), call `unsubscribe_admin_enterprise_credential_from_service` with `orgId`, `credentialId`, and one `service` item containing the selected API's `sdkCode` plus any required subscription settings. Use the existing subscription details; do not invent settings. Make one call per API so the client can approve each removal separately.
+   - For credential types `adobeid`, `analytics`, `entp`, and `oauth_server_to_server`, call `unsubscribe_credential_from_service` with `consumerOrgId`, `projectId`, `workspaceId`, the credential's actual `credentialType`, `credentialId`, and the selected API's `sdkCode` in `sdkCodes`.
+   - For **Admin Enterprise** (`admin_entp`), call `unsubscribe_admin_enterprise_credential_from_service` with `consumerOrgId`, `credentialId`, and one `service` item containing the selected API's `sdkCode` plus any required subscription settings. Use the existing subscription details; do not invent settings. Make one call per API so the client can approve each removal separately.
    - Never emulate unsubscription by sending a reduced service list to a subscription or update tool. For OAuth Server-to-Server, always use `unsubscribe_credential_from_service`; it selects the dedicated upstream unsubscribe path.
    - If the user declines a client approval prompt, stop without retrying or working around it.
 
