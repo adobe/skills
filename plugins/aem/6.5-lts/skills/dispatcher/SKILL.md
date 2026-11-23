@@ -6,7 +6,7 @@ description: |
   orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
   in AEM 6.5 LTS and AMS environments.
 license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
+compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; runtime checks require an available, approved tool.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -34,17 +34,13 @@ Route user requests to the appropriate specialist skill based on intent.
 3. Follow the workflow, references, and output contract defined in that skill.
 4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
 
+## Runtime Selection
+
+Before runtime-specific edits, confirm project evidence identifies AEM 6.5 LTS or AMS. If the runtime evidence is missing or conflicting, ask the user; do not silently use Cloud Service instructions.
+
 ## MCP Tool Contract
 
-All specialist skills share the same core-7 MCP tool set:
-
-- `validate` — static config validation
-- `lint` — deep/order-aware linting
-- `sdk` — SDK check-files and diff-baseline
-- `trace_request` — trace a request through dispatcher
-- `inspect_cache` — inspect cache state
-- `monitor_metrics` — runtime metrics
-- `tail_logs` — log tailing
+For AMS, do not assume Dispatcher runtime tools are available. Confirm an approved tool is configured before a runtime check; otherwise limit work to explanation and static review, report each tool-dependent check as NOT VERIFIED, and never fabricate tool output.
 
 ## Specialist Skills
 
