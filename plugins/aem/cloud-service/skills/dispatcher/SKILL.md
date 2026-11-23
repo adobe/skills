@@ -1,9 +1,9 @@
 ---
 name: dispatcher
 description: |
-  Use when the user asks to edit or review AEM as a Cloud Service Dispatcher `.any` farms, filters,
-  vhosts, cache or rewrite rules; troubleshoot cache invalidation or publish-tier delivery; or plan
-  approved Dispatcher MCP checks.
+  Single entry point for all AEM as a Cloud Service Dispatcher skills. Covers config authoring,
+  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
+  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration.
 license: Apache-2.0
 compatibility: Tool-dependent checks require Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
