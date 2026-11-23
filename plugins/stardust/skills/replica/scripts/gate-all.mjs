@@ -32,14 +32,19 @@
  * runs ALIGNED; aligned % ≤ --threshold AND the total offset ≤ the bound — --offset-max <px>, default 8 at the
  * prototype stage and the larger of 8 and 1 % of the origin height at the published one; aligned % within the
  * threshold but offsets over the bound fails with `offsets: <n> step(s), <px>px total — …`, the fix list; alignment
- * not used → the unaligned %, as before) AND |Δh| ≤ --height-tol × origin height (a union metric
+ * not used → the unaligned %, as before; ROSTER TOLERANCE, published stage without --offset-max: a row over that
+ * bound passes the offsets while its total offset ≤ --height-tol × origin height — what the height criterion beside
+ * it allows — and no single step exceeds 200 px, `rosterOffsets`; gate.sh and the prototype stage keep the bound) AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
  * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
  * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
  * recorded beside it per page and in the totals — every run is calibration data. Row: `pct` is the UNALIGNED %
  * (what every reader of the table has always read), beside it `alignedPct`, `alignedUsed`, `totalShift`, `steps`
- * (≤ 12), `offsetBound`; totals.alignedOnlyPass counts the rows that pass only thanks to alignment, failOffsets the
- * rows failing on offsets alone.
+ * (≤ 12), `offsetBound` (the strict bound), `offsetTolerance` (the roster tolerance in px, null where it does not
+ * apply), `offsetJudge` ('bound' | 'tolerance': the number that decided the offsets) and, on a row whose pixel
+ * criterion is met only under the tolerance, `offsetsWithinTolerance: true` + a `notes` entry with the total shift.
+ * totals.alignedOnlyPass counts the rows that pass only thanks to alignment, failOffsets the rows failing on offsets
+ * alone, offsetsWithinTolerance the rows over the strict bound and within the tolerance. No override is involved.
  * ORIGIN (both stages): the page's FROZEN REFERENCE (reference.mjs: primed, measured against itself, frozen once) —
  * the usable baseline of the page's archetype gate dir `gates/<slug>-<width>/` (gate.sh's, shared), else (prototype
  * stage) that dir's cached live.png, else the one in the page's own dir, else one is frozen there
@@ -110,7 +115,7 @@
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
+ * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `rosterOffsets`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
  * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
@@ -173,7 +178,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --origin-concurrency <n>  2      --eds-concurrency <n>  4      --probe-concurrency <n>  2
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --offset-max <px>         total offset the pixel criterion allows (default: 8 at the prototype stage; published the
-                            larger of 8 and 1 % of the origin height)
+                            larger of 8 and 1 % of the origin height, then the roster tolerance below); given, it is
+                            the only bound
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
   --compare-only            no captures, no probes, no browser: pixel-compare over the existing PNGs (a passed page:
@@ -186,6 +192,11 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   the bound; within the threshold but over the bound the reason is "offsets: <n> step(s), <px>px total — …" (the fix
   list), not a percentage; alignment not used → the unaligned %. The row keeps pct = the unaligned % and adds
   alignedPct, alignedUsed, totalShift, steps (≤ 12), offsetBound.
+  Roster tolerance (published stage, no --offset-max): offsets over the bound still pass while the total offset ≤
+  height-tol × origin height (the height criterion's tolerance) and no single step exceeds 200 px. The row records
+  offsetBound (strict), offsetTolerance, offsetJudge (bound | tolerance); one passing only under the tolerance has
+  offsetsWithinTolerance and a note with its total shift (summary.md: "(reported) offsets within the roster
+  tolerance: …"), counted in totals.offsetsWithinTolerance. gate.sh and --stage prototype keep the strict bound.
   Origin = the page's frozen reference (reference.mjs: primed, noise floor measured): the archetype gate dir's
   (gates/<slug>-<width>/), else one frozen once into the page's dir and reused; its self-varying rows are masked and
   the row records noiseFloor and variableRows. An UNSTABLE reference is an error row — reference-unstable: <line> —
@@ -512,14 +523,34 @@ export function overrideScope(override) {
  * `error`, content `probeError`) is `probeErrors` [{ probe, error }] + one `probe-error:<probe>` reason: not a pass.
  * pixelPass = pixel-compare's `pixelVerdict` (header § VERDICT) with the bound `offsetMax` px, else the stage's
  * default; a pixel.json from before --align reads as alignment not used. A `reference-unstable: …` pixel error is
- * the row's reason as it stands.
+ * the row's reason as it stands. Offsets over that bound are then judged by `rosterOffsets` (header § VERDICT).
  */
+export const ROSTER_OFFSETS = { step: 200 };
+/**
+ * The roster tolerance on the offsets (published stage, no explicit --offset-max; alignment used): a total offset over
+ * the strict bound passes while ≤ heightTol × origin height — the height criterion's tolerance — with no single step
+ * over ROSTER_OFFSETS.step px (one step that large is a section missing or added, not accumulated drift).
+ * → { tolerance (px | null: does not apply), judge ('bound' | 'tolerance' | null: alignment not used), pass (the
+ * offsets pass), within (they pass only under the tolerance), largest (px), over (why they fail under it | null) }.
+ */
+export function rosterOffsets(pv, steps = [], { stage = 'published', offsetMax = null, heightTol = 0.05, originH = 0 } = {}) {
+  if (!pv || !pv.used || pv.bound === null) return { tolerance: null, judge: null, pass: !pv || pv.offsetsPass, within: false, largest: 0, over: null };
+  const applies = stage === 'published' && offsetMax == null;
+  const tolerance = applies ? Math.max(pv.bound, Math.floor(heightTol * originH)) : null;
+  if (!applies || pv.offsetsPass) return { tolerance, judge: 'bound', pass: pv.offsetsPass, within: false, largest: 0, over: null };
+  const largest = (steps || []).reduce((m, s) => Math.max(m, Math.abs(s.shift)), 0);
+  const over = pv.totalShift > tolerance ? `over the roster tolerance ${tolerance}px` : largest > ROSTER_OFFSETS.step ? `one step of ${largest}px, over ${ROSTER_OFFSETS.step}px (roster tolerance ${tolerance}px)` : null;
+  return { tolerance, judge: 'tolerance', pass: !over, within: !over, largest, over };
+}
 export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0, capture = { fonts: [], fontsSkipped: [] } }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true, stage = 'published', offsetMax = null } = {}) {
   const compared = pixel.compared && Number.isFinite(pixel.heightDelta);
   const originH = compared ? pixel.compared.height + Math.max(0, pixel.heightDelta) : null;
   const edsH = compared ? pixel.compared.height + Math.max(0, -pixel.heightDelta) : null;
   const pv = compared ? pixelVerdict(pixel, { threshold, offsetMax: offsetMax ?? stage }) : null;
-  const pixelPass = !!pv && pv.pass;
+  const ro = rosterOffsets(pv, pixel.aligned && pixel.aligned.steps, { stage, offsetMax, heightTol, originH });
+  const pctPass = !!pv && pv.alignedPct <= threshold;
+  const pixelPass = !!pv && (pv.pass || (pctPass && ro.pass));
+  const offsetsWithinTolerance = pctPass && ro.within; // the pixel criterion is met only under the roster tolerance
   const heightPass = compared && Math.abs(pixel.heightDelta) <= heightTol * originH;
   const clipped = clip && clip.counts ? clip.counts.total : null;
   const clipPass = !clipOn ? null : clipped == null ? null : clipped <= clipMax + allowance;
@@ -528,7 +559,7 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   const unitPass = units && units.verdict && units.required ? (units.verdict.off + units.verdict.hidden + units.verdict.missing + units.verdict.errors) === 0 : null;
   const reasons = [];
   if (!compared) reasons.push(pixel.error ? (UNSTABLE.test(pixel.error) ? pixel.error : `pixel error: ${pixel.error}`) : 'missing capture');
-  if (compared && !pixelPass) reasons.push(pv.reason);
+  if (compared && !pixelPass) reasons.push(pctPass && ro.over ? `${pv.reason} — ${ro.over}` : pv.reason);
   if (compared && !heightPass) reasons.push(`Δh ${pixel.heightDelta}px > ${Math.round(heightTol * 100)}% of ${originH}`);
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
@@ -543,10 +574,11 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   const fontReasons = [...fonts.filter(fontFails).map((f) => `font-not-loaded:${fontFamily(f)}`), ...skipped.map((side) => `font-check-skipped:${side}`)];
   reasons.push(...fontReasons);
   const notes = fonts.filter((f) => !fontFails(f)).map((f) => `font-dead-on-${f.side === 'both' ? 'both' : 'source'}:${f.family}`);
+  if (offsetsWithinTolerance) notes.push(`offsets within the roster tolerance: ${pv.totalShift}px total, largest step ${ro.largest}px (strict bound ${pv.bound}px, tolerance ${ro.tolerance}px)`);
   const pixelOnlyPass = !!(pixelPass && heightPass);
   const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fontReasons.length && !probeErrors.length;
   const contentNA = contentOn && !cTot && !(content && content.probeError) ? (content && content.error) || 'not probed' : null;
-  const aligned = { alignedPct: pv ? pv.alignedPct : null, alignedUsed: !!pv && pv.used, totalShift: pv ? pv.totalShift : null, steps: pv ? pv.steps : [], offsetBound: pv ? pv.bound : null };
+  const aligned = { alignedPct: pv ? pv.alignedPct : null, alignedUsed: !!pv && pv.used, totalShift: pv ? pv.totalShift : null, steps: pv ? pv.steps : [], offsetBound: pv ? pv.bound : null, offsetTolerance: ro.tolerance, offsetJudge: ro.judge, offsetsWithinTolerance };
   // an errored probe is a failing criterion no override waives ('probe' is not in WAIVABLE)
   const failing = [[!compared, 'capture'], [compared && !pixelPass, 'pixel'], [compared && !heightPass, 'height'], [clipPass === false, 'clip'], [contentPass === false, 'content'], [unitPass === false, 'units'], [fontReasons.length > 0, 'fonts'], [probeErrors.length > 0, 'probe']].filter(([f]) => f).map(([, c]) => c);
   const { waives } = overrideScope(override);
@@ -579,7 +611,7 @@ export function formatSummary(summary) {
   const named = (list) => [...new Set(list.map(fontLabel))].sort();
   const fonts = named(faces.filter(fontFails)); const sourceDead = named(faces.filter((f) => !fontFails(f)));
   const title = p.wide ? `Wide report — ${p.stage === 'prototype' ? 'every crafted prototype' : 'all deployed pages'} (a report, not a delivery criterion)` : p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages';
-  const head = [`# ${title}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}${t.failOffsets ? ` (${t.failOffsets} on offsets alone)` : ''}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}${t.probeErrors ? `; probe errors ${t.probeErrors} (error rows, not FAIL)` : ''}${sourceDead.length ? `; fonts dead on the source — reported, not failing: ${t.fontsDeadOnSource ?? summary.rows.filter((r) => (r.fontsNotLoaded || []).some((f) => !fontFails(f))).length} (${sourceDead.join(', ')})` : ''}; content n/a (origin not probed) ${t.contentNA}${t.unitsNotDeclared ? `; **units not declared ${t.unitsNotDeclared} of ${t.pages}** (no repeated-unit family applies: the check did not run on them${t.unitsRecordedNotDeclared ? `; ${t.unitsRecordedNotDeclared} of them have repeated modules recorded` : ''})` : ''}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}${t.alignedOnlyPass != null ? `; pixel criterion met only thanks to alignment (unaligned % over the threshold): ${t.alignedOnlyPass}` : ''}${t.referenceUnstable ? `; **${t.referenceUnstable} unstable reference(s)** (error rows — pin the page's state, then --recapture-origin)` : ''}${p.wide ? `; over the threshold at this width: **${t.overThreshold ?? 0} of ${t.pages}**` : ''}.`, ''];
+  const head = [`# ${title}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}${t.failOffsets ? ` (${t.failOffsets} on offsets alone)` : ''}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}${t.probeErrors ? `; probe errors ${t.probeErrors} (error rows, not FAIL)` : ''}${sourceDead.length ? `; fonts dead on the source — reported, not failing: ${t.fontsDeadOnSource ?? summary.rows.filter((r) => (r.fontsNotLoaded || []).some((f) => !fontFails(f))).length} (${sourceDead.join(', ')})` : ''}; content n/a (origin not probed) ${t.contentNA}${t.unitsNotDeclared ? `; **units not declared ${t.unitsNotDeclared} of ${t.pages}** (no repeated-unit family applies: the check did not run on them${t.unitsRecordedNotDeclared ? `; ${t.unitsRecordedNotDeclared} of them have repeated modules recorded` : ''})` : ''}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}${t.alignedOnlyPass != null ? `; pixel criterion met only thanks to alignment (unaligned % over the threshold): ${t.alignedOnlyPass}` : ''}${t.offsetsWithinTolerance ? `; offsets over the strict bound, within the roster tolerance: ${t.offsetsWithinTolerance}` : ''}${t.referenceUnstable ? `; **${t.referenceUnstable} unstable reference(s)** (error rows — pin the page's state, then --recapture-origin)` : ''}${p.wide ? `; over the threshold at this width: **${t.overThreshold ?? 0} of ${t.pages}**` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % aligned (unaligned) [text] | offsets | Δh px | clipped | content | units | verdict | reasons |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const probeErr = (r.probeErrors || []).map((e) => e.probe);
@@ -587,7 +619,7 @@ export function formatSummary(summary) {
     const units = probeErr.includes('units') ? 'ERROR' : r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}${r.unitsDeclared > 0 ? ` (${r.unitsDeclared} famil${r.unitsDeclared > 1 ? 'ies' : 'y'} checked)` : ''}` : r.unitsDeclared === 0 ? 'not declared' : r.unitsDeclared > 0 ? `no result (${r.unitsDeclared} declared)` : '-';
     const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
     const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : probeErr.length ? `ERROR (probe: ${probeErr.join(', ')})` : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`), ...(r.hint ? [`(hint) ${r.hint}`] : [])].join('; ') || '-'} |`);
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound}${r.offsetJudge === 'tolerance' ? `, tolerance ${r.offsetTolerance}` : ''})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`), ...(r.hint ? [`(hint) ${r.hint}`] : [])].join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -964,12 +996,14 @@ async function main() {
     let px; try { px = JSON.parse(r.out); } catch { px = { error: lastLine(r.err) || `exit ${r.code}` }; }
     if (masks.length && !px.error) px.maskReason = [mk && mk.masks && mk.masks.length ? mk.reason || null : null, ref && ref.maskArg ? `self-varying rows of the frozen reference${ref.noiseFloor != null ? ` (noise floor ${ref.noiseFloor}%)` : ''}` : null].filter(Boolean).join('; ') || null;
     writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px);
-    log(`pixel ${p.slug} → ${px.error ? `ERROR ${px.error}` : `${px.aligned && px.aligned.used ? `aligned ${px.aligned.pct}% (unaligned ${px.pct}%), ${px.aligned.steps.length} offset step(s) ${px.aligned.totalShift}px` : `${px.pct}%`} Δh ${px.heightDelta}${px.textPct != null ? ` text ${px.textPct}%` : ''} ${px.pass ? 'PASS' : 'FAIL'}${px.maskedRows ? ` [MASKED ${px.maskedRows} rows: ${px.maskReason}]` : ''}`}`);
+    log(`pixel ${p.slug} → ${px.error ? `ERROR ${px.error}` : `${px.aligned && px.aligned.used ? `aligned ${px.aligned.pct}% (unaligned ${px.pct}%), ${px.aligned.steps.length} offset step(s) ${px.aligned.totalShift}px` : `${px.pct}%`} Δh ${px.heightDelta}${px.textPct != null ? ` text ${px.textPct}%` : ''} ${px.pass ? 'PASS' : 'FAIL'}${!px.pass && withinTolerance(px) ? ' (strict bound; offsets within the roster tolerance — the row decides)' : ''}${px.maskedRows ? ` [MASKED ${px.maskedRows} rows: ${px.maskReason}]` : ''}`}`);
   }
 
+  const VERDICT_OPTS = { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage, offsetMax: opts.offsetMax };
+  function withinTolerance(px) { return verdict({ pixel: px }, VERDICT_OPTS).offsetsWithinTolerance; }
   const rowOf = (p) => {
     const r = results[p.slug] || {}; const px = r.pixel || {};
-    const v = verdict({ pixel: px, clip: r.clip || null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) } }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage, offsetMax: opts.offsetMax });
+    const v = verdict({ pixel: px, clip: r.clip || null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) } }, VERDICT_OPTS);
     const ref = (r.origin && r.origin.reference) || null;
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
@@ -1004,12 +1038,12 @@ async function main() {
   if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — fix per § What a failing row means, or record the decision: rounds.mjs decide ${join(dirname(opts.out), `<slug>-${opts.width}`)} --stage all-pages --decision accept-residual|re-prototype --reason "<why>" (a closed page is not listed again)`);
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), unitsNotDeclared: n((r) => r.unitsDeclared === 0), unitsRecordedNotDeclared: n((r) => r.unitsDeclared === 0 && r.unitsRecorded > 0), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
-    alignedOnlyPass: n((r) => r.pixelPass && r.pct > opts.threshold), failOffsets: n((r) => r.pct != null && !r.pixelPass && r.alignedPct <= opts.threshold), referenceUnstable: n((r) => UNSTABLE.test(r.error || '')),
+    alignedOnlyPass: n((r) => r.pixelPass && r.pct > opts.threshold), failOffsets: n((r) => r.pct != null && !r.pixelPass && r.alignedPct <= opts.threshold), offsetsWithinTolerance: n((r) => r.offsetsWithinTolerance), referenceUnstable: n((r) => UNSTABLE.test(r.error || '')),
     ...(opts.wide ? { overThreshold: n((r) => r.alignedPct != null && r.alignedPct > opts.threshold), heightOff: n((r) => r.pct != null && !r.heightPass) } : {}) };
   const flagged = opts.wide ? wideFlagged(rows, opts) : []; const flaggedLine = wideLine(flagged, opts);
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, ...(opts.wide ? { wide: { line: flaggedLine, pages: flagged } } : {}), rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height; roster tolerance: ${opts.heightTol * 100}% of the origin height with no step over ${ROSTER_OFFSETS.step}px`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, ...(opts.wide ? { wide: { line: flaggedLine, pages: flagged } } : {}), rows };
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }
