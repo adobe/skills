@@ -285,9 +285,12 @@ Extended Tab:
 Ensure Dispatcher `dispatcher.any` has:
 ```
 /allowedClients {
-  /0 { /type "allow" /glob "*publish-instance-ip*" }
+  /0000 { /type "deny" /glob "*" }
+  /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
 }
 ```
+
+Replace the placeholder with the exact publish source IP Dispatcher sees after NAT/proxy; never allow arbitrary clients.
 
 ### Reverse Replication Agent
 
