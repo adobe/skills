@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.2...plugin/stardust/v0.46.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the roster gate judges offsets with the height tolerance, so pages inside the pixel bar stop failing on small shifts ([#790](https://github.com/adobe/skills/issues/790)) ([50de2af](https://github.com/adobe/skills/commit/50de2afe042861b295af64cc4c68e86255caed54))
+
 ## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
 
 
