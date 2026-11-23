@@ -2,6 +2,6 @@
   "error": {
     "code": "EMPTY_RESULT",
     "message": "no valid URLs found at https://www.alpine-gear.test (https://www.alpine-gear.test/robots.txt: HTTP 403; https://www.alpine-gear.test/sitemap.xml: HTTP 403)",
-    "hint": "retry with --strategy http"
+    "hint": "the site refuses this client: retry through a proxy (--proxy), or with a browser (web probe <url>)"
   }
 }

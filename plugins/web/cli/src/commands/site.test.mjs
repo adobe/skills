@@ -152,3 +152,51 @@ test('site scan --help does not print WEB_PROXY', async () => {
   assert.match(stdout.buf, /--proxy <url>/);
   assert.ok(!stdout.buf.includes('secret'));
 });
+
+test('site scan hints: another origin, then a browser User-Agent, then a proxy', async () => {
+  const listen = async (handler) => {
+    const server = createServer(handler);
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    return { server, origin: `http://127.0.0.1:${server.address().port}` };
+  };
+  const blocked = await listen((_req, res) => res.writeHead(403).end());
+  const home = await listen((_req, res) =>
+    res.writeHead(200, { 'content-type': 'text/html' }).end('home'),
+  );
+  const moved = await listen((_req, res) =>
+    res.writeHead(302, { location: `${home.origin}/` }).end(),
+  );
+  try {
+    const plain = await run(['site', 'scan', blocked.origin]);
+    assert.equal(plain.doc.error.code, 'EMPTY_RESULT');
+    assert.match(plain.doc.error.hint, /--user-agent/);
+    const withUa = await run(['site', 'scan', blocked.origin, '--user-agent', 'Mozilla/5.0']);
+    assert.match(withUa.doc.error.hint, /--proxy/);
+    if (!noProxySupport) {
+      const proxy = await startForwardProxy({ auth: 'user:right' });
+      try {
+        const through = await run(['site', 'scan', blocked.origin, '--user-agent', 'Mozilla/5.0'], {
+          WEB_PROXY: proxy.url,
+        });
+        assert.match(through.doc.error.hint, /through the proxy too/);
+        const refused = await run(['site', 'scan', blocked.origin], {
+          WEB_PROXY: proxy.url.replace('right', 'wrong'),
+        });
+        assert.match(
+          refused.doc.error.hint,
+          /proxy refused the connection \(407\): check its user/,
+        );
+      } finally {
+        proxy.close();
+      }
+    }
+    const away = await run(['site', 'scan', moved.origin]);
+    assert.equal(away.doc.error.hint, `scan ${home.origin} instead`);
+    // A challenge page with a 200 instead of the sitemap.
+    const page = await run(['site', 'scan', home.origin]);
+    assert.match(page.doc.error.message, /sitemap\.xml: not a sitemap \(text\/html\)/);
+    assert.match(page.doc.error.hint, /bot check: retry with --user-agent/);
+  } finally {
+    for (const s of [blocked, home, moved]) s.server.close();
+  }
+});

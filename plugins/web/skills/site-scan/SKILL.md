@@ -56,26 +56,34 @@ character): a URL must match an include (when any) and no exclude.
 `lang` comes from a first path segment like `fr`, `fr-fr` (empty otherwise). `total` counts
 every same-origin URL seen, `valid` those that passed the filters. `errors` lists fetches
 that failed (a missing robots.txt is not one); check them even on success, a failed sitemap
-means missing URLs. With `--strategy http`, a start page that is not HTML or redirects to
-another origin is reported there too, with the origin to scan instead (e.g. `www.`).
+means missing URLs. Reported there too, with the origin to scan instead (e.g. `www.`):
+robots.txt or a sitemap that redirects to another site, sitemaps that list only another
+origin, and with `--strategy http` a start page that is not HTML or redirects elsewhere.
+`not a sitemap (text/html)`: a page came back with a 200, often a bot check (see below).
 
 No valid URL → exit 1 `EMPTY_RESULT` with the errors in the message. Retry with
 `--strategy http`, or check the origin.
 
 ## Blocked sites
 
-`HTTP 403` or `429` on robots.txt and the sitemaps means the site blocks this client. Either:
+`HTTP 401`, `403` or `429` on robots.txt and the sitemaps, or `not a sitemap (text/html)`,
+means the site refuses this client. In this order:
 
-- **A proxy the user provides** (they bill per request or traffic: ask before a large scan).
-  Have the user export the proxy URL, password included, as `WEB_PROXY` in their shell. Never
-  ask for the password in chat or pass it with `--proxy`, where `ps` shows it.
-  - A residential proxy changes the IP only; still blocked means bot checks.
-  - An unblocker in proxy mode (Bright Data Web Unlocker, Zyte, Oxylabs, Decodo, ScrapingBee)
-    re-signs TLS: add `--proxy-ca <vendor CA .pem>`, or `--insecure` only for vendors that
-    publish no CA, and `--timeout 60000` or more.
-  - Needs Node 24.14+ or 25.4+: older Node exits 2 `UNSUPPORTED` and sends nothing.
-  - `407` in the errors: the proxy refused the credentials.
-- **`browser-probe`**: this command does not drive a browser.
+1. **A browser `--user-agent`** (a current Chrome string). Rules such as CloudFront's often
+   refuse the headers of Node's fetch whatever the IP, so try this before a proxy.
+2. **A proxy the user provides** (they bill per request or traffic: ask before a large scan).
+   Have the user export the proxy URL, password included, as `WEB_PROXY` in their shell.
+   Never ask for the password in chat or pass it with `--proxy`, where `ps` shows it.
+   - A residential or ISP proxy changes the IP: it gets past IP and country blocks (pick
+     the site's country, e.g. Bright Data's `-country-in` user suffix), not bot checks.
+   - An unblocker in proxy mode (Bright Data Web Unlocker, Zyte, Oxylabs, Decodo,
+     ScrapingBee) re-signs TLS: add `--proxy-ca <vendor CA .pem>`, or `--insecure` only for
+     vendors that publish no CA, and `--timeout 60000` or more.
+   - `read ECONNRESET` on every request: a firewall (a corporate VPN) cuts plain proxy
+     traffic; use the `https://` form of the proxy URL.
+   - `Proxy response (407)`: wrong credentials; `(403)`: the proxy's own rules refuse the site.
+   - Needs Node 24.14+ or 25.4+: older Node exits 2 `UNSUPPORTED` and sends nothing.
+3. **`browser-probe`**: this command does not drive a browser.
 
 ## Notes
 
