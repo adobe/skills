@@ -13,15 +13,15 @@ metadata:
 
 # AEM 6.5 LTS Replication
 
-Use this top-level skill to route AEM 6.5 LTS/AMS requests to the linked guides; nested paths are not independently discoverable skills.
+Use this top-level skill to route AEM 6.5 LTS/AMS requests to the bundled reference guides.
 
 | Task | Guide |
 |---|---|
-| Configure default, flush, reverse, or publish agents | [Configure Replication Agent](./configure-replication-agent/SKILL.md) |
-| Activate or deactivate pages, assets, or trees | [Replicate Content](./replicate-content/SKILL.md) |
-| Programmatic replication, listeners, and APIs | [Replication API](./replication-api/SKILL.md) |
-| Diagnose queues, connectivity, or missing content | [Troubleshoot Replication](./troubleshoot-replication/SKILL.md) |
-| Coordinate multi-step replication work | [Replication Orchestrator](./replication-orchestrator/SKILL.md) |
+| Configure default, flush, reverse, or publish agents | [Configure Replication Agent](./references/configure-replication-agent.md) |
+| Activate or deactivate pages, assets, or trees | [Replicate Content](./references/replicate-content.md) |
+| Programmatic replication, listeners, and APIs | [Replication API](./references/replication-api.md) |
+| Diagnose queues, connectivity, or missing content | [Troubleshoot Replication](./references/troubleshoot-replication.md) |
+| Coordinate multi-step replication work | [Replication Orchestrator](./references/replication-orchestrator.md) |
 
 ## Guardrails
 

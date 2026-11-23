@@ -6,11 +6,11 @@ license: Apache-2.0
 
 # Troubleshoot AEM 6.5 LTS Replication
 
-This skill provides systematic troubleshooting guidance for Adobe Experience Manager 6.5 LTS replication issues. Use this to diagnose and resolve problems with content distribution, agent configuration, and replication workflows.
+This guide provides systematic troubleshooting guidance for Adobe Experience Manager 6.5 LTS replication issues. Use this to diagnose and resolve problems with content distribution, agent configuration, and replication workflows.
 
-## When to Use This Skill
+## When to Use This Guide
 
-Use this skill when experiencing:
+Use this guide when experiencing:
 - Replication queues blocked or stuck
 - Content not appearing on Publish instances
 - Replication agent showing red/error status
@@ -1044,11 +1044,11 @@ If issue persists after troubleshooting:
    - Share log bundles
    - Include replication queue screenshots
 
-## Related Skills
+## Related Guides
 
-- `configure-replication-agent`: Set up and configure agents properly
-- `replicate-content`: Understand replication methods
-- `replication-api`: Programmatic replication for custom code
+- [Configure Replication Agent](./configure-replication-agent.md): Set up and configure agents properly
+- [Replicate Content](./replicate-content.md): Understand replication methods
+- [Replication API](./replication-api.md): Programmatic replication for custom code
 
 ## Success Criteria
 

@@ -1,8 +1,8 @@
-# AEM 6.5 LTS Replication Skills
+# AEM 6.5 LTS Replication Guides
 
-Comprehensive replication skills for Adobe Experience Manager 6.5 LTS, covering agent configuration, content activation, programmatic API usage, and troubleshooting.
+Bundled reference guides for Adobe Experience Manager 6.5 LTS replication, covering agent configuration, content activation, programmatic API usage, orchestration, and troubleshooting.
 
-## Skills Included
+## Reference Guides Included
 
 ### 1. Configure Replication Agent
 Configure replication agents for content publishing, dispatcher cache flushing, and reverse replication.
@@ -77,7 +77,7 @@ Diagnose and fix common replication issues including blocked queues and connecti
 
 ## Documentation Sources
 
-All skills are based on official Adobe AEM 6.5 LTS documentation:
+All guides are based on official Adobe AEM 6.5 LTS documentation:
 
 - **Official Replication Guide**: https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/implementing/deploying/configuring/replication
 - **Troubleshooting Guide**: https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/implementing/deploying/configuring/troubleshoot-rep
@@ -85,14 +85,15 @@ All skills are based on official Adobe AEM 6.5 LTS documentation:
 
 ## Getting Started
 
-1. **For first-time setup**: Start with [Configure Replication Agent](./configure-replication-agent/SKILL.md)
-2. **For daily operations**: Use [Replicate Content](./replicate-content/SKILL.md)
-3. **For custom code**: Reference [Replication API](./replication-api/SKILL.md)
-4. **For issues**: Consult [Troubleshoot Replication](./troubleshoot-replication/SKILL.md)
+1. **For first-time setup**: Start with [Configure Replication Agent](./references/configure-replication-agent.md)
+2. **For daily operations**: Use [Replicate Content](./references/replicate-content.md)
+3. **For custom code**: Reference [Replication API](./references/replication-api.md)
+4. **For issues**: Consult [Troubleshoot Replication](./references/troubleshoot-replication.md)
+5. **For multi-step work**: Consult [Replication Orchestrator](./references/replication-orchestrator.md)
 
 ## Total Documentation
 
-- **4 comprehensive skills**
+- **4 detailed task guides plus the replication orchestrator guide**
 - **3,575 lines** of documentation
 - **49 Java code examples**
 - **12+ common troubleshooting scenarios**
