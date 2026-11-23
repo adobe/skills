@@ -7,7 +7,7 @@
 // Run: node plugins/stardust/skills/stardust/scripts/test/browser.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -198,6 +198,62 @@ await check('loadPlaywright, a project copy that fails to load is not replaced b
   assert.equal(code, 'PLAYWRIGHT_BROKEN');
   assert.ok(message.includes('project copy broke at init'), message);
   assert.ok(message.includes(project), 'the message names the copy that failed');
+});
+
+// ---- PILOT ONLY (not for merge): the browser open/close record ----
+const useLines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+const closable = () => { const calls = []; const b = { close: async (o) => { calls.push(o ?? null); return 'closed'; } }; return { calls, playwright: { chromium: { launch: async () => b } } }; };
+const withEnv = async (env, fn) => {
+  const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(env)) { if (v == null) delete process.env[k]; else process.env[k] = v; }
+  try { return await fn(); } finally { for (const [k, v] of Object.entries(saved)) { if (v == null) delete process.env[k]; else process.env[k] = v; } }
+};
+await check('pilot record: an open and a close write two lines — ts, ev, pid, ppid, script, id, host — and a second close writes nothing', async () => {
+  const file = join(tempDir(), 'use.jsonl');
+  await withEnv({ STARDUST_BROWSER_USE: null, STARDUST_BROWSER_USE_FILE: file }, async () => {
+    const { calls, playwright } = closable();
+    const b = await openBrowser({ mode: 'plain', playwright });
+    assert.equal(useLines(file).length, 1, 'the open is on disk before the close');
+    assert.equal(await b.close({ reason: 'done' }), 'closed', 'close returns what it returned');
+    await b.close();
+    assert.deepEqual(calls, [{ reason: 'done' }, null], 'close is called as the script called it');
+    const [open, close, ...rest] = useLines(file);
+    assert.deepEqual(rest, []);
+    assert.deepEqual([open.ev, close.ev, close.via], ['open', 'close', 'close']);
+    assert.deepEqual(Object.keys(open), ['ts', 'ev', 'pid', 'ppid', 'script', 'id', 'host']);
+    assert.deepEqual([open.pid, open.ppid, open.script], [process.pid, process.ppid, 'browser.test.mjs']);
+    await goto({ goto: async () => null }, 'https://first.example/page'); // the first URL goto() saw in this process stays the host
+    assert.ok(open.host === null || /^[a-z0-9.-]+$/.test(open.host), 'host: a host name (the first URL the helper saw) or null'); assert.equal(close.host, open.host);
+    assert.equal(open.id, close.id); assert.ok(!Number.isNaN(Date.parse(open.ts)) && close.ts >= open.ts);
+    const other = await openBrowser({ mode: 'plain', playwright });
+    assert.notEqual(useLines(file)[2].id, open.id, 'one id per browser'); await other.close();
+  });
+});
+await check('pilot record: a write failure is swallowed (open and close work, nothing thrown); STARDUST_BROWSER_USE=0 writes nothing', async () => {
+  const dir = tempDir();
+  await withEnv({ STARDUST_BROWSER_USE: null, STARDUST_BROWSER_USE_FILE: join(dir, 'no-such-dir', 'deeper', 'use.jsonl') }, async () => {
+    const { calls, playwright } = closable();
+    const b = await openBrowser({ mode: 'plain', playwright });
+    assert.equal(await b.close(), 'closed'); assert.equal(calls.length, 1);
+    assert.equal(existsSync(join(dir, 'no-such-dir')), false);
+  });
+  const file = join(dir, 'off.jsonl');
+  await withEnv({ STARDUST_BROWSER_USE: '0', STARDUST_BROWSER_USE_FILE: file }, async () => {
+    const { playwright } = closable();
+    const b = await openBrowser({ mode: 'plain', playwright });
+    assert.equal(await b.close(), 'closed'); assert.equal(existsSync(file), false);
+  });
+});
+await check('pilot record: by default it goes to stardust/replica/browser-use.jsonl of the project at the working directory, and nowhere when there is no stardust/ there', async () => {
+  const project = tempDir(); const bare = tempDir(); const cwd = process.cwd();
+  mkdirSync(join(project, 'stardust'));
+  await withEnv({ STARDUST_BROWSER_USE: null, STARDUST_BROWSER_USE_FILE: null }, async () => {
+    try {
+      for (const d of [project, bare]) { process.chdir(d); const b = await openBrowser({ mode: 'plain', playwright: closable().playwright }); await b.close(); }
+    } finally { process.chdir(cwd); }
+  });
+  assert.deepEqual(useLines(join(project, 'stardust/replica/browser-use.jsonl')).map((l) => l.ev), ['open', 'close']);
+  assert.equal(existsSync(join(bare, 'stardust')), false);
 });
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nbrowser: all ${checks} checks passed`);
