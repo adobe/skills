@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.5](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.4...plugin/stardust/v0.46.5) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs a page's probes beside its captures, inside one browser budget per job ([#792](https://github.com/adobe/skills/issues/792)) ([fede929](https://github.com/adobe/skills/commit/fede92993e633b33b86213f767385274b4d4ef6f))
+
 ## [0.46.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.3...plugin/stardust/v0.46.4) (2026-11-23)
 
 
