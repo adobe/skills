@@ -1,7 +1,7 @@
 ---
 name: site-scan
 license: Apache-2.0
-compatibility: Requires Node 22+; uses the web CLI (plugins/web/cli). No browser needed.
+compatibility: Requires Node 22+ (--proxy needs 24.14+ or 25.4+); uses the web CLI (plugins/web/cli). No browser needed.
 description: >-
   Discover and collect all URLs of a website with the web CLI: parses robots.txt and
   sitemaps (XML, sitemap indexes, gzip) or follows links, with include/exclude glob
@@ -30,7 +30,7 @@ is safe. Fallback when published: `npx -y @adobe/web-cli`. Use an absolute `<ski
 
 ```bash
 $WEB site scan <origin> [--strategy sitemaps|http] [--include <glob>]... [--exclude <glob>]... \
-  [--limit <n>] [--timeout <ms>] [--user-agent <ua>]
+  [--limit <n>] [--timeout <ms>] [--user-agent <ua>] [--proxy <url> [--proxy-ca <file>] [--insecure]]
 $WEB site scan https://example.com > urls.json
 $WEB site scan https://example.com --include '/blog/**' --exclude '**/archive/**'
 ```
@@ -60,8 +60,22 @@ means missing URLs. With `--strategy http`, a start page that is not HTML or red
 another origin is reported there too, with the origin to scan instead (e.g. `www.`).
 
 No valid URL → exit 1 `EMPTY_RESULT` with the errors in the message. Retry with
-`--strategy http`, or check the origin. A site that blocks plain HTTP needs
-`browser-probe`; this command does not drive a browser.
+`--strategy http`, or check the origin.
+
+## Blocked sites
+
+`HTTP 403` or `429` on robots.txt and the sitemaps means the site blocks this client. Either:
+
+- **A proxy the user provides** (they bill per request or traffic: ask before a large scan).
+  Have the user export the proxy URL, password included, as `WEB_PROXY` in their shell. Never
+  ask for the password in chat or pass it with `--proxy`, where `ps` shows it.
+  - A residential proxy changes the IP only; still blocked means bot checks.
+  - An unblocker in proxy mode (Bright Data Web Unlocker, Zyte, Oxylabs, Decodo, ScrapingBee)
+    re-signs TLS: add `--proxy-ca <vendor CA .pem>`, or `--insecure` only for vendors that
+    publish no CA, and `--timeout 60000` or more.
+  - Needs Node 24.14+ or 25.4+: older Node exits 2 `UNSUPPORTED` and sends nothing.
+  - `407` in the errors: the proxy refused the credentials.
+- **`browser-probe`**: this command does not drive a browser.
 
 ## Notes
 

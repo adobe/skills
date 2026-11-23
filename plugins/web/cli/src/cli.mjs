@@ -45,6 +45,8 @@ commands on top of web through the library export of @adobe/web-cli), web doc re
 Environment:
   WEB_TIMEOUT=<ms> bounds each browser step (navigation and playwright-cli call; default
   60000). Raise it for remote browsers that are slow to load a page.
+  WEB_PROXY=<url> is the default --proxy of site scan; it keeps the proxy password off the
+  command line.
 
 Typical flows:
   one-shot:  web page tree <url>

@@ -1,4 +1,5 @@
 import { gunzipSync } from 'node:zlib';
+import { redactCredentials } from '#src/errors.mjs';
 
 const LANG_RE = /^([a-z]{2,3})(?:[-_]([a-z]{2}|\d{3}))?$/i;
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
@@ -40,6 +41,17 @@ export function extractLinks(html, base) {
   return out;
 }
 
+/**
+ * `fetch` wraps why it failed (DNS, refused connection, a proxy answering 407) in `fetch failed`:
+ * name the innermost cause too.
+ */
+export function failureMessage(err) {
+  let inner = err;
+  while (inner?.cause instanceof Error) inner = inner.cause;
+  const message = inner === err ? err.message : `${err.message}: ${inner.message}`;
+  return redactCredentials(message);
+}
+
 async function fetchBody({ url, timeoutMs, headers }) {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -73,7 +85,7 @@ export async function crawl(origin, options = {}) {
     try {
       return await fn();
     } catch (err) {
-      errors.push({ url, message: err.message });
+      errors.push({ url, message: failureMessage(err) });
       return undefined;
     }
   };

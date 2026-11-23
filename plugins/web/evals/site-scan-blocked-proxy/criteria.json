@@ -1,0 +1,36 @@
+{
+  "context": "web site scan exited 1 with EMPTY_RESULT because the site answered HTTP 403 to robots.txt and /sitemap.xml: it blocks the client. The user has a Bright Data Web Unlocker zone (an unblocker that re-signs TLS) and its CA file. site scan --proxy needs Node.js 24.14+ or 25.4+ and exits 2 UNSUPPORTED on Node 22. The proxy URL carries the password, so it belongs in WEB_PROXY, not on the command line. Judge answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "node_version",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Says Node.js 22.14 is too old for the proxy (site scan exits 2 UNSUPPORTED) and has the user upgrade to Node.js 24.14+ or 25.4+ first."
+    },
+    {
+      "name": "credentials_env",
+      "max_score": 30,
+      "category": "DESIGN",
+      "description": "Puts the proxy URL with the zone user and password in the WEB_PROXY environment variable (e.g. `export WEB_PROXY='http://<zone user>:<password>@…'`) instead of passing it with --proxy on the command line, and does not ask for the password itself."
+    },
+    {
+      "name": "proxy_ca",
+      "max_score": 25,
+      "category": "DESIGN",
+      "description": "Adds `--proxy-ca ~/certs/brightdata-ca.pem` to the web site scan command, and does not turn certificate checks off with --insecure (the vendor publishes a CA)."
+    },
+    {
+      "name": "scan_command",
+      "max_score": 15,
+      "category": "DESIGN",
+      "description": "Uses the web CLI's own `web site scan https://www.alpine-gear.test` (not curl loops or a hand-written crawler)."
+    },
+    {
+      "name": "timeout",
+      "max_score": 10,
+      "category": "DESIGN",
+      "description": "Raises --timeout to 60000 ms or more, since an unblocker can take longer than the 10 s default."
+    }
+  ]
+}
