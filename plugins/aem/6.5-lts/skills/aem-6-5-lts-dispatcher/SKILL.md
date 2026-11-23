@@ -1,5 +1,5 @@
 ---
-name: dispatcher
+name: aem-6-5-lts-dispatcher
 description: |
   Use when asked about AEM 6.5 LTS or AMS Dispatcher `.any` farms, filters, vhosts, cache, flush,
   rewrite rules, security, performance, or publish-tier delivery. Covers configuration authoring,
@@ -20,17 +20,17 @@ Route user requests to the appropriate specialist skill based on intent.
 
 | User Intent | Skill | Path |
 |---|---|---|
-| Create, modify, review, or harden dispatcher config files (`.any`, vhost, rewrite, cache, filter) | Config Authoring | [config-authoring/SKILL.md](./config-authoring/SKILL.md) |
-| Conceptual questions (`statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, security headers) | Technical Advisory | [technical-advisory/SKILL.md](./technical-advisory/SKILL.md) |
-| Investigate runtime incidents, failures, or cache anomalies | Incident Response | [incident-response/SKILL.md](./incident-response/SKILL.md) |
-| Optimize cache efficiency, latency, and throughput | Performance Tuning | [performance-tuning/SKILL.md](./performance-tuning/SKILL.md) |
-| Security audit, threat model, exposure control, header hardening | Security Hardening | [security-hardening/SKILL.md](./security-hardening/SKILL.md) |
-| End-to-end lifecycle (design → implement → validate → release → incident) or requests spanning multiple concerns | Workflow Orchestrator | [workflow-orchestrator/SKILL.md](./workflow-orchestrator/SKILL.md) |
+| Create, modify, review, or harden dispatcher config files (`.any`, vhost, rewrite, cache, filter) | Config Authoring | [config-authoring/GUIDE.md](./references/config-authoring/GUIDE.md) |
+| Conceptual questions (`statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, security headers) | Technical Advisory | [technical-advisory/GUIDE.md](./references/technical-advisory/GUIDE.md) |
+| Investigate runtime incidents, failures, or cache anomalies | Incident Response | [incident-response/GUIDE.md](./references/incident-response/GUIDE.md) |
+| Optimize cache efficiency, latency, and throughput | Performance Tuning | [performance-tuning/GUIDE.md](./references/performance-tuning/GUIDE.md) |
+| Security audit, threat model, exposure control, header hardening | Security Hardening | [security-hardening/GUIDE.md](./references/security-hardening/GUIDE.md) |
+| End-to-end lifecycle (design → implement → validate → release → incident) or requests spanning multiple concerns | Workflow Orchestrator | [workflow-orchestrator/GUIDE.md](./references/workflow-orchestrator/GUIDE.md) |
 
 ## How to Use
 
 1. Match the user's request to one row in the Intent Router table above.
-2. Read the linked SKILL.md for that specialist skill.
+2. Read the linked GUIDE.md for that specialist workflow.
 3. Follow the workflow, references, and output contract defined in that skill.
 4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
 5. If no row fits, ask a clarifying question. If a linked guide is unavailable, provide only bounded explanation/static review and mark tool-dependent checks `NOT VERIFIED`.

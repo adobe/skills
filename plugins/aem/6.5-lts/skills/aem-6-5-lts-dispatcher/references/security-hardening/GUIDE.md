@@ -1,13 +1,3 @@
----
-name: security-hardening
-description: Perform security audits for the Adobe Dispatcher Apache HTTP Server module and Apache HTTPD in AEM 6.5 / AMS workflows only, with AMS-specific hardening verification.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Security Hardening (AMS)
 
 Deliver evidence-backed security findings and remediations for AMS workflows that use the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration.

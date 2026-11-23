@@ -17,16 +17,16 @@ Use these skills for:
 
 ## Skill Map
 
-- `workflow-orchestrator/` for end-to-end work that spans design, changes, validation, and follow-up
-- `config-authoring/` for concrete config changes
-- `technical-advisory/` for conceptual guidance, explanation, and citation-backed recommendations
-- `incident-response/` for runtime failures and regressions
-- `performance-tuning/` for cache, latency, and throughput work
-- `security-hardening/` for exposure review and production hardening
+- `references/workflow-orchestrator/GUIDE.md` for end-to-end work that spans design, changes, validation, and follow-up
+- `references/config-authoring/GUIDE.md` for concrete config changes
+- `references/technical-advisory/GUIDE.md` for conceptual guidance, explanation, and citation-backed recommendations
+- `references/incident-response/GUIDE.md` for runtime failures and regressions
+- `references/performance-tuning/GUIDE.md` for cache, latency, and throughput work
+- `references/security-hardening/GUIDE.md` for exposure review and production hardening
 
 ## Shared Foundation
 
-Cross-cutting references are packaged directly inside each skill under `references/dispatcher-foundation/`.
+Cross-cutting references are packaged directly inside each specialist guide under `references/dispatcher-foundation/`.
 
 That directory contains repo-layout guidance, verification matrices, rollback templates, test catalogs, public-doc indexes, and AMS guardrails used across multiple skills. It is intentionally not limited to technical-advisory content.
 
@@ -37,7 +37,7 @@ That directory contains repo-layout guidance, verification matrices, rollback te
 
 For broad or first-time requests, start with:
 
-- `workflow-orchestrator/references/dispatcher-foundation/quick-start-execution-path.md`
-- `workflow-orchestrator/SKILL.md`
+- `references/workflow-orchestrator/references/dispatcher-foundation/quick-start-execution-path.md`
+- `references/workflow-orchestrator/GUIDE.md`
 
 For targeted work, start with the specialist skill that matches the request.
