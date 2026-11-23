@@ -1,16 +1,8 @@
----
-name: replication
-license: Apache-2.0
-description: "Publish, deactivate, and delete AEM content programmatically via the Cloud Service Replication API (com.day.cq.replication). Covers single-path and bulk activation, preview-tier targeting with AgentFilter, synchronous/async options, ReplicationStatus checks, permission validation, workflow process steps, and replication event handling. Use when the user needs to publish pages, activate or deactivate content, check replication status, build workflow steps that replicate content, listen to replication events, query batch publication state, or work with Replicator, ReplicationOptions, or ReplicationStatusProvider in AEM Cloud Service."
-metadata:
-  category: content-distribution
----
-
 # AEM Cloud Service Replication API
 
 Programmatic content publishing and unpublishing using the official AEM Replication API.
 
-## When to Use This Skill
+## When to Use the Replication API
 
 Use the Replication API for programmatic content distribution:
 - Custom OSGi services that publish content
@@ -573,14 +565,14 @@ Don't build custom bulk publishing code. Use Tree Activation workflow step.
 Always check permissions before replication to avoid exceptions.
 
 ### 4. Use Service Users
-Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate` via `ServiceUserMapperImpl.amended` config. Provision the principal with `jcr:read` + `crx:replicate` on `/content` via Repo Init scripts — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init). See [references/patterns.md](references/patterns.md) for the full service user setup example.
+Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate` via `ServiceUserMapperImpl.amended` config. Provision the principal with `jcr:read` + `crx:replicate` on `/content` via Repo Init scripts — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init). See [replication/patterns.md](replication/patterns.md) for the full service user setup example.
 
 ### 5. Publish Only What's Needed
 Minimize replication volume to reduce queue pressure and pipeline load.
 
 ## Common Patterns
 
-See [references/patterns.md](references/patterns.md) for complete implementations:
+See [replication/patterns.md](replication/patterns.md) for complete implementations:
 - **Auto-Publish on Content Fragment Save** — event-driven publish using `SlingConstants.TOPIC_RESOURCE_CHANGED`
 - **External Cache Purge After Publication** — CDN invalidation via replication event handler
 - **Service User Setup for Replication** — OSGi service user mapping and Repo Init provisioning

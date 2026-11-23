@@ -15,8 +15,8 @@ description: |
 
 ## Route by task
 
-- Programmatic publishing, preview targeting, status checks, bulk replication, and permissions: [Replication API](./replication/SKILL.md).
-- Sling Distribution lifecycle events and monitoring: [Sling Distribution Events](./sling-distribution/SKILL.md).
+- Programmatic publishing, preview targeting, status checks, bulk replication, and permissions: [Replication API guide](./references/replication.md).
+- Sling Distribution lifecycle events and monitoring: [Sling Distribution events guide](./references/sling-distribution.md).
 
 ## Replication guardrails
 
