@@ -11,6 +11,10 @@
 //
 // The CLI packs a commit fixture with `git archive` from the local repository, also one with a
 // repoUrl of another repository. Such a commit is fetched from its repoUrl first.
+//
+// Each run is saved to the plugin's Tessl project (lib/tessl-project.mjs): a plugin of ours
+// without one gets it before its run. A plugin brought in from another repository without a
+// tessl.json of its own is not evaluated and doesn't fail the run: its owners decide.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -19,6 +23,7 @@ import { error, group, setOutput, summary, table, warning } from './lib/actions.
 import { readDirs } from './lib/dirs.mjs';
 import { isMain } from './lib/is-main.mjs';
 import { outOfCredits } from './lib/tessl.mjs';
+import { ensureProject, notOurs, originUri, tesslApi } from './lib/tessl-project.mjs';
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
 // `eval view --json` of a plugin with many scenarios is several MB: above spawnSync's
@@ -101,7 +106,14 @@ async function main() {
   const timeout = Number(process.env.TIMEOUT || 900);
   const rows = [];
   const links = [];
-  const count = { passed: 0, failed: 0, skipped: 0 };
+  const count = { passed: 0, failed: 0, skipped: 0, foreign: 0 };
+  const token = process.env.TESSL_TOKEN;
+  const request = token
+    ? tesslApi(token, process.env.TESSL_API_BASE_URL || undefined)
+    : async () => {
+        throw new Error('TESSL_TOKEN is not set');
+      };
+  const source = originUri(process.cwd());
   const skip = (name) => {
     count.skipped += 1;
     rows.push([name, 'not run', '⏭️ no credits']);
@@ -114,6 +126,20 @@ async function main() {
   };
   for (const dir of readDirs(dirsFile)) {
     const name = basename(dir);
+    if (notOurs(dir) && !existsSync(join(dir, 'tessl.json'))) {
+      count.foreign += 1;
+      rows.push([name, 'not run', '⏭️ brought in from another repository']);
+      console.log(`  ⏭️ ${name}: not run, it is brought in from another repository and has no Tessl project here`);
+      continue;
+    }
+    try {
+      const { project, action } = await ensureProject(dir, { request, source });
+      console.log(`${name}: Tessl project ${project} (${{ own: 'its own tessl.json', found: 'exists', created: 'created now' }[action]})`);
+    } catch (problem) {
+      warning(`No Tessl project for ${name}: ${problem.message}`);
+      fail(name, 'no project', `no Tessl project: ${problem.message}`);
+      continue;
+    }
     const run = group(`Evaluating ${name} (${dir})`, () => {
       fetchFixtureCommits(dir);
       const started = tessl(['eval', 'run', dir]);
@@ -158,9 +184,12 @@ async function main() {
     lines.push('', `> ⏭️ ${count.skipped} plugin(s) were not evaluated: the Tessl organization has run out of credits.`, '> This is not an eval result. Ask for the evals again once there are credits.');
     warning(`${count.skipped} plugin(s) were not evaluated: the Tessl organization has run out of credits`);
   }
+  if (count.foreign > 0) {
+    lines.push('', `> ⏭️ ${count.foreign} plugin(s) were not evaluated: they are brought in from another repository and have no Tessl project here. Their owners decide about their evals.`);
+  }
   summary(lines);
-  console.log(`Total: ${total}, passed: ${count.passed}, failed: ${count.failed}, skipped: ${count.skipped}`);
-  setOutput('outcome', count.failed > 0 ? 'failed' : count.skipped > 0 ? 'no-credits' : 'passed');
+  console.log(`Total: ${total}, passed: ${count.passed}, failed: ${count.failed}, skipped: ${count.skipped}, from another repository: ${count.foreign}`);
+  setOutput('outcome', count.failed > 0 ? 'failed' : count.skipped > 0 ? 'no-credits' : total > 0 ? 'passed' : '');
   setOutput('has_results', links.length > 0);
   if (links.length > 0 && commentFile) writeFileSync(commentFile, `## Tessl Eval Results\n\n${links.join('\n')}\n`);
   if (count.failed > 0) {

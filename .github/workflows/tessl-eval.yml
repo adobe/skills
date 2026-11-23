@@ -118,53 +118,10 @@ jobs:
         if: steps.detect.outputs.skip != 'true'
         run: npm ci --ignore-scripts && npm run plugins:build
 
-      # tessl eval run saves a run to the Tessl project that the nearest tessl.json above the
-      # plugin names, and fails without one ("No Tessl project found"). Only
-      # edge-delivery-services brings its own: {"name": "adobe/<Tessl name>", "mode":
-      # "vendored"}. Every other plugin to evaluate gets the same file, named after its
-      # Tessl target, in this checkout only. Nothing is committed and no project is created.
-      # The name must be a project that exists in the adobe workspace on Tessl, with this
-      # repository and the plugin's folder as its source: otherwise the eval fails with
-      # "tessl.json links to a project that was not found or is not accessible".
-      - name: Give each plugin a tessl.json in this checkout
-        if: steps.detect.outputs.skip != 'true'
-        run: |
-          # shellcheck disable=SC2016 # the single quotes hold JavaScript
-          while IFS= read -r dir; do
-            [ -f "$dir/tessl.json" ] && continue
-            node -e '
-              const { readFileSync, writeFileSync } = require("node:fs");
-              const dir = process.argv[1];
-              const { name } = JSON.parse(readFileSync(`${dir}/.tessl-plugin/plugin.json`, "utf8"));
-              writeFileSync(`${dir}/tessl.json`, `${JSON.stringify({ name, mode: "vendored", dependencies: {} }, null, 2)}\n`);
-              console.log(`${dir}/tessl.json: ${name}`);
-            ' "$dir"
-          done < "$RUNNER_TEMP/plugin-dirs.txt"
-
-      # Which Tessl projects have this repository as their source: read only, for the log
-      # when an eval can't find its project. Names and paths only.
-      - name: Tessl projects of this repository
-        if: steps.detect.outputs.skip != 'true'
-        continue-on-error: true
-        # the organization by id: by name, the project calls of this token answer 404
-        env:
-          TESSL_ORG: d2f8c474-86e0-4ebd-958f-46310dac0f0c
-        run: |
-          # shellcheck disable=SC2016 # the single quotes hold JavaScript
-          { tessl project list --workspace adobe --json || tessl project list --json; } | node -e '
-            let text = ""; process.stdin.on("data", (c) => (text += c)).on("end", () => {
-              const found = [];
-              const visit = (v) => {
-                if (Array.isArray(v)) return v.forEach(visit);
-                if (!v || typeof v !== "object") return;
-                const a = v.attributes ?? v;
-                if (typeof a.sourceUri === "string" && /adobe\/skills/i.test(a.sourceUri)) found.push(`${a.workspaceName ?? a.workspace?.name ?? "?"}/${a.name} <- ${a.repoSubpath || "(root)"}`);
-                else Object.values(v).forEach(visit);
-              };
-              try { visit(JSON.parse(text)); } catch { console.log("unreadable answer"); }
-              console.log(found.length ? found.join("\n") : "none");
-            });'
-
+      # Each run is saved to the plugin's Tessl project: scripts/tessl-eval.mjs gives a plugin of
+      # ours without a tessl.json one in this checkout, never committed, and creates the
+      # project in the adobe workspace when it isn't there yet (scripts/lib/tessl-project.mjs).
+      # A plugin brought in from another repository is skipped, unless it brings its own.
       - name: Run evals
         id: run-evals
         if: steps.detect.outputs.skip != 'true'

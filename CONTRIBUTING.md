@@ -216,6 +216,7 @@ git push
 - Secrets are not available to pull requests from forks. Ask a maintainer to run the evals from a branch in this repository.
 - A run takes several minutes per plugin. The results are linked in a comment on the pull request.
 - It evaluates the plugins the pull request changes, a new plugin included. A change under `plugins/` that belongs to no plugin, or to `scripts/tessl-eval.mjs` or its workflow, evaluates every plugin with scenarios.
+- The runs of a plugin are saved to its Tessl project, named after its Tessl target (`adobe/<plugin>`), with this repository and the plugin's folder as its source. The job creates it for a new plugin. A plugin brought in from another repository is evaluated only when it brings a `tessl.json` of its own.
 - A commit fixture from another repository names it in `repoUrl`. The Tessl CLI packs commit fixtures from the local repository, so the job fetches that commit first.
 
 ## How to Contribute
