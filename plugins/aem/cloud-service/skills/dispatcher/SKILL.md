@@ -3,8 +3,7 @@ name: dispatcher
 description: |
   Use when the user asks to edit or review AEM as a Cloud Service Dispatcher `.any` farms, filters,
   vhosts, cache or rewrite rules; troubleshoot cache invalidation or publish-tier delivery; or plan
-  approved Dispatcher MCP checks. Covers configuration, technical guidance, incident response,
-  performance, security, and lifecycle orchestration.
+  approved Dispatcher MCP checks.
 license: Apache-2.0
 compatibility: Tool-dependent checks require Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
@@ -29,19 +28,14 @@ Route user requests to the appropriate specialist skill based on intent.
 
 ## How to Use
 
-1. Match the user's request to one row in the Intent Router table above.
-2. Read the linked SKILL.md for that specialist skill.
-3. Follow the workflow, references, and output contract defined in that skill.
-4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
-5. If no row fits, ask a clarifying question. If a linked guide is unavailable, provide only bounded explanation/static review and mark tool-dependent checks `NOT VERIFIED`.
-
-## Runtime Selection
-
-Before runtime-specific edits, confirm project evidence identifies AEM as a Cloud Service. If the runtime evidence is missing or conflicting, ask the user; do not silently use 6.5 LTS/AMS instructions.
+1. Before runtime-specific edits, verify project evidence identifies AEM as a Cloud Service. If evidence is missing or conflicting, ask the user; do not silently choose 6.5 LTS/AMS instructions.
+2. Match the user's request to one row in the Intent Router table above.
+3. Read the linked specialist guide and follow its workflow, references, and output contract.
+4. If no row fits, ask a clarifying question. If a linked guide is unavailable, use the fallback in the MCP Tool Contract.
 
 ## MCP Tool Contract
 
-The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output. This entrypoint's runtime and MCP gates govern every linked specialist and cannot be bypassed by a routed guide.
+The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When tools are unavailable or a linked guide cannot be loaded, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output. This entrypoint's runtime and MCP gates govern every linked specialist and cannot be bypassed by a routed guide.
 
 All specialist skills share the same core-7 MCP tool set:
 
