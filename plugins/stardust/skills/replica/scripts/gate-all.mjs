@@ -25,10 +25,11 @@
  * flight across the pages (`limiter`). The compares follow, when both are done. BROWSERS: every child that opens a
  * browser (a build capture, an origin freeze or live stitch, a probe — one browser each; content-presence loads its
  * two pages in that one) takes a unit of the job's one budget (`browserBudget`): --max-browsers, else
- * STARDUST_MAX_BROWSERS, else what the phases held when they ran in turn — the larger of the eds and probe
- * concurrency, plus one per origin capture that has a browser open (at most the origin concurrency; none once the
- * references are frozen). The three concurrency flags are per-kind limits inside it; the first log line names the
- * budget and its source. Rows, records and their order do not depend on the schedule. Writes
+ * STARDUST_MAX_BROWSERS, else what the phases held in turn FOR THIS JOB — the larger of min(pages to capture on the
+ * build side, eds concurrency) and min(pages to probe, probe concurrency), plus one per origin capture that has a
+ * browser open (a freeze or live stitch; at most the origin concurrency). One page: 1, and 2 only while its origin is
+ * frozen; --max-browsers / STARDUST_MAX_BROWSERS replaces it and is how a caller opts in to more. The three
+ * concurrency flags are per-kind limits inside it; a log line at the start names the budget and its source. Rows, records and their order do not depend on the schedule. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
  * records, not its PNGs (#156, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
@@ -180,9 +181,10 @@ export function maxBrowsersOf(flag, env = process.env) {
   return { max: null, from: 'default' };
 }
 /** The first log line of a job that opens browsers: the budget in force and where it came from. */
-export function budgetLine(o) {
+export function budgetLine(o, { capture = 0, probe = 0 } = {}) {
   if (o.maxBrowsers != null) return `browser budget: ${o.maxBrowsers} at once (${o.maxBrowsersFrom === 'flag' ? '--max-browsers' : 'STARDUST_MAX_BROWSERS'})`;
-  return `browser budget: ${Math.max(o.ec, o.pc)} at once (default from the flags: the larger of --eds-concurrency ${o.ec} and --probe-concurrency ${o.pc}), plus one per origin capture that opens a browser (a freeze or a live stitch; at most ${o.oc}, none once the references are frozen) — what the phases held in turn; --max-browsers or STARDUST_MAX_BROWSERS sets one cap`;
+  const e = Math.min(capture, o.ec); const p = Math.min(probe, o.pc);
+  return `browser budget: ${Math.max(1, e, p)} at once (default for this job: the larger of min(${capture} page(s) to capture, --eds-concurrency ${o.ec}) and min(${probe} page(s) to probe, --probe-concurrency ${o.pc})), plus one per origin capture that opens a browser (a freeze or a live stitch; at most ${o.oc}) — what the phases held in turn; --max-browsers or STARDUST_MAX_BROWSERS sets one cap`;
 }
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
@@ -227,10 +229,11 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
   --origin-concurrency <n>  2      --eds-concurrency <n>  4      --probe-concurrency <n>  2   (per-kind limits)
   --max-browsers <n>        browser processes this job holds at once, over origin captures, build captures and probes
-                            (one per child; content-presence loads its two pages in that one). Default:
-                            STARDUST_MAX_BROWSERS, else what the phases held in turn — the larger of the eds and probe
-                            concurrency, plus one per origin capture that opens a browser (a freeze or a live stitch).
-                            Inside it the probes run beside the captures; the first log line names the budget
+                            (one per child; content-presence loads its two pages in that one); a log line names it.
+                            Default: STARDUST_MAX_BROWSERS, else what the phases held in turn for THIS job — the larger
+                            of min(pages to capture, eds concurrency) and min(pages to probe, probe concurrency), plus
+                            one per origin capture with a browser open (a freeze or live stitch). One page: 1 (2 while
+                            its origin is frozen); 12 pages at the defaults: 4. Give a number to opt in to more
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --offset-max <px>         total offset the pixel criterion allows (default: 8 at the prototype stage; published the
                             larger of 8 and 1 % of the origin height, then the roster tolerance below); given, it is
@@ -815,7 +818,6 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template, opts.stage) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
-  if (!opts.compareOnly) log(budgetLine(opts));
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const measuredWith = (p) => ({ masks: (MASKS[p.slug] && MASKS[p.slug].masks) || [], edsUrl: edsUrl(p) });
@@ -852,11 +854,11 @@ async function main() {
   }
   // --skip-existing reuses a capture and its meta — unless it is a stitch taken before fixed layers were captured once
   // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
-  const reusable = (p, side, png, meta) => {
+  const reusable = (p, side, png, meta, quiet = false) => {
     if (!existsSync(png) || !existsSync(meta)) return false;
     const stale = (readJsonSafe(meta) || {}).instrument === 'stitch-live' ? staleReason(png, optsFor(p).holdTimers) : null;
     if (!stale) return true;
-    log(`${side} ${p.slug}: ${png} ${stale} — retaking it`);
+    if (!quiet) log(`${side} ${p.slug}: ${png} ${stale} — retaking it`);
     return false;
   };
   // stitch-shot's capture record (captureRecordOf: <side>.capture.json beside the PNG; stitch-shot removes it when a
@@ -874,7 +876,13 @@ async function main() {
     return optsOf.get(p.slug);
   };
   // Every child that opens a browser holds a unit of the job's budget while it runs (header § BROWSERS).
-  const browsers = browserBudget({ max: opts.maxBrowsers, eds: opts.ec, probe: opts.pc });
+  // The default is sized to THIS job: the build captures it will really take and the pages it will probe.
+  const jobSize = {
+    capture: opts.compareOnly ? 0 : pages.filter((p) => !reused.has(p.slug) && !(opts.skip && !opts.recaptureEds && reusable(p, 'eds', join(dir(p), 'eds.png'), join(dir(p), 'eds.json'), true))).length,
+    probe: opts.compareOnly || !(opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) ? 0 : pages.length,
+  };
+  const browsers = browserBudget({ max: opts.maxBrowsers, eds: Math.min(jobSize.capture, opts.ec), probe: Math.min(jobSize.probe, opts.pc) });
+  if (!opts.compareOnly) log(budgetLine(opts, jobSize));
   const stitch = (kind, url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return browsers(kind, () => run('node', stitchArgs(STITCH, url, out, o, tail))); };
   // Before a side is captured again its previous PNG, record and diff go: a capture that fails leaves no picture, so
   // the row is a missing capture (an error, no percentage) — never a diff of the old PNG against the other side.

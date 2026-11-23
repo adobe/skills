@@ -810,13 +810,13 @@ const maxInFlight = (spans) => Math.max(0, ...spans.map((x) => spans.filter((y) 
 check('schedule: the content and unit probes of a page overlap in time; the clip probe runs after a content probe that gave no clip result', () => {
   const { gateAll, times, rows, done } = sandbox(['a'], { probes: true, units: true });
   try {
-    let r = gateAll([], { STUB_PROBE_MS: '500' });
+    let r = gateAll(['--max-browsers', '3'], { STUB_PROBE_MS: '500' }); // one page: the default budget is 1 â€” more is asked for
     assert.equal(r.status, 0, r.stderr);
     const of = (kind) => times().find((t) => t.kind === kind);
     assert.ok(overlap(of('content-presence'), of('unit-geometry')), JSON.stringify(times()));
     assert.equal(of('clip-probe'), undefined, 'content gave the clip result');
     assert.deepEqual([rows().a.pass, rows().a.units.off, rows().a.content.missing, rows().a.clipped], [true, 0, 0, 0]);
-    r = gateAll([], { STUB_PROBE_MS: '300', STUB_CONTENT_RC: '4' });
+    r = gateAll(['--max-browsers', '3'], { STUB_PROBE_MS: '300', STUB_CONTENT_RC: '4' });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(of('clip-probe').t0 >= of('content-presence').t1, 'clip only once content has answered without one');
     assert.ok(overlap(of('content-presence'), of('unit-geometry')));
@@ -920,8 +920,9 @@ await checkAsync('browserBudget: a given cap holds over every kind; without one 
   for (const bad of ['0', 'x', '1.5', '-2']) { assert.match(maxBrowsersOf(bad, {}).error, /--max-browsers needs a whole number/); assert.match(maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: bad }).error, /STARDUST_MAX_BROWSERS needs a whole number/); }
   assert.equal(spawnSync(process.execPath, [SCRIPT, '--max-browsers', '0'], { encoding: 'utf8' }).status, 1);
   assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, STARDUST_MAX_BROWSERS: 'many' } }).status, 1, 'a cap that cannot be read stops the job');
-  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--max-browsers <n>\s+browser processes this job holds at once[^]*STARDUST_MAX_BROWSERS, else what the phases held in turn/);
+  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--max-browsers <n>\s+browser processes this job holds at once[^]*STARDUST_MAX_BROWSERS, else what the phases held in turn for THIS job[^]*One page: 1 \(2 while\s+its origin is frozen\); 12 pages at the defaults: 4/);
   assert.equal(budgetLine({ maxBrowsers: 3, maxBrowsersFrom: 'env', oc: 2, ec: 4, pc: 2 }), 'browser budget: 3 at once (STARDUST_MAX_BROWSERS)');
+  assert.match(budgetLine({ maxBrowsers: null, oc: 2, ec: 4, pc: 2 }, { capture: 1, probe: 1 }), /^browser budget: 1 at once \(default for this job: the larger of min\(1 page\(s\) to capture, --eds-concurrency 4\) and min\(1 page\(s\) to probe, --probe-concurrency 2\)\)/);
 });
 check('browser budget: the stub browsers open at once never exceed the budget â€” 1/1/1 frozen holds one, 1/1/1 on a first pass two, the defaults four (frozen, 12 pages) or six (first pass), --max-browsers and STARDUST_MAX_BROWSERS what they say; the first log line names the budget and its source', () => {
   const slugs = Array.from({ length: 12 }, (_, i) => `p${String(i + 1).padStart(2, '0')}`);
@@ -937,7 +938,7 @@ check('browser budget: the stub browsers open at once never exceed the budget â€
     // first pass: every origin is frozen now (reference.mjs: a browser each)
     let [n, freezes, line] = peak(ONE, REF);
     assert.deepEqual([n, freezes], [2, 12], '1/1/1, first pass: the origin freeze beside one other browser, as the capture phase held');
-    assert.match(line, /^browser budget: 1 at once \(default from the flags: the larger of --eds-concurrency 1 and --probe-concurrency 1\), plus one per origin capture that opens a browser/);
+    assert.match(line, /^browser budget: 1 at once \(default for this job: the larger of min\(12 page\(s\) to capture, --eds-concurrency 1\) and min\(12 page\(s\) to probe, --probe-concurrency 1\)\), plus one per origin capture that opens a browser/);
     // the references are frozen from here on: no origin browser
     [n, freezes] = peak(ONE, REF);
     assert.deepEqual([n, freezes], [1, 0], '1/1/1, frozen: ONE browser at a time');
@@ -949,7 +950,7 @@ check('browser budget: the stub browsers open at once never exceed the budget â€
     assert.equal(n, 2, '1/2/1, frozen: the build pool\'s two');
     [n, freezes, line] = peak([], REF);
     assert.deepEqual([n, freezes], [4, 0], 'the defaults, frozen, 12 pages: four');
-    assert.match(line, /^browser budget: 4 at once \(default from the flags: the larger of --eds-concurrency 4 and --probe-concurrency 2\)/);
+    assert.match(line, /^browser budget: 4 at once \(default for this job: the larger of min\(12 page\(s\) to capture, --eds-concurrency 4\) and min\(12 page\(s\) to probe, --probe-concurrency 2\)\)/);
     [n] = peak(['--max-browsers', '3'], REF);
     assert.equal(n, 3);
     [n] = peak(['--max-browsers', '1'], REF);
@@ -965,6 +966,26 @@ check('browser budget: the stub browsers open at once never exceed the budget â€
     assert.equal(n, 3, 'a given cap covers the origin captures too');
     assert.ok(existsSync(join(out, 'summary.json')));
   } finally { done(); }
+});
+check('browser budget: a one-page job holds what it held before â€” the defaults one browser on a frozen reference and two while its origin is frozen, 1/2/1 one; two pages at the defaults two; --max-browsers opts in to more', () => {
+  const run = (slugs, args, env = {}) => {
+    const { gateAll, times, totals, done } = sandbox(slugs, { probes: true, units: true });
+    try {
+      const out = [];
+      for (const [a, e] of [[args, env]].concat(env.then || [])) {
+        const r = gateAll(a, { STUB_SHOT_MS: '120', STUB_PROBE_MS: '120', ...REF, ...e, then: undefined });
+        assert.equal(r.status, 0, r.stderr); assert.equal(totals().pass, slugs.length);
+        out.push([maxInFlight(times()), times().filter((t) => t.kind === 'reference').length, r.stdout.split('\n')[0].replace(/^\S+ /, '').split(' (')[0]]);
+      }
+      return out;
+    } finally { done(); }
+  };
+  const TWO = ['--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1'];
+  // first pass (the origin is frozen: a browser), then the frozen reference, then asking for three
+  assert.deepEqual(run(['a'], [], { then: [[[], {}], [['--max-browsers', '3'], {}]] }), [[2, 1, 'browser budget: 1 at once'], [1, 0, 'browser budget: 1 at once'], [3, 0, 'browser budget: 3 at once']]);
+  assert.deepEqual(run(['a'], TWO, { then: [[TWO, {}]] }), [[2, 1, 'browser budget: 1 at once'], [1, 0, 'browser budget: 1 at once']]);
+  assert.deepEqual(run(['a', 'b'], [], { then: [[[], {}]] }).map((x) => [x[0] <= 4, x[2]]), [[true, 'browser budget: 2 at once'], [true, 'browser budget: 2 at once']]);
+  assert.equal(run(['a', 'b'], [], { then: [[[], {}]] })[1][0], 2, 'two pages, frozen: two');
 });
 check('a failed re-capture leaves no old PNG to diff: the capture is removed first, so the row is an error with no percentage', () => {
   const { gateAll, pngs, rows, totals, out, done } = sandbox(['bad']);
