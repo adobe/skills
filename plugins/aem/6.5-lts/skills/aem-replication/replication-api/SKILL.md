@@ -470,7 +470,10 @@ Calendar getLastPublished();
 String getLastPublishedBy();
 
 // Get last replication action
-ReplicationActionType getLastReplicationAction();
+String getLastReplicationAction();
+
+// Get last replicated revision
+String getLastReplicatedRevision();
 ```
 
 **Example:**
@@ -938,7 +941,7 @@ public void forceRetryBlockedQueue(String agentId) {
 
 ### ReplicationListener Interface
 
-Receives callbacks only for synchronous replication when attached via `ReplicationOptions.setListener()`.
+Listens for replication events in real-time.
 
 **Official Documentation:** [ReplicationListener JavaDoc](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationListener.html)
 

@@ -23,7 +23,7 @@ Use the Replication API for programmatic content distribution:
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
+**Javadoc**: https://javadoc.io/doc/com.adobe.aem/aem-sdk-api/latest/com/day/cq/replication/package-summary.html
 
 **Key Classes**:
 - `com.day.cq.replication.Replicator` - Main replication service
@@ -92,12 +92,11 @@ public class ContentPublisher {
 
 ## Bulk Replication: Multiple Paths
 
-**CONSTRAINTS** (per [official Javadoc](https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/Replicator.html)):
-- **Recommended limit**: 100 paths per call for a transactional guarantee
-- **Hard limit**: 500 paths per call; above that a `ReplicationException` is thrown. For large trees use the Tree Activation workflow step
-- **Payload size**: 10 MB maximum (excluding binaries)
-
-> **Note**: `ReplicationOptions.setUseAtomicCalls()` is `@Deprecated` and marked "no longer required" in the Cloud Service Javadoc. The [replication docs](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication) still describe `setUseAtomicCalls(false)` for non-atomic bucketing above the limit; prefer Tree Activation over relying on it.
+**Bulk publishing limits** (Cloud Service operations documentation and AEM SDK Javadocs):
+- Prefer fewer than 100 paths per custom call. Use the Tree Activation workflow for large hierarchies.
+- The Cloud Service operations guide documents a 500-path cap for default calls; larger requests throw `ReplicationException`.
+- It separately describes `ReplicationOptions.setUseAtomicCalls(false)` as a way to bucket larger requests, while the current SDK Javadoc marks the option deprecated and “no longer required.” Treat this as a documented conflict: do not promise automatic splitting; handle `ReplicationException` and verify target-runtime behavior before relying on larger requests.
+- **Payload size**: 10 MB maximum (excluding binaries).
 
 ### Example: Bulk Activation
 
@@ -109,8 +108,8 @@ public class BulkPublisher {
     
     /**
      * Publish multiple pages.
-     * ≤100 paths → replicated atomically (transactional guarantee).
-     * >500 paths → ReplicationException; split the input or use Tree Activation.
+     * Keep custom calls below 100 paths when possible. Product docs state calls above 500 paths
+     * throw ReplicationException by default; larger-batch behavior is not claimed here.
      */
     public void publishMultiplePages(Session session, String[] pagePaths) 
             throws ReplicationException {
@@ -119,7 +118,7 @@ public class BulkPublisher {
             session,
             ReplicationActionType.ACTIVATE,
             pagePaths,
-            null  // Keep pagePaths.length <= 500 (ideally < 100)
+            null  // Keep custom requests below 100 paths; handle ReplicationException.
         );
     }
 }
@@ -129,7 +128,7 @@ public class BulkPublisher {
 
 ## Publishing to Preview Tier
 
-Without an `AgentFilter`, `Replicator` targets **publish only**. The Preview tier requires explicit agent filtering.
+Without an `AgentFilter`, `Replicator` targets the enabled-by-default **publish** agent only. Preview requires an explicit filter and the Preview agent must be available in the target environment.
 
 ### Example: Publish to Preview
 
@@ -193,13 +192,38 @@ public class PreviewPublisher {
 }
 ```
 
-**Note**: Preview agent is disabled by default and must be configured in Cloud Manager.
+### Checking Preview Status
+
+After a preview-only activation, the per-agent status can be active even though aggregate `isActivated()` remains false:
+
+```java
+import com.day.cq.replication.ReplicationStatus;
+
+ReplicationStatus aggregate = replicator.getReplicationStatus(session, pagePath);
+ReplicationStatus preview = aggregate == null ? null : aggregate.getStatusForAgent("preview");
+boolean previewIsActivated = preview != null && preview.isActivated();
+// A preview-only activation can make previewIsActivated true while aggregate.isActivated() is false.
+```
+
+**Note**: Preview is not enabled by default; verify that the Preview agent is available in the target environment before using it.
 
 ## Advanced Options: ReplicationOptions
 
 ### Synchronous vs. Asynchronous Replication
 
 ```java
+import com.day.cq.replication.Agent;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationAction;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import com.day.cq.replication.ReplicationListener;
+import com.day.cq.replication.ReplicationLog;
+import com.day.cq.replication.ReplicationOptions;
+import com.day.cq.replication.ReplicationResult;
+import javax.jcr.Session;
+import org.osgi.service.component.annotations.Reference;
+
 public class SynchronousPublisher {
     
     @Reference
@@ -298,9 +322,13 @@ public void replicateWithoutVersioning(Session session, String path)
 ```java
 import com.day.cq.replication.ReplicationStatus;
 import org.apache.sling.api.resource.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StatusChecker {
-    
+
+    private static final Logger LOG = LoggerFactory.getLogger(StatusChecker.class);
+
     @Reference
     private Replicator replicator;
     
@@ -316,7 +344,7 @@ public class StatusChecker {
             return false;  // No replication metadata
         }
         
-        return status.isActivated();  // publish only; for preview use status.getStatusForAgent("preview")
+        return status.isActivated();  // Aggregate/default-publish status; use getStatusForAgent("preview") for Preview.
     }
     
     /**
@@ -328,12 +356,12 @@ public class StatusChecker {
         ReplicationStatus status = replicator.getReplicationStatus(session, path);
         
         if (status != null) {
-            System.out.println("Activated: " + status.isActivated());
-            System.out.println("Deactivated: " + status.isDeactivated());
-            System.out.println("Last Published: " + status.getLastPublished());
-            System.out.println("Published By: " + status.getLastPublishedBy());
-            System.out.println("Last Action: " + status.getLastReplicationAction());
-            System.out.println("Pending: " + status.isPending());
+            LOG.info("Activated: {}", status.isActivated());
+            LOG.info("Deactivated: {}", status.isDeactivated());
+            LOG.info("Last Published: {}", status.getLastPublished());
+            LOG.info("Published By: {}", status.getLastPublishedBy());
+            LOG.info("Last Action: {}", status.getLastReplicationAction());
+            LOG.info("Pending: {}", status.isPending());
         }
     }
     
@@ -535,7 +563,7 @@ public class ReplicationEventLogger implements EventHandler {
 ## Best Practices
 
 ### 1. Respect Rate Limits
-- <100 paths per call recommended; 500 is the hard limit (`ReplicationException` above it)
+- ≤100 paths per call for transactional guarantee; system auto-splits if exceeded
 - ≤10 MB payload size
 
 ### 2. Use Workflow for Large Operations
@@ -561,7 +589,7 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ### Issue: Replication Fails Silently
 
-**Check**: In **Tools > Deployment > Distribution**, open the `publish` or `preview` agent. Review the **persisted** and **fully published** queues (Items Pending, red status) and the **Logs** tab. Only clearing **fully published** means content is live and Dispatcher is invalidated.
+**Check**: In **Tools > Deployment > Distribution**, open the `publish` or `preview` agent. Review its **persisted** and **fully published** queues and the **Logs** tab. Clearing `persisted` means content is durable on Publish; clearing `fully published` means it is live across Publish pods and Dispatcher invalidation is complete. A queued or accepted request alone does not prove delivery.
 
 ### Issue: Permission Errors
 
@@ -581,6 +609,6 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ## References
 
-- **Official Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
-- **Adobe Docs**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **AEM SDK Javadocs**: https://javadoc.io/doc/com.adobe.aem/aem-sdk-api/latest/com/day/cq/replication/package-summary.html
+- **Cloud Service replication operations**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
 - **Sling Distribution**: https://sling.apache.org/documentation/bundles/content-distribution.html
