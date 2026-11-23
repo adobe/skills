@@ -59,12 +59,13 @@
       "enabled": false
     },
     {
-      "description": "The Tessl CLI that the workflows install. A new version has broken the evals before, and no check of its pull request runs one: a person merges it after an eval: commit.",
+      "description": "The Tessl CLI that the workflows install. Its updates within a major version merge by themselves once every check is green and the release is a week old, also below 1.0. They are ci(deps) commits, so they release nothing.",
       "matchPackageNames": ["@tessl/cli"],
       "matchFileNames": [".github/workflows/**"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "semanticCommitType": "ci",
       "semanticCommitScope": "deps",
-      "automerge": false
+      "automerge": true
     }
   ],
   "customManagers": [
