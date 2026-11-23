@@ -47,6 +47,8 @@ jobs:
 
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         with:
+          # renovate: datasource=npm depName=@tessl/cli
+          version: '0.122.0'
           token: ${{ secrets.TESSL_TOKEN }}
 
       - name: Detect changed skills

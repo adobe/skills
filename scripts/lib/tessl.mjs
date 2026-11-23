@@ -4,7 +4,7 @@
 // not as failed.
 export const outOfCredits = (output) => /\bout of credits\b/i.test(output ?? '');
 
-// What `tessl plugin publish` did, from its exit status and what it printed (CLI 0.119.0):
+// What `tessl plugin publish` did, from its exit status and what it printed (CLI 0.122.0):
 //   published   exit 0. The upload was accepted; Tessl may still run publication checks.
 //   exists      "<name>@<version> already exists. Bump the version in …". The version is on
 //               the registry: from an earlier run of the job, or from an attempt that timed
