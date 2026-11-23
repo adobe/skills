@@ -1,4 +1,5 @@
 import { gunzipSync } from 'node:zlib';
+import { redactCredentials } from '#src/errors.mjs';
 
 const LANG_RE = /^([a-z]{2,3})(?:[-_]([a-z]{2}|\d{3}))?$/i;
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
@@ -40,6 +41,17 @@ export function extractLinks(html, base) {
   return out;
 }
 
+/**
+ * `fetch` wraps why it failed (DNS, refused connection, a proxy answering 407) in `fetch failed`:
+ * name the innermost cause too.
+ */
+export function failureMessage(err) {
+  let inner = err;
+  while (inner?.cause instanceof Error) inner = inner.cause;
+  const message = inner === err ? err.message : `${err.message}: ${inner.message}`;
+  return redactCredentials(message);
+}
+
 async function fetchBody({ url, timeoutMs, headers }) {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -73,7 +85,7 @@ export async function crawl(origin, options = {}) {
     try {
       return await fn();
     } catch (err) {
-      errors.push({ url, message: err.message });
+      errors.push({ url, message: failureMessage(err) });
       return undefined;
     }
   };
@@ -101,6 +113,14 @@ export async function crawl(origin, options = {}) {
     if (u) urls.push({ url: u.href, lang: langOf(u.pathname) });
   };
 
+  /** Why a document asked from the origin came from another one, if it did. */
+  const movedAway = (url, doc) => {
+    const final = new URL(doc.url || url);
+    final.hash = '';
+    if (new URL(url).origin !== base.origin || final.origin === base.origin) return null;
+    return `redirected to ${final.href}, another origin; scan ${final.origin} instead`;
+  };
+
   async function walkSitemaps() {
     // A site without robots.txt is normal: a 404 means no Sitemap lines, not a failure.
     const robotsUrl = `${base.origin}/robots.txt`;
@@ -111,18 +131,55 @@ export async function crawl(origin, options = {}) {
       }),
     );
     const listed = [...(robots?.text.matchAll(/^sitemap:\s*(\S+)/gim) ?? [])].map((m) => m[1]);
+    // A redirect elsewhere is only worth an error when it led nowhere: robots.txt or a sitemap
+    // served from a CDN host is fine.
+    const robotsMoved = robots && !listed.length && movedAway(robotsUrl, robots);
+    if (robotsMoved) errors.push({ url: robotsUrl, message: robotsMoved });
     const queue = listed.length ? listed : [`${base.origin}/sitemap.xml`];
     const visited = new Set();
+    // Origins of the URLs dropped for being elsewhere, to explain an empty scan.
+    const elsewhere = new Map();
+    let foreign = 0; // sitemaps whose URLs are all on another origin
     while (queue.length && !full()) {
       const url = queue.shift();
       if (visited.has(url)) continue;
       visited.add(url);
       const doc = await attempt(url, () => get(url));
       if (!doc) continue;
-      sitemaps.push(url);
       const { index, locs } = parseSitemap(doc.text);
+      // A page instead of a sitemap (a bot challenge, an app shell, a redirect home) has no
+      // <loc>; an empty <urlset> is a real, empty sitemap.
+      if (!locs.length && !index && !/<urlset[\s>]/i.test(doc.text)) {
+        const why = movedAway(url, doc) || `not a sitemap (${doc.type || 'no content-type'})`;
+        errors.push({ url, message: why });
+        continue;
+      }
+      sitemaps.push(url);
       if (index) queue.push(...locs);
-      else for (const loc of locs) if (!full()) keep(loc);
+      else {
+        let mine = 0;
+        for (const loc of locs) {
+          if (full()) break;
+          const where = URL.canParse(loc) && new URL(loc).origin;
+          if (where && where !== base.origin) elsewhere.set(where, (elsewhere.get(where) ?? 0) + 1);
+          else {
+            mine += 1;
+            keep(loc);
+          }
+        }
+        if (locs.length && !mine) foreign += 1;
+      }
+      // A sitemap lists one host's URLs. Three for other hosts and none for this one: the
+      // origin is wrong (apex, http://), so stop before reading what can be hundreds of them.
+      if (seen.size === 0 && foreign >= 3) break;
+    }
+    // The usual cause: the origin given is the apex or http:// version of the site.
+    if (seen.size === 0 && elsewhere.size) {
+      const [other] = [...elsewhere].sort((a, b) => b[1] - a[1])[0];
+      errors.push({
+        url: base.href,
+        message: `the sitemaps list URLs of ${other} only; scan ${other} instead`,
+      });
     }
   }
 

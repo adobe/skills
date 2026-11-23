@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
-import { crawl, extractLinks, globToRegExp, langOf, parseSitemap } from '#src/site/crawl.mjs';
+import {
+  crawl,
+  extractLinks,
+  failureMessage,
+  globToRegExp,
+  langOf,
+  parseSitemap,
+} from '#src/site/crawl.mjs';
 
 async function site(routes) {
   const server = createServer((req, res) => {
@@ -11,8 +18,11 @@ async function site(routes) {
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(200, { 'content-type': r.type ?? 'text/html' });
-    return res.end(typeof r.body === 'function' ? r.body(origin) : r.body);
+    res.writeHead(r.status ?? 200, {
+      'content-type': r.type ?? 'text/html',
+      ...(r.location && { location: r.location(origin) }),
+    });
+    return res.end(typeof r.body === 'function' ? r.body(origin) : (r.body ?? ''));
   });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -226,5 +236,134 @@ test('http: a start page that is not HTML or leaves the origin says why', async 
   } finally {
     server.close();
     target.close();
+  }
+});
+
+test('failureMessage names the innermost cause and hides credentials', () => {
+  const inner = new Error('connect ECONNREFUSED http://user:secret@127.0.0.1:9');
+  const err = new TypeError('fetch failed', { cause: new Error('wrapped', { cause: inner }) });
+  assert.equal(
+    failureMessage(err),
+    'fetch failed: connect ECONNREFUSED http://[redacted]@127.0.0.1:9',
+  );
+  assert.equal(failureMessage(new Error('HTTP 404')), 'HTTP 404');
+});
+
+test('sitemaps: robots.txt and sitemap.xml sent to another site say which origin to scan', async () => {
+  const other = await site({ '/': { body: '<html>home</html>' } });
+  const s = await site({
+    '/robots.txt': { status: 302, location: () => `${other.origin}/` },
+    '/sitemap.xml': { status: 302, location: () => `${other.origin}/` },
+  });
+  try {
+    const r = await crawl(s.origin);
+    const message = `redirected to ${other.origin}/, another origin; scan ${other.origin} instead`;
+    assert.equal(r.valid, 0);
+    assert.deepEqual(r.errors, [
+      { url: `${s.origin}/robots.txt`, message },
+      { url: `${s.origin}/sitemap.xml`, message },
+    ]);
+  } finally {
+    s.close();
+    other.close();
+  }
+});
+
+test('sitemaps: robots.txt and a sitemap served from a CDN host are fine', async () => {
+  let origin;
+  const cdn = await site({
+    '/robots.txt': { type: 'text/plain', body: () => `Sitemap: ${origin}/sitemap.xml` },
+    '/s.xml': { body: () => urlset(`${origin}/a`, `${origin}/b`) },
+  });
+  const s = await site({
+    '/robots.txt': { status: 301, location: () => `${cdn.origin}/robots.txt` },
+    '/sitemap.xml': { status: 302, location: () => `${cdn.origin}/s.xml` },
+  });
+  origin = s.origin;
+  try {
+    const r = await crawl(s.origin);
+    assert.equal(r.valid, 2);
+    assert.deepEqual(r.errors, []);
+  } finally {
+    s.close();
+    cdn.close();
+  }
+});
+
+test('sitemaps: sitemaps that list only another origin say to scan it', async () => {
+  const s = await site({
+    '/sitemap.xml': {
+      body: urlset('http://www.other.test/a', 'http://www.other.test/b', 'http://cdn.test/c'),
+    },
+  });
+  try {
+    const r = await crawl(s.origin);
+    assert.equal(r.valid, 0);
+    assert.deepEqual(r.errors, [
+      {
+        url: `${s.origin}/`,
+        message:
+          'the sitemaps list URLs of http://www.other.test only; scan http://www.other.test instead',
+      },
+    ]);
+    // Same-origin URLs left out by the patterns are no reason to scan elsewhere.
+    const s2 = await site({
+      '/sitemap.xml': { body: (o) => urlset(`${o}/x`, 'http://www.other.test/a') },
+    });
+    try {
+      assert.deepEqual((await crawl(s2.origin, { exclude: ['*'] })).errors, []);
+    } finally {
+      s2.close();
+    }
+  } finally {
+    s.close();
+  }
+});
+
+test('sitemaps: on the wrong origin, the walk stops after three sitemaps of another one', async () => {
+  let fetched = 0;
+  const s = await site({
+    '/sitemap.xml': {
+      body: (o) =>
+        `<sitemapindex>${Array.from({ length: 10 }, (_, i) => `<sitemap><loc>${o}/s${i}.xml</loc></sitemap>`).join('')}</sitemapindex>`,
+    },
+    ...Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [
+        `/s${i}.xml`,
+        {
+          body: () => {
+            fetched += 1;
+            return urlset(`https://www.other.test/p${i}`);
+          },
+        },
+      ]),
+    ),
+  });
+  try {
+    const r = await crawl(s.origin);
+    assert.equal(fetched, 3);
+    assert.match(r.errors.at(-1).message, /scan https:\/\/www\.other\.test instead$/);
+  } finally {
+    s.close();
+  }
+});
+
+test('sitemaps: an HTML page instead of a sitemap is an error; an empty urlset is not', async () => {
+  const s = await site({
+    '/robots.txt': {
+      type: 'text/plain',
+      body: (o) => `Sitemap: ${o}/challenge.xml\nSitemap: ${o}/empty.xml`,
+    },
+    '/challenge.xml': { body: '<html><head><meta name="robots" content="noindex"></head></html>' },
+    '/empty.xml': { type: 'application/xml', body: '<?xml version="1.0"?><urlset></urlset>' },
+  });
+  try {
+    const r = await crawl(s.origin);
+    assert.deepEqual(r.errors, [
+      { url: `${s.origin}/challenge.xml`, message: 'not a sitemap (text/html)' },
+    ]);
+    assert.deepEqual(r.sitemaps, [`${s.origin}/empty.xml`]);
+  } finally {
+    s.close();
   }
 });
