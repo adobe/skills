@@ -33,6 +33,7 @@ Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 - Coordinated with Author default agents
 
 **Dispatcher Configuration Required:**
+Add this property inside the applicable farm's `/cache` section in `dispatcher.any`:
 ```apache
 /allowedClients {
     /0000 { /type "deny" /glob "*" }

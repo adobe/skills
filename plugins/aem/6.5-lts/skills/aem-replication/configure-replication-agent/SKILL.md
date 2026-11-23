@@ -282,7 +282,7 @@ Extended Tab:
 ```
 
 **Dispatcher configuration requirements:**
-Ensure Dispatcher `dispatcher.any` has:
+In the applicable farm's `/cache` section in Dispatcher `dispatcher.any`, configure:
 ```
 /allowedClients {
   /0000 { /type "deny" /glob "*" }

@@ -466,14 +466,20 @@ On Author:
 
 2. **Review Dispatcher configuration:**
    ```
-   dispatcher.any file:
-   /allowedClients {
-     /0000 { /type "deny" /glob "*" }
-     /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
-   }
-   
-   /invalidate {
-     /0000 { /glob "*" /type "allow" }
+   dispatcher.any file, inside the applicable farm:
+   /farms {
+     /<FARM_NAME> {
+       /cache {
+         /allowedClients {
+           /0000 { /type "deny" /glob "*" }
+           /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
+         }
+
+         /invalidate {
+           /0000 { /glob "*" /type "allow" }
+         }
+       }
+     }
    }
    ```
    Replace the placeholder with the exact publish source IP Dispatcher sees after NAT/proxy; never allow arbitrary clients.
@@ -500,14 +506,14 @@ On Publish instance:
 
 **Solution B: Fix Dispatcher Configuration**
 ```
-Edit dispatcher.any:
-
-/allowedClients {
-  /0000 { /type "deny" /glob "*" }
-  /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
-}
+Edit `dispatcher.any` in the applicable `/farms/<FARM_NAME>` entry:
 
 /cache {
+  /allowedClients {
+    /0000 { /type "deny" /glob "*" }
+    /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
+  }
+
   /invalidate {
     /0000 { /glob "*" /type "allow" }
   }

@@ -5,7 +5,7 @@ description: |
   or unpublish content, flush the Dispatcher cache, use the Replication API, inspect queues, or
   troubleshoot distribution. For AEM as a Cloud Service, use the Cloud Service Content Distribution skill.
 license: Apache-2.0
-compatibility: Requires AEM 6.5 LTS or Adobe Managed Services (AMS). NOT compatible with AEM as a Cloud Service (use Sling Distribution API instead).
+compatibility: "AEM 6.5 LTS or AMS agent-based replication. AEM as a Cloud Service also exposes the Replication API, backed by Sling Content Distribution; use Cloud Service-specific guidance for its managed-agent behavior."
 metadata:
   version: "1.0"
   aem_version: "6.5 LTS"
