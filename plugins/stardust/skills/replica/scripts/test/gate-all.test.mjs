@@ -19,16 +19,18 @@
 // probe error is an error row, never a pass or a FAIL; --compare-only spawns no capture and no probe and re-reads
 // probes.json; a failed re-capture leaves no PNG to diff.
 // Disk (#156): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
-// stub instruments, no browser.
+// stub instruments, no browser. Reuse: the recorded pass is the whole verdict (no probe), each key ingredient
+// invalidates it, an incomplete or older record is not reused, it is on disk before the batch ends, kill and resume.
+// Local build inputs in the key: the page's content file, its blocks, the shared code; unresolvable = never reused.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HINT, deadlineHint, repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS } from '../gate-all.mjs';
-import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { HINT, deadlineHint, PASS_FORMAT, localInputs, passKey, recordedPass, repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, browserBudget, maxBrowsersOf, budgetLine, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -272,7 +274,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const replica = join(root, 'stardust/scripts/replica');
   mkdirSync(replica, { recursive: true });
-  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755);
+  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs'));
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true }); // Setup step 7: the shared contracts
   const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\n${body}\n`);
   stub('stitch-shot.mjs', `
@@ -426,16 +428,27 @@ check('droppedPass: the records for the same masks and eds URL; null when either
 // A project root with the real gate-all.mjs, the real diff scripts and stub instruments. The stitch stub logs each
 // URL (STUB_LOG), fails one (STUB_FAIL, exit 1), kills gate-all on one (STUB_KILL — an interrupted run) and logs how
 // many gate PNGs exist when it is called (STUB_PNGS — the peak a run reaches). pixel-compare fails `/bad` pages.
-function sandbox(slugs, { probes = false } = {}) {
+function sandbox(slugs, { probes = false, units = false, inputs = true } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const rep = join(root, 'stardust/scripts/replica');
   mkdirSync(rep, { recursive: true });
-  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs'));
+  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs')); copyFileSync(join(HERE, '..', 'foundation-freeze.mjs'), join(rep, 'foundation-freeze.mjs'));
+  // the project a page is built from (its local build inputs): a content file per page (`a` and `good` use the cards
+  // block, every page the teaser block), two more blocks, the shared code and the header fragment
+  if (inputs) {
+    const put = (f, body) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), body); };
+    for (const s of slugs) put(`content/${s}.html`, `<main><div><h1>${s}</h1><div class="teaser"><div>t</div></div>${['a', 'good'].includes(s) ? '<div class="cards wide"><div>c</div></div>' : ''}</div></main>`);
+    for (const b of ['cards', 'teaser', 'quote', 'header']) { put(`blocks/${b}/${b}.js`, `export default function decorate() {} // ${b}\n`); put(`blocks/${b}/${b}.css`, `.${b} { color: red; }\n`); }
+    put('styles/styles.css', 'body { margin: 0; }\n'); put('scripts/scripts.js', '// aem\n'); put('head.html', '<meta name="viewport" content="width=device-width">\n');
+    put('content/nav.html', '<div><p>Brand</p></div>\n'); put('content/footer.html', '<div><p>Legal</p></div>\n');
+  }
   cpSync(join(HERE, '../../../diff/scripts'), join(root, 'stardust/scripts/diff'), { recursive: true });
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true });
   writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
 if (process.argv[2] === 'baseline') { const { spawnSync } = await import('node:child_process'); process.exit(spawnSync(process.execPath, [${JSON.stringify(REAL_STITCH)}, ...process.argv.slice(2)], { stdio: 'inherit' }).status ?? 1); }
 const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, url + '\\n');
+const t0 = Date.now(); if (process.env.STUB_SHOT_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.STUB_SHOT_MS));
+if (process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: 'stitch-shot', slug: url.split('/').pop(), t0, t1: Date.now() }) + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['stitch-shot', ...process.argv.slice(2)]) + '\\n');
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
 if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
@@ -465,6 +478,8 @@ if (cmd === 'settings') { const { spawnSync } = await import('node:child_process
 const flag = (f) => (rest.includes(f) ? rest[rest.indexOf(f) + 1] : null);
 appendFileSync(process.env.STUB_LOG, cmd + ' ' + url + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['reference', ...process.argv.slice(2)]) + '\\n');
+const t0 = Date.now(); if (process.env.STUB_SHOT_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.STUB_SHOT_MS));
+if (process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: 'reference', slug: url.split('/').pop(), t0, t1: Date.now() }) + '\\n');
 mkdirSync(dir, { recursive: true });
 for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
 if (url === process.env.STUB_REF_FAIL) { console.log('reference: not frozen — the capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
@@ -476,29 +491,48 @@ const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
 writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, ...(hold ? { timers: { hold, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] } } : {}), primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, ...(hint ? { hint } : {}), flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed'), ...(hold ? { holdTimers: hold } : {}) } }));
 console.log('reference: frozen, primed');\n`);
-  // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
-  // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
-  const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, writeFileSync } from 'node:fs';
+  // Stub probes (probes: true; units: true adds unit-geometry and a family for every page): each logs its argv
+  // (STUB_ARGV), then exits STUB_<CONTENT|CLIP|UNITS>_RC without a result ("kill" = killed mid-run, what a timeout
+  // leaves) or writes a clean one. STUB_BY_SLUG = { "<slug>": { "<probe>": { rc, ms, missing, off } } } gives one page's
+  // probe its own exit code, duration and findings; STUB_PROBE_MS is every probe's duration, STUB_SHOT_MS a capture's;
+  // STUB_TIMES logs { kind, slug, t0, t1 } per capture and probe (what ran beside what). `killGate` (per slug and
+  // probe) kills gate-all while that probe is in flight; STUB_SNAP logs, as each probe ends, { kind, slug, passes }
+  // — the pages whose whole pass is on disk at that moment — and whether a summary exists.
+  const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 export const inPage = () => ({}); // unit-geometry imports it from clip-probe
 const a = process.argv.slice(2); const main = (process.argv[1] || '').endsWith('${name}.mjs');
 if (main) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['${name}', ...a]) + '\\n');
-const rc = process.env.${envKey};
+const slug = (a[0] || '').split('/').pop(); const by = main ? (JSON.parse(process.env.STUB_BY_SLUG || '{}')[slug] || {})['${name}'] || {} : {};
+const t0 = Date.now(); const ms = by.ms ?? Number(process.env.STUB_PROBE_MS || 0);
+if (main && ms) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+if (main && process.env.STUB_TIMES) appendFileSync(process.env.STUB_TIMES, JSON.stringify({ kind: '${name}', slug, t0, t1: Date.now() }) + '\\n');
+const rc = by.rc ?? process.env.${envKey};
+if (main && process.env.STUB_SNAP) { const g = 'stardust/replica/gates/all-1440'; appendFileSync(process.env.STUB_SNAP, JSON.stringify({ kind: '${name}', slug, passes: readdirSync(g).filter((d) => { try { return !!JSON.parse(readFileSync(g + '/' + d + '/pixel.json', 'utf8')).capturesDropped.key; } catch { return false; } }).sort(), summary: existsSync(g + '/summary.json') }) + '\\n'); }
+if (main && by.killGate) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
 if (!main) { /* imported, not run */ }
 else if (rc === 'kill') process.kill(process.pid, 'SIGKILL');
 else if (rc) { console.error('${name} error: stub exit ' + rc); process.exit(Number(rc)); }
 else { const counts = { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }; writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify(${body})); }\n`);
   if (probes) {
-    probeStub('content-presence', 'STUB_CONTENT_RC', `{ _provenance: { at: 'now', tier: 'chrome' }, totals: { missing: 0, hidden: 0, controlState: 0 }, scope: 'main', eds: { clip: { counts, groups: [] } }, origin: { clip: { counts } } }`);
+    probeStub('content-presence', 'STUB_CONTENT_RC', `{ _provenance: { at: 'now', tier: 'chrome' }, totals: { missing: by.missing ?? 0, hidden: 0, controlState: 0 }, scope: 'main', eds: { clip: { counts, groups: [] } }, origin: { clip: { counts } } }`);
     probeStub('clip-probe', 'STUB_CLIP_RC', `{ counts, groups: [], tier: 'chrome' }`);
+  }
+  if (units) {
+    probeStub('unit-geometry', 'STUB_UNITS_RC', `{ verdict: { units: 1, within: 1, off: by.off ?? 0, hidden: 0, missing: 0, errors: 0, requiredOff: by.off ?? 0 }, results: [] }`);
+    writeFileSync(join(root, 'stardust/scripts/diff/unit-geometry.mjs'), `export const unitsFor = (families, slug) => Object.values(families).filter((f) => f.pages.includes(slug)).map((f) => ({ origin: f.origin, eds: f.build, n: f.n, required: true }));\n${readFileSync(join(root, 'stardust/scripts/diff/unit-geometry.mjs'), 'utf8')}`);
+    mkdirSync(join(root, 'stardust/replica'), { recursive: true });
+    writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ card: { origin: '.cards > li', build: '.cards > li', n: 3, required: true, pages: slugs } }));
   }
   const page = (slug) => ({ slug, url: `https://origin.example/${slug}`, status: 'deployed', liveUrl: `https://eds.example/${slug}` });
   writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: slugs.map(page) }));
   const out = join(root, 'stardust/replica/gates/all-1440');
   const log = join(root, 'stitch.log');
   const argvLog = join(root, 'argv.log'); const pxLog = join(root, 'px-argv.log');
-  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); writeFileSync(pxLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, GATE_REFERENCE: 'live', STUB_LOG: log, STUB_ARGV: argvLog, STUB_PX_ARGV: pxLog, ...env } }); };
+  const timesLog = join(root, 'times.log');
+  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); writeFileSync(pxLog, ''); writeFileSync(timesLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, GATE_REFERENCE: 'live', STUB_LOG: log, STUB_ARGV: argvLog, STUB_PX_ARGV: pxLog, STUB_TIMES: timesLog, ...env } }); };
   return {
     root, out, gateAll,
+    times: () => readFileSync(timesLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
     compares: () => Object.fromEntries(readFileSync(pxLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((a) => [a[0].split('/').slice(-2)[0], a])),
     files: (d) => (existsSync(join(root, d)) ? readdirSync(join(root, d)).sort() : []),
     tableOf: (d) => { const f = join(root, 'stardust/replica/gates', d, 'summary.json'); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; },
@@ -783,6 +817,190 @@ check('--compare-only spawns no capture and no probe: it re-reads the recorded p
     r = gateAll(['--compare-only']);
     assert.deepEqual([spawned(), rows().bad.content.missing, rows().bad.clipped], [[], 0, 0], 'a page dir from before probes.json: the probes\' own JSON');
   } finally { done(); }
+});
+// ---- the schedule: probes beside the captures and beside each other, under one cap; the rows do not depend on it ----
+const PROBE_KINDS = ['content-presence', 'clip-probe', 'unit-geometry'];
+const overlap = (x, y) => x.t0 < y.t1 && y.t0 < x.t1;
+const maxInFlight = (spans) => Math.max(0, ...spans.map((x) => spans.filter((y) => y.t0 <= x.t0 && x.t0 < y.t1).length));
+check('schedule: the content and unit probes of a page overlap in time; the clip probe runs after a content probe that gave no clip result', () => {
+  const { gateAll, times, rows, done } = sandbox(['a'], { probes: true, units: true });
+  try {
+    let r = gateAll(['--max-browsers', '3'], { STUB_PROBE_MS: '500' }); // one page: the default budget is 1 — more is asked for
+    assert.equal(r.status, 0, r.stderr);
+    const of = (kind) => times().find((t) => t.kind === kind);
+    assert.ok(overlap(of('content-presence'), of('unit-geometry')), JSON.stringify(times()));
+    assert.equal(of('clip-probe'), undefined, 'content gave the clip result');
+    assert.deepEqual([rows().a.pass, rows().a.units.off, rows().a.content.missing, rows().a.clipped], [true, 0, 0, 0]);
+    r = gateAll(['--max-browsers', '3'], { STUB_PROBE_MS: '300', STUB_CONTENT_RC: '4' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(of('clip-probe').t0 >= of('content-presence').t1, 'clip only once content has answered without one');
+    assert.ok(overlap(of('content-presence'), of('unit-geometry')));
+  } finally { done(); }
+});
+check('schedule: probes start before the batch\'s captures have all finished', () => {
+  const { gateAll, times, done } = sandbox(['a', 'b', 'c'], { probes: true, units: true });
+  try {
+    const r = gateAll(['--eds-concurrency', '1'], { STUB_SHOT_MS: '400', STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 0, r.stderr);
+    const shots = times().filter((t) => t.kind === 'stitch-shot'); const probes = times().filter((t) => PROBE_KINDS.includes(t.kind));
+    assert.deepEqual([shots.length, probes.length], [6, 6]);
+    const lastShot = Math.max(...shots.map((t) => t.t1));
+    assert.ok(Math.min(...probes.map((t) => t.t0)) < lastShot, 'the first probe did not wait for the captures');
+    assert.ok(probes.filter((t) => t.t1 <= lastShot).length >= 2, 'probes ended while captures were still running');
+  } finally { done(); }
+});
+check('schedule: --probe-concurrency caps the probe processes in flight across pages (2 → at most 2, 1 → one at a time); the default is 2', () => {
+  const { gateAll, times, done } = sandbox(['a', 'b', 'c', 'd'], { probes: true, units: true });
+  try {
+    const run = (n) => { const r = gateAll(['--probe-concurrency', String(n)], { STUB_PROBE_MS: '250' }); assert.equal(r.status, 0, r.stderr); return times().filter((t) => PROBE_KINDS.includes(t.kind)); };
+    let probes = run(2);
+    assert.equal(probes.length, 8, 'content + units for each of the four pages');
+    assert.equal(maxInFlight(probes), 2, JSON.stringify(probes));
+    probes = run(1);
+    assert.equal(maxInFlight(probes), 1, JSON.stringify(probes));
+    assert.equal(parseArgs(['node', 'x']).pc, 2); assert.equal(parseArgs(['node', 'x', '--probe-concurrency', '7']).pc, 7);
+  } finally { done(); }
+});
+await checkAsync('limiter: at most n in flight, first come first served; a rejection frees its slot; n < 1 or not a number runs one at a time', async () => {
+  const trace = async (n) => {
+    const slot = limiter(n); let active = 0; let peak = 0; const started = [];
+    const job = (i) => slot(async () => { started.push(i); active += 1; peak = Math.max(peak, active); await new Promise((res) => { setTimeout(res, 5); }); active -= 1; if (i === 1) throw new Error('boom'); return i; });
+    const settled = await Promise.allSettled([0, 1, 2, 3, 4].map(job));
+    return { peak, started, settled: settled.map((x) => x.status === 'fulfilled' ? x.value : x.reason.message) };
+  };
+  assert.deepEqual(await trace(2), { peak: 2, started: [0, 1, 2, 3, 4], settled: [0, 'boom', 2, 3, 4] });
+  assert.equal((await trace(9)).peak, 5);
+  for (const n of [1, 0, NaN, undefined]) assert.equal((await trace(n)).peak, 1, String(n));
+});
+check('schedule: rows, their order and the probe records are the same whichever probe ends first — one at a time (the serial order) against the default, with the durations reversed', () => {
+  const slugs = ['a', 'b', 'c', 'd', 'e'];
+  // fixed results: b misses content, c's content probe errors (the clip probe then runs), d's units are off, e's unit probe is killed
+  const results = { b: { 'content-presence': { missing: 2 } }, c: { 'content-presence': { rc: 1 } }, d: { 'unit-geometry': { off: 1 } }, e: { 'unit-geometry': { rc: 'kill' } } };
+  const timed = (order) => Object.fromEntries(slugs.map((s, i) => [s, { 'content-presence': { ...(results[s] || {})['content-presence'], ms: 60 * (order ? i + 1 : slugs.length - i) }, 'unit-geometry': { ...(results[s] || {})['unit-geometry'], ms: 60 * (order ? slugs.length - i : i + 1) } }]));
+  const outcome = (args, by) => {
+    const { gateAll, tableOf, out, done } = sandbox(slugs, { probes: true, units: true });
+    try {
+      const r = gateAll(args, { STUB_BY_SLUG: JSON.stringify(by) });
+      assert.equal(r.status, 2, r.stderr);
+      const t = tableOf('all-1440');
+      const records = Object.fromEntries(slugs.map((s) => [s, Object.fromEntries(['probes.json', 'clip.json', 'content.json', 'units.json'].filter((f) => existsSync(join(out, s, f))).map((f) => [f, readFileSync(join(out, s, f), 'utf8').replace(/"at": ?"[^"]*"/g, '"at":""')]))]));
+      return { rows: t.rows, totals: t.totals, table: readFileSync(join(out, 'summary.md'), 'utf8').split('\n').slice(8).join('\n'), records, files: Object.fromEntries(slugs.map((s) => [s, readdirSync(join(out, s)).sort()])) };
+    } finally { done(); }
+  };
+  const serial = outcome(['--probe-concurrency', '1', '--eds-concurrency', '1', '--origin-concurrency', '1'], timed(true));
+  assert.deepEqual(serial.rows.map((r) => r.slug), slugs, 'the roster\'s order');
+  assert.deepEqual(serial.rows.map((r) => [r.pass, r.failing.join()]), [[true, ''], [false, 'content'], [false, 'probe'], [false, 'units'], [false, 'probe']]);
+  assert.deepEqual(serial.rows.map((r) => r.probeErrors.map((e) => e.probe).join()), ['', '', 'content', '', 'units']);
+  assert.deepEqual([serial.totals.pass, serial.totals.fail, serial.totals.error], [1, 2, 2]);
+  assert.deepEqual(Object.keys(JSON.parse(serial.records.a['probes.json'])), ['writtenBy', 'at', 'content', 'clip', 'units'], 'the record\'s key order');
+  for (const [name, args, by] of [['default cap, same durations', [], timed(true)], ['default cap, units end first', [], timed(false)], ['cap 3, units end first', ['--probe-concurrency', '3'], timed(false)], ['one browser at a time', ['--max-browsers', '1'], timed(false)], ['three browsers', ['--max-browsers', '3'], timed(true)]]) {
+    assert.deepEqual(outcome(args, by), serial, name);
+  }
+});
+check('schedule: a failing probe and a failing capture read as before — the unit probe\'s error is an error row beside a recorded content result; a page whose capture failed is an error row with no percentage, its probes recorded', () => {
+  const { gateAll, rows, totals, out, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    let r = gateAll([], { STUB_BY_SLUG: JSON.stringify({ a: { 'unit-geometry': { rc: 1 } } }), STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().a.pass, rows().a.pct, rows().a.probeErrors.map((e) => e.probe), rows().a.content.missing, rows().a.clipped, rows().b.pass], [false, 1, ['units'], 0, 0, true]);
+    assert.match(rows().a.reasons[0], /^probe-error:units: unit-geometry exit 1: unit-geometry error: stub exit 1/);
+    assert.deepEqual([totals().pass, totals().fail, totals().error, totals().probeErrors], [1, 0, 1, 1]);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(out, 'a/probes.json'), 'utf8'))).slice(2), ['content', 'clip', 'units']);
+    assert.ok(existsSync(join(out, 'a/origin.png')) && !existsSync(join(out, 'b/origin.png')), 'the error row keeps its captures, the pass drops them');
+
+    r = gateAll([], { STUB_FAIL: 'https://eds.example/b', STUB_PROBE_MS: '100' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().b.pct, rows().b.pass, rows().b.reasons, rows().b.error, rows().a.pass], [null, false, ['pixel error: missing capture'], 'missing capture', true]);
+    assert.match(JSON.parse(readFileSync(join(out, 'b/eds.json'), 'utf8')).error, /stitch exit 1: capture failed/);
+    assert.deepEqual([rows().b.content.missing, rows().b.units.off, rows().b.probeErrors], [0, 0, []], 'its probes ran and are recorded, as before');
+    assert.deepEqual([totals().pass, totals().fail, totals().error, totals().probeErrors], [1, 0, 1, 0]);
+  } finally { done(); }
+});
+// ---- the browser budget: one cap per job over every child that opens a browser -----------------------------------
+await checkAsync('browserBudget: a given cap holds over every kind; without one the cap is the larger of eds and probe, plus one per origin browser open — what the phases held in turn', async () => {
+  const trace = async (opts, jobs) => {
+    const slot = browserBudget(opts); let open = 0; let peak = 0; let originPeak = 0; let origin = 0;
+    await Promise.all(jobs.map((kind) => slot(kind, async () => { open += 1; if (kind === 'origin') origin += 1; peak = Math.max(peak, open); originPeak = Math.max(originPeak, origin); await new Promise((res) => { setTimeout(res, 5); }); open -= 1; if (kind === 'origin') origin -= 1; })));
+    return [peak, slot.peak()];
+  };
+  const mix = (o, e, p) => [...Array(o).fill('origin'), ...Array(e).fill('eds'), ...Array(p).fill('probe')];
+  assert.deepEqual(await trace({ max: 3, eds: 4, probe: 4 }, mix(4, 6, 6)), [3, 3]);
+  assert.deepEqual(await trace({ max: 1, eds: 4, probe: 2 }, mix(2, 3, 3)), [1, 1]);
+  assert.deepEqual(await trace({ eds: 1, probe: 1 }, mix(0, 5, 5)), [1, 1], '1/1/1, references frozen: one browser at a time');
+  assert.deepEqual(await trace({ eds: 1, probe: 1 }, mix(1, 5, 5)), [2, 2], '1/1/1, one origin capture with a browser: two, as the capture phase held');
+  assert.deepEqual(await trace({ eds: 4, probe: 2 }, mix(0, 9, 9)), [4, 4], 'the defaults, frozen: the build pool\'s four');
+  assert.deepEqual(await trace({ eds: 4, probe: 2 }, mix(2, 9, 9)), [6, 6], 'the defaults, first pass: origin 2 + eds 4');
+  assert.deepEqual(await trace({ eds: 1, probe: 4 }, mix(2, 9, 9)), [4, 4], 'probe above origin + eds: the probe phase\'s four');
+  assert.deepEqual([maxBrowsersOf('3', {}), maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: '2' }), maxBrowsersOf('3', { STARDUST_MAX_BROWSERS: '2' }), maxBrowsersOf(null, {}), maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: '' })], [{ max: 3, from: 'flag' }, { max: 2, from: 'env' }, { max: 3, from: 'flag' }, { max: null, from: 'default' }, { max: null, from: 'default' }]);
+  for (const bad of ['0', 'x', '1.5', '-2']) { assert.match(maxBrowsersOf(bad, {}).error, /--max-browsers needs a whole number/); assert.match(maxBrowsersOf(null, { STARDUST_MAX_BROWSERS: bad }).error, /STARDUST_MAX_BROWSERS needs a whole number/); }
+  assert.equal(spawnSync(process.execPath, [SCRIPT, '--max-browsers', '0'], { encoding: 'utf8' }).status, 1);
+  assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, STARDUST_MAX_BROWSERS: 'many' } }).status, 1, 'a cap that cannot be read stops the job');
+  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /--max-browsers <n>\s+browser processes this job holds at once[^]*STARDUST_MAX_BROWSERS, else what the phases held in turn for THIS job[^]*One page: 1 \(2 while\s+its origin is frozen\); 12 pages at the defaults: 4/);
+  assert.equal(budgetLine({ maxBrowsers: 3, maxBrowsersFrom: 'env', oc: 2, ec: 4, pc: 2 }), 'browser budget: 3 at once (STARDUST_MAX_BROWSERS)');
+  assert.match(budgetLine({ maxBrowsers: null, oc: 2, ec: 4, pc: 2 }, { capture: 1, probe: 1 }), /^browser budget: 1 at once \(default for this job: the larger of min\(1 page\(s\) to capture, --eds-concurrency 4\) and min\(1 page\(s\) to probe, --probe-concurrency 2\)\)/);
+});
+check('browser budget: the stub browsers open at once never exceed the budget — 1/1/1 frozen holds one, 1/1/1 on a first pass two, the defaults four (frozen, 12 pages) or six (first pass), --max-browsers and STARDUST_MAX_BROWSERS what they say; the first log line names the budget and its source', () => {
+  const slugs = Array.from({ length: 12 }, (_, i) => `p${String(i + 1).padStart(2, '0')}`);
+  const { gateAll, times, totals, out, done } = sandbox(slugs, { probes: true, units: true });
+  const ONE = ['--origin-concurrency', '1', '--eds-concurrency', '1', '--probe-concurrency', '1'];
+  try {
+    const peak = (args, env = {}) => {
+      const r = gateAll(args, { STUB_SHOT_MS: '90', STUB_PROBE_MS: '90', ...env });
+      assert.equal(r.status, 0, r.stderr); assert.equal(totals().pass, 12);
+      const firstLine = r.stdout.split('\n')[0].replace(/^\S+ /, '');
+      return [maxInFlight(times()), times().filter((t) => t.kind === 'reference').length, firstLine];
+    };
+    // first pass: every origin is frozen now (reference.mjs: a browser each)
+    let [n, freezes, line] = peak(ONE, REF);
+    assert.deepEqual([n, freezes], [2, 12], '1/1/1, first pass: the origin freeze beside one other browser, as the capture phase held');
+    assert.match(line, /^browser budget: 1 at once \(default for this job: the larger of min\(12 page\(s\) to capture, --eds-concurrency 1\) and min\(12 page\(s\) to probe, --probe-concurrency 1\)\), plus one per origin capture that opens a browser/);
+    // the references are frozen from here on: no origin browser
+    [n, freezes] = peak(ONE, REF);
+    assert.deepEqual([n, freezes], [1, 0], '1/1/1, frozen: ONE browser at a time');
+    [n, freezes, line] = peak([...ONE, '--max-browsers', '2'], REF);
+    assert.deepEqual([n, freezes, line], [2, 0, 'browser budget: 2 at once (--max-browsers)']);
+    [n] = peak([...ONE, '--max-browsers', '3'], REF);
+    assert.equal(n, 2, 'the per-kind limits hold inside a larger budget: one build capture, one probe');
+    [n] = peak(['--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1'], REF);
+    assert.equal(n, 2, '1/2/1, frozen: the build pool\'s two');
+    [n, freezes, line] = peak([], REF);
+    assert.deepEqual([n, freezes], [4, 0], 'the defaults, frozen, 12 pages: four');
+    assert.match(line, /^browser budget: 4 at once \(default for this job: the larger of min\(12 page\(s\) to capture, --eds-concurrency 4\) and min\(12 page\(s\) to probe, --probe-concurrency 2\)\)/);
+    [n] = peak(['--max-browsers', '3'], REF);
+    assert.equal(n, 3);
+    [n] = peak(['--max-browsers', '1'], REF);
+    assert.equal(n, 1);
+    [n, , line] = peak([], { ...REF, STARDUST_MAX_BROWSERS: '2' });
+    assert.deepEqual([n, line], [2, 'browser budget: 2 at once (STARDUST_MAX_BROWSERS)']);
+    [n, , line] = peak(['--max-browsers', '3'], { ...REF, STARDUST_MAX_BROWSERS: '2' });
+    assert.deepEqual([n, line], [3, 'browser budget: 3 at once (--max-browsers)'], 'the flag wins over the variable');
+    // a first pass at the defaults: the origin is stitched live on every run (GATE_REFERENCE=live), two at a time
+    [n] = peak([]);
+    assert.ok(n > 4 && n <= 6, `origin 2 + eds 4 at most, got ${n}`);
+    [n] = peak(['--max-browsers', '3']);
+    assert.equal(n, 3, 'a given cap covers the origin captures too');
+    assert.ok(existsSync(join(out, 'summary.json')));
+  } finally { done(); }
+});
+check('browser budget: a one-page job holds what it held before — the defaults one browser on a frozen reference and two while its origin is frozen, 1/2/1 one; two pages at the defaults two; --max-browsers opts in to more', () => {
+  const run = (slugs, args, env = {}) => {
+    const { gateAll, times, totals, done } = sandbox(slugs, { probes: true, units: true });
+    try {
+      const out = [];
+      for (const [a, e] of [[args, env]].concat(env.then || [])) {
+        const r = gateAll(a, { STUB_SHOT_MS: '120', STUB_PROBE_MS: '120', ...REF, ...e, then: undefined });
+        assert.equal(r.status, 0, r.stderr); assert.equal(totals().pass, slugs.length);
+        out.push([maxInFlight(times()), times().filter((t) => t.kind === 'reference').length, r.stdout.split('\n')[0].replace(/^\S+ /, '').split(' (')[0]]);
+      }
+      return out;
+    } finally { done(); }
+  };
+  const TWO = ['--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1'];
+  // first pass (the origin is frozen: a browser), then the frozen reference, then asking for three
+  assert.deepEqual(run(['a'], [], { then: [[[], {}], [['--max-browsers', '3'], {}]] }), [[2, 1, 'browser budget: 1 at once'], [1, 0, 'browser budget: 1 at once'], [3, 0, 'browser budget: 3 at once']]);
+  assert.deepEqual(run(['a'], TWO, { then: [[TWO, {}]] }), [[2, 1, 'browser budget: 1 at once'], [1, 0, 'browser budget: 1 at once']]);
+  assert.deepEqual(run(['a', 'b'], [], { then: [[[], {}]] }).map((x) => [x[0] <= 4, x[2]]), [[true, 'browser budget: 2 at once'], [true, 'browser budget: 2 at once']]);
+  assert.equal(run(['a', 'b'], [], { then: [[[], {}]] })[1][0], 2, 'two pages, frozen: two');
 });
 check('a failed re-capture leaves no old PNG to diff: the capture is removed first, so the row is an error with no percentage', () => {
   const { gateAll, pngs, rows, totals, out, done } = sandbox(['bad']);
@@ -1497,6 +1715,304 @@ check('gate-all carries run-bg\'s marker, and --help states the hint formula', (
   assert.ok(src.includes('run-bg:deadline-hint'), 'the marker run-bg.mjs reads before it asks');
   const r = spawnSync(process.execPath, [join(HERE, '..', 'gate-all.mjs'), '--help'], { encoding: 'utf8', cwd: tmpdir() });
   assert.equal(r.status, 0); assert.match(r.stdout, /--deadline-hint/); assert.match(r.stdout, /the larger of 900 and 300 \+ B × pages ÷ c seconds, at most 14400/); assert.match(r.stdout, /B = 180 s a page at the published stage/);
+});
+// ---- reuse: a recorded pass is the page's whole verdict, written when the page has it (--skip-existing) -------------
+const kinds = (spawned) => spawned.map((a) => `${a[0]} ${a[0] === 'reference' ? a[2] : a[1]}`.replace(/https:\/\/(origin|eds)\.example\//, '$1:')).sort();
+const dropOf = (out, slug) => { try { return JSON.parse(readFileSync(join(out, slug, 'pixel.json'), 'utf8')).capturesDropped; } catch { return undefined; } };
+const wait = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+check('reuse: a reusable recorded pass launches no probe, no capture and no compare under --skip-existing, and its row is the recorded one', () => {
+  const { out, gateAll, spawned, shots, compares, rows, done } = sandbox(['a', 'b', 'bad'], { probes: true, units: true });
+  try {
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    const first = rows();
+    assert.deepEqual([first.a.pass, first.b.pass, first.bad.pass], [true, true, false]);
+    assert.deepEqual(Object.keys(dropOf(out, 'a')), ['masks', 'edsUrl', 'key', 'probes', 'at'], 'the record: the pixel pass, its key and the probe results');
+    assert.deepEqual(Object.keys(dropOf(out, 'a').probes), ['content', 'clip', 'units']);
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(kinds(spawned()), ['content-presence origin:bad', 'unit-geometry origin:bad'], 'probes for the failed page only');
+    assert.deepEqual([shots(), Object.keys(compares())], [[], ['bad']], 'no capture (the failed page reuses its own), one compare');
+    assert.deepEqual(rows(), first, 'the rows, the reused ones from the record');
+    assert.match(r.stdout, /browser budget: 1 at once \(default for this job: the larger of min\(0 page\(s\) to capture, --eds-concurrency 4\) and min\(1 page\(s\) to probe, --probe-concurrency 2\)\)/, 'the budget counts the pages the reuse decision left to gate');
+    assert.match(r.stdout, /a → recorded pass reused/); assert.match(r.stdout, /b → recorded pass reused/); assert.doesNotMatch(r.stdout, /bad → recorded pass/);
+    assert.deepEqual([rows().a.content.missing, rows().a.clipped, rows().a.units.off, rows().a.unitsRequired, rows().a.browser], [0, 0, 0, true, 'chrome'], 'probe results and all');
+  } finally { done(); }
+});
+check('reuse: each key ingredient invalidates it — a mask, the presence allow-list, the clip allowance, an override, the unit families, a verdict option, a capture flag, the build URL, the reference, a capture record, an instrument file — for the page it concerns only, and names it', () => {
+  const { root, out, gateAll, spawned, shots, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    let args = []; // the options every later run keeps
+    const run = (extra = []) => { const r = gateAll(['--skip-existing', ...args, ...extra], { ...REF }); assert.equal(r.status, 0, r.stderr + r.stdout); return r; };
+    const probed = () => [...new Set(spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => a[1].split('/').pop()))].sort();
+    assert.equal(gateAll([], { ...REF }).status, 0);
+    assert.deepEqual([probed(), run() && probed()], [['a', 'b'], []], 'recorded, then reused');
+    const edit = (file, fn) => { const f = join(root, file); writeFileSync(f, JSON.stringify(fn(existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : {}))); };
+    const G = 'stardust/replica/gates/all-1440';
+    const steps = [
+      ['masks', ['a'], () => edit(`${G}/masks.json`, () => ({ a: { masks: ['0:100'], reason: 'a rotating banner' } }))],
+      ['masks', ['a'], () => edit(`${G}/masks.json`, (m) => ({ a: { ...m.a, reason: 'another reason' } }))],
+      ['presence', ['a'], () => edit(`${G}/presence.json`, () => ({ a: { variable: ['.ticker'], reason: 'session-variable' } }))],
+      ['clipAllow', ['a'], () => edit(`${G}/clip-allow.json`, () => ({ a: { max: 2, reason: 'a designed truncation' } }))],
+      ['override', ['a'], () => edit(`${G}/overrides.json`, () => ({ a: { verdict: 'accepted', reason: 'a tier shift', waives: ['pixel'] } }))],
+      ['units', ['a', 'b'], () => edit('stardust/replica/units.json', (u) => ({ card: { ...u.card, n: 4 } }))],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9']; }],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9', '--unit-tol', '6']; }],
+      ['options', ['a', 'b'], () => { args = ['--threshold', '9', '--unit-tol', '6', '--no-content']; }],
+      ['build', ['a', 'b'], () => { args = [...args, '--eds-host', 'branch--site--org.example']; }],
+      ['reference', ['a'], () => edit(`${G}/a/baseline.json`, (b) => ({ ...b, capturedAt: '2026-11-02T10:00:00.000Z' }))],
+      ['archetype', ['b'], () => { mkdirSync(join(root, 'stardust/replica/gates/b-1440'), { recursive: true }); edit('stardust/replica/gates/b-1440/baseline.json', () => ({ note: 'an archetype round froze a reference here' })); }],
+      ['captures', ['a'], () => edit(`${G}/a/eds.json`, (m) => ({ ...m, at: 'later' }))],
+      ['instruments', ['a', 'b'], () => { const f = join(root, 'stardust/scripts/diff/clip-probe.mjs'); writeFileSync(f, `${readFileSync(f, 'utf8')}// a newer probe\n`); }],
+    ];
+    for (const [name, pages, change] of steps) {
+      change();
+      const r = run();
+      assert.deepEqual(probed(), pages, `${name}: probed again — ${r.stdout.split('\n').filter((l) => /recorded pass/.test(l)).join(' | ')}`);
+      for (const s of pages) assert.match(r.stdout, new RegExp(`${s} → recorded pass not reused \\([^)]*${name} changed[^)]*\\) — gated again`), `${name} named for ${s}`);
+      for (const s of ['a', 'b'].filter((x) => !pages.includes(x))) assert.match(r.stdout, new RegExp(`${s} → recorded pass reused`), `${name}: ${s} is not concerned`);
+      assert.ok(pages.every((s) => shots().some((u) => u.endsWith(`/${s}`))), `${name}: its build captured again`);
+      assert.deepEqual([run() && probed(), rows().a.pass, rows().b.pass], [[], true, true], `${name}: recorded under the new key, reused after`);
+    }
+    // the reference's capture settings (today's rule, kept): frozen again, the pass not reused
+    args = [...args, '--locale', 'de-DE'];
+    const r = run();
+    assert.deepEqual(probed(), ['a', 'b']); assert.match(r.stdout, /re-frozen — capture settings changed \(locale\)/);
+  } finally { done(); }
+});
+check('reuse: an incomplete or old-format record is not reused — no key, no probe results, another format, a key that cannot be computed, a capture record gone or in error; passKey is null when an ingredient is unreadable', () => {
+  const parts = { build: 'https://eds.example/a', source: 'https://origin.example/a', captures: ['o1', 'e1'], instruments: ['i1'], reference: { dir: 'd', baseline: 'b1', png: true }, inputs: { content: 'c1', blocks: { cards: 'k1' }, shared: 's1', unresolved: [] } };
+  const key = passKey(parts);
+  assert.deepEqual([key.v, PASS_FORMAT, Object.keys(key)], [3, 3, ['v', 'build', 'source', 'masks', 'presence', 'clipAllow', 'override', 'units', 'options', 'reference', 'archetype', 'captures', 'instruments', 'page content', 'shared code', 'block cards']]);
+  for (const [why, bad] of [['origin.json unreadable', { captures: [null, 'e1'] }], ['eds.json unreadable', { captures: ['o1', null] }], ['an instrument file unreadable', { instruments: ['i1', null] }], ['the reference\'s baseline.json unreadable', { reference: { dir: 'd', baseline: null, png: false } }], ['the prototype file unreadable', { prototype: null }], ['no build URL', { build: '' }], ['no local inputs', { inputs: null }], ['an unresolved local input', { inputs: { content: 'c1', blocks: {}, shared: 's1', unresolved: ['page content cannot be resolved'] } }], ['no page content digest', { inputs: { content: null, blocks: {}, shared: 's1', unresolved: [] } }]]) assert.equal(passKey({ ...parts, ...bad }), null, why);
+  assert.equal(passKey({ ...parts, prototype: 'p1' }).prototype, 'p1');
+  for (const [k, v] of [['masks', { masks: ['0:10'] }], ['presence', { main: 'main' }], ['clipAllow', { max: 1 }], ['override', { verdict: 'x' }], ['units', [{ origin: '.c' }]], ['options', { threshold: 9 }], ['archetype', ['x']]]) assert.notEqual(passKey({ ...parts, [k]: v })[k], key[k], k);
+  const at = { masks: [], edsUrl: 'https://eds.example/a' }; const probes = { content: { totals: { missing: 0, hidden: 0 } } };
+  const d = pageDir(RECORDS);
+  try {
+    assert.equal(recordedPass(d, key), null, 'no pass on record');
+    dropPassedCaptures(d, at);
+    assert.match(recordedPass(d, key).miss[0], /without its probe results or in another format/, 'the older record: masks and eds URL only');
+    assert.notEqual(droppedPass(d, at), null, '--compare-only still reads it');
+    dropPassedCaptures(d, { ...at, key });
+    assert.deepEqual(dropOf(dirname(d), basename(d)), at, 'a key without probe results is not written');
+    dropPassedCaptures(d, { ...at, key: { ...key, v: 1 }, probes });
+    assert.match(recordedPass(d, key).miss[0], /another format/);
+    dropPassedCaptures(d, { ...at, key, probes });
+    assert.deepEqual(recordedPass(d, key).probes, probes, 'the complete record');
+    assert.deepEqual(readdirSync(d).filter((f) => f.includes('.tmp')), [], 'written through a temp file that is gone');
+    assert.match(recordedPass(d, null).miss[0], /key cannot be computed/);
+    assert.deepEqual(recordedPass(d, { ...key, masks: 'x', units: 'y' }).miss, ['masks changed', 'units changed']);
+    assert.deepEqual(recordedPass(d, { ...key, prototype: 'p1' }).miss, ['prototype changed']);
+    writeFileSync(join(d, 'eds.json'), JSON.stringify({ instrument: 'none', error: 'stitch exit 1' }));
+    assert.match(recordedPass(d, key).miss[0], /capture record is gone or holds an error/);
+    writeFileSync(join(d, 'pixel.json'), '{ "pct": 1, "capturesDropped": { "masks": [], "edsUrl"'); // a write cut short
+    assert.equal(recordedPass(d, key), null, 'an unreadable pixel.json records nothing');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+  // the runner: an older version's record, and --compare-only's pixel pass of a page that was never probed
+  const { out, gateAll, spawned, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => a[1].split('/').pop()))].sort();
+    assert.equal(gateAll().status, 0);
+    const f = join(out, 'a/pixel.json'); const pixel = JSON.parse(readFileSync(f, 'utf8'));
+    writeFileSync(f, JSON.stringify({ ...pixel, capturesDropped: { masks: pixel.capturesDropped.masks, edsUrl: pixel.capturesDropped.edsUrl } }));
+    let r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed()], [0, ['a']], r.stdout);
+    assert.match(r.stdout, /a → recorded pass not reused \(recorded without its probe results or in another format\) — gated again/);
+    r = gateAll(['--compare-only']);
+    assert.deepEqual([r.status, spawned(), dropOf(out, 'a').key, dropOf(out, 'b').key], [0, [], JSON.parse(readFileSync(f, 'utf8')).capturesDropped.key, dropOf(out, 'b').key], '--compare-only keeps a reused record as it is');
+    assert.ok(dropOf(out, 'a').key && dropOf(out, 'a').probes);
+    assert.deepEqual([gateAll(['--skip-existing']).status, probed()], [0, []], 'and it is still reusable');
+    // a page with captures and no probe record, passed by --compare-only: its pass is the pixel pass, not a verdict
+    for (const s of ['a']) { rmSync(join(out, s), { recursive: true }); mkdirSync(join(out, s)); for (const side of ['origin', 'eds']) { writeFileSync(join(out, s, `${side}.png`), 'png'); writeFileSync(join(out, s, `${side}.json`), JSON.stringify({ instrument: 'stitch-live' })); writeFileSync(join(out, s, `${side}.capture.json`), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] })); } }
+    r = gateAll(['--compare-only']);
+    assert.deepEqual([r.status, rows().a.pass, rows().a.contentNA, Object.keys(dropOf(out, 'a'))], [0, true, 'not probed', ['masks', 'edsUrl']]);
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed(), rows().a.contentNA], [0, ['a'], null], 'the next --skip-existing run gates it');
+  } finally { done(); }
+});
+check('a page\'s pass is on disk before the batch ends: while a later page of the same batch is still being probed, the finished page has its whole record and no PNG, and no summary exists yet', () => {
+  const { root, out, gateAll, pngs, done } = sandbox(['a', 'b', 'c'], { probes: true, units: true });
+  try {
+    const snap = join(root, 'snap.log');
+    const slow = { 'content-presence': { ms: 1200 }, 'unit-geometry': { ms: 1200 } };
+    const r = gateAll([], { STUB_SNAP: snap, STUB_BY_SLUG: JSON.stringify({ b: slow, c: { 'content-presence': { ms: 1200 }, 'unit-geometry': { ms: 2000 } } }) });
+    assert.equal(r.status, 0, r.stderr);
+    const seen = readFileSync(snap, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const at = (slug, kind) => seen.find((x) => x.slug === slug && x.kind === kind);
+    assert.deepEqual(at('b', 'unit-geometry').passes, ['a'], 'a is recorded while b and c (the same batch) are in flight');
+    assert.deepEqual(at('c', 'unit-geometry').passes, ['a', 'b'], 'and b before c ends');
+    assert.ok(seen.every((x) => x.summary === false), 'the summary is written at the end only');
+    assert.deepEqual([pngs('a'), pngs('c'), existsSync(join(out, 'summary.json'))], [[], [], true]);
+  } finally { done(); }
+});
+check('kill and resume: a job killed while a probe is in flight leaves no summary and keeps the pass (and the round) of every page that finished; the --skip-existing resume launches instruments only for the pages without a complete verdict, and the page whose probe was in flight is probed and compared again', () => {
+  const { root, out, gateAll, spawned, shots, compares, rows, tableOf, done } = sandbox(['a', 'b', 'c', 'd'], { probes: true, units: true });
+  try {
+    copyFileSync(join(HERE, '..', 'rounds.mjs'), join(root, 'stardust/scripts/replica/rounds.mjs')); // the real ledger
+    const rounds = (s) => { const f = join(root, `stardust/replica/gates/${s}-1440/rounds.json`); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')).stages['all-pages'].rounds.map((x) => x.verdict) : []; };
+    // a and b finish; c's unit probe kills the job at 900 ms while its content probe (1500 ms) and d's probes are in flight
+    const by = { c: { 'content-presence': { ms: 1500 }, 'unit-geometry': { ms: 900, killGate: true } }, d: { 'content-presence': { ms: 1300 }, 'unit-geometry': { ms: 1300 } } };
+    let r = gateAll(['--probe-concurrency', '4'], { STUB_BY_SLUG: JSON.stringify(by) });
+    assert.equal(r.signal, 'SIGKILL', 'the job was killed');
+    wait(900); // the orphaned probes end
+    assert.equal(tableOf('all-1440'), null, 'no summary: nothing reads as complete');
+    assert.deepEqual(['a', 'b', 'c', 'd'].map((s) => !!(dropOf(out, s) || {}).key), [true, true, false, false], 'the finished pages are on disk');
+    assert.deepEqual(['a', 'b', 'c', 'd'].map(rounds), [['pass'], ['pass'], [], []]);
+    assert.ok(existsSync(join(out, 'c/content.json')), 'the in-flight content probe even left a result: not a verdict');
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(kinds(spawned()), ['content-presence origin:c', 'content-presence origin:d', 'unit-geometry origin:c', 'unit-geometry origin:d'], 'probes for c and d only');
+    assert.deepEqual([Object.keys(compares()).sort(), shots()], [['c', 'd'], []], 'compared again; their finished captures are reused (--skip-existing)');
+    assert.match(r.stdout, /a → recorded pass reused/); assert.match(r.stdout, /b → recorded pass reused/);
+    assert.deepEqual([Object.values(rows()).map((x) => x.pass), tableOf('all-1440').totals.pass], [[true, true, true, true], 4]);
+    assert.deepEqual(['a', 'b', 'c', 'd'].map(rounds), [['pass'], ['pass'], ['pass'], ['pass']], 'one round per page: a reused pass records none');
+    assert.deepEqual([gateAll(['--skip-existing']).status, spawned(), shots()], [0, [], []], 'and a further resume launches nothing');
+  } finally { done(); }
+});
+check('without --skip-existing nothing is reused: every page is captured, probed and compared whatever is on record, with the same instrument calls and the same rows as the first run', () => {
+  const { gateAll, spawned, shots, compares, rows, done } = sandbox(['a', 'b', 'bad'], { probes: true, units: true });
+  try {
+    const calls = () => [spawned().filter((a) => PROBE_KINDS.includes(a[0])).map((a) => JSON.stringify(a)).sort(), spawned().filter((a) => a[0] === 'stitch-shot').map((a) => JSON.stringify(a)).sort(), Object.values(compares()).map((a) => a.join(' ')).sort()];
+    assert.equal(gateAll().status, 2);
+    const first = { calls: calls(), rows: rows() };
+    assert.deepEqual([first.calls[0].length, first.calls[1].length, first.calls[2].length], [6, 6, 3], 'content + units, two captures and one compare per page');
+    const r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual({ calls: calls(), rows: rows() }, first);
+    assert.doesNotMatch(r.stdout, /recorded pass/);
+    assert.equal(gateAll(['--only', 'a']).status, 0); assert.deepEqual([calls()[0].length, shots()], [2, ['https://eds.example/a', 'https://origin.example/a']], '--only: its page, in full');
+    assert.equal(gateAll(['--skip-existing', '--recapture-eds']).status, 2);
+    assert.deepEqual([calls()[0].length, shots().filter((u) => u.includes('eds.example')).length, calls()[2].length], [6, 3, 3], '--recapture-eds reuses no pass: every build shot, probed and compared again');
+  } finally { done(); }
+});
+// ---- reuse: the page's local build inputs are in the key — a build that changed in the working tree is gated again ----
+check('local inputs: editing the page\'s content file, a file of a block it uses, a shared style or the header fragment gates the page again and names the group (page content, block <name>, shared code); a file of a block it does NOT use leaves it reused; so does its migrated HTML once the ledger names it', () => {
+  const { root, gateAll, spawned, rows, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((x) => PROBE_KINDS.includes(x[0])).map((x) => x[1].split('/').pop()))].sort();
+    const run = () => { const r = gateAll(['--skip-existing']); assert.equal(r.status, 0, r.stderr + r.stdout); return r; };
+    const touch = (f) => writeFileSync(join(root, f), `${existsSync(join(root, f)) ? readFileSync(join(root, f), 'utf8') : ''}/* edited */\n`);
+    assert.equal(gateAll().status, 0);
+    assert.deepEqual([run() && probed()], [[]], 'recorded, then reused');
+    // a uses cards + teaser, b teaser only; quote is used by neither
+    for (const [file, pages, group] of [['content/a.html', ['a'], 'page content'], ['blocks/cards/cards.css', ['a'], 'block cards'], ['blocks/quote/quote.js', [], null], ['blocks/teaser/teaser.js', ['a', 'b'], 'block teaser'], ['blocks/cards/extra/part.js', ['a'], 'block cards'],
+      ['styles/styles.css', ['a', 'b'], 'shared code'], ['content/nav.html', ['a', 'b'], 'shared code'], ['blocks/header/header.js', ['a', 'b'], 'shared code'], ['scripts/scripts.js', ['a', 'b'], 'shared code'], ['fonts/brand.woff2', ['a', 'b'], 'shared code'], ['content/fr/footer.html', ['a', 'b'], 'shared code'], ['content/b.html', ['b'], 'page content']]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true }); touch(file);
+      const r = run();
+      assert.deepEqual(probed(), pages, `${file}: ${r.stdout.split('\n').filter((l) => /recorded pass/.test(l)).join(' | ')}`);
+      for (const s of pages) assert.match(r.stdout, new RegExp(`${s} → recorded pass not reused \\(${group} changed\\) — gated again`), `${file}: ${group} named for ${s}`);
+      for (const s of ['a', 'b'].filter((x) => !pages.includes(x))) assert.match(r.stdout, new RegExp(`${s} → recorded pass reused`), `${file}: ${s} reused`);
+      assert.deepEqual([run() && probed(), rows().a.pass, rows().b.pass], [[], true, true], `${file}: recorded under the new key`);
+    }
+    // an mtime alone is not a change: the same bytes written again
+    writeFileSync(join(root, 'styles/styles.css'), readFileSync(join(root, 'styles/styles.css')));
+    assert.deepEqual(run() && probed(), [], 'contents, not mtimes');
+    // the ledger: its row's blocks and migrated HTML join the page's inputs
+    mkdirSync(join(root, 'stardust/migrated'), { recursive: true }); writeFileSync(join(root, 'stardust/migrated/b.html'), '<main>b</main>');
+    mkdirSync(join(root, 'stardust/rollout/coverage'), { recursive: true });
+    writeFileSync(join(root, 'stardust/rollout/coverage/pages.json'), JSON.stringify({ pages: [{ slug: 'b', path: '/b', blocks: ['quote'], source: { migratedHtml: 'stardust/migrated/b.html' }, delivery: { status: 'deployed', deployedUrl: 'https://eds.example/b' } }] }));
+    let r = run();
+    assert.deepEqual(probed(), ['b']); assert.match(r.stdout, /b → recorded pass not reused \((?=[^)]*page content changed)(?=[^)]*block quote changed)[^)]*\)/);
+    touch('stardust/migrated/b.html'); r = run();
+    assert.deepEqual(probed(), ['b'], 'the migrated HTML'); assert.match(r.stdout, /b → recorded pass not reused \(page content changed\)/);
+    touch('blocks/quote/quote.js'); r = run();
+    assert.deepEqual(probed(), ['b'], 'a block the ledger names for it'); assert.match(r.stdout, /b → recorded pass not reused \(block quote changed\)/);
+  } finally { done(); }
+});
+check('local inputs: unresolvable inputs are never reused and the log says which — no content file and no migrated HTML, no blocks/ directory, none of the shared paths; a project with none of them records no reusable pass at all', () => {
+  const { root, out, gateAll, spawned, done } = sandbox(['a', 'b'], { probes: true, units: true });
+  try {
+    const probed = () => [...new Set(spawned().filter((x) => PROBE_KINDS.includes(x[0])).map((x) => x[1].split('/').pop()))].sort();
+    assert.equal(gateAll().status, 0);
+    rmSync(join(root, 'content/a.html'));
+    let r = gateAll(['--skip-existing']);
+    assert.deepEqual([r.status, probed()], [0, ['a']]);
+    assert.match(r.stdout, /a → recorded pass not reused \(page content cannot be resolved: no content file for \/a under content\/ and no migrated HTML\) — gated again/);
+    assert.equal(dropOf(out, 'a').key, undefined, 'and the pass it earns now has no key: not the weaker one');
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual(probed(), ['a'], 'gated on every run while it cannot be resolved');
+    writeFileSync(join(root, 'content/a.html'), '<main><div><h1>a</h1></div></main>');
+    assert.deepEqual([gateAll(['--skip-existing']).status, probed(), gateAll(['--skip-existing']).status, probed()], [0, ['a'], 0, []], 'resolvable again: keyed, then reused');
+    for (const [gone, why] of [[['blocks'], /blocks cannot be resolved: no blocks\/ directory in the project/], [['styles', 'scripts', 'head.html'], /shared code cannot be resolved: none of styles\/ fonts\/ blocks\/header\/ blocks\/footer\/ head\.html scripts\/ in the project/]]) {
+      for (const g of gone) rmSync(join(root, g), { recursive: true });
+      r = gateAll(['--skip-existing']);
+      assert.deepEqual(probed(), ['a', 'b'], String(why)); assert.match(r.stdout, why);
+    }
+  } finally { done(); }
+  const bare = sandbox(['a'], { probes: true, units: true, inputs: false });
+  try {
+    assert.equal(bare.gateAll().status, 0);
+    const r = bare.gateAll(['--skip-existing']);
+    assert.equal(r.status, 0); assert.equal(bare.spawned().filter((x) => PROBE_KINDS.includes(x[0])).length, 2, 'probed again');
+    assert.match(r.stdout, /a → recorded pass not reused \(page content cannot be resolved: [^)]*, blocks cannot be resolved: [^)]*, shared code cannot be resolved: [^)]*\) — gated again/);
+  } finally { bare.done(); }
+});
+check('local inputs: the shared-code digest is computed once per job and a block\'s once per block, whatever the number of pages; the prototype stage keys the prototype and the local files it links', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-inputs-')));
+  try {
+    const put = (f, body) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), body); };
+    const pages = Array.from({ length: 40 }, (_, i) => ({ slug: `p${i}`, liveUrl: `https://eds.example/p${i}` }));
+    for (const p of pages) put(`content/${p.slug}.html`, `<main><div><div class="hero"></div><div class="${p.slug.endsWith('1') ? 'cards' : 'teaser'}"></div></div></main>`);
+    for (const b of ['hero', 'cards', 'teaser', 'unused']) put(`blocks/${b}/${b}.js`, b);
+    put('styles/styles.css', 'x'); put('scripts/aem.js', 'x');
+    const walked = [];
+    const inputsOf = localInputs({ root, snap: (r, paths) => { walked.push(paths.join(' ')); const files = {}; for (const p of paths) { const f = join(r, p); if (!existsSync(f)) continue; for (const n of (p.endsWith('/') ? readdirSync(f) : [''])) files[join(p, n)] = readFileSync(join(f, n), 'utf8'); } return files; } });
+    const got = pages.map(inputsOf);
+    assert.ok(got.every((x) => x.unresolved.length === 0 && x.content && x.shared === got[0].shared), JSON.stringify(got[0]));
+    assert.deepEqual([inputsOf.stats.shared, inputsOf.stats.blocks, inputsOf.stats.content], [1, 3, 40], 'shared once, each used block once, the unused one never');
+    assert.deepEqual([walked.filter((w) => w.startsWith('styles/')).length, walked.filter((w) => w === 'blocks/hero/').length, walked.includes('blocks/unused/')], [1, 1, false]);
+    assert.deepEqual([Object.keys(got[1].blocks), Object.keys(got[2].blocks)], [['cards', 'hero'], ['hero', 'teaser']]);
+    // prototype stage
+    put('stardust/prototypes/home-proposed.html', '<link rel="stylesheet" href="proto.css"><script src="./js/app.js"></script><img src="https://cdn.example/x.png"><a href="#top">x</a>');
+    put('stardust/prototypes/proto.css', 'a'); put('stardust/prototypes/js/app.js', 'b');
+    const proto = (page = { slug: 'home', prototypePath: 'stardust/prototypes/home-proposed.html' }) => localInputs({ root, stage: 'prototype' })(page);
+    const first = proto();
+    assert.deepEqual([first.unresolved, first.blocks, first.shared], [[], {}, null]);
+    put('stardust/prototypes/js/app.js', 'c'); const second = proto(); assert.notEqual(second.content, first.content, 'a linked script');
+    put('stardust/prototypes/proto.css', 'd'); assert.notEqual(proto().content, second.content, 'a linked stylesheet');
+    put('stardust/prototypes/other.css', 'e'); assert.equal(proto().content, localInputs({ root, stage: 'prototype' })({ slug: 'home', prototypePath: 'stardust/prototypes/home-proposed.html' }).content, 'a file it does not link');
+    assert.match(proto({ slug: 'x', prototypePath: 'stardust/prototypes/none.html' }).unresolved[0], /page content cannot be resolved: no prototype file at stardust\/prototypes\/none\.html/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+// ---- the roster tolerance × the recorded pass (pilot integration: both changes in one gate) ----
+check('reuse × roster tolerance: a pass under the tolerance is recorded with its key and probe results and rebuilds from the record as a pass — judge, note, counters — with no instrument; --height-tol (the tolerance\'s input) and --offset-max are in the key: changed, the page is gated again and judged with the new one', () => {
+  const within = { STUB_PX: JSON.stringify({ page: { pct: 16.62, aligned: { used: true, pct: 4.7, steps: st(-54, 40, -23) } } }) };
+  const { out, gateAll, spawned, shots, compares, rows, totals, done } = sandbox(['page', 'plain'], { probes: true });
+  try {
+    let r = gateAll([], within);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const first = rows();
+    assert.deepEqual([first.page.pass, first.page.offsetJudge, first.page.offsetsWithinTolerance, first.page.offsetBound, first.page.offsetTolerance, first.plain.offsetsWithinTolerance], [true, 'tolerance', true, 50, 250, false]);
+    assert.deepEqual(Object.keys(dropOf(out, 'page')), ['masks', 'edsUrl', 'key', 'probes', 'at'], 'the whole verdict is on record, though pixel-compare itself said FAIL (strict bound)');
+    assert.equal(JSON.parse(readFileSync(join(out, 'page', 'pixel.json'), 'utf8')).aligned.steps.length, 3, 'the steps the tolerance reads are in the record');
+    // reused: no STUB_PX this time — a compare would read 1 % with no offsets, so the row can only come from the record
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual([spawned(), shots(), Object.keys(compares())], [[], [], []], 'no probe, no capture, no compare');
+    assert.match(r.stdout, /page → recorded pass reused/);
+    assert.deepEqual(rows(), first, 'the rebuilt rows are the recorded ones');
+    assert.ok(rows().page.notes.includes('offsets within the roster tolerance: 117px total, largest step 54px (strict bound 50px, tolerance 250px)'));
+    assert.deepEqual([totals().pass, totals().failOffsets, totals().offsetsWithinTolerance], [2, 0, 1]);
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /\(bound 50, tolerance 250\) \|.*\| PASS \| .*\(reported\) offsets within the roster tolerance: 117px total/);
+    // the tolerance's input changes: the key names it, the page is judged again under the new tolerance (0.04 × 5000 = 200 ≥ 117)
+    r = gateAll(['--skip-existing', '--height-tol', '0.04'], within);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /page → recorded pass not reused \(options changed\) — gated again/);
+    assert.deepEqual([Object.keys(compares()).sort(), rows().page.offsetTolerance, rows().page.pass], [['page', 'plain'], 200, true]);
+    // a tolerance the record does not meet (0.02 × 5000 = 100 < 117): never the old pass
+    r = gateAll(['--skip-existing', '--height-tol', '0.02'], within);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /page → recorded pass not reused \(options changed\) — gated again/);
+    assert.deepEqual([rows().page.pass, rows().page.failing, rows().page.offsetTolerance, totals().offsetsWithinTolerance, dropOf(out, 'page')], [false, ['pixel'], 100, 0, undefined]);
+    // back under the default, then an explicit --offset-max (the strict bound only): gated again, fails
+    assert.equal(gateAll(['--skip-existing'], within).status, 0);
+    assert.deepEqual(Object.keys(dropOf(out, 'page')), ['masks', 'edsUrl', 'key', 'probes', 'at']);
+    r = gateAll(['--skip-existing', '--offset-max', '50'], within);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /page → recorded pass not reused \(options changed\) — gated again/);
+    assert.deepEqual([rows().page.pass, rows().page.offsetTolerance, rows().page.offsetJudge], [false, null, 'bound']);
+  } finally { done(); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
