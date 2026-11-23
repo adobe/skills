@@ -1,9 +1,3 @@
----
-name: replication-api
-description: Use the AEM 6.5 LTS Replication API for programmatic content activation, deactivation, and replication status management
-license: Apache-2.0
----
-
 # AEM 6.5 LTS Replication API
 
 This guide provides comprehensive guidance on using the official Adobe Experience Manager 6.5 LTS Replication API for programmatic replication operations. The API enables custom code to activate, deactivate, and manage content distribution workflows.

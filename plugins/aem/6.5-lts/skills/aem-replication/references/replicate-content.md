@@ -1,9 +1,3 @@
----
-name: replicate-content
-description: Use when publishing, unpublishing, replicating, or activating/deactivating content in AEM 6.5 LTS. Covers Quick Publish, Manage Publication, tree activation, bulk content activation, package replication, workflow-based approval, scheduled activation/deactivation (on/off time), dispatcher flush, and the programmatic Replication Java API for AEM publish instances.
-license: Apache-2.0
----
-
 # Replicate Content in AEM 6.5 LTS
 
 Use this guide when the user asks to publish, unpublish, replicate, activate, deactivate, or bulk-replicate content on AEM 6.5 LTS publish instances.

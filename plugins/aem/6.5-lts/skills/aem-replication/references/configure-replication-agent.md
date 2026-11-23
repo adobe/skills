@@ -1,9 +1,3 @@
----
-name: configure-replication-agent
-description: Configure AEM 6.5 LTS replication agents for content publishing, dispatcher cache flushing, and reverse replication
-license: Apache-2.0
----
-
 # Configure AEM Replication Agent
 
 This guide covers configuring replication agents in Adobe Experience Manager 6.5 LTS. Replication agents are the core mechanism for distributing content from Author to Publish environments, managing Dispatcher cache, and handling user-generated content flows.

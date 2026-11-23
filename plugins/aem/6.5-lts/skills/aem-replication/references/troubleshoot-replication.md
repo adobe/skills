@@ -1,9 +1,3 @@
----
-name: troubleshoot-replication
-description: Diagnose and fix common AEM 6.5 LTS replication issues including blocked queues, connectivity failures, and content distribution problems
-license: Apache-2.0
----
-
 # Troubleshoot AEM 6.5 LTS Replication
 
 This guide provides systematic troubleshooting guidance for Adobe Experience Manager 6.5 LTS replication issues. Use this to diagnose and resolve problems with content distribution, agent configuration, and replication workflows.
