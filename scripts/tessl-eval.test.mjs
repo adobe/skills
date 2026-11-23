@@ -113,19 +113,24 @@ test('commit fixtures come from fixtures of type commit and from the older singl
   assert.deepEqual(commitFixtures(join(root, 'missing')), []);
 });
 
-test('a commit fixture the repository lacks is fetched from its https repoUrl, once', (t) => {
+test('a commit fixture the repository lacks is fetched from its https repoUrl, once, and only by SHA', (t) => {
+  const missing = 'a'.repeat(40);
+  const present = 'b'.repeat(40);
   const root = tree(t, {
-    'evals/a/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'missing' } }),
-    'evals/b/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'missing' } }),
-    'evals/c/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'present' } }),
-    'evals/d/scenario.json': JSON.stringify({ fixture: { repoUrl: 'file:///etc', ref: 'local' } }),
-    'evals/e/scenario.json': JSON.stringify({ fixture: { ref: 'own' } }),
+    'evals/a/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: missing } }),
+    'evals/b/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: missing } }),
+    'evals/c/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: present } }),
+    'evals/d/scenario.json': JSON.stringify({ fixture: { repoUrl: 'file:///etc', ref: 'c'.repeat(40) } }),
+    'evals/e/scenario.json': JSON.stringify({ fixture: { ref: 'd'.repeat(40) } }),
+    'evals/f/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: '--upload-pack=touch pwned' } }),
+    'evals/g/scenario.json': JSON.stringify({ fixture: { repoUrl: 'https://github.com/o/r.git', ref: 'x:refs/heads/main' } }),
   });
   const calls = [];
   const git = (args) => {
     calls.push(args.join(' '));
-    return { status: args[0] === 'cat-file' && args[2] !== 'present^{commit}' ? 1 : 0, stderr: '' };
+    return { status: args[0] === 'cat-file' && args[2] !== `${present}^{commit}` ? 1 : 0, stderr: '' };
   };
   fetchFixtureCommits(root, git);
-  assert.deepEqual(calls.filter((call) => call.startsWith('fetch')), ['fetch --quiet --no-tags https://github.com/o/r.git missing']);
+  assert.deepEqual(calls.filter((call) => call.startsWith('fetch')), [`fetch --quiet --no-tags https://github.com/o/r.git ${missing}`]);
+  assert.ok(calls.every((call) => !call.includes('pwned') && !call.includes('refs/heads')), calls.join('\n'));
 });

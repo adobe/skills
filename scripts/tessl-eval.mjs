@@ -60,12 +60,15 @@ export function commitFixtures(dir) {
   return found;
 }
 
+const SHA = /^[0-9a-f]{7,40}$/;
+
 // Fetches the commit fixtures that the local repository lacks from their https repoUrl.
-// One that can't be fetched is left to the CLI, which names it.
+// Only a ref that is a commit SHA is fetched: anything else could be read as a git option
+// or a refspec that writes local refs. One that isn't fetched is left to the CLI, which names it.
 export function fetchFixtureCommits(dir, git = (args) => spawnSync('git', args, { encoding: 'utf8' })) {
   const seen = new Set();
   for (const { repoUrl, ref } of commitFixtures(dir)) {
-    if (seen.has(ref)) continue;
+    if (seen.has(ref) || !SHA.test(ref)) continue;
     seen.add(ref);
     if (git(['cat-file', '-e', `${ref}^{commit}`]).status === 0) continue;
     if (typeof repoUrl !== 'string' || !repoUrl.startsWith('https://')) continue;

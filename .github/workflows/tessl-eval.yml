@@ -122,10 +122,10 @@ jobs:
       # plugin, and fails without one. Only edge-delivery-services brings its own. Every other
       # plugin uses a tessl.json at the root of this checkout, linked to the project of this
       # repository in the adobe workspace: the command links the one that matches, or creates
-      # it on the first run.
+      # it on the first run. The token belongs to more than one organization, so name it.
       - name: Link this checkout to its Tessl project
         if: steps.detect.outputs.skip != 'true'
-        run: tessl project create skills --workspace adobe
+        run: tessl project create skills --org adobe --workspace adobe
 
       - name: Run evals
         id: run-evals
