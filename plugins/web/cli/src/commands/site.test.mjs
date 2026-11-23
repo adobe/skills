@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http, { createServer } from 'node:http';
 import { runCli } from '#src/cli.mjs';
+import { emptyHint } from '#src/commands/site.mjs';
 import { startForwardProxy } from '../../test/forward-proxy.mjs';
 
 const sink = () => ({
@@ -199,4 +200,18 @@ test('site scan hints: another origin, then a browser User-Agent, then a proxy',
   } finally {
     for (const s of [blocked, home, moved]) s.server.close();
   }
+});
+
+test('emptyHint: an untrusted certificate through a proxy asks for its CA', () => {
+  const errors = [
+    {
+      url: 'https://a.test/robots.txt',
+      message: 'fetch failed: unable to get local issuer certificate',
+    },
+  ];
+  assert.match(
+    emptyHint(errors, { strategy: 'sitemaps', proxy: 'https://proxy.test:8443' }),
+    /re-signs TLS: pass its CA with --proxy-ca/,
+  );
+  assert.equal(emptyHint(errors, { strategy: 'sitemaps' }), 'retry with --strategy http');
 });

@@ -8176,6 +8176,9 @@ function emptyHint(errors, { strategy, userAgent, proxy }) {
     if (refusal) {
       return `the proxy refused the connection (${refusal}): ${refusal === "407" ? "check its user and password" : "see its rules for this site and its account"}`;
     }
+    if (has(/certificate|CERT_|self[- ]signed/i)) {
+      return "the proxy re-signs TLS: pass its CA with --proxy-ca <file>, or --insecure when it publishes none";
+    }
     if (proxy.startsWith("http:") && errors.length && errors.every((e) => /ECONNRESET/.test(e.message))) {
       return "every connection through the proxy was reset, as firewalls do with plain proxy traffic: try the https:// form of the proxy URL";
     }

@@ -32,7 +32,7 @@ Proxy:
 const collect = (value, previous) => [...previous, value];
 
 /** The next step after an empty scan, from what went wrong. */
-function emptyHint(errors, { strategy, userAgent, proxy }) {
+export function emptyHint(errors, { strategy, userAgent, proxy }) {
   const has = (re) => errors.some((e) => re.test(e.message));
   const elsewhere = errors.map((e) => / (scan \S+ instead)$/.exec(e.message)?.[1]).find(Boolean);
   if (elsewhere) return elsewhere;
@@ -44,6 +44,10 @@ function emptyHint(errors, { strategy, userAgent, proxy }) {
       .find(Boolean);
     if (refusal) {
       return `the proxy refused the connection (${refusal}): ${refusal === '407' ? 'check its user and password' : 'see its rules for this site and its account'}`;
+    }
+    // Unblockers re-sign TLS with their own CA.
+    if (has(/certificate|CERT_|self[- ]signed/i)) {
+      return 'the proxy re-signs TLS: pass its CA with --proxy-ca <file>, or --insecure when it publishes none';
     }
     // Firewalls reset plain-HTTP proxy traffic they can read; inside TLS it gets through.
     if (
