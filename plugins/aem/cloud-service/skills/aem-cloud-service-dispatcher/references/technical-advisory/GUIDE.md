@@ -1,13 +1,3 @@
----
-name: technical-advisory
-description: Provide advisory guidance for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEMaaCS cloud workflows only, with public-doc citations and cloud-specific MCP verification plans. Use for conceptual questions such as `statfileslevel`, filter rules, URL decomposition, cache invalidation behavior, rewrite behavior, and security headers.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Technical Advisory (Cloud)
 
 Provide deterministic guidance for AEMaaCS use cases involving the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration.

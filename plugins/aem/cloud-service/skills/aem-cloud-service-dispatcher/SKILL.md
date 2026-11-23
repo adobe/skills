@@ -1,9 +1,9 @@
 ---
-name: dispatcher
+name: aem-cloud-service-dispatcher
 description: |
-  Single entry point for all AEM as a Cloud Service Dispatcher skills. Covers config authoring,
-  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
-  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration.
+  Use when the user needs help with AEM as a Cloud Service Dispatcher: author or review farms, vhosts,
+  cache, filters, or rewrite configuration; troubleshoot publish delivery; assess security or
+  performance; or plan approved Dispatcher MCP checks.
 license: Apache-2.0
 compatibility: Tool-dependent checks require Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
@@ -13,18 +13,18 @@ metadata:
 
 # AEM Cloud Service Dispatcher
 
-Route user requests to the appropriate specialist skill based on intent.
+Route user requests to the appropriate specialist guide based on intent.
 
 ## Intent Router
 
-| User Intent | Skill | Path |
+| User Intent | Specialist guide | Path |
 |---|---|---|
-| Create, modify, review, or harden dispatcher config files (`.any`, vhost, rewrite, cache, filter) | Config Authoring | [config-authoring/SKILL.md](./config-authoring/SKILL.md) |
-| Conceptual questions (`statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, security headers) | Technical Advisory | [technical-advisory/SKILL.md](./technical-advisory/SKILL.md) |
-| Investigate runtime incidents, failures, probe regressions, or cache anomalies | Incident Response | [incident-response/SKILL.md](./incident-response/SKILL.md) |
-| Optimize cache efficiency, latency, and throughput | Performance Tuning | [performance-tuning/SKILL.md](./performance-tuning/SKILL.md) |
-| Security audit, threat model, exposure control, header hardening | Security Hardening | [security-hardening/SKILL.md](./security-hardening/SKILL.md) |
-| End-to-end lifecycle (design → implement → validate → release → incident) or requests spanning multiple concerns | Workflow Orchestrator | [workflow-orchestrator/SKILL.md](./workflow-orchestrator/SKILL.md) |
+| Create, modify, review, or harden dispatcher config files (`.any`, vhost, rewrite, cache, filter) | Config Authoring | [config-authoring/GUIDE.md](./references/config-authoring/GUIDE.md) |
+| Conceptual questions (`statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, security headers) | Technical Advisory | [technical-advisory/GUIDE.md](./references/technical-advisory/GUIDE.md) |
+| Investigate runtime incidents, failures, probe regressions, or cache anomalies | Incident Response | [incident-response/GUIDE.md](./references/incident-response/GUIDE.md) |
+| Optimize cache efficiency, latency, and throughput | Performance Tuning | [performance-tuning/GUIDE.md](./references/performance-tuning/GUIDE.md) |
+| Security audit, threat model, exposure control, header hardening | Security Hardening | [security-hardening/GUIDE.md](./references/security-hardening/GUIDE.md) |
+| End-to-end lifecycle (design → implement → validate → release → incident) or requests spanning multiple concerns | Workflow Orchestrator | [workflow-orchestrator/GUIDE.md](./references/workflow-orchestrator/GUIDE.md) |
 
 ## How to Use
 
@@ -37,7 +37,7 @@ Route user requests to the appropriate specialist skill based on intent.
 
 The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When tools are unavailable or a linked guide cannot be loaded, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output. This entrypoint's runtime and MCP gates govern every linked specialist and cannot be bypassed by a routed guide.
 
-All specialist skills share the same core-7 MCP tool set:
+The specialist guides share the same core-7 MCP tool set:
 
 - `validate` — static config validation
 - `lint` — deep/order-aware linting

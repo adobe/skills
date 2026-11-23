@@ -84,8 +84,8 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
   }
   L.push('');
 
-  L.push('## Next checks (delegated to the dispatcher skill)', '');
-  L.push('This report does not run these — route them to the `dispatcher` skill and record results:');
+  L.push('## Next checks (delegated to the aem-cloud-service-dispatcher skill)', '');
+  L.push('This report does not run these — route them to the `aem-cloud-service-dispatcher` skill and record results:');
   L.push('- **Immutable/default freshness & drift** → `sdk(action="diff-baseline")` + `config-authoring` `validation-playbook.md` §6.');
   L.push('- **Filter/ACL security posture** (deny-by-default present, no allow-all, sensitive paths `/crx` `/system` `/bin` `/apps` `/libs` denied) → `security-hardening` `security-baseline-checklist.md` + `sensitive-paths-catalog.md`, via `lint(strict)`. REQUIRED — the filter-acl-loss gate checks rule COUNT, not policy quality; preserved rules can still be an insecure policy.');
   L.push('- **Security headers / edge hardening** → `security-hardening`.');

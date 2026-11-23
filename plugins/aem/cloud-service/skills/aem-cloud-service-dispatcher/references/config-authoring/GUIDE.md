@@ -1,13 +1,3 @@
----
-name: config-authoring
-description: Create, modify, review, and harden configuration for the Adobe Dispatcher Apache HTTP Server module and Apache HTTPD in AEM as a Cloud Service environments only. Use for `.any`, vhost, rewrite, cache, and filter changes.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Config Authoring (Cloud)
 
 Design minimal, deterministic changes for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEMaaCS, then verify with MCP evidence.

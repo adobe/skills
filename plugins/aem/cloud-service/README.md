@@ -28,14 +28,16 @@ Skills for developing, assessing, migrating, and operating AEM as a Cloud Servic
 
 Config authoring, advisory, performance, security, and incident response. Requires [Dispatcher MCP](https://github.com/AdobeDocs/aem-dispatcher-mcp) (`AEM_DEPLOYMENT_MODE=cloud`).
 
-| Skill | Description | Try it |
+The entry skill is now named `aem-cloud-service-dispatcher` (formerly `dispatcher`); update references to the old skill name.
+
+| Specialist guide | Description | Try it |
 |-------|-------------|--------|
-| [config-authoring](skills/dispatcher/config-authoring/SKILL.md) | Create, modify, review, and harden Dispatcher config files (`.any`, vhost, rewrite, cache, filter) | `Add a new vhost for my site` |
-| [technical-advisory](skills/dispatcher/technical-advisory/SKILL.md) | Conceptual guidance on `statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, and security headers — with public-doc citations | `Explain statfileslevel for my site` |
-| [incident-response](skills/dispatcher/incident-response/SKILL.md) | Investigate runtime incidents, failures, probe regressions, and cache anomalies using Dispatcher MCP evidence | `Why are my pages returning 403?` |
-| [performance-tuning](skills/dispatcher/performance-tuning/SKILL.md) | Optimize Dispatcher cache efficiency, latency, and throughput with cloud-specific baselines | `Tune my dispatcher cache for better hit ratios` |
-| [security-hardening](skills/dispatcher/security-hardening/SKILL.md) | Security audits, threat models, exposure control, and header hardening | `Harden my dispatcher security headers` |
-| [workflow-orchestrator](skills/dispatcher/workflow-orchestrator/SKILL.md) | Orchestrate complete Dispatcher lifecycle from design through validation, release readiness, and incident troubleshooting | `Walk me through setting up dispatcher for a new site end-to-end` |
+| [config-authoring](skills/aem-cloud-service-dispatcher/references/config-authoring/GUIDE.md) | Create, modify, review, and harden Dispatcher config files (`.any`, vhost, rewrite, cache, filter) | `Add a new vhost for my site` |
+| [technical-advisory](skills/aem-cloud-service-dispatcher/references/technical-advisory/GUIDE.md) | Conceptual guidance on `statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, and security headers — with public-doc citations | `Explain statfileslevel for my site` |
+| [incident-response](skills/aem-cloud-service-dispatcher/references/incident-response/GUIDE.md) | Investigate runtime incidents, failures, probe regressions, and cache anomalies using Dispatcher MCP evidence | `Why are my pages returning 403?` |
+| [performance-tuning](skills/aem-cloud-service-dispatcher/references/performance-tuning/GUIDE.md) | Optimize Dispatcher cache efficiency, latency, and throughput with cloud-specific baselines | `Tune my dispatcher cache for better hit ratios` |
+| [security-hardening](skills/aem-cloud-service-dispatcher/references/security-hardening/GUIDE.md) | Security audits, threat models, exposure control, and header hardening | `Harden my dispatcher security headers` |
+| [workflow-orchestrator](skills/aem-cloud-service-dispatcher/references/workflow-orchestrator/GUIDE.md) | Orchestrate complete Dispatcher lifecycle from design through validation, release readiness, and incident troubleshooting | `Walk me through setting up dispatcher for a new site end-to-end` |
 
 ### Workflow
 
