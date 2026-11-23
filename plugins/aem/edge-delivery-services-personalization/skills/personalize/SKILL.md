@@ -4,7 +4,7 @@ description: Personalizes sections of AEM Edge Delivery Services (DA) pages with
 license: Apache-2.0
 compatibility: Requires Node 22+, an AEM Edge Delivery Services project authored in DA whose Section Metadata reaches the page as section attributes (rendering v2, or an aem.js that reads it), @adobe/aem-cli 16.21+ for local preview, and Playwright with Chromium in this skill's folder or ~/.cache/aem-eds-personalization/playwright for verify-preview (never installed into the site); wrangler only for edge mode.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # personalize: sections → fragments

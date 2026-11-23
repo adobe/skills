@@ -15,6 +15,40 @@ if (!CONTRACTS) throw Object.assign(new Error('rollout/lib.mjs: contracts.mjs no
 const C = await import(CONTRACTS.href);
 export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;
 export const { pathKey, safePath, sidecarName, treePath, rosterPath, pathSlug, sitemapKey, servedPath, isFolderIndexFile } = C;
+export const { daTokenSource, readDaToken, jwtExpiry } = C;
+
+/**
+ * The block library's proof of publication (#160): da-library.mjs writes it once every DA write of a run succeeded and
+ * removes it at the start of every run that is not a dry run; done-check's library_missing gap reads it. One path for
+ * both: `<rollout dir>/library/published.json` (da-library's rollout dir is dirname(--coverage), done-check's --out).
+ */
+export const libraryMarkerPath = (rolloutDir = join('stardust', 'rollout')) => join(rolloutDir, 'library', 'published.json');
+
+/**
+ * done-check's library gap, or null. `marker` is published.json (null when absent); `da` is rollout.json site.da;
+ * `delivered` the delivered coverage rows as `{ path, deployedAt }` (a bare path string has no deployedAt). Missing →
+ * `library_missing`; published to another DA site → `library_missing:published to <org>/<site>, site.da is …`;
+ * otherwise `library_missing:stale: …` naming delivered pages it never read (siblings delivered after it ran,
+ * archetypes-only mode) and pages re-delivered after it ran (`deployedAt` later than the marker's `at`: a fix round
+ * may have added a block or variant). Pure.
+ */
+export function libraryGap(marker, { da = {}, delivered = [] } = {}) {
+  if (!marker || typeof marker !== 'object') return 'library_missing';
+  const want = `${da.org || ''}/${da.site || ''}`;
+  if (da.org && da.site && `${marker.org}/${marker.site}` !== want) return `library_missing:published to ${marker.org}/${marker.site}, site.da is ${want} — re-run da-library.mjs`;
+  const read = new Set((Array.isArray(marker.pages) ? marker.pages : []).map(pathKey));
+  const ranAt = Date.parse(marker.at);
+  const rows = delivered.map((d) => (typeof d === 'string' ? { path: d } : d));
+  const unread = rows.filter((d) => !read.has(pathKey(d.path))).map((d) => d.path);
+  const newer = rows.filter((d) => read.has(pathKey(d.path)) && Date.parse(d.deployedAt) > ranAt).map((d) => d.path);
+  if (!unread.length && !newer.length) return null;
+  const list = (ps) => (ps.length > 20 ? `${ps.slice(0, 20).join(', ')}, … (+${ps.length - 20})` : ps.join(', '));
+  const why = [
+    unread.length && `${unread.length} delivered page(s) not in the library: ${list(unread)}`,
+    newer.length && `${newer.length} page(s) re-delivered after it ran: ${list(newer)}`,
+  ].filter(Boolean).join('; ');
+  return `library_missing:stale: ${why} — re-run da-library.mjs`;
+}
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
@@ -165,6 +199,7 @@ export const ALL_LAYERS = ['brand-tensions', 'design-ux', 'accessibility', 'seo'
 export const ASSESSED_BY_BASELINE = ['accessibility', 'seo', 'ai-search', 'cross-page'];
 export const SEV_WEIGHT = { P1: 25, P2: 10, P3: 4 };
 
+
 /**
  * AEM autofix registry: maps a finding's `check` to the EDS fixer that resolves it.
  * kind: 'deterministic' (mechanical edit) | 'content-draft' (generates copy needing
@@ -203,6 +238,36 @@ export function autofixFor(check) {
  */
 export const SOURCE_PARITY_PREFIX = 'source parity: ';
 export const isSourceParity = (f) => !!(f && f.fixability === 'out-of-scope' && typeof f.evidence === 'string' && f.evidence.startsWith(SOURCE_PARITY_PREFIX));
+
+/**
+ * An open finding that keeps a page from "optimised": open or in progress and not source parity — exactly the
+ * findings optimize scores and gates on (isSourceParity: `out-of-scope` with the `source parity: ` evidence). Pure.
+ */
+export const blocksOptimised = (f) => !!f && (f.status === 'open' || f.status === 'in-progress') && !isSourceParity(f);
+
+/**
+ * The verdict a gate-all row carries for update-coverage --gate: true / false, or null for NO verdict — a row
+ * whose pixel step errored (`error`, no percentage: a capture that never happened, an unstable reference) and
+ * whose other criteria (clip, content, units — probed independently of the capture) measured no failure. A
+ * measured failure beside a capture error is still false; an override still decides. Pure.
+ */
+export function gateRowVerdict(r) {
+  if (!r) return null;
+  if (r.pass || ('passWithOverride' in r ? r.passWithOverride : r.override)) return true;
+  if (r.error && (r.pct === null || r.pct === undefined)) {
+    const measured = Array.isArray(r.failing) ? r.failing.some((c) => c !== 'capture') : [r.clipPass, r.contentPass, r.unitPass].includes(false);
+    return measured ? false : null;
+  }
+  return false;
+}
+
+/** True when a page's `gate: …` failure text names only capture errors (no measured criterion). Pure. */
+export const gateFailureIsCaptureErrorOnly = (error) => {
+  const m = /^gate: (.*)$/s.exec(error || '');
+  if (!m) return false;
+  const parts = m[1].split(/;\s*/).filter(Boolean);
+  return parts.length > 0 && parts.every((p) => /pixel error|missing capture|reference-unstable/i.test(p));
+};
 
 /** Tag a detected finding as mirroring the source (`why` names the shared condition). */
 export function markSourceParity(finding, why) {

@@ -40,6 +40,7 @@ A skill follows the [Agent Skills specification](https://agentskills.io): a fold
 - Write for any agent harness unless the plugin says it needs one. Don't name a harness's tools or slash commands where a plain instruction does.
 - State facts about Adobe products that you checked against the product or its documentation. Version-specific behaviour says which version.
 - A version number in a skill goes stale. Renovate keeps these current in skills and their assets: GitHub Actions written as `owner/repo@version`, jsDelivr and cdnjs URLs, and `npx pkg@1.2.3` or `npm install pkg@1.2.3`. For any other version, put a comment with `renovate: datasource=<datasource> depName=<name>` on the line above it. If a version is pinned on purpose, say why next to it and disable it in `renovate.json`.
+- A skill that installs a package of this repository from git (`github:adobe/skills#<sha>&path:/plugins/…`) pins the full commit of a release on `main`: `git rev-list -n 1 <tag>`. Pull requests are squash-merged, so a commit of your branch is never on `main`. Renovate doesn't move these pins: bump them by hand, together with any cache folder named after the commit. `scripts/check-pins.mjs` fails otherwise.
 - A plugin that has `evals/` gets a scenario for behaviour you add or change. A claim that a skill helps is a claim an eval can check.
 
 ### How long a skill may be
@@ -163,6 +164,7 @@ node scripts/check-release-configs.mjs # release configs point at files that exi
 npm test                               # when you touch scripts/: the workflows run these scripts
 node scripts/check-facts.mjs           # when you touch facts.yaml or a file it names
 node scripts/check-trigger-queries.mjs # when you touch trigger-queries/ or rename a skill
+node scripts/check-pins.mjs            # when a skill installs a package of this repository from git
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
@@ -176,7 +178,7 @@ CI runs these on every pull request:
 
 | Check | What it does |
 |---|---|
-| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that facts name files that exist (`scripts/check-facts.mjs`), that trigger queries name skills that exist (`scripts/check-trigger-queries.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
+| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that facts name files that exist (`scripts/check-facts.mjs`), that trigger queries name skills that exist (`scripts/check-trigger-queries.mjs`), that a skill installs this repository's packages only from a release commit on `main` (`scripts/check-pins.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
 | Validate Skills | `imported`: a pull request that changes what is [brought in from another repository](#brought-in-from-another-repository) fails with the list of rules it breaks. A maintainer merges it anyway. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |

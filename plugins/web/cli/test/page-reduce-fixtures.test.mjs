@@ -11,15 +11,24 @@ import { fileURLToPath } from 'node:url';
 import { startFixture } from './fixture-server.mjs';
 
 const binPath = fileURLToPath(new URL('../dist/web.mjs', import.meta.url));
-const casesHtml = readFileSync(
-  new URL('./fixtures/page-reduce/cases.html', import.meta.url),
-  'utf8',
-);
+const page = (name) =>
+  readFileSync(new URL(`./fixtures/page-reduce/${name}.html`, import.meta.url), 'utf8');
+const CONTENT =
+  /\{(?:TEXT|VIDEO)\}|\{HEADING:\d\}|\{IMAGE:\d+x\d+\}|\{(?:LINK|CTA|INPUT):[^}]*\}|\{SELECT:\d+\}/;
 const probe = spawnSync('playwright-cli', ['--version']);
 const available = !probe.error && probe.status === 0;
 const session = `page-reduce-fixtures-${process.pid}`;
 let cwd;
+let sections;
 let html;
+let oneBlock;
+let hiddenMain;
+let hiddenOnly;
+let ancestorHidden;
+let overflowBody;
+let zeroWrapper;
+let offpageMain;
+let clippedMain;
 
 // Async spawn: spawnSync blocks the event loop that serves the in-process fixture.
 function web(...args) {
@@ -30,19 +39,32 @@ function web(...args) {
   });
 }
 
-before(async () => {
-  if (!available) return;
-  cwd = mkdtempSync(join(tmpdir(), 'web-page-reduce-'));
-  const fixture = await startFixture(casesHtml);
+async function reduceFixture(name, ...extra) {
+  const fixture = await startFixture(page(name));
   try {
-    const res = await web('page', 'reduce', fixture.url, '--session', session, '--settle-ms', '0');
-    assert.equal(res.status, 0, res.stdout);
-    html = JSON.parse(res.stdout)
-      .sections.map((s) => s.tokenizedHtml)
-      .join('\n');
+    const args = ['page', 'reduce', fixture.url, '--session', session, '--settle-ms', '0'];
+    const res = await web(...args, ...extra);
+    return { status: res.status, doc: JSON.parse(res.stdout) };
   } finally {
     await fixture.close();
   }
+}
+
+before(async () => {
+  if (!available) return;
+  cwd = mkdtempSync(join(tmpdir(), 'web-page-reduce-'));
+  const cases = await reduceFixture('cases');
+  assert.equal(cases.status, 0, JSON.stringify(cases.doc));
+  ({ sections } = cases.doc);
+  html = sections.map((s) => s.tokenizedHtml).join('\n');
+  oneBlock = await reduceFixture('one-block');
+  hiddenMain = await reduceFixture('hidden-main');
+  hiddenOnly = await reduceFixture('hidden-only', '--retries', '0');
+  ancestorHidden = await reduceFixture('ancestor-hidden');
+  overflowBody = await reduceFixture('overflow-body');
+  zeroWrapper = await reduceFixture('zero-wrapper');
+  offpageMain = await reduceFixture('offpage-main');
+  clippedMain = await reduceFixture('clipped-main');
 });
 
 after(async () => {
@@ -83,4 +105,105 @@ fixtureTest('a link around a large SVG keeps it as a sized image', () => {
 fixtureTest('a card link keeps its heading and image', () => {
   assert.equal(html.match(/\{HEADING:3\}/g)?.length, 4, html);
   assert.match(html, /<a[^>]*class="card"[^>]*>\s*\{IMAGE:\d+x120\}/);
+});
+
+fixtureTest('no section is left without content (dots, backdrop, empty dialog)', () => {
+  const empty = sections.filter((s) => !CONTENT.test(s.tokenizedHtml));
+  assert.deepEqual(
+    empty.map((s) => s.xpath),
+    [],
+  );
+  assert.deepEqual(
+    sections.map((s) => s.index),
+    sections.map((_, i) => i),
+  );
+});
+
+fixtureTest('a page with one block gives one fallback section', () => {
+  assert.equal(oneBlock.status, 0, JSON.stringify(oneBlock.doc));
+  assert.equal(oneBlock.doc.sections.length, 1);
+  assert.equal(oneBlock.doc.sections[0].fallback, true);
+  assert.match(oneBlock.doc.sections[0].tokenizedHtml, /\{HEADING:1\}/);
+});
+
+fixtureTest('a standalone image survives next to other sections', () => {
+  assert.match(html, /\{IMAGE:800x200\}/);
+  assert.match(html, /\{HEADING:2\}/);
+});
+
+fixtureTest('a hidden main falls through to the visible body, without event handlers', () => {
+  assert.equal(hiddenMain.status, 0, JSON.stringify(hiddenMain.doc));
+  const [section, ...rest] = hiddenMain.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.xpath, /body/);
+  assert.match(section.tokenizedHtml, /\{HEADING:2\}/);
+  assert.doesNotMatch(section.tokenizedHtml, /\{HEADING:1\}|<main/);
+  assert.match(section.tokenizedHtml, /class="page"/);
+  assert.doesNotMatch(section.tokenizedHtml, /onload/);
+});
+
+fixtureTest('a page whose only content is hidden gives EMPTY_RESULT', () => {
+  assert.equal(hiddenOnly.status, 1);
+  assert.equal(hiddenOnly.doc.error.code, 'EMPTY_RESULT');
+});
+
+fixtureTest('a main under an invisible ancestor falls through to the visible body', () => {
+  assert.equal(ancestorHidden.status, 0, JSON.stringify(ancestorHidden.doc));
+  const [section, ...rest] = ancestorHidden.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.xpath, /body(\[1\])?$/);
+  assert.match(section.tokenizedHtml, /\{LINK:a link\}/);
+  assert.doesNotMatch(section.tokenizedHtml, /\{HEADING:1\}/);
+});
+
+fixtureTest('a body with no height keeps its absolutely positioned content', () => {
+  assert.equal(overflowBody.status, 0, JSON.stringify(overflowBody.doc));
+  const [section, ...rest] = overflowBody.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.tokenizedHtml, /\{HEADING:2\}/);
+});
+
+fixtureTest('brace text that is not a token is ordinary text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.doesNotMatch(section.tokenizedHtml, /\{TEXTURE\}/);
+});
+
+// One fallback section from `body`: the visible content won and nothing from main survived.
+function bodyFallback(result) {
+  assert.equal(result.status, 0, JSON.stringify(result.doc));
+  const [section, ...rest] = result.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.xpath, /body(\[1\])?$/);
+  return section.tokenizedHtml;
+}
+
+fixtureTest('a zero-height wrapper keeps its positioned link', () => {
+  assert.match(bodyFallback(zeroWrapper), /\{(?:LINK|CTA):Positioned link\}/);
+});
+
+fixtureTest('an off-page main that clips its text does not win the fallback', () => {
+  const html = bodyFallback(offpageMain);
+  assert.match(html, /\{LINK:Visible link\}/);
+  assert.doesNotMatch(html, /<main/);
+});
+
+fixtureTest('a main clipped out of view by its wrapper does not win the fallback', () => {
+  const html = bodyFallback(clippedMain);
+  assert.match(html, /\{LINK:Visible link\}/);
+  assert.doesNotMatch(html, /\{HEADING:1\}/);
+});
+
+fixtureTest('token-like page text is ordinary text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.match(section.tokenizedHtml, /<p>\{TEXT\}<\/p>/);
+  assert.doesNotMatch(section.tokenizedHtml, /actual page copy|\{LINK:x\}/);
+});
+
+fixtureTest('a link label with braces keeps its text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.match(section.tokenizedHtml, /<p>\{LINK:TEXTURE\}<\/p>/);
 });

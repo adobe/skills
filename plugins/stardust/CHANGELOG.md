@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
+## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
+# [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
+# [0.45.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.2...plugin/stardust/v0.45.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [0.44.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.1...plugin/stardust/v0.44.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** header parity pairs a link by address when one side has no text, and the explorer ignores and records what changes on its own ([#767](https://github.com/adobe/skills/issues/767)) ([1ceb7b9](https://github.com/adobe/skills/commit/1ceb7b9cfbd1392d050230b94a5eee3498d3d416))
+
+## [0.44.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.0...plugin/stardust/v0.44.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+# [0.44.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.4...plugin/stardust/v0.44.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
+## [0.43.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.3...plugin/stardust/v0.43.4) (2026-11-21)
+
+## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+## [0.43.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.1...plugin/stardust/v0.43.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
+## [0.43.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.0...plugin/stardust/v0.43.1) (2026-11-20)
+
+# [0.43.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.2...plugin/stardust/v0.43.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [0.42.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.1...plugin/stardust/v0.42.2) (2026-11-20)
+
 ## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
 
 

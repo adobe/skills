@@ -17,6 +17,7 @@
 // every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/stardust/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { mkdirSync, mkdtempSync as createTempDirectory, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -1860,6 +1861,66 @@ check('shotPlan / layoutOverflow (#602): a page at Chrome\'s layout maximum gets
   assert.equal(session.shotPlan({ w: 1440, h: 60000 }, 1440, { maxHeight: 70000 }).mode, 'fullPage');
   assert.equal(session.shotPlan({ w: 6000, h: 2000 }, 1440).mode, 'viewport', 'wider than 4 viewports');
   assert.equal(typeof session.pageSizeInPage, 'function');
+});
+
+// installFastClose: a stub browser whose "browser process" is a real child process, so the SIGTERM is real.
+const fakeBrowserProcess = (ignoreSigterm = false) => spawn(process.execPath, ['-e', `${ignoreSigterm ? "process.on('SIGTERM', () => {});" : ''} setInterval(() => {}, 1000);`], { stdio: 'ignore' });
+const fastCloseStub = (child, { cdpFails = false } = {}) => {
+  const calls = []; const onDisconnect = []; let connected = true;
+  const disconnect = () => { connected = false; onDisconnect.splice(0).forEach((fn) => fn()); };
+  child.once('exit', disconnect);
+  const browser = {
+    newBrowserCDPSession: async () => {
+      if (cdpFails) throw new Error('CDP unavailable');
+      return { send: async (method) => { calls.push(method); return { processInfo: [{ type: 'renderer', id: 1 }, { type: 'browser', id: child.pid }] }; }, detach: async () => {} };
+    },
+    isConnected: () => connected,
+    contexts: () => [{ close: async () => { calls.push('context 1'); } }, { close: async () => { calls.push('context 2'); throw new Error('already closed'); } }],
+    once: (event, fn) => { if (event === 'disconnected') onDisconnect.push(fn); },
+    close: async () => { calls.push(connected ? 'playwright close (connected)' : 'playwright close (exited)'); connected = false; },
+  };
+  return { browser, calls };
+};
+
+await checkAsync('installFastClose: close() closes every context (one failing), SIGTERMs the browser pid from CDP, then lets Playwright finish', async () => {
+  const child = fakeBrowserProcess();
+  const { browser, calls } = fastCloseStub(child);
+  assert.equal(await session.installFastClose(browser), browser);
+  assert.equal(browser.stardustFastClose, true);
+  const t = Date.now();
+  await browser.close();
+  assert.ok(Date.now() - t < 2000, `closed in ${Date.now() - t} ms`);
+  assert.equal(child.signalCode, 'SIGTERM');
+  assert.deepEqual(calls, ['SystemInfo.getProcessInfo', 'context 1', 'context 2', 'playwright close (exited)']);
+});
+
+await checkAsync('installFastClose: no CDP (or no browser pid) leaves Playwright\'s close untouched; a browser without CDP is returned as is', async () => {
+  const child = fakeBrowserProcess();
+  try {
+    const { browser, calls } = fastCloseStub(child, { cdpFails: true });
+    const original = browser.close;
+    await session.installFastClose(browser);
+    assert.equal(browser.close, original);
+    assert.equal(browser.stardustFastClose, undefined);
+    await browser.close();
+    assert.deepEqual(calls, ['playwright close (connected)']);
+    assert.equal(child.exitCode, null, 'the process was not signalled');
+    const bare = {};
+    assert.equal(await session.installFastClose(bare), bare);
+  } finally { child.kill('SIGKILL'); }
+});
+
+await checkAsync('installFastClose: a browser that survives SIGTERM falls back to Playwright\'s close after the exit wait', async () => {
+  const child = fakeBrowserProcess(true);
+  try {
+    await new Promise((r) => setTimeout(r, 300)); // the child installs its SIGTERM handler
+    const { browser, calls } = fastCloseStub(child);
+    await session.installFastClose(browser);
+    const t = Date.now();
+    await browser.close();
+    assert.ok(Date.now() - t >= 2900, `waited ${Date.now() - t} ms`);
+    assert.equal(calls.at(-1), 'playwright close (connected)');
+  } finally { child.kill('SIGKILL'); }
 });
 
 rmSync(GOTO_STATE_ROOT, { recursive: true, force: true });

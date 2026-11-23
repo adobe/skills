@@ -28,6 +28,7 @@ const read = (d) => JSON.parse(readFileSync(join(d, 'rounds.json'), 'utf8'));
 
 // ── pure ──────────────────────────────────────────────────────────────────────────────────────────────────────
 check('the cap is 3 counted rounds', CAP === 3);
+check('verdictOf: a header contract without a verdict at the stage (probe exit 2) fails the round', verdictOf({ pixel: { rc: 0 }, probes: { 'header-contract': { rc: 2 } } }) === 'fail' && verdictOf({ pixel: { rc: 0 }, probes: { 'header-contract': { rc: 0 } } }) === 'pass' && verdictOf({ pixel: { rc: 0 }, probes: { 'header-contract': { rc: 1 } } }) === null);
 check('verdictOf: a --full record whose probes never finished (pending) is no verdict', verdictOf({ pixel: { rc: 0 }, pending: 'probes' }) === null && verdictOf({ pixel: { rc: 0 } }) === 'pass');
 let L = emptyLedger();
 check('an empty triple may run (the map)', mayRun(L, 'prototype').ok);
@@ -231,7 +232,8 @@ chmodSync(join(replica, 'gate.sh'), 0o755);
 const calls = join(root, 'calls.txt');
 const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\nimport { appendFileSync, writeFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, '${name}\\n');\n${body}\n`);
 stub('stitch-shot.mjs', `const rc = Number(process.env.STUB_STITCH_RC || 0); if (rc) process.exit(rc);
-  writeFileSync(process.argv[3], 'png'); writeFileSync(process.argv[3].replace(/\\.png$/, '.capture.json'), JSON.stringify({ fontsFailed: [], fixedLayers: {} }));`);
+  const hold = process.argv.includes('--hold-min') ? Number(process.argv[process.argv.indexOf('--hold-min') + 1]) : null; // the timer hold (gate.sh's default), as stitch-shot records it
+  writeFileSync(process.argv[3], 'png'); writeFileSync(process.argv[3].replace(/\\.png$/, '.capture.json'), JSON.stringify({ fontsFailed: [], fixedLayers: {}, ...(hold ? { timers: { hold, held: 0, intervals: 0, chains: 0, delays: [] } } : {}) }));`);
 stub('measure.mjs', `const o = Number(process.env.STUB_OVERFLOW || 0); console.log('  root  scrollWidth ' + (1440 + o) + '  viewport 1440  scrollHeight 5410' + (o ? '  ◄◄ OVERFLOW +' + o + 'px' : ''));`);
 stub('pixel-compare.mjs', `console.log('differing 1.20%'); process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
 let hits = 0;

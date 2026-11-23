@@ -59,10 +59,10 @@
  *       and the exact re-run command (the same command resumes from the ledger).
  *       A file is never marked `failed` because of a 401 — it prints HALT, not FAIL.
  *
- * Token: from the environment variable named by --token-env (default DA_TOKEN),
- * or from --token-file <path> (read once at start; one of the two — a hands-off
- * harness hands the token over as a file, and a recorded run's uploader read
- * DA_TOKEN only). The value is never printed, never part of the re-run command
+ * Token: --token-file <path>, --token-env <NAME>, else DA_TOKEN, else the file named by
+ * ADOBE_IMS_TOKEN_FILE (a hands-off harness hands the token over as a file) — the shared rule,
+ * daTokenSource in skills/stardust/scripts/lib/da-token.mjs. Read once at start; every message
+ * names the source it came from. The value is never printed, never part of the re-run command
  * and never written to the ledger or anywhere else.
  *
  * Usage:
@@ -114,6 +114,17 @@ import { mergeLedger } from './file-lock.mjs';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) {
+  console.error('da-media-upload: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
+// deploy-batch and the tests take the expiry decode from here, as before it moved to lib/da-token.mjs.
+export { jwtExpiry };
+
 const HELP = `da-media-upload — rehost captured images (and mp4 video up to 36 MB) to the DA media folder
 
 Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <scope> (--dir <dir> | --manifest <json>) [options]
@@ -134,8 +145,9 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
   --token-file <path>   read the token from this file instead (one of the two, never both)
   --help                this text
 
-Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
-never in the re-run command, never written to the ledger.
+Token: --token-file, --token-env, else DA_TOKEN, else the file named by ADOBE_IMS_TOKEN_FILE (read once at
+start; skills/stardust/scripts/lib/da-token.mjs); never printed, never in the re-run command, never written
+to the ledger.
 Video (#161): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
 root-relative /media/<scope>/<file>, never its content.da.live URL. Two files with one stored name: the
 later one FAILs name-collision, nothing sent for it. Bigger mp4s and other video/audio/PDF are
@@ -203,24 +215,23 @@ export function parseArgs(argv, env = process.env) {
   // `--scope media/<name>` and uploaded 242 files to media/media/<name>, then deleted them all.
   if (/^media\//.test(o.scope)) usage(`--scope is relative to media/ — pass the folder name under it (--scope ${o.scope.slice(6)}), never media/<name>: the upload path would double to media/${o.scope}/<file>`);
   if (!!o.dir === !!o.manifest) usage('give exactly one of --dir or --manifest');
-  // The token source: one variable (default DA_TOKEN) or one file, never both. The file is read here,
-  // once, before anything else runs; a dry run uses no token and so reads none. The value is kept on
-  // `token` only — every message names the source (`tokenLabel`), never the value.
-  if (o.tokenEnv && o.tokenFile) usage('give at most one of --token-env / --token-file');
-  o.tokenEnv ||= 'DA_TOKEN';
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.tokenEnv)) usage('--token-env needs an environment variable name (letters, digits, underscore)');
-  if (o.tokenFile) {
-    if (!o.dryRun) {
-      try { o.token = readFileSync(o.tokenFile, 'utf8').trim(); } catch (e) { usage(`cannot read --token-file ${o.tokenFile}: ${e.message}`); }
-      if (!o.token) usage(`--token-file ${o.tokenFile} is empty`);
-    }
-  } else o.token = env[o.tokenEnv];
-  if (!o.dryRun && !o.token) usage(`${o.tokenEnv} is not set in the environment (the token is read from there — or from --token-file — only)`);
+  // The token source (daTokenSource, lib/da-token.mjs): one file or one variable, never both. The file is
+  // read here, once, before anything else runs; a dry run uses no token and so reads none. The value is kept
+  // on `token` only — every message names the source (`tokenLabel`, `tokenVia`), never the value.
+  let src;
+  try { src = daTokenSource(o, env); } catch (e) { usage(e.message); }
+  Object.assign(o, { tokenFile: src.tokenFile, tokenEnv: src.tokenEnv, tokenVia: src.via });
+  if (o.tokenEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.tokenEnv)) usage('--token-env needs an environment variable name (letters, digits, underscore)');
+  if (!o.dryRun) {
+    try { o.token = readDaToken(src, env); } catch (e) { usage(e.message); }
+    if (!o.token) usage(`${o.tokenEnv} is not set in the environment (the token is read from there — or from --token-file or ADOBE_IMS_TOKEN_FILE — only)`);
+  }
   return o;
 }
 
-// How the messages name the token and say how to refresh it — the variable or the file, never the value.
-const tokenLabel = (o) => (o.tokenFile ? `the token in ${o.tokenFile}` : o.tokenEnv);
+// How the messages name the token and say how to refresh it — the variable or the file (and, for a file the flag
+// did not name, the variable that did), never the value.
+const tokenLabel = (o) => (o.tokenFile ? `the token in ${o.tokenFile}${o.tokenVia === 'ADOBE_IMS_TOKEN_FILE' ? ' (ADOBE_IMS_TOKEN_FILE)' : ''}` : o.tokenEnv);
 const refreshHint = (o) => (o.tokenFile ? `write a fresh token to ${o.tokenFile}` : `refresh ${o.tokenEnv} in the environment`);
 
 // ---- inputs ------------------------------------------------------------------------------------
@@ -268,17 +279,7 @@ export function classify(name, bytes) {
 
 // ---- token preflight ----------------------------------------------------------------------------------
 
-// The `exp` claim (seconds since the epoch) of a JWT-shaped token, or null when the token is not a JWT or
-// carries no numeric exp. Decodes the middle segment only; nothing about the token is ever printed.
-export function jwtExpiry(token) {
-  if (typeof token !== 'string') return null;
-  const parts = token.split('.');
-  if (parts.length !== 3 || !parts.every((x) => /^[A-Za-z0-9_-]+$/.test(x))) return null;
-  try {
-    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    return claims && Number.isFinite(claims.exp) ? claims.exp : null;
-  } catch { return null; }
-}
+// The JWT expiry decode (jwtExpiry) is lib/da-token.mjs's, imported above.
 
 // The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
 // never on the command line — it comes from the environment variable, or from the --token-file path).

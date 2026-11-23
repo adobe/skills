@@ -1,0 +1,273 @@
+{
+ "_provenance": {
+  "writtenBy": "skills/replica/scripts/source-spec.mjs",
+  "writtenAt": "2026-11-20T07:56:02.073Z",
+  "url": "http://localhost:8780/visit/",
+  "width": 1440,
+  "main": "main",
+  "locale": "en-US"
+ },
+ "page": {
+  "url": "http://localhost:8780/visit/",
+  "width": 1440,
+  "viewport": 1440,
+  "docHeight": 1258,
+  "scrollWidth": 1440,
+  "root": "main",
+  "rootFallback": false,
+  "rootWrapsChrome": false,
+  "tier": "chrome"
+ },
+ "tokens": {
+  "fonts": [
+   {
+    "stack": "Helvetica, Arial, sans-serif",
+    "n": 25
+   },
+   {
+    "stack": "Georgia, \"Times New Roman\", serif",
+    "n": 3
+   }
+  ],
+  "loadedFaces": [],
+  "textStyles": [
+   {
+    "key": "15/24 400 Helvetica",
+    "fontSize": 15,
+    "lineHeight": 24,
+    "fontWeight": "400",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 5,
+    "roles": {
+     "p": 2,
+     "link": 3
+    },
+    "sample": "12 Sample Lane Testville"
+   },
+   {
+    "key": "15/15 500 Helvetica",
+    "fontSize": 15,
+    "lineHeight": 15,
+    "fontWeight": "500",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "link": 4
+    },
+    "sample": "Shelf"
+   },
+   {
+    "key": "24/27.6 700 Helvetica",
+    "fontSize": 24,
+    "lineHeight": 27.6,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "h2": 3
+    },
+    "sample": "Opening hours"
+   },
+   {
+    "key": "16/25.6 400 Helvetica",
+    "fontSize": 16,
+    "lineHeight": 25.6,
+    "fontWeight": "400",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "th": 3
+    },
+    "sample": "Tuesday to Friday"
+   },
+   {
+    "key": "16/25.6 700 Helvetica",
+    "fontSize": 16,
+    "lineHeight": 25.6,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 3,
+    "roles": {
+     "td": 3
+    },
+    "sample": "10:00 to 18:00"
+   },
+   {
+    "key": "15/17.25 700 Helvetica uppercase",
+    "fontSize": 15,
+    "lineHeight": 17.25,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "h2": 3
+    },
+    "sample": "Fixture Store"
+   },
+   {
+    "key": "17/27.2 400 Georgia",
+    "fontSize": 17,
+    "lineHeight": 27.2,
+    "fontWeight": "400",
+    "fontFamily": "Georgia",
+    "textTransform": "none",
+    "n": 2,
+    "roles": {
+     "p": 2
+    },
+    "sample": "Ten minutes on foot from the station: follow the river, cross at the footbridge…"
+   },
+   {
+    "key": "56/64.4 700 Helvetica",
+    "fontSize": 56,
+    "lineHeight": 64.4,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h1": 1
+    },
+    "sample": "Visit the store"
+   },
+   {
+    "key": "20/20 700 Helvetica",
+    "fontSize": 20,
+    "lineHeight": 20,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "link": 1
+    },
+    "sample": "Fixture Store"
+   },
+   {
+    "key": "20/32 400 Georgia",
+    "fontSize": 20,
+    "lineHeight": 32,
+    "fontWeight": "400",
+    "fontFamily": "Georgia",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "The door is green and the bell is loud. Come in, put your bag down and ask what…"
+   },
+   {
+    "key": "13/18.2 600 Helvetica uppercase",
+    "fontSize": 13,
+    "lineHeight": 18.2,
+    "fontWeight": "600",
+    "fontFamily": "Helvetica",
+    "textTransform": "uppercase",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Sample Lane, by the old mill"
+   },
+   {
+    "key": "13/20.8 400 Helvetica",
+    "fontSize": 13,
+    "lineHeight": 20.8,
+    "fontWeight": "400",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "A fixture for automated evaluations. Nothing here is for sale."
+   }
+  ],
+  "colours": [
+   {
+    "color": "rgb(29, 36, 32)",
+    "n": 16
+   },
+   {
+    "color": "rgb(216, 211, 200)",
+    "n": 5
+   },
+   {
+    "color": "rgb(255, 255, 255)",
+    "n": 3
+   },
+   {
+    "color": "rgb(154, 163, 157)",
+    "n": 1
+   },
+   {
+    "color": "rgb(176, 118, 42)",
+    "n": 1
+   },
+   {
+    "color": "rgb(244, 239, 230)",
+    "n": 1
+   },
+   {
+    "color": "rgb(85, 96, 90)",
+    "n": 1
+   }
+  ],
+  "container": {
+   "left": 192,
+   "right": 192,
+   "content": 1056,
+   "leftCommon": {
+    "x": 192,
+    "n": 11
+   }
+  }
+ },
+ "truncated": {
+  "text": 0,
+  "image": 0
+ },
+ "sections": [
+  {"i":0,"region":"header","y":0,"h":73,"background":"rgb(255, 253, 248)","paddingTop":0,"paddingBottom":0,"selectorHint":"header.site-header","firstText":"Fixture Store"},
+  {"i":1,"region":"main","y":73,"h":914,"background":"none","paddingTop":64,"paddingBottom":72,"selectorHint":"section.visit","firstText":"Sample Lane, by the old mill"},
+  {"i":2,"region":"footer","y":987,"h":271,"background":"rgb(29, 36, 32)","paddingTop":56,"paddingBottom":32,"selectorHint":"footer.site-footer","firstText":"Fixture Store"}
+ ],
+ "nodes": [
+  {"section":0,"region":"header","kind":"image","tag":"svg","role":"link","text":"","x":192,"y":18,"w":36,"h":36,"fit":"fill","href":"/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Fixture Store","x":192,"y":18,"w":171,"h":36,"fontFamily":"Helvetica","fontSize":20,"lineHeight":20,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Shelf","x":953,"y":28,"w":34,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/#shelf"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"About","x":1015,"y":28,"w":39,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/#about"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Visit","x":1082,"y":28,"w":28,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/visit/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Open today","x":1138,"y":18,"w":110,"h":37,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(244, 239, 230)","lines":1,"href":"/visit/#hours"},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Sample Lane, by the old mill","x":192,"y":137,"w":1056,"h":18,"fontFamily":"Helvetica","fontSize":13,"lineHeight":18.2,"fontWeight":"600","letterSpacing":1.56,"textTransform":"uppercase","textAlign":"start","color":"rgb(176, 118, 42)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h1","role":"h1","text":"Visit the store","x":192,"y":171,"w":1056,"h":64,"fontFamily":"Helvetica","fontSize":56,"lineHeight":64.4,"fontWeight":"700","letterSpacing":-1.12,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"The door is green and the bell is loud. Come in, put your bag down and ask what…","x":192,"y":252,"w":720,"h":64,"fontFamily":"Georgia","fontSize":20,"lineHeight":32,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":2},
+  {"section":1,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Opening hours","x":192,"y":364,"w":500,"h":28,"fontFamily":"Helvetica","fontSize":24,"lineHeight":27.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"th","role":null,"text":"Tuesday to Friday","x":192,"y":407,"w":291,"h":50,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"left","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"td","role":null,"text":"10:00 to 18:00","x":483,"y":407,"w":210,"h":50,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"right","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"th","role":null,"text":"Saturday","x":192,"y":457,"w":291,"h":51,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"left","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"td","role":null,"text":"10:00 to 16:00","x":483,"y":457,"w":210,"h":51,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"right","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"th","role":null,"text":"Sunday and Monday","x":192,"y":508,"w":291,"h":51,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"left","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"td","role":null,"text":"Closed","x":483,"y":508,"w":210,"h":51,"fontFamily":"Helvetica","fontSize":16,"lineHeight":25.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"right","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h2","role":"h2","text":"Getting here","x":192,"y":591,"w":500,"h":28,"fontFamily":"Helvetica","fontSize":24,"lineHeight":27.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Ten minutes on foot from the station: follow the river, cross at the footbridge…","x":192,"y":635,"w":500,"h":82,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":3},
+  {"section":1,"region":"main","kind":"text","tag":"h2","role":"h2","text":"On the board today","x":192,"y":732,"w":500,"h":28,"fontFamily":"Helvetica","fontSize":24,"lineHeight":27.6,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"The colour of the day is chalked up by the door.","x":192,"y":776,"w":500,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"image","tag":"img","role":null,"text":"A sketch map with the river, the footbridge and the shop","x":748,"y":356,"w":480,"h":360,"fit":"fill","natural":[200,150],"src":"http://localhost:8780/img/map.svg"},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"Fixture Store","x":192,"y":1043,"w":384,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"12 Sample Lane Testville","x":192,"y":1072,"w":384,"h":48,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":2},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"Hours","x":624,"y":1043,"w":384,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"Tuesday to Saturday, 10:00 to 18:00 Closed Sunday and Monday","x":624,"y":1072,"w":384,"h":48,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":2},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"More","x":1056,"y":1043,"w":192,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"Plan a visit","x":1056,"y":1075,"w":73,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/visit/"},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"This week's shelf","x":1056,"y":1099,"w":114,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/#shelf"},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"About the shop","x":1056,"y":1123,"w":101,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/#about"},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"A fixture for automated evaluations. Nothing here is for sale.","x":160,"y":1184,"w":1120,"h":42,"fontFamily":"Helvetica","fontSize":13,"lineHeight":20.8,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(154, 163, 157)","lines":1}
+ ]
+}

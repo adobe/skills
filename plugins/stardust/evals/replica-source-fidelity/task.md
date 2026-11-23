@@ -2,15 +2,16 @@
 
 ## Setup
 
-A clean project (no `stardust/` directory). Network access to a stable,
-public, design-distinctive target site (the eval runner pins one; structure
-changes are expected maintenance, as with `extract-multipage`). Impeccable
-installed (master setup dependency check still applies). Node + Playwright
-available.
+A clean project (no `stardust/` directory). The target is the fixture site of
+this suite, served on this machine: `http://localhost:8780/` (a store home
+page and a visit page; `setup.sh` starts it from `../fixture-site/`, no
+external network is needed for the target). It is the live site of this task.
+Impeccable installed (master setup dependency check still applies). Node +
+Playwright available.
 
 ## User prompt
 
-"$stardust replica https://<target-site> — migrate this site to EDS keeping
+"$stardust replica http://localhost:8780/ — migrate this site to EDS keeping
 its current design"
 
 ## Expected behavior

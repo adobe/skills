@@ -23,7 +23,12 @@
 // throw; freezeLines) and the height re-measured per chunk (heightCap, heightNow, nextChunkStart, heightChangeOf,
 // planCapture over height sequences: a document that shrinks or grows is captured to its settled height, a
 // scroll-jacked one still stalls); end to end a strict-CSP page with a running animation, a sticky and a fixed header
-// that get 8 px shorter after the first scroll, a page that grows, and a scroll-jacked page.
+// that get 8 px shorter after the first scroll, a page that grows, and a scroll-jacked page. And the timer hold
+// (--hold-timers, default OFF): parseArgs, installTimerHold / timerHoldScript on a stub window with a fake clock (a
+// 5 s interval never ticks, a timeout chain is held after its first tick however it re-arms, one-shot timeouts and
+// short timers run as the page asked), timersOutcome (a hold that is not installed throws), baselineProvenance's
+// timers; end to end a 5 s interval carousel and a self-re-arming timeout carousel with and without the flag, and a
+// page whose content arrives through one-shot timeouts.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -39,6 +44,7 @@ import {
   LayoutOverflowError, checkPageSize, baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFaceKeys, deadFontFaces, exitCodeFor, faceKey,
   fontCheckLines, fontCheckOutcome, fontFamilies, isBackdrop, layerAction, layerPassScript, liveRecord, overlayExtras, overlaySuspects,
   parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
+  HOLD_MIN_DEFAULT, installTimerHold, timerHoldScript, timersLine, timersOutcome,
 } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -602,6 +608,117 @@ await check('layerPassScript in a stub page: chunk 1 tags at scroll 0 and shows 
   assert.equal(hd.getAttribute('data-sd-opacity-priority'), null);
 });
 
+// ---- the timer hold (--hold-timers): the in-page wrapper on a stub window with a fake clock ---------------------------
+// A window whose timers run on a clock the test advances: setTimeout / setInterval / clearTimeout / clearInterval.
+function clockWindow() {
+  let id = 0; let now = 0; let q = [];
+  const win = {
+    setTimeout(cb, d, ...a) { id += 1; q.push({ id, at: now + (Number(d) || 0), cb, a, self: this }); return id; },
+    setInterval(cb, d, ...a) { id += 1; q.push({ id, at: now + (Number(d) || 0), cb, a, every: Number(d) || 0, self: this }); return id; },
+    clearTimeout(i) { q = q.filter((t) => t.id !== i); },
+  };
+  win.clearInterval = win.clearTimeout;
+  const advance = (ms) => {
+    const end = now + ms;
+    for (;;) {
+      q.sort((x, y) => x.at - y.at || x.id - y.id);
+      const t = q[0];
+      if (!t || t.at > end) break;
+      now = t.at;
+      if (t.every) t.at += t.every; else q.shift();
+      if (typeof t.cb === 'function') t.cb.apply(t.self, t.a);
+    }
+    now = end;
+  };
+  return { win, advance };
+}
+await check('parseArgs: the timer hold is OFF by default; --hold-timers = 2000 ms; --hold-min <ms> sets the threshold and implies it; below 2000 ms or not a number is a usage error', () => {
+  assert.equal(parseArgs(argv('u', 'o.png')).opts.holdTimers, null);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-timers')).opts.holdTimers, 2000); assert.equal(HOLD_MIN_DEFAULT, 2000);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-min', '3500')).opts.holdTimers, 3500);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-timers', '--hold-min', '3500')).opts.holdTimers, 3500);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-min', '3500', '--hold-timers')).opts.holdTimers, 3500);
+  for (const bad of ['1999', '0', 'soon', undefined]) assert.throws(() => parseArgs(argv('u', 'o.png', '--hold-min', ...(bad === undefined ? [] : [bad]))), (e) => e instanceof UsageError && /--hold-min needs a number of ms, at least 2000/.test(e.message), String(bad));
+  assert.match(HELP, /--hold-timers /); assert.match(HELP, /--hold-min <ms> /);
+});
+await check('installTimerHold: a 5 s setInterval carousel never ticks — registered with a real id, counted; a 500 ms interval and a 1999 ms one tick as before', () => {
+  const { win, advance } = clockWindow();
+  const state = installTimerHold(win, 2000);
+  let slide = 0; let fast = 0; let near = 0;
+  const id = win.setInterval(() => { slide += 1; }, 5000);
+  win.setInterval(() => { fast += 1; }, 500); win.setInterval(() => { near += 1; }, 1999);
+  win.setInterval(() => { slide += 100; }, '86400000'); // a delay given as a string
+  advance(60000);
+  assert.equal(slide, 0, 'the first slide, a minute on');
+  assert.deepEqual([fast, near], [120, 30]);
+  assert.ok(Number.isInteger(id) && id > 0, 'an id of the page\'s own pool'); win.clearInterval(id);
+  assert.deepEqual({ ...state }, { min: 2000, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] });
+  assert.equal(win.__sdTimerHold, state); assert.deepEqual(Object.keys(win).includes('__sdTimerHold'), false, 'not enumerable');
+  assert.equal(installTimerHold(win, 2000), state, 'installed once per document');
+});
+await check('installTimerHold: a self-re-arming setTimeout carousel advances ONCE, then the chain is held — re-armed inside the callback (any delay), or later by the same callback code with the delay of one that already fired (a transition-end handler, a fresh closure)', () => {
+  // (a) the callback re-arms itself
+  let a = clockWindow(); let state = installTimerHold(a.win, 2000); let slide = 0;
+  const next = () => { slide += 1; a.win.setTimeout(next, 5000); };
+  a.win.setTimeout(next, 5000); a.advance(60000);
+  assert.equal(slide, 1); assert.deepEqual({ ...state }, { min: 2000, held: 1, intervals: 0, chains: 1, delays: [5000] });
+  // (b) per-slide delays: the next link has another delay, armed inside the callback
+  a = clockWindow(); state = installTimerHold(a.win, 2000); slide = 0;
+  const varied = () => { slide += 1; a.win.setTimeout(varied, 4000 + slide * 1000); };
+  a.win.setTimeout(varied, 4000); a.advance(60000);
+  assert.equal(slide, 1); assert.deepEqual(state.delays, [5000]);
+  // (c) re-armed OUTSIDE the callback (an event the advance ends with), a fresh closure each time, the same delay
+  a = clockWindow(); state = installTimerHold(a.win, 2000); slide = 0;
+  const arm = () => a.win.setTimeout(() => { slide += 1; a.win.setTimeout(arm, 300); }, 5000); // 300 ms: the "transition"
+  arm(); a.advance(60000);
+  assert.equal(slide, 1); assert.equal(state.chains, 1);
+});
+await check('installTimerHold: an unrelated one-shot timeout with the delay of one that already fired still runs — only the same callback code is a chain', () => {
+  const a = clockWindow(); const state = installTimerHold(a.win, 2000); const ran = [];
+  a.win.setTimeout(() => { ran.push('A'); }, 2000); a.advance(2500);
+  a.win.setTimeout(() => { ran.push('B: a late reveal'); }, 2000); a.advance(2500);
+  assert.deepEqual(ran, ['A', 'B: a late reveal']); assert.deepEqual({ ...state }, { min: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+});
+await check('installTimerHold: one-shot timeouts of any length fire once as the page asked (this, arguments, return value untouched) — content revealed after 2.5 s, an anti-flicker timeout, two reveals armed together with one delay; short timeouts reach the native timer unwrapped', () => {
+  const { win, advance } = clockWindow();
+  const seen = []; const native = win.setTimeout;
+  const passed = []; win.setTimeout = function spy(cb, d, ...r) { passed.push(cb); return native.call(this, cb, d, ...r); };
+  const state = installTimerHold(win, 2000);
+  win.setTimeout(function reveal(x, y) { seen.push(['content', this === win, x, y]); }, 2500, 'a', 'b');
+  win.setTimeout(() => { seen.push(['anti-flicker']); }, 4000);
+  win.setTimeout(() => { seen.push(['twin-1']); }, 3000); win.setTimeout(() => { seen.push(['twin-2']); }, 3000);
+  const short = () => { seen.push(['short']); win.setTimeout(short2, 1500); }; const short2 = () => { seen.push(['short-2']); };
+  win.setTimeout(short, 100);
+  win.setTimeout('window.x = 1', 5000); // a string body is passed through
+  advance(30000);
+  assert.deepEqual(seen, [['short'], ['short-2'], ['content', true, 'a', 'b'], ['twin-1'], ['twin-2'], ['anti-flicker']]);
+  assert.ok(passed.includes(short) && passed.includes(short2), 'short timeouts: the page\'s own function reaches the native setTimeout');
+  assert.deepEqual({ ...state }, { min: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+});
+await check('timerHoldScript: the init script is installTimerHold serialized, and runs in a bare page context', () => {
+  const src = timerHoldScript(2000);
+  assert.ok(src.startsWith(`(${String(installTimerHold)})(window, 2000)`));
+  const { win, advance } = clockWindow(); let slide = 0;
+  runInNewContext(src, { window: win });
+  win.setInterval(() => { slide += 1; }, 5000); advance(20000);
+  assert.equal(slide, 0); assert.equal(win.__sdTimerHold.held, 1);
+});
+await check('timersOutcome: the state read back from the captured document → the record\'s timers (delays sorted); no state, or another threshold, throws — a hold that is not installed is never a capture; timersLine names the chain rule', () => {
+  assert.deepEqual(timersOutcome({ min: 2000, held: 3, intervals: 2, chains: 1, delays: [86400000, 5000] }, 2000), { hold: 2000, held: 3, intervals: 2, chains: 1, delays: [5000, 86400000] });
+  assert.deepEqual(timersOutcome({ min: 2000, held: 0, intervals: 0, chains: 0, delays: [] }, 2000), { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+  for (const bad of [null, undefined, {}, { min: 3000, held: 1, intervals: 1, chains: 0, delays: [] }]) assert.throws(() => timersOutcome(bad, 2000), /--hold-timers: the timer hold is not installed in the captured document/);
+  assert.equal(exitCodeFor((() => { try { timersOutcome(null, 2000); } catch (e) { return e; } return null; })()), 1);
+  assert.equal(timersLine({ hold: 2000, held: 2, intervals: 2, chains: 0, delays: [5000] }), 'timers held: 2 of ≥ 2000 ms (2 interval(s), 0 timeout chain link(s); delays 5000 ms)');
+  assert.match(timersLine({ hold: 2000, held: 1, intervals: 0, chains: 1, delays: [5000] }), /a timeout chain is held after its first tick: that region shows the state after one advance$/);
+});
+await check('baselineProvenance: timers only when the capture was taken with the hold — without it the record is what it was', () => {
+  const base = { url: 'https://x.test/', width: 1440, vh: 900, height: 3000, capturedAt: '2026-01-01T00:00:00.000Z' };
+  assert.equal('timers' in baselineProvenance(base), false);
+  const t = { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] };
+  const p = baselineProvenance({ ...base, timers: t });
+  assert.deepEqual(p.timers, t); assert.equal(Object.keys(p).pop(), 'timers');
+});
+
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "await import('playwright'); await import('pngjs');"], { cwd: dirname(SCRIPT), encoding: 'utf8' });
 if (pwProbe.status !== 0) {
   console.log('skip  end-to-end stitch-shot (playwright / pngjs not importable from the scripts dir; run this test in an environment that has them)');
@@ -648,6 +765,14 @@ if (pwProbe.status !== 0) {
   pages['/grow'] = html('Grow', '<style>h1{margin:0}#more{height:0;background:#00f}#more.on{height:700px}</style><section></section><section></section><section></section><div id="more"></div><script>addEventListener(\'scroll\', () => { if (scrollY > 500) document.getElementById(\'more\').classList.add(\'on\'); }, { passive: true });</script>');
   // the window cannot scroll: a real stall
   pages['/jacked'] = html('Jacked', '<style>html,body{height:100%;overflow:hidden}</style><section></section><section></section><section></section><section></section>');
+  // the timer hold: a hero whose colour is its slide (red, green, blue, yellow, …) above an ordinary section.
+  // /carousel-interval advances on a 5 s setInterval; /carousel-chain on a 3 s setTimeout that re-arms itself;
+  // /late-content is white until one-shot timeouts paint it (2.5 s twice, armed together, and 3 s)
+  const SLIDES = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'];
+  const hero = (script) => html('Carousel', `<div id="hero" style="height:300px;background:${SLIDES[0]}"></div><section></section><script>const S = ${JSON.stringify(SLIDES)}; let i = 0; const next = () => { i = (i + 1) % S.length; document.getElementById('hero').style.background = S[i]; }; ${script}</script>`);
+  pages['/carousel-interval'] = hero('setInterval(next, 5000);');
+  pages['/carousel-chain'] = hero('const tick = () => { next(); setTimeout(tick, 3000); }; setTimeout(tick, 3000);');
+  pages['/late-content'] = html('Late', '<div id="a" style="height:100px"></div><div id="b" style="height:100px"></div><div id="c" style="height:100px"></div><section></section><script>const paint = (id, c) => () => { document.getElementById(id).style.background = c; }; setTimeout(paint("a", "#ff0000"), 2500); setTimeout(paint("b", "#00ff00"), 2500); setTimeout(paint("c", "#0000ff"), 3000);</script>');
   const server = createServer((req, res) => {
     const path = new URL(req.url, 'http://127.0.0.1/').pathname;
     const body = pages[path];
@@ -710,6 +835,34 @@ if (pwProbe.status !== 0) {
       assert.equal(jacked.status, 1, jacked.stdout);
       assert.match(jacked.stderr, /stitch-shot error: scroll stall at chunk target 600px: window scroll is a no-op \(window\.scrollY stuck at 0px\) while the document reports 2400px/);
       assert.deepEqual([existsSync(jacked.out), existsSync(jacked.sidecar)], [false, false]);
+    });
+    // the timer hold. --wait 6200: the capture clears the page's timers at least 6.2 s after the load, so without the
+    // flag the 5 s interval has ticked once or more and the 3 s chain twice or more — lower bounds that hold on a slow machine
+    const [ivHeld, ivHeld2, ivFree, chHeld, chFree, lateHeld] = await Promise.all([stitch('/carousel-interval', 'iv-held', ['--hold-timers', '--wait', '6200']), stitch('/carousel-interval', 'iv-held2', ['--hold-timers', '--wait', '6200']), stitch('/carousel-interval', 'iv-free', ['--wait', '6200']),
+      stitch('/carousel-chain', 'ch-held', ['--hold-timers', '--wait', '6200']), stitch('/carousel-chain', 'ch-free', ['--wait', '6200']), stitch('/late-content', 'late-held', ['--hold-timers', '--wait', '4000'])]);
+    const { PNG: PNGT } = await import('pngjs');
+    const hex = (f, x, y) => { const png = PNGT.sync.read(readFileSync(f)); const i = (y * png.width + x) * 4; return `#${[png.data[i], png.data[i + 1], png.data[i + 2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`; };
+    await check('e2e --hold-timers: a 5 s setInterval carousel is captured on its FIRST slide, twice, byte-identical; the record says timers { hold 2000, held 1, intervals 1, delays [5000] } and stdout says so; without the flag the same page has advanced and its record has no timers', () => {
+      for (const r of [ivHeld, ivHeld2, ivFree]) assert.equal(r.status, 0, r.stderr + r.stdout);
+      assert.equal(hex(ivHeld.out, 400, 150), SLIDES[0]); assert.equal(hex(ivHeld2.out, 400, 150), SLIDES[0]);
+      assert.ok(readFileSync(ivHeld.out).equals(readFileSync(ivHeld2.out)), 'two held captures are the same bytes');
+      assert.deepEqual(ivHeld.cap.timers, { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] });
+      const keys = Object.keys(ivHeld.cap); assert.equal(keys[keys.indexOf('timers') + 1], 'at', keys.join(','));
+      assert.match(ivHeld.stdout, /^timers held: 1 of ≥ 2000 ms \(1 interval\(s\), 0 timeout chain link\(s\); delays 5000 ms\)$/m);
+      assert.notEqual(hex(ivFree.out, 400, 150), SLIDES[0], 'unheld: the carousel advanced before the capture');
+      assert.equal('timers' in ivFree.cap, false); assert.doesNotMatch(ivFree.stdout, /timers held/);
+    });
+    await check('e2e --hold-timers: a self-re-arming 3 s setTimeout carousel is captured after exactly ONE advance (held 1, chains 1, the line says so); without the flag it has advanced twice or more', () => {
+      assert.equal(chHeld.status, 0, chHeld.stderr + chHeld.stdout); assert.equal(chFree.status, 0, chFree.stderr + chFree.stdout);
+      assert.equal(hex(chHeld.out, 400, 150), SLIDES[1]);
+      assert.deepEqual(chHeld.cap.timers, { hold: 2000, held: 1, intervals: 0, chains: 1, delays: [3000] });
+      assert.match(chHeld.stdout, /timers held: 1 .*a timeout chain is held after its first tick/);
+      assert.ok(SLIDES.indexOf(hex(chFree.out, 400, 150)) >= 2, `unheld: slide ${hex(chFree.out, 400, 150)}`);
+    });
+    await check('e2e --hold-timers: content that arrives through one-shot timeouts of 2.5 s (two, armed together) and 3 s still renders — nothing held', () => {
+      assert.equal(lateHeld.status, 0, lateHeld.stderr + lateHeld.stdout);
+      assert.deepEqual([hex(lateHeld.out, 400, 50), hex(lateHeld.out, 400, 150), hex(lateHeld.out, 400, 250)], ['#ff0000', '#00ff00', '#0000ff']);
+      assert.deepEqual(lateHeld.cap.timers, { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
     });
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', freeze: \'applied\', fontsFailed, fixedLayers, at } (no heightChange: the height did not move)', () => {
       assert.equal(ok.status, 0, ok.stderr);

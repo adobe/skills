@@ -226,6 +226,29 @@ test('menus: a click menu covered by another element is not clean', { skip }, as
   assert.equal(doc.menus[0].ok, false, doc.text);
 });
 
+test(
+  'menus: a menu that closes with a transition is waited for; one that stays open, opens again or closes late is not clean',
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'menus',
+      `${menus.url}click-close.html`,
+      fileURLToPath(new URL('click-close.json', menusDir)),
+    );
+    assert.deepEqual(
+      doc.menus.map((m) => [m.label, m.ok, m.problems]),
+      [
+        ['Tools', true, []],
+        ['Help', false, ['stays open when its label is clicked again']],
+        ['Flicker', false, ['stays open when its label is clicked again']],
+        ['Linger', false, ['stays open when the pointer leaves']],
+      ],
+      doc.text,
+    );
+  },
+);
+
 test('text: the same header is clean', { skip }, async () => {
   const doc = await clean(
     true,
