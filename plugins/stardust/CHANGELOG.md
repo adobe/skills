@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.6](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.5...plugin/stardust/v0.46.6) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** a recorded gate pass is the whole verdict, written per page and reused only while the page's inputs are unchanged ([#793](https://github.com/adobe/skills/issues/793)) ([38a3255](https://github.com/adobe/skills/commit/38a3255c81ec76be0d63ddce5a324795d58650cf))
+
 ## [0.46.5](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.4...plugin/stardust/v0.46.5) (2026-11-23)
 
 
