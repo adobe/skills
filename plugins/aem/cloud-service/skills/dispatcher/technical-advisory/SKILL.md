@@ -15,6 +15,7 @@ Provide deterministic guidance for AEMaaCS use cases involving the Adobe Dispatc
 ## Variant Scope
 
 - This skill is cloud-service-only.
+- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
 
 ## MCP Tool Contract
 

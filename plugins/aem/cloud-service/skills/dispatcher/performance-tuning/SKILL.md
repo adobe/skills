@@ -15,6 +15,7 @@ Improve cache efficiency, latency, and throughput for cloud deployments that use
 ## Variant Scope
 
 - This skill is cloud-service-only.
+- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
 
 ## MCP Tool Contract
 
