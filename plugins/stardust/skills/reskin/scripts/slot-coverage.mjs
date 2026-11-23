@@ -31,7 +31,7 @@
  *                     must be carried too (flag them, don't fix them).
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
- * navigate via the shared diff live-session module (F-G/F-R1): real-Chrome
+ * navigate via the shared browser.mjs module (F-G/F-R1): real-Chrome
  * UA + the standard request headers, challenge detection, webdriver spoof.
  * A byte-adjacent gate must never measure a challenge interstitial or an
  * error page: a bot challenge FAILS LOUD (exit 3) and a non-challenge
@@ -57,20 +57,19 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[slot-coverage] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/reskin/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('[slot-coverage] browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/).');
+  console.error('Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
@@ -103,11 +102,8 @@ if (args.help || !args.model || !args.rendered) {
   process.exit(args.help ? 0 : 2);
 }
 
-let chromium;
-try { ({ chromium } = await import('playwright')); } catch {
-  console.error('[slot-coverage] playwright not importable from this script\'s directory.');
-  console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+try { await loadPlaywright(); } catch (e) {
+  console.error(`[slot-coverage] ${e.message}`);
   process.exit(2);
 }
 
@@ -115,7 +111,7 @@ const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
 const renderedUrl = toUrl(args.rendered);
 
-const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+const browser = await openBrowser({ mode: args.headed ? 'headed' : 'plain' });
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
@@ -143,7 +139,7 @@ if (isLiveHttpUrl(renderedUrl)) {
   // for file:// quirks (subresource aborts), but captured and surfaced with
   // the scope-missing error below instead of being silently swallowed —
   // the dom-equality.mjs pattern.
-  navErr = await page.goto(renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+  navErr = await goto(page, renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
 }
 await page.waitForTimeout(1500);
 

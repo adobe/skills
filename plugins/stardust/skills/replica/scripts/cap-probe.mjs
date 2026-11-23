@@ -63,12 +63,12 @@
  * 3 bot challenge on the live side (escalate --headed), 125 usage. probePage and the pure
  * functions (classifyCaps, deriveProbeWidth, aggregateCaps, compareCaps, formatCapture,
  * formatCompare, parseArgs) are exported — the contract test runs them without a browser.
- * Requires playwright importable from this file's location and the diff skill's live-session.mjs
- * (../../diff/scripts/ or ../diff/ — replica SKILL.md § Setup copies both dirs as siblings).
+ * Requires playwright importable from this file's location and the master skill's browser.mjs
+ * (../../stardust/scripts/ or ../stardust/ — replica SKILL.md § Setup copies both dirs as siblings).
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -88,12 +88,11 @@ const EDGE = 8; // px: a box this close to the viewport is full width
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 125; } }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'];
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 async function loadLiveSession() {
-  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-  if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
-  return import(pathToFileURL(found).href);
+  if (!BROWSER) throw new UsageError('browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -439,12 +438,13 @@ export async function probePage(page, { rootSel = null, baseWidth = BASE_WIDTH, 
 }
 
 async function openAndProbe(browser, url, o, session, { rootSel, probeWidth }) {
+  const { goto, newContext } = session;
   const live = isLiveHttpUrl(url);
   const viewport = { width: o.width, height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, stateUrl: url, ...common })
-    : await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
+    : await newContext(browser, { ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   try {
     if (live) {
@@ -452,7 +452,7 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth }) {
       const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
       for (const sel of [d.consent, ...d.extra, ...d.marketing].filter(Boolean)) console.error(`cap-probe: overlay dismissed via ${sel}`);
     } else {
-      const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+      const resp = await goto(page, url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
       if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
     }
     return await probePage(page, { rootSel, baseWidth: o.width, probeWidth });
@@ -485,11 +485,11 @@ export function mergeDesign(text, aggregate, provenance) {
 
 async function main(argv) {
   const o = parseArgs(argv);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
   const session = await loadLiveSession();
+  const { loadPlaywright, openBrowser } = session;
+  try { await loadPlaywright(); } catch (e) { throw Object.assign(new Error(e.message), { code: 1 }); }
   const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
-  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
+  const browser = await openBrowser(o.headed ? { mode: 'headed' } : { mode: 'plain', launchOptions: { headless: true } });
   let result; let code = 0;
   try {
     if (o.against) {

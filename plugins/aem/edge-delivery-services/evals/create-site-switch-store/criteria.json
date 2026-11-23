@@ -1,0 +1,13 @@
+{
+  "context": "Switching a site's content store from DA to Source Bus, a plan in ANSWER.md for the create-site skill. No network access; evidence is in ANSWER.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {"name": "Changes the site configuration, not files", "max_score": 20, "description": "The switch is a change of content.source in the site config through the config service API (admin.hlx.page/config/acme-org/sites/acme-site/content.json or the api.aem.live equivalent, or the site admin tool), setting type sourcebus; it does not use fstab.yaml or edit the GitHub repository"},
+    {"name": "Correct config payload", "max_score": 10, "description": "The payload sets content.source.type to \"sourcebus\" (a url pointing at api.aem.live/acme-org/sites/acme-site/source is optional) and keeps the request authenticated with the IMS token"},
+    {"name": "Warns that previewed and published content is lost", "max_score": 25, "description": "States that changing the content source gives a new content bus ID, so everything previously previewed and published must be previewed and published again (the live pages stop being served from the old content until then)"},
+    {"name": "Warns about index and sitemap", "max_score": 10, "description": "States that index and sitemap configuration are stored with the content and must be recreated"},
+    {"name": "Content does not move automatically", "max_score": 15, "description": "Says the DA content is not copied to Source Bus by the switch (or that it is unknown), so the three pages must be recreated or copied by hand in Source Bus before previewing; does not claim an automatic migration"},
+    {"name": "Order and checks", "max_score": 10, "description": "Plans to read the current config first and confirm the result afterwards, and recommends doing it before the site has real traffic or creating a new site for production sites"},
+    {"name": "Uses the Source Bus API for the pages", "max_score": 10, "description": "Writes and previews the pages with api.aem.live (source and preview endpoints), not admin.da.live and not aem content push"}
+  ]
+}

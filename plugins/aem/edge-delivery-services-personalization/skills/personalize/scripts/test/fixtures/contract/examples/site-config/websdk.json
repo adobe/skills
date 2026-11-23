@@ -1,0 +1,10 @@
+{
+  "consent": {
+    "mode": "cmp",
+    "tool": "adobe-websdk"
+  },
+  "target": {
+    "transport": "websdk",
+    "alloyInstance": "alloy"
+  }
+}

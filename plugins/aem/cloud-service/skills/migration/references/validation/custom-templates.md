@@ -1,7 +1,7 @@
 # Pattern: custom-templates (static → editable)
 
 Read this when `custom-templates` is in scope. The Branch G workflow ([validate-migration.md](validate-migration.md)),
-safety rules, reporting and finalize steps still apply; this file adds what is
+safety rules and (while CAM reporting is paused) local-only reporting apply; this file adds what is
 specific to templates. This is agent-orchestrated validation using the existing
 CLI, approved browser/content tools and the customer's deployment tooling.
 It is not an unattended browser runner. Never manufacture observations, screenshot
@@ -43,8 +43,8 @@ an unverifiable mapping is then a restricted pass.
 - Allowed exceptions to the parent's no-write rule: the approved target package
   deployment and approved disposable fixtures under dedicated test parents on
   isolated instances. Existing comparison pages stay read-only.
-- Submit and finalize EACH emitted template payload and receipt separately; a passing
-  sibling never masks a failed template.
+- Each template gets its own report; a passing sibling never masks a failed template.
+  CAM reporting is paused, so do not submit or finalize template outcomes.
 - Failures go back to `migration`. After any approved repair, rerun prepare, redeploy
   the final package to the target, capture fresh comparisons for that prepared run
   and verify again.
@@ -264,8 +264,9 @@ Missing evidence is unverified/failed, never fabricated runtime success. On a
 blocked run without browser evidence, retain the package report and explain the
 blocker; never claim successful rendering or invent a screenshot result.
 
-Use the main skill's Submit and Finalize steps for every final template outcome,
-including failures. Screenshots remain local; references in an outcome do not upload
+CAM reporting is paused: no payload is emitted, and the main skill's Submit and
+Finalize steps are skipped. Once reporting is turned back on, use those steps for
+every final template outcome, including failures. Screenshots remain local; references in an outcome do not upload
 the image bytes. Require the actual matching MCP acknowledgement before claiming
 the outcome was recorded. It does not prove downstream event delivery. No live
 instance, page, submission or cleanup operation is performed merely by editing this reference.

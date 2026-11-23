@@ -17,9 +17,8 @@
 //   1  one or more findings (offending file + href + reason printed).
 //   2  usage error or Playwright not installed.
 //
-// Requires Playwright:
-//   npm i -D playwright
-//   npx playwright install chromium
+// Requires Playwright (the browser front door's loader says how to install it) and the
+// master skill's scripts dir (browser.mjs) beside the skills or beside this copy.
 
 import { existsSync, statSync } from 'node:fs';
 import { resolve, isAbsolute, join, dirname } from 'node:path';
@@ -38,17 +37,22 @@ if (!existsSync(INDEX) || !statSync(INDEX).isFile()) {
   process.exit(2);
 }
 
-let chromium;
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('file-protocol-audit: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(2);
+}
+const { loadPlaywright, openBrowser, newContext, goto } = await import(BROWSER.href);
 try {
-  ({ chromium } = await import('playwright'));
-} catch {
-  console.error('file-protocol-audit: Playwright is required.');
-  console.error('  npm i -D playwright && npx playwright install chromium');
+  await loadPlaywright();
+} catch (e) {
+  console.error(`file-protocol-audit: ${e.message}`);
   process.exit(2);
 }
 
 const SCHEME_SKIP = /^(https?:|mailto:|tel:|javascript:|data:|#)/i;
-const browser = await chromium.launch();
+const browser = await openBrowser({ mode: 'plain' });
 const findings = [];
 const visited = new Set();
 const queue = [INDEX];
@@ -65,7 +69,7 @@ try {
     }
 
     const failedAssets = [];
-    const ctx = await browser.newContext();
+    const ctx = await newContext(browser);
     const page = await ctx.newPage();
     page.on('requestfailed', (req) => {
       const u = req.url();
@@ -83,7 +87,7 @@ try {
       }
     });
 
-    await page.goto(pathToFileURL(filePath).toString(), { waitUntil: 'load' });
+    await goto(page, pathToFileURL(filePath).toString(), { waitUntil: 'load' });
 
     for (const a of failedAssets) {
       findings.push({ from: filePath, href: a.url, reason: `asset failed under file://: ${a.failure}` });

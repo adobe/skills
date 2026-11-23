@@ -67,20 +67,18 @@
  * (`style-census: N pages × W widths → <out>`, plus the failure count when any).
  * Exit codes: 0 done (partial evidence is evidence — failures are listed under
  * _provenance.failed[]), 1 every page failed, 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
+ * browser.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
  * the pass stops scheduling pages, what was measured is still written, and the run fails loud
  * (escalate with --headed; if still blocked the site needs crawl.mjs-class capture).
  *
- * Needs playwright importable from the script's location and the diff skill's
- * live-session.mjs in one of the known layouts — the plugin tree (../../diff/scripts/
- * live-session.mjs), the project copy (../diff/live-session.mjs) or a sibling copy
- * (./live-session.mjs) — extract/SKILL.md § Setup: copy the script (and live-session.mjs) into
- * the project's stardust/scripts/ and run the copy. `aggregate` is exported and pure — the
+ * Needs playwright importable from the script's location and the master skill's scripts dir
+ * (stardust/scripts/browser.mjs) beside it — extract/SKILL.md § Setup: copy the script (and
+ * that dir) into the project's stardust/scripts/ and run the copy. `aggregate` is exported and pure — the
  * contract test runs it without a browser.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve as resolvePath } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -99,16 +97,15 @@ const OCCLUDER_COVERAGE = 0.4;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-// live-session.mjs lives in the diff skill's scripts dir. Layouts: the plugin tree
-// (skills/extract/scripts ↔ skills/diff/scripts), the project copy (scripts/extract ↔ scripts/diff)
-// and a flat project copy (a sibling) — resolve any, so a re-copy can't silently sever the hardening.
+// browser.mjs lives in the master skill's scripts dir. Layouts: the plugin tree
+// (skills/extract/scripts ↔ skills/stardust/scripts), the project copy (scripts/extract ↔ scripts/stardust)
+// and flat (scripts ↔ scripts/stardust) — resolve any, so a re-copy can't silently sever the hardening.
 // Resolved lazily (in main) so the pure exports stay importable without it.
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 async function loadLiveSession() {
-  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-  if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/, ../diff/ and ./). Copy the diff skill\'s live-session.mjs alongside this script (extract/SKILL.md § Setup).');
-  return import(pathToFileURL(found).href);
+  if (!BROWSER) throw new UsageError('browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
 }
 
 const isLocalInput = (value) => {
@@ -432,6 +429,7 @@ async function hoverPass(page, rec) {
 // censused as the site; solveWindow only under --headed) — then dismissOverlays closes consent
 // and timed marketing modals before this script's own multilingual consent pass.
 async function measure(contexts, url, width, o, session) {
+  const { goto } = session;
   const live = session.isLiveHttpUrl(url);
   const page = await (live ? contexts.live : contexts.local).newPage();
   try {
@@ -440,7 +438,7 @@ async function measure(contexts, url, width, o, session) {
     if (live) {
       resp = await session.gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: o.timeoutMs, settleMs: 0, solveWindow: o.headed });
     } else {
-      resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: o.timeoutMs });
+      resp = await goto(page, url, { waitUntil: 'domcontentloaded', timeout: o.timeoutMs });
       if (!resp) throw new Error('no response');
       if (resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
     }
@@ -484,36 +482,31 @@ export async function liveContextFor(session, browser, liveContexts, url, option
   }
 }
 
-export async function launchCensusBrowser(chromium, o, session) {
-  if (o.headed) return session.launchStealthHeaded(chromium);
-  if (typeof session.gotoLive === 'function' && typeof session.launchLiveBrowser === 'function') return session.launchLiveBrowser(chromium);
-  return chromium.launch({ headless: true });
+export function launchCensusBrowser(o, { openBrowser }) {
+  return openBrowser({ mode: o.headed ? 'headed' : 'chrome' });
 }
 
 async function main(argv) {
   const o = parseArgs(argv, { deferConcurrencyGuard: true });
   const urls = listUrls(o);
   guardLiveConcurrency(o, urls);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) {
-    throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
-  }
   const session = await loadLiveSession();
+  const { newContext } = session;
+  try { await session.loadPlaywright(); } catch (e) { throw new UsageError(e.message); }
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};
   const failed = [];
   const liveContexts = new Map();
-  // --headed is the shared escalation tier; the identity-preserving live launcher is preferred
-  // when available, with the previous plain-headless launch retained for older helper copies.
-  const browser = await launchCensusBrowser(chromium, o, session);
+  // --headed is the shared escalation tier; otherwise the identity-preserving live launcher.
+  const browser = await launchCensusBrowser(o, session);
   let next = 0;
   let challenge = null;
   async function worker() {
     const viewport = { width: o.widths[0], height: VIEWPORT_H };
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
     const contexts = {
-      local: await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
+      local: await newContext(browser, { ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
     while (next < jobs.length) {
       const { url, width } = jobs[next];

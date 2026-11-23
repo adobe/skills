@@ -29,7 +29,7 @@
  *   innerText-invisible text never become ghost nodes that a spec-compliant
  *   renderer would emit and fail the gate on.
  *
- * Live navigation is hardened via the shared diff live-session module
+ * Live navigation is hardened via the shared browser.mjs module
  * (real-Chrome UA + the standard request headers — UA alone still 403s on
  * Akamai (F-R1) — domcontentloaded on live targets, webdriver spoof,
  * challenge-solve window). A bot challenge or a blocked/degraded live
@@ -73,24 +73,21 @@
  *       3 bot challenge / blocked live source (fail loud, never captured).
  */
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, resolve as resolvePath } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff)
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/reskin/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/stardust)
 // — resolve either, so a project re-copy can't silently sever the shared
 // live-target hardening (F-G/F-R1).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[capture-content] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('[capture-content] browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/).');
+  console.error('Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const opts = { url: null, out: null, scope: 'main', normalize: null, ua: null, waitUntil: 'domcontentloaded', headed: false, locale: null };
@@ -127,18 +124,15 @@ if (opts.help || !opts.url || !opts.out) {
   process.exit(opts.help ? 0 : 2);
 }
 
-let chromium;
-try { ({ chromium } = await import('playwright')); } catch {
-  console.error('[capture-content] playwright not importable from this script\'s directory.');
-  console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+try { await loadPlaywright(); } catch (e) {
+  console.error(`[capture-content] ${e.message}`);
   process.exit(2);
 }
 
 const { script: NORMALIZE, ledger, source: normalizeSource } = await loadNormalize(opts.normalize);
 mkdirSync(opts.out, { recursive: true });
 
-const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'plain' });
 // UA + standard headers + webdriver spoof on the context (live-session) —
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
@@ -162,7 +156,7 @@ if (isLiveHttpUrl(opts.url)) {
 } else {
   // local/file target — legacy behavior (a served prototype reaches
   // networkidle; analytics-free local pages don't hang on it).
-  await page.goto(opts.url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await goto(page, opts.url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
 }
 await page.waitForTimeout(2000);
 

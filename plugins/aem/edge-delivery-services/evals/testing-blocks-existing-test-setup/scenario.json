@@ -1,0 +1,10 @@
+{
+  "description": "Add tests for a block in aem-boilerplate 5cea543 (cloned by setup.sh) that already uses node:test + jsdom and Playwright",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}

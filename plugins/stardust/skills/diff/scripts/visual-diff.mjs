@@ -68,11 +68,19 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
-import { mkdirSync, realpathSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
-import { isLiveHttpUrl, defaultWaitUntil, launchLiveBrowser, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+// browser.mjs (live-session.mjs beside it) lives in the master skill's scripts dir: the plugin tree
+// (skills/diff/scripts ↔ skills/stardust/scripts) or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('visual-diff: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { isLiveHttpUrl, defaultWaitUntil, newLiveContext, openBrowser, gotoLive, dismissOverlays } = await import(BROWSER.href);
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -428,9 +436,7 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   mkdirSync(resolve(opts.out), { recursive: true });
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from this scripts dir (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchLiveBrowser(chromium);
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   let report;
   try {
     const [protoM, edsM] = [await capture(browser, proto, 'proto', opts), await capture(browser, eds, 'eds', opts)];

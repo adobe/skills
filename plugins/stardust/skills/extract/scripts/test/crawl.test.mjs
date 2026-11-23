@@ -13,15 +13,17 @@
 // the per-page deadline and the tab is closed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as crawl from '../crawl.mjs';
-import * as session from '../../../diff/scripts/live-session.mjs';
+
+// the front door (browser.mjs) in either layout (plugin tree / project copy)
+const session = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 
 const {
-  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
+  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, parseArgs, discover, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage, screenshotPage,
 } = crawl;
 
 // the stub pages below navigate one host back-to-back; live-session's per-host pacing has its own tests
@@ -106,6 +108,62 @@ check('--help prints the usage header (naming captureGaps, --page-timeout, the b
 
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
+});
+check('parseArgs: only --link-first turns link-first on; --max alone (a default or roster cap) never does', () => {
+  const parse = (...rest) => parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...rest]);
+  assert.equal(parse().linkFirst, false);
+  assert.equal(parse('--max', '5').linkFirst, false);
+  assert.equal(parse('--max', '100').linkFirst, false);
+  assert.equal(parse('--link-first', '--max', '30').linkFirst, true);
+  assert.equal(parse('--link-first', '--max', '30').max, 30);
+});
+check('selectPages: link-first takes the entry, then its same-origin page links in document order, then discovered pages; without it, entry then discovered', () => {
+  const entry = 'https://ex.test/';
+  const linked = ['https://ex.test/', 'https://ex.test/#top', '/about', '/about/', '/about#team', 'https://other.test/x',
+    '/report.pdf', '/logo.svg?v=2', '/pricing', '/contact'];
+  const discovered = ['https://ex.test/blog/a', 'https://ex.test/pricing', 'https://ex.test/blog/b'];
+  const pick = (max, linkFirst) => selectPages({ entry, origin: 'https://ex.test', linked, discovered, max, linkFirst }).urls;
+  assert.deepEqual(pick(10, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing',
+    'https://ex.test/contact', 'https://ex.test/blog/a', 'https://ex.test/blog/b']);
+  assert.deepEqual(pick(3, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+  assert.deepEqual(pick(10, false), ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/pricing',
+    'https://ex.test/blog/b']);
+  assert.equal(pick(Infinity, true).length, 6);
+});
+check('selectPages: link-first applies the same-origin and asset checks to the discovered list too (BFS passes the same links twice)', () => {
+  const links = ['https://ex.test/about', 'https://ex.test/report.pdf', 'https://ex.test.evil.test/partner', '/video.mp4', '/song.mp3'];
+  const { urls } = selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: links, discovered: links, max: 4, linkFirst: true });
+  assert.deepEqual(urls, ['https://ex.test/', 'https://ex.test/about']);
+});
+check('selectPages: an unparsable href is skipped and reported, never thrown, in both modes', () => {
+  for (const linkFirst of [true, false]) {
+    const { urls, skipped } = selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test',
+      linked: ['https://ex.test:bad/contact', '/about'], discovered: ['https://ex.test:bad/x', 'https://ex.test/a'], max: 3, linkFirst });
+    assert.deepEqual(urls, linkFirst ? ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/a'] : ['https://ex.test/', 'https://ex.test/a']);
+    assert.ok(skipped.includes('https://ex.test:bad/x'), String(linkFirst));
+    if (linkFirst) assert.ok(skipped.includes('https://ex.test:bad/contact'));
+  }
+});
+await checkAsync('discover: a stub page with a sitemap and a malformed anchor — link-first orders and skips, the default keeps sitemap order', async () => {
+  const origin = 'https://ex.test';
+  const links = ['https://ex.test/about', 'https://ex.test:bad/contact', 'https://ex.test/pricing'];
+  const sitemap = '<urlset><url><loc>https://ex.test/blog/a</loc></url><url><loc>https://ex.test/about</loc></url></urlset>';
+  const stub = (map) => ({ evaluate: async (_fn, arg) => (arg === origin ? links : (map[arg] ?? '')) });
+  const run = async (flags, map) => {
+    let value;
+    const lines = await stderrOf(async () => { value = await discover(parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...flags]), stub(map)); });
+    return { value, lines };
+  };
+  const withMap = { 'https://ex.test/sitemap.xml': sitemap };
+  let r = await run(['--link-first', '--max', '1'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/']);
+  r = await run(['--link-first', '--max', '3'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+  assert.ok(r.lines.some((l) => /skipped 1 unparsable/.test(l) && l.includes('https://ex.test:bad/contact')), r.lines.join('\n'));
+  r = await run(['--max', '3'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/about']);
+  r = await run(['--link-first', '--max', '5'], {});
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);
@@ -197,6 +255,57 @@ const stubPage = ({ responses = [{ status: 200, headers: HTML }], gotoError = nu
   };
   return { page, context: { newPage: async () => page } };
 };
+// A stub page for screenshotPage: `size` = what pageSizeInPage measures, `fail` = the screenshot calls that throw
+// (by their index), `crash` = the first full-page call crashes the renderer (the crash handler fires, then it throws).
+const shotPage = ({ size = { w: 1440, h: 2862 }, fail = [], crash = false } = {}) => {
+  const calls = { shots: [], closed: 0 }; let onCrash = null;
+  const page = {
+    calls,
+    on: (ev, fn) => { if (ev === 'crash') onCrash = fn; },
+    viewportSize: () => ({ width: 1440, height: 900 }),
+    evaluate: async (fn) => (fn.name === 'pageSizeInPage' ? size : undefined),
+    screenshot: async (o) => {
+      const i = calls.shots.push(o) - 1;
+      if (crash && o.fullPage) { onCrash(); throw new Error('page.screenshot: Target crashed'); }
+      if (fail.includes(i)) throw new Error('page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot');
+    },
+    close: async () => { calls.closed += 1; },
+  };
+  return page;
+};
+await checkAsync('screenshotPage (#602): measured first — an ordinary page in full; a tall one capped by a fullPage clip; a layout overflow gets the viewport only (no full-page call) and says why; a failed full-page shot retries the viewport on the same page', async () => {
+  const plain = shotPage();
+  assert.deepEqual(await screenshotPage(plain, '/x.png'), { mode: 'fullPage', pageSize: { w: 1440, h: 2862 }, layoutOverflow: false, reason: null });
+  assert.deepEqual(plain.calls.shots.map((o) => [o.fullPage, o.clip]), [[true, undefined]]);
+  const tall = shotPage({ size: { w: 1440, h: 90000 } });
+  const t = await screenshotPage(tall, '/x.png');
+  assert.equal(t.mode, 'capped');
+  assert.deepEqual(tall.calls.shots[0].clip, { x: 0, y: 0, width: 1440, height: 30000 });
+  const broken = shotPage({ size: { w: 33554432, h: 33554432 } });
+  const b = await screenshotPage(broken, '/x.png');
+  assert.deepEqual([b.mode, b.layoutOverflow], ['viewport', true]);
+  assert.match(b.reason, /^layout overflow: the page lays out at 33554432x33554432px/);
+  assert.deepEqual(broken.calls.shots.map((o) => o.fullPage), [false], 'never a full-page screenshot of an overflowed layout');
+  const raster = shotPage({ fail: [0] });
+  const r = await screenshotPage(raster, '/x.png');
+  assert.equal(r.mode, 'viewport');
+  assert.match(r.reason, /^the full-page screenshot failed \(page\.screenshot: Protocol error/);
+  assert.deepEqual(raster.calls.shots.map((o) => o.fullPage), [true, false]);
+  const none = shotPage({ fail: [0, 1] });
+  assert.equal((await screenshotPage(none, '/x.png')).mode, 'failed');
+});
+await checkAsync('screenshotPage (#602): a renderer crash during the full-page shot → the viewport from a fresh page (reopen), closed afterwards, never the dead page; without reopen, or when reopening fails → failed with the reason', async () => {
+  const dead = shotPage({ crash: true });
+  const fresh = shotPage();
+  const r = await screenshotPage(dead, '/x.png', { reopen: async () => fresh });
+  assert.equal(r.mode, 'viewport');
+  assert.match(r.reason, /crashed the renderer: the viewport came from a fresh page/);
+  assert.deepEqual([dead.calls.shots.length, fresh.calls.shots.map((o) => o.fullPage), fresh.calls.closed], [1, [false], 1]);
+  const alone = await screenshotPage(shotPage({ crash: true }), '/x.png');
+  assert.deepEqual([alone.mode, /^the renderer crashed/.test(alone.reason)], ['failed', true]);
+  const noReopen = await screenshotPage(shotPage({ crash: true }), '/x.png', { reopen: async () => { throw new Error('goto failed'); } });
+  assert.deepEqual([noReopen.mode, /reopening the page failed \(goto failed\)/.test(noReopen.reason)], ['failed', true]);
+});
 const CF_403 = { status: 403, headers: { 'cf-ray': 'abc-FRA', server: 'cloudflare' } };
 const CLOUDFRONT_403 = { status: 403, headers: { server: 'CloudFront', 'x-cache': 'Error from cloudfront' } };
 
@@ -311,16 +420,7 @@ check('isChallengeResponse: the crawler keeps its own edge rule and a bare 403 s
 
 await (async () => {
   try {
-    const calls = [];
-    const browser = { newContext: async (opts) => { calls.push(['context', opts]); return { kind: 'fallback' }; } };
-    const fallback = crawlerLiveBindings();
-    assert.deepEqual(await fallback.newLiveContext(browser, { reducedMotion: 'reduce' }), { kind: 'fallback' });
-    assert.equal(await fallback.runLiveNavigation({}, 'https://www.example.com/', async () => { calls.push(['navigate']); return 7; }), 7);
-    assert.equal(await fallback.persistLiveStorageState({}, 'https://www.example.com/'), false);
-    assert.equal(await fallback.recordLiveBotSignal('https://www.example.com/'), false);
-    assert.equal(await fallback.recordLiveNavigationSuccess('https://www.example.com/'), false);
-    assert.deepEqual(calls, [['context', { reducedMotion: 'reduce' }], ['navigate']]);
-
+    const browser = {};
     const shared = crawlerLiveBindings({
       newLiveContext: async () => 'shared-context',
       runLiveNavigation: async (_page, _url, navigate) => `shared-${await navigate()}`,
@@ -333,10 +433,10 @@ await (async () => {
     assert.equal(await shared.persistLiveStorageState({}, 'https://www.example.com/'), true);
     assert.equal(await shared.recordLiveBotSignal('https://www.example.com/'), 'signal-https://www.example.com/');
     assert.equal(await shared.recordLiveNavigationSuccess('https://www.example.com/'), 'success-https://www.example.com/');
-    console.log('✓ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent');
+    console.log('✓ crawlerLiveBindings: helpers from the front door are the ones called');
   } catch (e) {
     failed += 1;
-    console.log(`✗ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent\n  ${e.message.split('\n').join('\n  ')}`);
+    console.log(`✗ crawlerLiveBindings: helpers from the front door are the ones called\n  ${e.message.split('\n').join('\n  ')}`);
   }
 })();
 
@@ -362,10 +462,16 @@ await (async () => {
       ['reload'],
     ]);
     calls.length = 0;
-    assert.equal(await clearChallenge(page, blocked, {
-      recordBotSignal: async () => { throw new Error('signal unavailable'); },
-      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
-    }), clean);
+    let reloaded;
+    const warnings = await stderrOf(async () => {
+      reloaded = await clearChallenge(page, blocked, {
+        recordBotSignal: async () => { throw new Error('signal unavailable'); },
+        navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+      });
+    });
+    assert.equal(reloaded, clean);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /bookkeeping unavailable for www\.example\.com: signal unavailable/);
     assert.deepEqual(calls, [
       ['wait', 4000],
       ['navigate', 'https://www.example.com/path/'],
@@ -407,6 +513,8 @@ await (async () => {
       runLiveNavigation: async (_page, _url, navigate) => navigate(),
       recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
       persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+      recordLiveBotSignal: async () => false,
+      liveResponseSignalRecorded: () => false,
     });
     assert.equal(captured.headings[0], 'Captured');
     console.log('✓ capturePage: rejecting shared success and storage hooks do not fail a completed capture');
@@ -474,6 +582,7 @@ await (async () => {
         recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
         persistLiveStorageState: async () => { throw new Error('state unavailable'); },
         recordLiveBotSignal: async () => { throw new Error('signal unavailable'); },
+        liveResponseSignalRecorded: () => false,
       });
       assert.equal(record.headings[0], 'Captured');
     }
@@ -533,10 +642,13 @@ await (async () => {
   }
 })();
 
-check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+// the crawler copied to <root>/<copyDir>/crawl.mjs, a fake front door at <root>/<doorDir>/browser.mjs
+function entryProbeWithFrontDoor(copyDir, doorDir) {
   const root = mkdtempSync(join(tmpdir(), 'crawl-entry-hooks-'));
   try {
-    const copy = join(root, 'crawl.mjs');
+    mkdirSync(join(root, copyDir), { recursive: true });
+    mkdirSync(join(root, doorDir), { recursive: true });
+    const copy = join(root, copyDir, 'crawl.mjs');
     writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
     const dependencyDir = join(root, 'node_modules', 'playwright');
     mkdirSync(dependencyDir, { recursive: true });
@@ -569,11 +681,22 @@ check('entry probe: rejecting shared hooks still finish discovery, challenge cle
         }),
       }) };
     `);
-    writeFileSync(join(root, 'live-session.mjs'), `
+    writeFileSync(join(root, doorDir, 'browser.mjs'), `
+      export const openBrowser = async () => { const { chromium } = await import('playwright'); return chromium.launch(); };
+      export const browserTier = () => 'chrome';
+      export const newContext = (browser, options = {}) => browser.newContext(options);
+      export const goto = (page, url, options = {}) => page.goto(url, options);
+      export const newLiveContext = (browser, options = {}) => browser.newContext(options);
+      export const withDeadline = (promise) => promise;
+      export const pageDenial = async () => ({ marker: null, skipped: null });
+      export const liveResponseSignalRecorded = (response) => Boolean(response && response.liveSignalRecorded);
       export const runLiveNavigation = async () => { throw new Error('navigation bookkeeping unavailable'); };
       export const recordLiveBotSignal = async () => { captureCalls.signals += 1; throw new Error('signal unavailable'); };
       export const recordLiveNavigationSuccess = async () => { captureCalls.successes += 1; throw new Error('success unavailable'); };
       export const persistLiveStorageState = async () => { captureCalls.saves += 1; throw new Error('state unavailable'); };
+      export const pageSizeInPage = () => null;
+      export const layoutOverflow = () => null;
+      export const shotPlan = () => ({ mode: 'fullPage', clip: null, reason: null });
     `);
     for (const status of ['403', '429']) {
       const out = join(root, `capture-${status}`);
@@ -593,6 +716,27 @@ check('entry probe: rejecting shared hooks still finish discovery, challenge cle
       assert.equal(calls.saves, 2);
       assert.equal((result.stderr.match(/WARNING: shared live-session bookkeeping unavailable/g) || []).length, 1);
     }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+  entryProbeWithFrontDoor('extract', 'stardust');
+});
+
+check('entry probe: the crawler copied flat into stardust/scripts/ finds the front door in stardust/scripts/stardust/', () => {
+  entryProbeWithFrontDoor('stardust/scripts', 'stardust/scripts/stardust');
+});
+
+check('a copy without the front door stops with exit 2 (the fatal-error code of the crawler) and the copy instruction, not a stack trace', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-no-front-door-'));
+  try {
+    mkdirSync(join(root, 'extract'));
+    const copy = join(root, 'extract', 'crawl.mjs');
+    writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
+    const result = spawnSync(process.execPath, [copy, '--url', 'https://www.example.com/', '--out', join(root, 'out')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /^crawl: browser\.mjs not found \(looked in \.\.\/\.\.\/stardust\/scripts\/, \.\.\/stardust\/ and \.\/stardust\/\)\. Copy the master skill's scripts dir to stardust\/scripts\/stardust\/ /m);
+    assert.doesNotMatch(result.stderr, /\n\s+at /);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

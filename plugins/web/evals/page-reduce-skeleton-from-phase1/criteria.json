@@ -1,10 +1,10 @@
 {
-  "context": "The agent runs the structural-reasoning half of a page reduction on real Phase 1 output from https://www.aem.live/ (15 sections). Judge skeleton.html, manifest.json and answer.md.",
+  "context": "The agent runs the structural-reasoning half of a page reduction on real Phase 1 output from https://www.aem.live/ (15 sections; their tokenizedHtml totals 9,379 bytes with whitespace removed). Judge skeleton.html, manifest.json and answer.md.",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "all_sections_marked",
-      "max_score": 15,
+      "max_score": 10,
       "category": "INTENT",
       "description": "skeleton.html contains all 15 sections in Phase 1 order, each preceded by a comment of the form `<!-- section:INDEX type:TYPE xpath:XPATH -->` carrying the Phase 1 index and xpath."
     },
@@ -24,7 +24,7 @@
       "name": "long_nav_collapsed",
       "max_score": 10,
       "category": "INTENT",
-      "description": "In the footer navigation (section 13), the Resources list of seven CTAs is reduced to two items plus a `{NAV:N-items}` token (N = the items removed or the total, either is fine)."
+      "description": "In the footer navigation (section 13), the Resources list of seven CTAs is reduced to its first two items (Sidekick, FAQ) plus `{NAV:5-items}`: N is the 5 items replaced, not the total 7. This holds for each copy of the list the skeleton keeps (desktop, mobile)."
     },
     {
       "name": "utility_classes_stripped",
@@ -40,9 +40,15 @@
     },
     {
       "name": "manifest_schema",
-      "max_score": 15,
+      "max_score": 10,
       "category": "INTEGRATION",
       "description": "manifest.json has url, title, templateHash and a sections array where each entry has index, type, xpath, layout, features and per-section token counts (headings, texts, images, ctas, links at least)."
+    },
+    {
+      "name": "skeleton_not_larger",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "Without its `<!-- section:\u2026 -->` comment lines and with all whitespace removed, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from with whitespace removed: at most 9,379 bytes."
     },
     {
       "name": "summary",

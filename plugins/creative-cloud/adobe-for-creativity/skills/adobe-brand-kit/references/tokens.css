@@ -1,0 +1,73 @@
+/* Adobe brand tokens for Claude-rendered pages.
+   Sources (see brand.md for each token's provenance):
+   - Spectrum design tokens: github.com/adobe/spectrum-design-data, packages/tokens/src
+     (color-palette.json, color-aliases.json, semantic-color-palette.json, typography.json)
+   - Adobe red: fill of https://www.adobe.com/content/dam/cc/icons/adobe_wordmark_red.svg */
+:root {
+  --brand-primary: #3B63FB;      /* Spectrum blue-900 light = accent-color-900 */
+  --brand-on-primary: #FFFFFF;   /* Spectrum gray-25 light */
+  --brand-surface: #FFFFFF;      /* Spectrum background-base-color = gray-25 light */
+  --brand-surface-alt: #F8F8F8;  /* Spectrum background-layer-1-color = gray-50 light */
+  --brand-dark: #131313;         /* Spectrum gray-900 light */
+  --brand-on-dark: #F8F8F8;      /* Spectrum gray-50 light */
+  --brand-accent: #EB1000;       /* Adobe red, adobe.com wordmark fill */
+  --brand-ink: #292929;          /* Spectrum neutral-content-color-default = gray-800 light */
+  --brand-muted: #505050;        /* Spectrum neutral-subdued-content-color-default = gray-700 light */
+  --brand-link: #3B63FB;         /* Spectrum accent-content-color-default = blue-900 light */
+  --brand-border: #DADADA;       /* Spectrum gray-300 light */
+  --brand-success: #05834E;      /* Spectrum positive-color-900 = green-900 light */
+  --brand-warning: #C24E00;      /* Spectrum notice-color-900 = orange-900 light */
+  --brand-danger: #D73220;       /* Spectrum negative-color-900 = red-900 light */
+  --brand-info: #3B63FB;         /* Spectrum informative-color-900 = blue-900 light */
+  --brand-chart-1: var(--brand-primary);
+  --brand-chart-2: var(--brand-muted);
+  --brand-chart-3: var(--brand-border);
+  --brand-chart-focus: var(--brand-accent);
+  --brand-radius: 8px;
+  --brand-font: "Adobe Clean", "Source Sans 3", "Source Sans Pro", -apple-system, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand-primary: #4069FD;      /* Spectrum accent-background-color-default dark = blue-800 dark */
+    --brand-on-primary: #FFFFFF;
+    --brand-surface: #111111;      /* Spectrum gray-25 dark */
+    --brand-surface-alt: #1B1B1B;  /* Spectrum gray-50 dark */
+    --brand-dark: #222222;         /* Spectrum gray-75 dark */
+    --brand-on-dark: #F2F2F2;      /* Spectrum gray-900 dark */
+    --brand-accent: #EB1000;
+    --brand-ink: #DBDBDB;          /* Spectrum gray-800 dark */
+    --brand-muted: #AFAFAF;        /* Spectrum gray-700 dark */
+    --brand-link: #5681FF;         /* Spectrum blue-900 dark */
+    --brand-border: #393939;       /* Spectrum gray-300 dark */
+    --brand-success: #099D59;      /* Spectrum green-900 dark */
+    --brand-warning: #E06400;      /* Spectrum orange-900 dark */
+    --brand-danger: #FC432E;       /* Spectrum red-900 dark */
+    --brand-info: #5681FF;         /* Spectrum blue-900 dark */
+  }
+}
+
+:root[data-theme="dark"] {
+  --brand-primary: #4069FD;
+  --brand-on-primary: #FFFFFF;
+  --brand-surface: #111111;
+  --brand-surface-alt: #1B1B1B;
+  --brand-dark: #222222;
+  --brand-on-dark: #F2F2F2;
+  --brand-accent: #EB1000;
+  --brand-ink: #DBDBDB;
+  --brand-muted: #AFAFAF;
+  --brand-link: #5681FF;
+  --brand-border: #393939;
+  --brand-success: #099D59;
+  --brand-warning: #E06400;
+  --brand-danger: #FC432E;
+  --brand-info: #5681FF;
+}
+
+body {
+  margin: 0;
+  background: var(--brand-surface);
+  color: var(--brand-ink);
+  font-family: var(--brand-font);
+}

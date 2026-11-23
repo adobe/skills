@@ -13,7 +13,7 @@
 LC_ALL=C
 export LC_ALL
 
-DESTRUCTIVE_TOOLS="delete_credential delete_event_registration delete_project delete_subscriber_filter delete_workspace unsubscribe_credential_from_service"
+DESTRUCTIVE_TOOLS="delete_credential delete_event_registration delete_project delete_subscriber_filter delete_workspace unsubscribe_credential_from_service unsubscribe_admin_enterprise_credential_from_service"
 
 ASK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This permanently deletes or removes Adobe Developer Console resources and cannot be undone. Confirm the exact resource before approving."}}'
 PASS='{"continue":true}'

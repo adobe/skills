@@ -1,7 +1,7 @@
 ---
 name: commerce-app-migrate
 description: >
-  Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach. Run from the root of the App Builder project to be migrated. Pass --auto to skip confirmation prompts (suitable for CI or batch use) — auto mode prints a summary of all Q&A questions answered with their defaults. Pass --doc-scan-only to scan README.md and env.dist for outdated content without modifying any files. Use when the user wants to migrate an App Builder project from the Integration Starter Kit or Checkout Starter Kit to the App Management approach, or mentions upgrading their Adobe Commerce extension architecture.
+  Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach. Run from the root of the App Builder project to be migrated. Pass --auto to skip confirmation prompts (suitable for CI or batch use) — auto mode prints a summary of all Q&A questions answered with their defaults. Pass --doc-scan-only to scan README.md and env.dist for outdated content without modifying any files. Env vars still read by runtime actions after migration are proposed as Business Configurations: accepted ones are added to businessConfig.schema and the action code is rewritten to read them with @adobe/aio-commerce-lib-config. Use when the user wants to migrate an App Builder project from the Integration Starter Kit or Checkout Starter Kit to the App Management approach, or mentions upgrading their Adobe Commerce extension architecture.
 license: Apache-2.0
 compatibility: >
   Requires Node.js 22+, aio CLI, and @adobe/aio-commerce-lib-app.
@@ -204,12 +204,12 @@ and present the refactoring guidance to the developer.
 For each domain where `confidence !== "none"`, dispatch the corresponding agent
 **at the same time** using the Agent tool (all in one parallel call):
 
-| confidence field                       | Agent file                                      |
-| -------------------------------------- | ----------------------------------------------- |
-| `confidence.events !== "none"`         | `${CLAUDE_SKILL_DIR}/agents/events.md`          |
-| `confidence.webhooks !== "none"`       | `${CLAUDE_SKILL_DIR}/agents/webhooks.md`        |
-| `confidence.adminUiSdk !== "none"`     | `${CLAUDE_SKILL_DIR}/agents/admin-ui-sdk.md`    |
-| `confidence.businessConfig !== "none"` | `${CLAUDE_SKILL_DIR}/agents/business-config.md` |
+| confidence field                                                     | Agent file                                      |
+| -------------------------------------------------------------------- | ----------------------------------------------- |
+| `confidence.events !== "none"`                                       | `${CLAUDE_SKILL_DIR}/agents/events.md`          |
+| `confidence.webhooks !== "none"`                                     | `${CLAUDE_SKILL_DIR}/agents/webhooks.md`        |
+| `confidence.adminUiSdk !== "none"`                                   | `${CLAUDE_SKILL_DIR}/agents/admin-ui-sdk.md`    |
+| `confidence.businessConfig !== "none"` or `envDistKeys` is non-empty | `${CLAUDE_SKILL_DIR}/agents/business-config.md` |
 
 Each agent receives:
 
@@ -218,6 +218,9 @@ Each agent receives:
 
 Collect all returned `DomainResult` objects. Each has `domain`, `configFragment`,
 and `unresolvedQuestions` fields (schema in `${CLAUDE_SKILL_DIR}/shared/schema.md`).
+The business-config result may also carry `envMigrations`: environment variables still read
+by runtime actions that were added to `businessConfig.schema` as candidates (fields tagged
+`"_source": "env"`).
 
 ---
 
@@ -249,6 +252,16 @@ deployed action package). Interpret the developer's reply as:
 - `"no"` (or pressing Enter) → leave the section out of the `configFragment`; do nothing
 - `"yes"` or any action string → add the section back; prompt for the runtime action name
   if not already specified in the reply, then apply it to the `configFragment`
+
+**Env var questions (`businessConfig.env.<KEY>.migrate`):**
+Group these under an "Environment variables" heading within the business-config domain. For each answer:
+
+- `"yes"` (default) → keep the field in `businessConfig.schema`
+- `"no"` → remove the field tagged for that key from `businessConfig.schema` and drop its
+  `envMigrations` entry; the variable stays a manual environment variable
+
+If removal leaves `businessConfig.schema` empty, omit `businessConfig` from the config.
+The remaining `envMigrations` entries are the selected migrations passed to the Executor in Step 5.
 
 **Autonomous mode — auto-accepted defaults summary:**
 
@@ -372,6 +385,7 @@ Dispatch the Executor agent (`${CLAUDE_SKILL_DIR}/agents/executor.md`) with:
 
 1. The assembled `app.commerce.config.ts` TypeScript content as a string
 2. The final `ProjectSnapshot` JSON
+3. The remaining `envMigrations` from Step 3 (empty array if none)
 
 The Executor performs all file writes and CLI commands and prints the migration summary.
 
@@ -391,6 +405,7 @@ a rollback point (`git checkout main` to abandon the migration).
   - env.dist entries grouped into three buckets: safe-to-remove (managed by App Management), review-manually (referenced in action source files, grouped by file), and onboarding-only (used only in onboarding scripts)
   - Rule 9 catches unreferenced env.dist variables not matched by any other rule and flags them for manual review
   - Category C (README) requires ≥ 5 flagged sections to emit the recommendations block
+- **Env vars to Business Configurations**: the business-config agent proposes env vars that runtime actions still read (excluding auth, workspace, event, webhook and platform keys) as `businessConfig.schema` fields (secrets as `password`). For accepted ones, the Executor rewrites the action code from `params.<KEY>` to `@adobe/aio-commerce-lib-config` reads. In `--auto` mode all candidates are accepted
 - **`--auto` mode** prints a summary of all Q&A questions answered automatically with their defaults (omitted if no questions existed)
 - **`productDependencies`** version constraints from `extension-manifest.json` are auto-inserted as a comment block immediately before the `import { defineConfig }` line in the generated `app.commerce.config.ts`
 - **Internal metadata fields** (`_directionWarning`, `_source`) may be added by domain agents to `configFragment` objects — the Executor strips these before writing files so they never appear in the output TypeScript

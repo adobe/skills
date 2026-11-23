@@ -1,0 +1,56 @@
+{
+  "context": "Universal Editor setup in aem-boilerplate-xwalk. Criteria come from aem.live (component-model-definitions, universal-editor-blocks) and the repo's AGENTS.md, not from the skills.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Partial file, root files regenerated",
+      "max_score": 12,
+      "description": "Component definition, model and filters are written in `blocks/<name>/_<name>.json` (and `models/_section.json` for the section filter), and the root component-definition.json, component-models.json and component-filters.json are regenerated with `npm run build:json` rather than hand-edited alone. Score 0 if only the root files were edited and no partial exists."
+    },
+    {
+      "name": "Block definition correct",
+      "max_score": 8,
+      "description": "The definition uses resourceType `core/franklin/components/block/v1/block` and a template `name`, and the template `model` or `filter` matches a model or filter id that exists."
+    },
+    {
+      "name": "Block added to the section filter",
+      "max_score": 8,
+      "description": "The block id is in the `section` filter (models/_section.json) so authors can add it to a section; for tab sections, blocks allowed inside are also reachable."
+    },
+    {
+      "name": "Valid and consistent JSON",
+      "max_score": 6,
+      "description": "All JSON files parse, ids are unique, and no existing entries were removed or broken."
+    },
+    {
+      "name": "Scope kept",
+      "max_score": 4,
+      "description": "decorate JS and CSS of unrelated blocks are untouched; no custom AEM component or resource type is invented."
+    },
+    {
+      "name": "Content model is semantic",
+      "max_score": 12,
+      "description": "ANSWER.md's model puts the headline, text and buttons together in one cell of default content (grouped), not one cell per field, and does not use key/value rows for displayed content."
+    },
+    {
+      "name": "Buttons use link collapse",
+      "max_score": 10,
+      "description": "Buttons use field collapse (`link`, `linkText`, `linkType` with primary/secondary) or grouped `<group>_cta*` fields so they render as links/strong/em; not plain text fields for URL and label."
+    },
+    {
+      "name": "Image and alt collapse",
+      "max_score": 6,
+      "description": "The background image uses `image` + `imageAlt`."
+    },
+    {
+      "name": "Logos as a multi-field with alt text",
+      "max_score": 12,
+      "description": "The logos are a multi-value field (a container with `multi: true` holding a `reference` and its alt text, or equivalent), AND the agent notices multi-field is disabled in `xwalk.json` and enables it or says authors would otherwise get one comma-separated value."
+    },
+    {
+      "name": "Assumptions and questions",
+      "max_score": 6,
+      "description": "ANSWER.md lists assumptions and at most 6 questions that would change the model."
+    }
+  ]
+}

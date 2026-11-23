@@ -1,0 +1,116 @@
+{
+  "name": "ue-component-model trigger queries",
+  "description": "Universal Editor projects (aem-boilerplate-xwalk): should trigger for editor setup (palette, properties panel, filters, models); near misses are code, CSS, tests, dev server and document-based authoring. Two queries are labelled content-modeling to check the pair.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe-rnd/aem-boilerplate-xwalk.git",
+    "ref": "6210531801d9a2bf6223355e5d0a8c6d8b7dc545",
+    "remote": "https://github.com/adobe-rnd/aem-boilerplate-xwalk.git"
+  },
+  "queries": [
+    {
+      "id": "y-palette",
+      "query": "We wrote a new `testimonial` block (testimonial.js and CSS are done). Make it show up in the Universal Editor so authors can add it to a section and edit its content.",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "y-panel-field",
+      "query": "In the Universal Editor, authors of the `hero` block need a dropdown in the properties panel to choose a light or dark background. Add it.",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "y-multi-images",
+      "query": "We're building an image-gallery block for our Universal Editor site. Authors should be able to add any number of images, each with alt text. Set up everything the editor needs.",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "y-tabs-sections",
+      "query": "We need tabs in the Universal Editor, where each tab holds a cards block. How do I define that in the project's component definitions?",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "y-not-in-menu",
+      "query": "I added a `teaser` entry in a block's JSON file and committed, but it doesn't show in the Universal Editor's add menu on the page.",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "y-edits-vanish",
+      "query": "I edited component-models.json at the repo root for the hero block, committed, and my change was gone afterwards. What's going on?",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "test"
+    },
+    {
+      "id": "y-new-block-both",
+      "query": "We're adding a `promo-banner` block (image, headline, short text, one button) and our authors work in Universal Editor. Design the block so it's easy for them to use, then build it.",
+      "should_trigger": true,
+      "skill": "ue-component-model",
+      "split": "test"
+    },
+    {
+      "id": "y-new-block-model",
+      "query": "We're adding a `promo-banner` block (image, headline, short text, one button) and our authors work in Universal Editor. Design the block so it's easy for them to use, then build it.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "y-docs-model",
+      "query": "On our other site, authors write pages in Google Docs. Design what authors type for a new `testimonial` block: quote, name, role, photo.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "n-css-bug",
+      "query": "The cards block looks broken on tablet: the third card wraps under the first two and the images stretch. Fix the CSS.",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "n-decorate",
+      "query": "Write the decorate function for the `cards` block so each row becomes a list item with a linked image and a heading.",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "n-aem-up",
+      "query": "`aem up` dies immediately with EADDRINUSE and I don't know what is on the port. How do I fix it?",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "train"
+    },
+    {
+      "id": "n-tests",
+      "query": "Write Playwright tests for the hero block that check the heading and the CTA link render and that the image has an alt attribute.",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "test"
+    },
+    {
+      "id": "n-code-review",
+      "query": "Please review PR #214 on our repo. Someone changed the columns block's JS; check for bugs and accessibility problems.",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "test"
+    },
+    {
+      "id": "n-docs-model",
+      "query": "On our Google Docs site, design what authors type for a new `testimonial` block: quote, name, role, photo.",
+      "should_trigger": false,
+      "skill": "ue-component-model",
+      "split": "test"
+    }
+  ]
+}

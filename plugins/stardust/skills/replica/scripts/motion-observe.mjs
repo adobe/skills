@@ -82,25 +82,20 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname } from 'path';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
-// documented project copy (scripts/replica ↔ scripts/diff) — resolve either,
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (scripts/replica ↔ scripts/stardust) — resolve either,
 // so a project re-copy can't silently sever the shared hardening.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('motion-observe: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
-// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
-const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays } = await import(BROWSER.href);
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -173,7 +168,7 @@ async function sampleMedia(page) {
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
   const VH = 900;
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   try {
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,

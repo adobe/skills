@@ -1,8 +1,433 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
+## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
+# [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
+# [0.45.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.2...plugin/stardust/v0.45.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [0.44.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.1...plugin/stardust/v0.44.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** header parity pairs a link by address when one side has no text, and the explorer ignores and records what changes on its own ([#767](https://github.com/adobe/skills/issues/767)) ([1ceb7b9](https://github.com/adobe/skills/commit/1ceb7b9cfbd1392d050230b94a5eee3498d3d416))
+
+## [0.44.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.0...plugin/stardust/v0.44.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+# [0.44.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.4...plugin/stardust/v0.44.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
+## [0.43.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.3...plugin/stardust/v0.43.4) (2026-11-21)
+
+## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+## [0.43.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.1...plugin/stardust/v0.43.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
+## [0.43.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.0...plugin/stardust/v0.43.1) (2026-11-20)
+
+# [0.43.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.2...plugin/stardust/v0.43.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [0.42.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.1...plugin/stardust/v0.42.2) (2026-11-20)
+
+## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** qa-gate units by order, build-harness creates out dir, rollout inventory and widget fixes ([#744](https://github.com/adobe/skills/issues/744)) ([e3752d1](https://github.com/adobe/skills/commit/e3752d1ca6a900ed15d41fe34ec92d8065aa90a8)), closes [#464](https://github.com/adobe/skills/issues/464) [#531](https://github.com/adobe/skills/issues/531) [#464](https://github.com/adobe/skills/issues/464)
+
+# [0.42.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.41.0...plugin/stardust/v0.42.0) (2026-11-19)
+
+
+### Features
+
+* **stardust:** replica measures the source before authoring and checks header and footer by landmark ([#701](https://github.com/adobe/skills/issues/701)) ([0df3597](https://github.com/adobe/skills/commit/0df3597c097a425a8192249fc239c9369f3e48f8))
+
+# [0.41.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.40.0...plugin/stardust/v0.41.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate compares against a frozen reference and counts after aligning ([#700](https://github.com/adobe/skills/issues/700)) ([a8f69e3](https://github.com/adobe/skills/commit/a8f69e3086a20b949f7c8352d3bd6bd7505c4968))
+
+# [0.40.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.4...plugin/stardust/v0.40.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate measures the page, width and stage it was asked for, and stops at three rounds ([#699](https://github.com/adobe/skills/issues/699)) ([84eb7c1](https://github.com/adobe/skills/commit/84eb7c1d1e1f791853ac1ec93ef2fc9664c08abc))
+
+## [0.39.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.3...plugin/stardust/v0.39.4) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stardust:** a gate override waives only the criteria it names, and the unit cache knows its width ([#704](https://github.com/adobe/skills/issues/704)) ([aac23ef](https://github.com/adobe/skills/commit/aac23ef68e050294d8fa035c7b3c4a444af2cb19))
+
+## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** ledger.mjs names the readers for a guessed verb such as summary ([#681](https://github.com/adobe/skills/issues/681)) ([facbc0b](https://github.com/adobe/skills/commit/facbc0b30c63229a252e9d7878896ccec7b647b8))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
+## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint fails a missing --dirs file and negated desktop-first queries ([#677](https://github.com/adobe/skills/issues/677)) ([8dda267](https://github.com/adobe/skills/commit/8dda26746899a082dad4cfa3acf1736335064a8c))
+
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
+
+## 0.39.1
+
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
+
+## 0.39.0 — delivered CSS is mobile-first (#162)
+
+The EDS code-review checklist flags any `max-width` query: base styles are the mobile layout, wider layouts
+sit in `(width >= …)` queries. Deploy lifted prototype CSS as written, and the prototype nav pattern, the
+deploy `--nav-height` example and the migrate / publish-sample audits all asked for `max-width` rules, so
+delivered sites failed that review. Replica already required mobile-first output (`preserve-direction.md`);
+nothing enforced it.
+
+- **`replica/scripts/breakpoint-lint.mjs`:** a direction check that runs with or without a target — any
+  `@media` / `@custom-media` / `@import` upper bound (`max-width`, `width <`/`<=`, the top of a range) fails
+  with the mobile-first rewrite point (`max-width: 599px` → `(width >= 600px)`). `media="…"` attributes and
+  JS thresholds are not direction-checked. No target set no longer skips the run.
+- Rule home: deploy Step 3 (`#162`) — convert desktop-first prototype CSS while lifting it; deploy wires
+  `lint:breakpoints` into `npm run lint` on every project (replica C0 already did with a target). Pointers:
+  deploy Lint bullet and checklist row; the `--nav-height` example (on the boilerplate's 600/900 steps) and
+  the `#109` note are now mobile-first.
+- Prototype: the Mobile-adapt audit refuses a desktop-first query (`audit/responsive: desktop-first-query`)
+  instead of requiring a `max-width` rule ≤ 640px; the stock hamburger pattern and its fixture are
+  mobile-first (`@media (width >= 641px)` restores the inline nav; same switch as before). Migrate and
+  publish-sample point at the audit instead of restating it.
+- Folded: the `#113` un-float trap (a mobile query un-floating columns does not occur in mobile-first CSS).
+- Tests: `breakpoint-lint.test.mjs` (direction on CSS only, rewrite point, no-target runs, prototype
+  `<style>` vs `<source media>`). Nav fixture checked with `mobile-nav-audit.mjs` (clean at 360px) and at
+  641 / 1280px (inline nav, no burger).
+
+- **`deploy`, `prototype` and `migrate` `SKILL.md` are outlines now.** This change touches the three files, and
+  each was over the repository's limits for a `SKILL.md` (500 lines, about 5,000 tokens; `deploy` had 1,189
+  lines and 203 KB). Every section keeps its heading there, so `§` pointers from other files still resolve,
+  and names the file under `reference/` that holds its text, moved as it was: 16 files for `deploy`
+  (`step-1-audit.md` … `step-10-reconcile.md`, `encode-contract.md`, `anti-patterns.md`, `checklist.md`, …),
+  7 for `prototype`, 4 for `migrate`. No rule changed. A rule cited as `#N` is found by searching
+  `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
+  `deploy/reference/step-3-foundation.md`.
+
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
+
+Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
+widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of
+class labels).
+
+- **`skills/stardust/scripts/lib/`** (`paths`, `names`, `kinds`, `taxonomy`, `resolve`) behind `contracts.mjs`, next to
+  `browser.mjs`. Setup step 7 already copies the master's `scripts/` to `stardust/scripts/stardust/`, so the library
+  ships with it, and a consumer finds `contracts.mjs` with the same two-layout lookup it uses for `browser.mjs` (0.38.0's
+  mechanism; no new copy step). dynamics, qa, rollout and spec resolve it once in their `lib.mjs`.
+- **Swapped**, each script's own copy deleted: rollout (inventory, assemble, delivery-lint, lib, seed-redirects,
+  da-library's page path), deploy (eds-path, deploy-batch, davids-model-lint, ai-readability), qa (lib, from-knowledge,
+  checks), spec (lib, spec-knowledge, spec-map), migrate, dynamics, replica (gate-evidence, gate-all), diff
+  (chrome-compare). Outputs are unchanged (golden snapshots byte-identical, field replays identical) except for these
+  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`, and, as deploy's `block-roundtrip`
+  always did, a `/widgets/…` href with another extension or none (so delivery-lint and qa now read `/widgets/x.js` or
+  `/widgets/x` as a widget link, where they required `.html`); only a `/widgets/…` href is a widget
+  (rollout `pageWidgets`, qa `widgetLinks` and migrate `widgetsIn` took `/a/b.html` or `/nav` for one); spec-knowledge's
+  class labels for A and D now read as dynamics' do.
+- **Project copies:** a `stardust/scripts/stardust/` copied before this release has no `contracts.mjs`, and the scripts
+  that need it stop with the copy instruction: re-copy the master's scripts. `deploy/scripts/eds-path.mjs` and spec
+  `lib.mjs` `loadSibling` stay as re-exports for one release.
+- Tests: `lib.test.mjs`, `layout.test.mjs` (every skill copied the way the copy steps do, every script's `--help` run
+  from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
+  divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
+
+## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
+
+The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap
+for eight releases: every new script meant shortening someone else's row. 17 of its rows (about 1 KB) were pure
+libraries, marked "no CLI", which an agent never runs.
+
+- **`evals/lint/libraries.mjs`** is the one list of pure libraries (exported functions, no argv), moved from
+  `script-help.mjs`'s exemption list. `script-help.mjs` still skips them for `--help`; `scripts-index.mjs` now
+  requires no row for them and fails on a row that names one.
+- **`scripts-index.md`** drops the 17 library rows (12288 → 11282 bytes). The libraries an agent imports
+  (`browser.mjs`, `live-session.mjs`, `eds-path.mjs`, `measure-live.mjs`, `martech.mjs`) are documented in the skills
+  that use them, unchanged.
+- **AGENTS.md:** a new library goes in `libraries.mjs`, not the index.
+
+## 0.38.5 — martech tags load from the boilerplate's consent phase
+
+aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,
+whose placeholder `hasConsent()` declines by default and loads `consented.js` only on consent. The EDS
+`building-blocks` and `code-review` skills now state the rule (martech in `consented.js`). On such a
+project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside that phase.
+
+- **`deploy/scripts/martech-scaffold.mjs`:** when `scripts/consented.js` and `scripts/consent-check.js`
+  exist, `loadTags()` hooks into `consented.js`, and the boilerplate's placeholder `hasConsent()` (with its
+  JSDoc) is replaced by one that returns `martech.js` `hasConsent()`: true on the production hosts; off
+  them `?consent=accept|decline` decides as in the boilerplate, else `?martech=on`. Each route keeps its
+  own CMP category gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged.
+  Only the placeholder, matched token for token, is replaced. Any other `hasConsent()` (an owner's CMP
+  wiring, an `async` or arrow one, a placeholder reworded upstream) is a conflict that `--force` does not
+  override, until it calls `martechConsent()`; then it is kept as is. A `loadTags()` hook an older run left
+  in `loadDelayed()` or `delayed.js` is removed, so an upgraded site loads its tags once. Older projects
+  keep the `delayed.js` / `loadDelayed()` hooks.
+- Docs: `dynamics/reference/martech.md` (runtime step, `?consent=` switches).
+- Tests: `martech-scaffold.test.mjs` 24/24 — the consented.js hooks and re-run, the upgrade from an older
+  run's hook, every non-placeholder `hasConsent()` as a conflict, an owner-wired one kept, the JSDoc, the
+  `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
+
+## 0.38.3 — spec: classic AEM components inside responsive grids
+
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
+
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
+
+## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
+
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
+
+- **Rule** (`deploy/SKILL.md` #161, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+- Review follow-ups: one skip path after the bytes are known, so an over-limit mp4 fetched from a manifest `source`
+  is `SKIP video-too-large` too (a declared `content-length` skips it before the body is buffered); a 401 that
+  persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
+  segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
+  three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
+
+## 0.38.1 — rollout publishes the site's own DA block library (#160)
+
+Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
+unrelated block set inherited from elsewhere, and none of the site's blocks or templates. Nothing in deploy or
+rollout wrote a library, so every migrated site arrived with an inherited or empty one.
+
+- **`rollout/scripts/da-library.mjs`:** from the delivered DA bodies (rollout coverage when present, else the content
+  tree) writes `library/blocks/<block>` (the first authored instance of every class variant, each followed by a
+  `library-metadata` description), `library/templates/<template>` (the template representative, its `metadata` as
+  `template-metadata` with page-specific values emptied), the `blocks` / `templates` sheets, and merges the `library`
+  tab of the site config: only the Blocks / Templates rows are replaced, other rows and tabs are kept. Previews the
+  documents, never publishes them. `--dry-run` writes the files only.
+- Rule home: `rollout/SKILL.md` § Phase D (DA library + D-site checklist row); pointer from deploy § When you finish.
+- Tests: `da-library.test.mjs` (block and variant lifting, the documents in the shape the DA library parses, the
+  config merge, the CLI dry run from coverage).
+- Review follow-up: a kept template metadata value with a `$` pattern is copied verbatim (function replacement); the
+  CLI runs through a symlinked path (realpath check, as in `da-media-upload.mjs`); a run without templates leaves the
+  Templates row and `templates.json` alone; zero authored blocks exits 1 with no DA write; a 401 is retried before
+  exit 3 and a network error is a FAIL (exit 1); a template whose representative is not delivered and a class with no
+  `blocks/<name>/` folder are named; content-tree chrome is the root nav / footer plus the documents pages name in
+  their nav / footer metadata; template names use the label or unique id, never the shared type; author, dates and
+  image-alt are emptied in templates; only template documents are previewed.
+
+## 0.38.0 — every script takes its browser from one place (#159)
+
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
+
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction. Where exit 1 means a failed check (`render-harness`,
+  `ai-readability`, `qa-gate`, `dynamics-check`), both are exit 2.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
+
+## 0.37.2 — a named page count starts from the entered page and its links (#158)
+
+User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered
+URL links to were often cut.
+
+- **`extract/scripts/crawl.mjs --link-first`:** orders the pages entry first, then the entry page's same-origin
+  links in document order, then the other discovered pages, up to `--max`. Only a user-named N sets it; `--max`
+  alone (default or roster caps), `--max 0` and `--pages` are unchanged. In link-first mode both lists keep
+  same-origin non-asset pages only (`ASSET_EXT`). An unparsable href is skipped with a WARN instead of aborting
+  discovery, in both modes. Rule home: `ia-extraction.md` § Priority for the cap; pointers from extract Phase 1,
+  `--prep` (a user-named N keeps `--cap N` instead of `--all`) and the hands-off volume caps (a user-named N
+  replaces 100/20).
+- Tests: `crawl.test.mjs` `parseArgs` (`--max` alone never turns link-first on), `selectPages` (order, BFS
+  re-entry, unparsable hrefs), `discover` on a stub page (sitemap + malformed anchor, BFS fallback).
+
+## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
+
+Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube
+iframe in `decorate()`, so the player's JS started while the section was still loading. Lab tests count that toward
+FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
+symptom, nothing named the cause.
+
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
+  Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
+- **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
+  dot-bounded host match, no longer interpolated into `innerHTML`.
+
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
+
+Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
+was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of
+them extra captures left beside a page's own) and extract screenshots (0.76 GiB). A harness that commits all of
+`stardust/` so a restart finds the same files pays each byte twice (worktree and `.git`); it could not follow the
+ignore file instead, because that dropped whole folders a resumed run reads. Design note:
+`notes/disk-lifecycle/README.md`.
+
+- **`stardust/reference/stardust.gitignore`:** ignores gate images, not gate folders — `**/gates/**/*.png` (a frozen
+  `baseline.png` stays; `first-page/gates/` is covered too) — and tracks `current/assets/` except its screenshots.
+  On that run: 0.5 GiB tracked instead of 5.3 GiB. Existing projects keep their copy (Setup step 6 never edits it):
+  replace its `current/assets/` and `replica/gates/` lines with the two gate lines to adopt it.
+- **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
+  deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
+  `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
+  override-delivered page keeps its captures for the fix round. Pages go through in batches of 25, so a passed
+  batch's PNGs are gone before the next batch is captured (peak disk). A page captured again loses its recorded pass
+  first, and a missing capture is written to `pixel.json`: a failed or interrupted re-capture never leaves the old
+  pass to be reused.
+- **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
+  text and JSON evidence stay.
+- **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
+  `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
+  delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and runs with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures; a failed or
+  interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
+  — a round keeps only its own diff image and vdiff dir.
+
+## 0.36.7 — the site secret: exact-origin match, never context-wide
+
+The site secret (`--auth-header` / `--token-env`, default `SITE_TOKEN`) is matched against the exact site origin
+(parsed origin, not a string prefix) and never set context-wide: the AI-readability gate
+(`deploy/scripts/ai-readability.mjs` and the `qa` check) attaches it through the origin-scoped route filter instead of
+`extraHTTPHeaders`, and its raw page and fragment requests drop it once a redirect leaves the origin. The `qa`
+AI-readability check and `scorePage` skip paths that resolve off the origin, and `dynamics-plan.mjs --target-origin`
+probes only API paths on the target origin.
+
+Anyone who ran `qa` or `ai-readability.mjs` with a site secret on 0.20.0–0.36.6, or an earlier source snapshot
+containing site auth, should rotate it. Tests: `deploy/scripts/test/ai-readability.test.mjs`,
+`ai-readability-redirect.test.mjs`, `qa/scripts/test/origin-auth.test.mjs`, `ai-readability-auth.test.mjs`,
+`dynamics/scripts/test/dynamics-plan.test.mjs`.
 
 ## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
 

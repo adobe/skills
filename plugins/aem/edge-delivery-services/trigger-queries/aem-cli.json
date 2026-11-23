@@ -1,0 +1,157 @@
+{
+  "name": "aem-cli trigger queries",
+  "description": "Should trigger when installing, running, configuring or troubleshooting the AEM CLI (aem up / aem content / aem import), including local preview and DA content sync; near misses are block coding, content format, import, testing and DA API work that only mention the dev server in passing.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-install-conflict",
+      "query": "npm install -g @adobe/aem-cli fails with EEXIST: file already exists /opt/homebrew/bin/hlx. How do I get the new CLI installed?",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-start-local",
+      "query": "I just cloned our EDS site repo. Get the local dev server running so I can see the homepage on my machine.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-cert-error",
+      "query": "aem up keeps failing with 'unable to get local issuer certificate' on my work laptop. We're behind Zscaler. Fix it.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-local-test-page",
+      "query": "I need a local-only test page with the new carousel block so I can see it through the dev server before anything is authored. Set that up.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-da-pull-edit-push",
+      "query": "Pull down the /products folder from our da.live site, I want to bulk-edit the pages locally and then send them back up.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-https-local",
+      "query": "Our SSO callback only accepts https. Make the local EDS dev server run on https://localhost:8443 and keep that setting for everyone on the team.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-worktree-two-servers",
+      "query": "I have two git worktrees of the site open and want both dev servers running at the same time without one killing the other. How?",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-proxy-404",
+      "query": "localhost:3000 shows 404 for /about but the page is live on our .aem.live site. What's wrong with my local setup?",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "y-push-not-showing",
+      "query": "I ran aem content push and it said 3 files pushed, but https://main--site--org.aem.page/products/new still shows the old page. Why?",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "y-importer-ui",
+      "query": "Start the importer UI locally so I can run our import.js against a few URLs.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "y-old-cli",
+      "query": "aem content clone says 'Unknown argument: content'. I installed the CLI a year ago. What do I do?",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "y-staging-origin",
+      "query": "Point my local dev server at our stage site instead of main so I can test against stage content.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "y-da-clone-preview",
+      "query": "I want to look at how our da.live pages under /blog render with my local block changes before I push any code. Get that content onto my machine and show it through the local server.",
+      "should_trigger": true,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "n-decorate-block",
+      "query": "Write the decorate function and CSS for a new stats block: each row has a number and a label, show them as a responsive grid.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "n-da-html-format",
+      "query": "What HTML does da.live expect for a cards block with an image and a caption in each card? I'm generating the page source from a script.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "n-import-page",
+      "query": "Import https://www.example-bakery.com/about into our EDS project as a page, keeping the hero and the team grid.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "n-unit-tests",
+      "query": "Add unit tests for the tabs block's keyboard navigation using the test setup the project already has.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "train"
+    },
+    {
+      "id": "n-da-api-token",
+      "query": "Our CI job needs to call the DA admin API to list pages. How do we get an IMS token for a service account?",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "n-review-pr",
+      "query": "Review the open PR that adds a quote block. Check it against EDS conventions and leave comments only.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "n-content-model",
+      "query": "Design the authoring table for a pricing block: plans, prices, feature lists and a highlighted plan. Authors use Word.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "test"
+    },
+    {
+      "id": "n-lcp",
+      "query": "Our homepage LCP is 4s on mobile. The hero image is in the first section. Find out why and fix it in the code.",
+      "should_trigger": false,
+      "skill": "aem-cli",
+      "split": "train"
+    }
+  ]
+}

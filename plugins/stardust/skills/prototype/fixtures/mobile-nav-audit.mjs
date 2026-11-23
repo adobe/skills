@@ -12,10 +12,10 @@
 // Usage:
 //   node skills/prototype/fixtures/mobile-nav-audit.mjs <file.html>
 //
-// Requires Playwright:
-//   npm i -D playwright
-//   npx playwright install chromium
+// Requires Playwright (the browser front door's loader says how to install it) and the
+// master skill's scripts dir (browser.mjs) beside the skills or beside this copy.
 
+import { existsSync } from 'node:fs';
 import { resolve, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -30,25 +30,30 @@ if (!fileArg) {
   process.exit(2);
 }
 
-let chromium;
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('mobile-nav-audit: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(2);
+}
+const { loadPlaywright, openBrowser, newContext, goto } = await import(BROWSER.href);
 try {
-  ({ chromium } = await import('playwright'));
-} catch {
-  console.error('mobile-nav-audit: Playwright is required.');
-  console.error('  npm i -D playwright && npx playwright install chromium');
+  await loadPlaywright();
+} catch (e) {
+  console.error(`mobile-nav-audit: ${e.message}`);
   process.exit(2);
 }
 
 const abs = isAbsolute(fileArg) ? fileArg : resolve(process.cwd(), fileArg);
 const url = pathToFileURL(abs).toString();
 
-const browser = await chromium.launch();
+const browser = await openBrowser({ mode: 'plain' });
 try {
-  const context = await browser.newContext({
+  const context = await newContext(browser, {
     viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
   });
   const page = await context.newPage();
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await goto(page, url, { waitUntil: 'networkidle' });
   await page.evaluate(() => document.documentElement.offsetHeight);
 
   const findings = await page.evaluate(({ FONT_FLOOR_PX, GAP_FLOOR_PX, VIEWPORT_WIDTH }) => {

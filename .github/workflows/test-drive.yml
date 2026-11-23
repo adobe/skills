@@ -1,0 +1,59 @@
+name: Plugin Test Drive
+
+# Installs the plugins a pull request changes into Claude Code, Codex, Grok and Google
+# Antigravity, each with an empty home directory, and reports what every client loaded:
+# skills, MCP servers and hooks (scripts/test-drive.mjs). No sign-in, no model and no
+# secret is involved, so it also runs for pull requests from forks.
+#
+# It fails when a client can't install a plugin or loads fewer skills than the plugin has.
+# A pull request that changes a CLI's version or the test drive itself test-drives every
+# plugin, so an update of a client (Renovate) is tested against all of them.
+# Run it by hand (workflow_dispatch) to test-drive every plugin.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-drive-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-drive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # which plugins changed is a diff against the merge base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install the agent CLIs
+        run: node scripts/setup-agent-clis.mjs "$RUNNER_TEMP/agent-clis/bin"
+
+      # Renovate updates claude, codex and grok. Antigravity has no package it could watch.
+      - name: Is a newer Antigravity out?
+        run: node scripts/setup-agent-clis.mjs --check-agy
+
+      # --build: a pull request changes plugin.json and leaves the generated manifests alone.
+      # The clients are given the manifests as they will be on main.
+      - name: Install the changed plugins into each client
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            node scripts/test-drive.mjs --bin "$RUNNER_TEMP/agent-clis/bin" --build --json "$RUNNER_TEMP/test-drive.json" --changed "origin/$BASE_REF...HEAD"
+          else
+            node scripts/test-drive.mjs --bin "$RUNNER_TEMP/agent-clis/bin" --build --json "$RUNNER_TEMP/test-drive.json" --all
+          fi

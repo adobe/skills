@@ -1,0 +1,56 @@
+{
+  "context": "Content model checkpoint for 'Contact form'. Criteria come from aem.live (David's Model, Markup/Sections/Blocks, Widgets), not from the skill. Author experience beyond these rules is reviewed by a person.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No nested blocks",
+      "max_score": 10,
+      "description": "No block table appears inside another block's cell. Combining structures uses sibling sections, a fragment link, or a different design. Score 0 if any table is nested in a cell."
+    },
+    {
+      "name": "Cells hold default content, found by type",
+      "max_score": 12,
+      "description": "Each cell holds natural default content (heading, paragraphs, links, picture). The model does not need one cell per field, and it does not rely on cell position to tell parts apart (e.g. 'third cell is the price'). Parts are identifiable by what they are (heading, link, picture, bold)."
+    },
+    {
+      "name": "Column limit and consistency",
+      "max_score": 8,
+      "description": "Rows have 4 or fewer columns (guideline), and repeating rows have the same shape. Many small unlabeled cells score low."
+    },
+    {
+      "name": "No key/value for displayed content",
+      "max_score": 10,
+      "description": "Name/value rows (`label | value`) are not used for content the page displays (headings, text, images, prices). They appear only for non-displayed settings, if at all."
+    },
+    {
+      "name": "Assumptions recorded",
+      "max_score": 6,
+      "description": "ANSWER.md lists the assumptions that were made without the author."
+    },
+    {
+      "name": "Questions are decision-changing and few",
+      "max_score": 8,
+      "description": "ANSWER.md lists at most 6 questions, each of which would change the model if answered differently. Generic or unnecessary questions score low; asking nothing when real ambiguity exists scores low."
+    },
+    {
+      "name": "Form is not a content table",
+      "max_score": 15,
+      "description": "The form is not modelled as a block table with a row per field or key/value rows (`field | email | required`). It is a widget or an equivalent where authors place a link/URL (or a data spreadsheet) instead of defining fields in a table."
+    },
+    {
+      "name": "Topic list authorable",
+      "max_score": 8,
+      "description": "The topic list can be changed by authors without code: e.g. spreadsheet or the widget's data; not hard-coded and not one config cell with comma-separated values."
+    },
+    {
+      "name": "Footer signup handled",
+      "max_score": 8,
+      "description": "The footer signup is handled once (footer fragment or shared content), not repeated per page."
+    },
+    {
+      "name": "No HTML/JSON in the document",
+      "max_score": 6,
+      "description": "Authors are not asked to type HTML, JSON or attribute strings."
+    }
+  ]
+}

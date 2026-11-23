@@ -1,0 +1,12 @@
+{
+  "decisions": {
+    "home-hero": {
+      "choice": "c0",
+      "confidence": 0.8683,
+      "fallback": false,
+      "reason": null
+    }
+  },
+  "model": "clef",
+  "requestId": "sample-default-1"
+}

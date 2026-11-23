@@ -47,9 +47,11 @@
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname, relative, basename } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageWidgets, scopeOf, scopeLine } from './lib.mjs';
+// the path rules (sidecar name, a file's key path, a roster URL's key path, the slug) are the shared library's (lib/paths.mjs),
+// each pinned by skills/stardust/scripts/test/contracts-characterize.test.mjs under this script's name
+import { pageWidgets, scopeOf, scopeLine, sidecarName as sidecarFor, treePath as deliveredPath, rosterPath as urlToDeliveredPath, pathSlug as pathToSlug } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -92,38 +94,6 @@ function walkHtml(dir, root = dir, acc = []) {
     }
   }
   return acc;
-}
-
-/** Sidecar path for a migrated HTML rel path (index.html -> _meta.json; x.html -> x._meta.json). */
-function sidecarFor(relHtml) {
-  const dir = dirname(relHtml);
-  const leaf = basename(relHtml);
-  const name = leaf === 'index.html' ? '_meta.json' : `${leaf.replace(/\.html$/, '')}._meta.json`;
-  return dir === '.' ? name : join(dir, name);
-}
-
-/** Delivered (extensionless) path on the EDS site for a migrated HTML rel path. */
-function deliveredPath(relHtml) {
-  const noExt = relHtml.replace(/\.html$/, '');
-  if (noExt === 'index') return '/';
-  if (noExt.endsWith('/index')) return `/${noExt.slice(0, -'/index'.length)}`;
-  return `/${noExt}`;
-}
-
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
-function urlToDeliveredPath(url) {
-  let p;
-  try { p = new URL(url).pathname; } catch { p = String(url); }
-  p = p.replace(/\.html$/, '');
-  if (p === '' || p === '/' || p === '/index') return '/';
-  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
-  return p;
-}
-
-/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */
-function pathToSlug(path) {
-  if (path === '/') return 'home';
-  return path.replace(/^\//, '').replace(/\/+$/, '').replace(/\//g, '-');
 }
 
 function readJSON(path, fallback = null) {
@@ -173,6 +143,9 @@ for (const relHtml of htmlFiles) {
       pinnedChanged.push(slug);
     } else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
+    } else if (prior.delivery.status === 'content-pending') {
+      // a roster sibling that now has its own migrated document is an ordinary page to push
+      delivery = { ...prior.delivery, status: 'pending' };
     } else {
       delivery = prior.delivery;
     }
@@ -212,7 +185,10 @@ if (STATE) {
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
-    if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    // the roster keeps a URL's trailing slash; a migrated tree path never has one (`/a/` is `/a`).
+    // Match on the bare form only; the row keeps the roster path so publicUrl still serves `/a/`.
+    const key = path.replace(/\/+$/, '') || '/';
+    if (coveredPaths.has(key)) continue; // the archetype itself — already inventoried
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
     const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
@@ -236,7 +212,7 @@ if (STATE) {
       widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
-    coveredPaths.add(path);
+    coveredPaths.add(key);
   }
 }
 

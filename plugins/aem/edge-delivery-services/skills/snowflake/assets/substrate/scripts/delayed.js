@@ -14,7 +14,7 @@ if (template) {
   const cdnDeps = [
     'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js',
-    'https://cdn.jsdelivr.net/gh/studio-freight/lenis@1.0.42/bundled/lenis.min.js',
+    'https://cdn.jsdelivr.net/npm/lenis@1.3.27/dist/lenis.min.js',
   ];
 
   const loadScript = (src) => new Promise((resolve, reject) => {

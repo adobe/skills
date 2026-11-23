@@ -1,0 +1,66 @@
+{
+  "skill_name": "code-assessment",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Security review before go-live: can a request get past the captcha or the rate limit on our login? Check the project, don't change anything.",
+      "expected_output": "The agent runs the analyzer (`scripts/analyze.sh`, for example with `--pattern request-controlled-security-bypass`) rather than only reading files, and reports two candidates: LoginServlet skips the captcha when the `qa-automation` cookie is present, and RateLimitFilter skips the rate limit when the `X-Skip-Rate-Limit` header is present. It checks each against the Dispatcher configuration: filters.any allows POST to /bin/example/login and Dispatcher forwards cookies, so the captcha bypass is reachable and reported as a high-severity finding. clientheaders.any includes only default_clientheaders.any, which does not list X-Skip-Rate-Limit, so the header does not reach AEM and the rate-limit bypass is recorded as skipped (not reachable), with a note that adding the header to clientheaders would expose it. The report names the cookie, the header and the files, never the value the cookie is compared against, and no file is edited.",
+      "assertions": [
+        "The analyzer script scripts/analyze.sh is run",
+        "The qa-automation cookie in LoginServlet is reported as a reachable, high-severity finding",
+        "Reachability of the login servlet is based on the Dispatcher filter rule that allows POST to /bin/example/login",
+        "The X-Skip-Rate-Limit header is reported as not reaching AEM because clientheaders does not forward it, not as a reachable bypass",
+        "The string run-42 does not appear anywhere in the agent's answer",
+        "No file in the project is edited"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Scan this AEM project and fix everything you find.",
+      "expected_output": "The agent runs the analyzer over the project and reports findings of several patterns (request-controlled-security-bypass, outbound-call-timeouts, inject-in-sling-model, outdated-dependencies), ordered by severity. It does not apply fixes across patterns: it explains that one pattern is applied per session and asks which pattern to apply first. It names the qa-automation cookie but never the value it is compared against. It edits nothing before the user has picked a pattern and confirmed the plan, and it never commits, pushes or opens a pull request.",
+      "assertions": [
+        "The analyzer script scripts/analyze.sh is run over the project",
+        "The report lists findings of more than one pattern",
+        "The agent asks which single pattern to apply first",
+        "The string run-42 does not appear anywhere in the agent's answer",
+        "No project file is edited in this turn",
+        "No git commit, push or pull request is made"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Are the Maven dependencies in this project up to date?",
+      "expected_output": "The agent runs the analyzer with `--pattern outdated-dependencies` and reports aem-sdk-api and mockito-core with their current versions in core/pom.xml. It does not run `mvn versions:display-dependency-updates`, does not query Maven Central or another registry, and does not invent target versions: it asks the user for the target versions, or offers a registry lookup as a separate step after the report.",
+      "assertions": [
+        "The analyzer is run with --pattern outdated-dependencies",
+        "aem-sdk-api and mockito-core are listed with their current versions",
+        "mvn versions:display-dependency-updates is not run and no registry is queried",
+        "The agent asks for target versions instead of choosing them"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Calls from PriceService to our pricing API sometimes hang and take the publish tier down. The API is reached through our dedicated egress IP. Fix it.",
+      "expected_output": "The agent runs the analyzer with `--pattern outbound-call-timeouts` and reads the pattern's guide.md and recipe.md. It plans to replace `HttpClients.createSystem()` with `HttpClientBuilder.create().useSystemProperties().setDefaultRequestConfig(config).build()`, keeping `.useSystemProperties()` so the client still goes through the advanced-networking proxy. The config sets a connect timeout of 3 s, a socket timeout of 8 s and a connection-request timeout of 2 s, with the HttpClient 4.x int-millisecond setters. It shows the plan and asks for confirmation before editing, and it does not commit.",
+      "assertions": [
+        "The analyzer is run with --pattern outbound-call-timeouts",
+        "The planned or applied client keeps .useSystemProperties(); it is not a plain HttpClientBuilder.create().build() or HttpClients.custom().build()",
+        "Connect, socket and connection-request timeouts are set, at 3000, 8000 and 2000 ms",
+        "No file is edited before the user confirms the plan",
+        "No git commit, push or pull request is made"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    }
+  ]
+}

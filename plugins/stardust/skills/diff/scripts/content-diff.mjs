@@ -144,7 +144,6 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency (imported lazily in main); sequential page ops use awaited loops by design */
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // NOTE: deploy's gates (#93/#94) now use their OWN synced copies in skills/deploy/scripts/
 // (so A6/A2 are independent of this skill). This probe keeps its local copies; the two
@@ -155,7 +154,15 @@ import { resolveProfile } from './diff-profiles.mjs';
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
 import { sameImage, signElements } from './image-signature.mjs';
-import { isLiveHttpUrl, defaultWaitUntil, launchLiveBrowser, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+// browser.mjs (live-session.mjs beside it) lives in the master skill's scripts dir: the plugin tree
+// (skills/diff/scripts ↔ skills/stardust/scripts) or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('content-diff: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { isLiveHttpUrl, defaultWaitUntil, newLiveContext, openBrowser, gotoLive, dismissOverlays } = await import(BROWSER.href);
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -578,11 +585,7 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   const roots = parseRoots(opts.main, opts.chrome, prof);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) {
-    throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
-  }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchLiveBrowser(chromium);
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   let srcInvs; let tgtInvs; let aligned = null;
   try {
     srcInvs = await grab(browser, proto, opts, prof, roots);

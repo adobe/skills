@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find your next read — a regional public-library network</title>
+<meta name="description" content="Search the catalogue of a regional public-library network, browse this month's programmes and find your nearest branch.">
+<style>
+:root {
+  --bg: #fbf8f2;
+  --ink: #1f2a24;
+  --muted: #5d6b63;
+  --accent: #2f6f4e;
+  --accent-ink: #ffffff;
+  --rule: #d9d2c3;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Inter", system-ui, sans-serif;
+  --radius: 14px;
+  --gutter: clamp(20px, 5vw, 72px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.5; }
+main > section { padding: 64px var(--gutter); }
+
+/* hero */
+.hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center; }
+.hero .eyebrow { font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+.hero h1 { font-family: var(--display); font-size: clamp(2.4rem, 5vw, 4rem); line-height: 1.05; margin: 0 0 20px; }
+.hero p.lede { font-size: 1.15rem; color: var(--muted); max-width: 44ch; margin: 0 0 28px; }
+.hero .actions { display: flex; gap: 12px; }
+.hero .button { display: inline-block; padding: 12px 20px; border-radius: 999px; text-decoration: none; font-weight: 600; }
+.hero .button.primary { background: var(--accent); color: var(--accent-ink); }
+.hero .button.secondary { border: 1px solid var(--rule); color: var(--ink); }
+.hero img { width: 100%; border-radius: var(--radius); aspect-ratio: 4 / 3; object-fit: cover; }
+
+/* cards */
+.cards h2 { font-family: var(--display); font-size: 2rem; margin: 0 0 28px; }
+.cards ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.cards li { background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.cards li img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; }
+.cards li .body { padding: 20px; }
+.cards li h3 { margin: 0 0 8px; font-size: 1.15rem; }
+.cards li p { margin: 0 0 14px; color: var(--muted); }
+.cards li a { color: var(--accent); font-weight: 600; text-decoration: none; }
+
+/* site search */
+.site-search { background: #fff; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.site-search form { display: flex; gap: 12px; max-width: 720px; margin: 0 auto; }
+.site-search input { flex: 1; padding: 14px 18px; border: 1px solid var(--rule); border-radius: 999px; font: inherit; }
+.site-search button { padding: 14px 24px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 600; }
+.site-search .results { list-style: none; margin: 24px auto 0; padding: 0; max-width: 720px; display: grid; gap: 12px; }
+.site-search .results li { padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius); }
+.site-search .results:empty { display: none; }
+@media (max-width: 800px) {
+  .hero, .cards ul { grid-template-columns: 1fr; }
+  .site-search form { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/">A regional public-library network</a>
+  <nav><a href="/branches">Branches</a><a href="/events">Events</a><a href="/join">Join</a></nav>
+</header>
+<main>
+  <section class="hero" data-screen-label="Hero — catalogue invitation">
+    <div>
+      <p class="eyebrow">Open to everyone</p>
+      <h1>Find your next read, in any of our twelve branches</h1>
+      <p class="lede">Borrow books, e-books and audiobooks with one card. Reserve online and collect from the branch closest to you.</p>
+      <div class="actions">
+        <a class="button primary" href="/join">Get a library card</a>
+        <a class="button secondary" href="/branches">Find a branch</a>
+      </div>
+    </div>
+    <img src="assets/reading-room.jpg" alt="A quiet reading room with tall windows" width="960" height="720">
+  </section>
+
+  <section class="cards" data-screen-label="This month — three programmes">
+    <h2>This month at the library</h2>
+    <ul>
+      <li>
+        <img src="assets/story-hour.jpg" alt="Children sitting in a circle for story hour" width="600" height="400">
+        <div class="body">
+          <h3>Story hour for under-fives</h3>
+          <p>Every Saturday morning, songs and picture books in the children's corner.</p>
+          <a href="/events/story-hour">See the dates</a>
+        </div>
+      </li>
+      <li>
+        <img src="assets/repair-cafe.jpg" alt="Volunteers mending a lamp at a workbench" width="600" height="400">
+        <div class="body">
+          <h3>Repair café</h3>
+          <p>Bring a broken toaster or a torn coat; our volunteers help you fix it.</p>
+          <a href="/events/repair-cafe">Book a slot</a>
+        </div>
+      </li>
+      <li>
+        <img src="assets/author-talk.jpg" alt="An author speaking to a seated audience" width="600" height="400">
+        <div class="body">
+          <h3>Author talks</h3>
+          <p>Local writers read from new work and take questions. Free, no booking.</p>
+          <a href="/events/author-talks">This month's guests</a>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="site-search" data-screen-label="Catalogue search — input, button, results list">
+    <form role="search" action="/search" method="get">
+      <input type="search" name="q" placeholder="Search the catalogue" aria-label="Search the catalogue">
+      <button type="submit">Search</button>
+    </form>
+    <ul class="results" aria-live="polite"></ul>
+  </section>
+</main>
+<footer class="site-footer">
+  <p>A regional public-library network · Opening hours vary by branch</p>
+</footer>
+</body>
+</html>

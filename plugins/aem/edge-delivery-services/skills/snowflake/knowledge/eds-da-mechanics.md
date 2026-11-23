@@ -97,7 +97,7 @@ block name; rows and cells are `<div>` children.
 **Implication:** our DA document emits one `<div class="<name>">`
 block per semantic block, with `slot-name | content` rows. Reading
 slot values is `block.querySelectorAll(':scope > div')` then mapping
-cell pairs. See `da-content` §3.2 for the canonical block shape.
+cell pairs. See `da-content` for the canonical block shape.
 
 ## DA — Document Authoring
 

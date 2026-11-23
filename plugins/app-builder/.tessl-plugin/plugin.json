@@ -1,0 +1,11 @@
+{
+  "name": "adobe/app-builder",
+  "version": "1.0.0",
+  "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects, including the Workfront UI-extension suite (skills/appbuilder-workfront).",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "private": false
+}

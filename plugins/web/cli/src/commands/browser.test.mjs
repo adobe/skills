@@ -258,6 +258,66 @@ test('browser open --proxy keeps the recipe probe config', async () => {
   assert.equal(config.launchOptions.proxy.server, 'http://127.0.0.1:3002');
 });
 
+test('browser open --proxy with a remote-browser recipe exits 2 USAGE before launching', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'rec-')), 'remote.json');
+  writeFileSync(file, JSON.stringify({ probe: [{ config: { cdpEndpoint: 'env:REMOTE_WSS' } }] }));
+  const { code, stdout, calls } = await run(
+    ['browser', 'open', 'https://a.test', '--proxy', 'http://127.0.0.1:3002'],
+    { env: { WEB_RECIPE: file, REMOTE_WSS: 'wss://u:p@remote.test:9222' } },
+  );
+  assert.equal(code, 2);
+  const { error } = JSON.parse(stdout.buf);
+  assert.equal(error.code, 'USAGE');
+  assert.match(error.message, /--proxy cannot route a remote browser/);
+  assert.match(error.hint, /WEB_RECIPE= /);
+  assert.equal(call(calls, 'open'), undefined);
+});
+
+test('an empty WEB_RECIPE opens without any recipe, even with ./recipe.json present', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cwd-'));
+  writeFileSync(
+    join(dir, 'recipe.json'),
+    JSON.stringify({ probe: [{ config: { cdpEndpoint: 'wss://remote.test:9222' } }] }),
+  );
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { code, calls } = await run(
+      ['browser', 'open', 'https://a.test', '--proxy', 'http://127.0.0.1:3002'],
+      { env: { WEB_RECIPE: '' } },
+    );
+    assert.equal(code, 0);
+    assert.equal(call(calls, 'open')[1].config.cdpEndpoint, undefined);
+  } finally {
+    process.chdir(cwd);
+  }
+});
+
+test('browser open resolves env:NAME from the injected env, not process.env', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'rec-')), 'remote.json');
+  writeFileSync(
+    file,
+    JSON.stringify({ probe: [{ config: { cdpEndpoint: 'env:ONLY_IN_DEPS_WSS' } }] }),
+  );
+  assert.equal(process.env.ONLY_IN_DEPS_WSS, undefined);
+  const { code, calls } = await run(['browser', 'open', 'https://a.test'], {
+    env: { WEB_RECIPE: file, ONLY_IN_DEPS_WSS: 'wss://u:p@deps.test:9222' },
+  });
+  assert.equal(code, 0);
+  assert.equal(call(calls, 'open')[1].config.cdpEndpoint, 'wss://u:p@deps.test:9222');
+});
+
+test('commander diagnostics are redacted on stderr', async () => {
+  const { code, stdout, stderr } = await run([
+    'browser',
+    'attach',
+    '--cdp=wss://alice:pa55word@example.test/',
+  ]);
+  assert.equal(code, 2);
+  assert.match(stderr.buf, /wss:\/\/\[redacted\]@example\.test/);
+  for (const out of [stdout.buf, stderr.buf]) assert.doesNotMatch(out, /alice|pa55word/);
+});
+
 test('browser open --proxy with an invalid URL exits 2 USAGE', async () => {
   const { code, stdout } = await run(['browser', 'open', 'https://a.test', '--proxy', 'notaurl']);
   assert.equal(code, 2);

@@ -1,0 +1,9 @@
+{
+  "consent": {
+    "mode": "cmp",
+    "tool": "onetrust",
+    "withoutConsent": [
+      "split"
+    ]
+  }
+}

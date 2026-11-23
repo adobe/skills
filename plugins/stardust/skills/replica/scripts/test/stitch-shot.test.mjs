@@ -4,8 +4,8 @@
 // path; the exit code per error class (BotChallengeError → 3, anything else → 1); recheckDenial on stub pages
 // through the real pageDenial / botChallengeError — a vendor signature or a tiny one-error-heading page throws the
 // exit-3 error naming "HTTP <status> denial page — …", "origin blocked" and --headed, an ordinary page is 'ok', a
-// page the probe cannot read or a live-session copy that predates pageDenial is 'skipped: <reason>' with ONE stderr
-// line. End to end, where playwright and pngjs are importable from the scripts dir: a local server's denial pages
+// page the probe cannot read is 'skipped: <reason>' with ONE stderr line. End to end, where playwright and pngjs are
+// importable from the scripts dir: a local server's denial pages
 // (the recorded shape — about 900 px of "can't process your request" + "Incident Number" served with 200 — the same
 // rendered by script after load, and a tiny page under one error heading) exit 3 with no PNG and no capture.json;
 // an ordinary page and a long article that mentions "press & hold" exit 0 and capture.json records denialCheck 'ok'.
@@ -18,28 +18,40 @@
 // fontCheckLines; end to end a 404 face and an unresolved local() named in the capture record's fontsFailed, a clean
 // page → [], document.fonts throwing → null + fontCheck, a failed capture removing an earlier record. And (0.34.12) fixed /
 // sticky layers captured once: layerAction, isBackdrop, overlaySuspects, layerPassScript (the in-page pass) on a stub DOM,
-// and end to end a fixed header, a scroll-triggered one and a fixed inset:0 backdrop.
+// and end to end a fixed header, a scroll-triggered one and a fixed inset:0 backdrop. And the freeze as a constructed
+// stylesheet (applyFreeze on stub pages: adopted → 'applied', the <style> fallback, both refused → 'failed: …' with no
+// throw; freezeLines) and the height re-measured per chunk (heightCap, heightNow, nextChunkStart, heightChangeOf,
+// planCapture over height sequences: a document that shrinks or grows is captured to its settled height, a
+// scroll-jacked one still stalls); end to end a strict-CSP page with a running animation, a sticky and a fixed header
+// that get 8 px shorter after the first scroll, a page that grows, and a scroll-jacked page. And the timer hold
+// (--hold-timers, default OFF): parseArgs, installTimerHold / timerHoldScript on a stub window with a fake clock (a
+// 5 s interval never ticks, a timeout chain is held after its first tick however it re-arms, one-shot timeouts and
+// short timers run as the page asked), timersOutcome (a hold that is not installed throws), baselineProvenance's
+// timers; end to end a 5 s interval carousel and a self-re-arming timeout carousel with and without the flag, and a
+// page whose content arrives through one-shot timeouts.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
-  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
+  BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, FREEZE_CSS, HELP, LIVE_RECORD_WRITER, UsageError,
+  applyFreeze, freezeLines, heightCap, heightChangeOf, heightNow, nextChunkStart, planCapture,
+  LayoutOverflowError, checkPageSize, baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFaceKeys, deadFontFaces, exitCodeFor, faceKey,
   fontCheckLines, fontCheckOutcome, fontFamilies, isBackdrop, layerAction, layerPassScript, liveRecord, overlayExtras, overlaySuspects,
   parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
+  HOLD_MIN_DEFAULT, installTimerHold, timerHoldScript, timersLine, timersOutcome,
 } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
-// live-session.mjs in either layout (plugin tree / project copy) — imports nothing, so the pure part can use it
-const LIB = ['../../../diff/scripts/live-session.mjs', '../../diff/live-session.mjs'].map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-const session = await import(pathToFileURL(LIB).href);
+// the front door (browser.mjs) in either layout (plugin tree / project copy) — the pure part uses its live-session names
+const BROWSER = ['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+const session = await import(BROWSER.href);
 let checks = 0; let failed = 0;
 const check = async (name, fn) => { checks += 1; try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 // stderr lines console.error printed while fn ran
@@ -98,6 +110,93 @@ await check('stitchRows: chunks land at their y, rows past totalH and columns pa
   assert.deepEqual([...short.subarray(8)], Array(16).fill(0), 'rows no chunk covers stay zero');
 });
 
+await check('heightCap / heightNow: growth is followed to twice the starting height (four more viewports for a short page); an unreadable or blank measure keeps the height known so far', () => {
+  assert.equal(heightCap(5000, 900), 10000); assert.equal(heightCap(1000, 900), 4600);
+  assert.equal(heightNow(1805, 1797, 1805, 900), 1797, 'shrank');
+  assert.equal(heightNow(2360, 3038, 2360, 900), 3038, 'grew');
+  assert.equal(heightNow(5000, 99999, 5000, 900), 10000, 'capped');
+  assert.equal(heightNow(1805, null, 1805, 900), 1805); assert.equal(heightNow(1805, NaN, 1805, 900), 1805); assert.equal(heightNow(1805, 0, 1805, 900), 1805);
+  assert.equal(heightNow(1805, 1796.6, 1805, 900), 1797, 'whole px');
+});
+await check('nextChunkStart: one viewport on — from where the window landed when that is short of the chunk start', () => {
+  assert.equal(nextChunkStart(900, 900, 900), 1800, 'landed on the target');
+  assert.equal(nextChunkStart(900, 892, 900), 1792, 'pulled back 8 px: the next chunk starts where this one ended');
+  assert.equal(nextChunkStart(3600, 2788, 900), 3688, 'the clamped last chunk ends at the bottom');
+  assert.equal(nextChunkStart(900, 892.5, 900), 1792, 'fractional scroll: whole px, never a gap');
+});
+await check('heightChangeOf: null when the height did not move; { initial, final } when it did; capped: true when growth passed the cap', () => {
+  assert.equal(heightChangeOf(1805, 1805), null);
+  assert.deepEqual(heightChangeOf(1805, 1797), { initial: 1805, final: 1797 });
+  assert.deepEqual(heightChangeOf(1000, 4600, true), { initial: 1000, final: 4600, capped: true });
+});
+// a model window: scrollTo clamps to the document's bottom; `heights(chunkIndex, target)` says how tall the document is
+// after that scroll, `shift` how far the window is pulled back (scroll anchoring)
+const win = (vh, heights, shift = () => 0) => (target, i) => { const height = heights(i, target); return { actualY: Math.max(0, Math.min(target - shift(i), height - vh)), height }; };
+await check('planCapture: a document that does not change — the chunks the script always took (steps of vh, the last clamped)', () => {
+  const r = planCapture(3688, 900, win(900, () => 3688));
+  assert.deepEqual(r.chunks.map((c) => c.actualY), [0, 900, 1800, 2700, 2788]); assert.equal(r.height, 3688); assert.equal(r.stalled, null);
+  assert.deepEqual(planCapture(500, 900, win(900, () => 500)).chunks, [{ target: 0, actualY: 0 }], 'shorter than the viewport: one chunk');
+});
+await check('planCapture: the document gets 8 px shorter after the first scroll (1805 → 1797) — no stall, settled height, every row covered; the stale-height clamp is what stalled', () => {
+  const heights = (i) => (i === 0 ? 1805 : 1797);
+  // no scroll anchoring: the window is clamped at the new bottom
+  const a = planCapture(1805, 900, win(900, heights));
+  assert.equal(a.stalled, null); assert.equal(a.height, 1797); assert.deepEqual(a.chunks.map((c) => c.actualY), [0, 897]);
+  // the same sequence against the height read once: chunk 2 lands on 897, chunk 3's stale target is 905 → a stall
+  assert.equal(scrollStalled(897, 897, chunkTarget(1800, 1805, 900)), true, 'the defect');
+  assert.equal(scrollStalled(897, 897, chunkTarget(1800, 1797, 900)), false, 'the current height');
+  // scroll anchoring pulls the window back 8 px when the header shrinks: a third chunk covers the last rows
+  const b = planCapture(1805, 900, win(900, heights, (i) => (i === 1 ? 8 : 0)));
+  assert.equal(b.stalled, null); assert.equal(b.height, 1797); assert.deepEqual(b.chunks.map((c) => c.actualY), [0, 892, 897]);
+  for (const r of [a, b]) assert.equal(r.chunks.at(-1).actualY + 900, r.height, 'the last chunk ends at the settled bottom');
+});
+await check('planCapture: a document that shrinks at the last chunk, or to less than one viewport, ends without a stall', () => {
+  const a = planCapture(2400, 900, win(900, (i) => (i < 2 ? 2400 : 2300)));
+  assert.equal(a.stalled, null); assert.equal(a.height, 2300); assert.deepEqual(a.chunks.map((c) => c.actualY), [0, 900, 1400]);
+  const b = planCapture(1000, 900, win(900, (i) => (i === 0 ? 1000 : 880)));
+  assert.equal(b.stalled, null); assert.equal(b.height, 880);
+});
+await check('planCapture: a document that grows moderately is followed to its settled height; an endless feed stops at the cap', () => {
+  const a = planCapture(2360, 900, win(900, (i, target) => (target > 1000 ? 3038 : 2360)));
+  assert.equal(a.stalled, null); assert.equal(a.height, 3038); assert.equal(a.chunks.at(-1).actualY, 3038 - 900);
+  for (let i = 1; i < a.chunks.length; i += 1) assert.ok(a.chunks[i].actualY <= a.chunks[i - 1].actualY + 900, 'no gap between chunks');
+  const feed = planCapture(2000, 900, win(900, (i) => 2000 + (i + 1) * 5000));
+  assert.equal(feed.stalled, null); assert.equal(feed.height, heightCap(2000, 900)); assert.equal(feed.chunks.at(-1).actualY, heightCap(2000, 900) - 900);
+});
+await check('planCapture: a scroll-jacked page (the document stays tall, the window never moves) still stalls at chunk 2 — also when its height changes', () => {
+  const jacked = (heights) => (target, i) => ({ actualY: 0, height: heights(i) });
+  const a = planCapture(3688, 900, jacked(() => 3688));
+  assert.deepEqual(a.stalled, { target: 900, actualY: 0, height: 3688 }); assert.equal(a.chunks.length, 1);
+  const b = planCapture(3688, 900, jacked((i) => 3688 - 8 * i));
+  assert.ok(b.stalled && b.chunks.length === 1, 'a shrinking jacked page');
+  // a window that creeps a few px per scroll never converges: reported, not looped forever
+  const creep = planCapture(3000, 900, (target, i) => ({ actualY: i * 5, height: 3000 }));
+  assert.ok(creep.stalled, 'a creeping window');
+});
+await check('applyFreeze: the constructed stylesheet first (no <style>) → \'applied\'; refused → the <style> fallback; both refused → \'failed: …\' naming both, never a throw; freezeLines warns only then', async () => {
+  assert.match(FREEZE_CSS, /animation-play-state:paused!important/); assert.match(FREEZE_CSS, /transition:none!important/);
+  const calls = [];
+  const page = (evaluate, addStyleTag) => ({ evaluate: async (fn, css) => { calls.push(['evaluate', css]); return evaluate(fn, css); }, addStyleTag: async (o) => { calls.push(['addStyleTag', o.content]); return addStyleTag(o); } });
+  // the in-page function on a stub document: the sheet is adopted beside the page's own, the rules counted
+  const run = (fn, css) => {
+    class CSSStyleSheet { replaceSync(t) { this.cssRules = t.split('}').filter(Boolean); } }
+    const document = { adoptedStyleSheets: [{ own: true }] };
+    const n = runInNewContext(`(${fn})(css)`, { CSSStyleSheet, document, css });
+    assert.equal(document.adoptedStyleSheets.length, 2, 'the page\'s own adopted sheet is kept'); assert.ok(document.adoptedStyleSheets[0].own);
+    return n;
+  };
+  assert.equal(await applyFreeze(page(run, () => { throw new Error('not reached'); })), 'applied');
+  assert.deepEqual(calls, [['evaluate', FREEZE_CSS]], 'no <style> is injected when the sheet is adopted');
+  calls.length = 0;
+  assert.equal(await applyFreeze(page(() => { throw new Error('CSSStyleSheet is not a constructor'); }, () => ({}))), 'applied', 'the <style> fallback');
+  assert.deepEqual(calls.map((c) => c[0]), ['evaluate', 'addStyleTag']);
+  assert.equal(await applyFreeze(page(() => 0, () => ({}))), 'applied', 'a sheet that was not adopted → the fallback');
+  const failed = await applyFreeze(page(() => { throw new Error('CSSStyleSheet is not a constructor\n  at stack'); }, () => { throw new Error('page.addStyleTag: Applying inline style violates the following Content Security Policy directive\nmore'); }));
+  assert.equal(failed, 'failed: constructed stylesheet: CSSStyleSheet is not a constructor; <style>: page.addStyleTag: Applying inline style violates the following Content Security Policy directive');
+  assert.deepEqual(freezeLines('applied'), []);
+  const lines = freezeLines(failed);
+  assert.equal(lines.length, 1); assert.match(lines[0], /^stitch-shot WARNING: the animation \/ transition freeze was not applied \(constructed stylesheet: /);
+});
 await check('sidecarOf: <out>.png → <out>.capture.json beside it (live.png → live.capture.json), any case of the extension', () => {
   assert.equal(sidecarOf('stardust/replica/gates/home-1440/live.png'), 'stardust/replica/gates/home-1440/live.capture.json');
   assert.equal(sidecarOf('/tmp/x/build.PNG'), '/tmp/x/build.capture.json');
@@ -142,13 +241,14 @@ await check('recheckDenial: an ordinary page → \'ok\', nothing on stderr; a pa
   assert.deepEqual(await stderrOf(async () => { skipped = await recheckDenial(session, unreadable, 'https://x.test/', 200); }), ['stitch-shot: denial-page check skipped (Execution context was destroyed, most likely because of a navigation)']);
   assert.equal(skipped, 'skipped: Execution context was destroyed, most likely because of a navigation');
 });
-await check('recheckDenial: a live-session copy that predates pageDenial / botChallengeError never throws — \'skipped: live-session.mjs predates pageDenial\' and ONE stderr line naming the stale copy', async () => {
-  for (const stale of [{}, { pageDenial: session.pageDenial }, { botChallengeError: session.botChallengeError }]) {
-    let out;
-    const lines = await stderrOf(async () => { out = await recheckDenial(stale, { evaluate: async () => { throw new Error('never read'); } }, 'https://x.test/', 200); });
-    assert.deepEqual(lines, ['stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)'], Object.keys(stale).join() || 'neither');
-    assert.equal(out, 'skipped: live-session.mjs predates pageDenial');
-  }
+await check('a copy without the master scripts stops with the copy instruction', () => {
+  const copy = mkdtempSync(join(tmpdir(), 'stitch-nomaster-'));
+  try {
+    copyFileSync(SCRIPT, join(copy, 'stitch-shot.mjs'));
+    const r = spawnSync(process.execPath, [join(copy, 'stitch-shot.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), r.stderr);
+  } finally { rmSync(copy, { recursive: true, force: true }); }
 });
 await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge interstitial or a 2xx denial page with --headed, the capture.json record — nothing written, no playwright needed; importing this module started no capture', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));
@@ -159,7 +259,8 @@ await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge int
     assert.match(r.stdout, /3 bot challenge[^]*2xx denial page[^]*pageDenial[^]*no PNG, no capture\.json; escalate --headed/);
     for (const f of ['--consent <sel>', '--dismiss <sel,…>', '--no-dismiss', '--freeze-baseline', '--check-baseline', '--force', 'baseline <dir>', 'record <live.json>', '--gate-against-baseline', 'fontsFailed = [] (every declared face loaded)', 'null + fontCheck']) assert.ok(r.stdout.includes(f) && HELP.includes(f), f);
     assert.match(r.stdout, /<stem>\.capture\.json/);
-    assert.match(r.stdout, /denialCheck = 'ok' \|\n'skipped: <reason>'/);
+    assert.match(r.stdout, /denialCheck = 'ok' \| 'skipped: <reason>'/);
+    assert.match(r.stdout, /freeze =\n'applied' \| 'failed: <msg>'/); assert.match(r.stdout, /heightChange = \{ initial, final\[, capped\] \}/);
     assert.equal(r.stderr, '');
     assert.deepEqual(readdirSync(cwd), []);
     // no arguments: the usage error, exit 1, before any I/O (and before playwright is asked for)
@@ -363,6 +464,10 @@ await check('deadFontFaces: keyed by family, weight and style — a 404 bold bes
   assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', 'normal', 'italic')]), ['Brand Sans'], 'another style loaded: the italic is dead');
   assert.deepEqual(deadFontFaces([face('Brand Sans', 'error'), face('Brand Sans', 'error', '700'), face('Other', 'error')]), ['Brand Sans', 'Other'], 'a family is named once, sorted');
 });
+await check('deadFaceKeys: the dead faces themselves (family|weight|style), for a per-face comparison of the two sides; fontCheckOutcome records them', () => {
+  assert.deepEqual(deadFaceKeys([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', '700'), face('Brand Sans', 'error', 'bold')]), ['brand sans|700|normal']);
+  assert.deepEqual(fontCheckOutcome([face('Brand Sans', 'error', 'normal', 'italic')]), { fontsFailed: ['Brand Sans'], deadFaces: ['brand sans|400|italic'] });
+});
 await check('deadFontFaces: an unresolved local() source is dead like a failed fetch — status error, no URL anywhere; an unloaded face (never needed) is not; every face loaded → []; no faces → []', () => {
   // the recorded shape: metric fallback faces declared with local() platform fonts the gate's browser does not have
   const fallback = [face('Brand Sans', 'error'), face('Brand Sans Fallback', 'error'), face('Brand Serif Fallback', 'error', '400', 'normal')];
@@ -373,9 +478,9 @@ await check('deadFontFaces: an unresolved local() source is dead like a failed f
 });
 await check('fontCheckOutcome: a face list → { fontsFailed } (checked, no fontCheck key); an error or no list → { fontsFailed: null, fontCheck: "failed: <first line>" } — never []', () => {
   const ok = fontCheckOutcome([face('Brand Sans', 'error'), face('Other', 'loaded')], null);
-  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'] });
+  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'], deadFaces: ['brand sans|400|normal'] });
   assert.ok(!('fontCheck' in ok), 'fontCheck only when the check failed');
-  assert.deepEqual(fontCheckOutcome([face('Other', 'loaded')], null), { fontsFailed: [] });
+  assert.deepEqual(fontCheckOutcome([face('Other', 'loaded')], null), { fontsFailed: [], deadFaces: [] });
   const bad = fontCheckOutcome(null, new Error('page.evaluate: Execution context was destroyed\n    at main'));
   assert.deepEqual(bad, { fontsFailed: null, fontCheck: 'failed: page.evaluate: Execution context was destroyed' });
   assert.deepEqual(Object.keys(bad), ['fontsFailed', 'fontCheck'], 'fontCheck right after fontsFailed');
@@ -503,6 +608,117 @@ await check('layerPassScript in a stub page: chunk 1 tags at scroll 0 and shows 
   assert.equal(hd.getAttribute('data-sd-opacity-priority'), null);
 });
 
+// ---- the timer hold (--hold-timers): the in-page wrapper on a stub window with a fake clock ---------------------------
+// A window whose timers run on a clock the test advances: setTimeout / setInterval / clearTimeout / clearInterval.
+function clockWindow() {
+  let id = 0; let now = 0; let q = [];
+  const win = {
+    setTimeout(cb, d, ...a) { id += 1; q.push({ id, at: now + (Number(d) || 0), cb, a, self: this }); return id; },
+    setInterval(cb, d, ...a) { id += 1; q.push({ id, at: now + (Number(d) || 0), cb, a, every: Number(d) || 0, self: this }); return id; },
+    clearTimeout(i) { q = q.filter((t) => t.id !== i); },
+  };
+  win.clearInterval = win.clearTimeout;
+  const advance = (ms) => {
+    const end = now + ms;
+    for (;;) {
+      q.sort((x, y) => x.at - y.at || x.id - y.id);
+      const t = q[0];
+      if (!t || t.at > end) break;
+      now = t.at;
+      if (t.every) t.at += t.every; else q.shift();
+      if (typeof t.cb === 'function') t.cb.apply(t.self, t.a);
+    }
+    now = end;
+  };
+  return { win, advance };
+}
+await check('parseArgs: the timer hold is OFF by default; --hold-timers = 2000 ms; --hold-min <ms> sets the threshold and implies it; below 2000 ms or not a number is a usage error', () => {
+  assert.equal(parseArgs(argv('u', 'o.png')).opts.holdTimers, null);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-timers')).opts.holdTimers, 2000); assert.equal(HOLD_MIN_DEFAULT, 2000);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-min', '3500')).opts.holdTimers, 3500);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-timers', '--hold-min', '3500')).opts.holdTimers, 3500);
+  assert.equal(parseArgs(argv('u', 'o.png', '--hold-min', '3500', '--hold-timers')).opts.holdTimers, 3500);
+  for (const bad of ['1999', '0', 'soon', undefined]) assert.throws(() => parseArgs(argv('u', 'o.png', '--hold-min', ...(bad === undefined ? [] : [bad]))), (e) => e instanceof UsageError && /--hold-min needs a number of ms, at least 2000/.test(e.message), String(bad));
+  assert.match(HELP, /--hold-timers /); assert.match(HELP, /--hold-min <ms> /);
+});
+await check('installTimerHold: a 5 s setInterval carousel never ticks — registered with a real id, counted; a 500 ms interval and a 1999 ms one tick as before', () => {
+  const { win, advance } = clockWindow();
+  const state = installTimerHold(win, 2000);
+  let slide = 0; let fast = 0; let near = 0;
+  const id = win.setInterval(() => { slide += 1; }, 5000);
+  win.setInterval(() => { fast += 1; }, 500); win.setInterval(() => { near += 1; }, 1999);
+  win.setInterval(() => { slide += 100; }, '86400000'); // a delay given as a string
+  advance(60000);
+  assert.equal(slide, 0, 'the first slide, a minute on');
+  assert.deepEqual([fast, near], [120, 30]);
+  assert.ok(Number.isInteger(id) && id > 0, 'an id of the page\'s own pool'); win.clearInterval(id);
+  assert.deepEqual({ ...state }, { min: 2000, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] });
+  assert.equal(win.__sdTimerHold, state); assert.deepEqual(Object.keys(win).includes('__sdTimerHold'), false, 'not enumerable');
+  assert.equal(installTimerHold(win, 2000), state, 'installed once per document');
+});
+await check('installTimerHold: a self-re-arming setTimeout carousel advances ONCE, then the chain is held — re-armed inside the callback (any delay), or later by the same callback code with the delay of one that already fired (a transition-end handler, a fresh closure)', () => {
+  // (a) the callback re-arms itself
+  let a = clockWindow(); let state = installTimerHold(a.win, 2000); let slide = 0;
+  const next = () => { slide += 1; a.win.setTimeout(next, 5000); };
+  a.win.setTimeout(next, 5000); a.advance(60000);
+  assert.equal(slide, 1); assert.deepEqual({ ...state }, { min: 2000, held: 1, intervals: 0, chains: 1, delays: [5000] });
+  // (b) per-slide delays: the next link has another delay, armed inside the callback
+  a = clockWindow(); state = installTimerHold(a.win, 2000); slide = 0;
+  const varied = () => { slide += 1; a.win.setTimeout(varied, 4000 + slide * 1000); };
+  a.win.setTimeout(varied, 4000); a.advance(60000);
+  assert.equal(slide, 1); assert.deepEqual(state.delays, [5000]);
+  // (c) re-armed OUTSIDE the callback (an event the advance ends with), a fresh closure each time, the same delay
+  a = clockWindow(); state = installTimerHold(a.win, 2000); slide = 0;
+  const arm = () => a.win.setTimeout(() => { slide += 1; a.win.setTimeout(arm, 300); }, 5000); // 300 ms: the "transition"
+  arm(); a.advance(60000);
+  assert.equal(slide, 1); assert.equal(state.chains, 1);
+});
+await check('installTimerHold: an unrelated one-shot timeout with the delay of one that already fired still runs — only the same callback code is a chain', () => {
+  const a = clockWindow(); const state = installTimerHold(a.win, 2000); const ran = [];
+  a.win.setTimeout(() => { ran.push('A'); }, 2000); a.advance(2500);
+  a.win.setTimeout(() => { ran.push('B: a late reveal'); }, 2000); a.advance(2500);
+  assert.deepEqual(ran, ['A', 'B: a late reveal']); assert.deepEqual({ ...state }, { min: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+});
+await check('installTimerHold: one-shot timeouts of any length fire once as the page asked (this, arguments, return value untouched) — content revealed after 2.5 s, an anti-flicker timeout, two reveals armed together with one delay; short timeouts reach the native timer unwrapped', () => {
+  const { win, advance } = clockWindow();
+  const seen = []; const native = win.setTimeout;
+  const passed = []; win.setTimeout = function spy(cb, d, ...r) { passed.push(cb); return native.call(this, cb, d, ...r); };
+  const state = installTimerHold(win, 2000);
+  win.setTimeout(function reveal(x, y) { seen.push(['content', this === win, x, y]); }, 2500, 'a', 'b');
+  win.setTimeout(() => { seen.push(['anti-flicker']); }, 4000);
+  win.setTimeout(() => { seen.push(['twin-1']); }, 3000); win.setTimeout(() => { seen.push(['twin-2']); }, 3000);
+  const short = () => { seen.push(['short']); win.setTimeout(short2, 1500); }; const short2 = () => { seen.push(['short-2']); };
+  win.setTimeout(short, 100);
+  win.setTimeout('window.x = 1', 5000); // a string body is passed through
+  advance(30000);
+  assert.deepEqual(seen, [['short'], ['short-2'], ['content', true, 'a', 'b'], ['twin-1'], ['twin-2'], ['anti-flicker']]);
+  assert.ok(passed.includes(short) && passed.includes(short2), 'short timeouts: the page\'s own function reaches the native setTimeout');
+  assert.deepEqual({ ...state }, { min: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+});
+await check('timerHoldScript: the init script is installTimerHold serialized, and runs in a bare page context', () => {
+  const src = timerHoldScript(2000);
+  assert.ok(src.startsWith(`(${String(installTimerHold)})(window, 2000)`));
+  const { win, advance } = clockWindow(); let slide = 0;
+  runInNewContext(src, { window: win });
+  win.setInterval(() => { slide += 1; }, 5000); advance(20000);
+  assert.equal(slide, 0); assert.equal(win.__sdTimerHold.held, 1);
+});
+await check('timersOutcome: the state read back from the captured document → the record\'s timers (delays sorted); no state, or another threshold, throws — a hold that is not installed is never a capture; timersLine names the chain rule', () => {
+  assert.deepEqual(timersOutcome({ min: 2000, held: 3, intervals: 2, chains: 1, delays: [86400000, 5000] }, 2000), { hold: 2000, held: 3, intervals: 2, chains: 1, delays: [5000, 86400000] });
+  assert.deepEqual(timersOutcome({ min: 2000, held: 0, intervals: 0, chains: 0, delays: [] }, 2000), { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+  for (const bad of [null, undefined, {}, { min: 3000, held: 1, intervals: 1, chains: 0, delays: [] }]) assert.throws(() => timersOutcome(bad, 2000), /--hold-timers: the timer hold is not installed in the captured document/);
+  assert.equal(exitCodeFor((() => { try { timersOutcome(null, 2000); } catch (e) { return e; } return null; })()), 1);
+  assert.equal(timersLine({ hold: 2000, held: 2, intervals: 2, chains: 0, delays: [5000] }), 'timers held: 2 of ≥ 2000 ms (2 interval(s), 0 timeout chain link(s); delays 5000 ms)');
+  assert.match(timersLine({ hold: 2000, held: 1, intervals: 0, chains: 1, delays: [5000] }), /a timeout chain is held after its first tick: that region shows the state after one advance$/);
+});
+await check('baselineProvenance: timers only when the capture was taken with the hold — without it the record is what it was', () => {
+  const base = { url: 'https://x.test/', width: 1440, vh: 900, height: 3000, capturedAt: '2026-01-01T00:00:00.000Z' };
+  assert.equal('timers' in baselineProvenance(base), false);
+  const t = { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] };
+  const p = baselineProvenance({ ...base, timers: t });
+  assert.deepEqual(p.timers, t); assert.equal(Object.keys(p).pop(), 'timers');
+});
+
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "await import('playwright'); await import('pngjs');"], { cwd: dirname(SCRIPT), encoding: 'utf8' });
 if (pwProbe.status !== 0) {
   console.log('skip  end-to-end stitch-shot (playwright / pngjs not importable from the scripts dir; run this test in an environment that has them)');
@@ -535,10 +751,33 @@ if (pwProbe.status !== 0) {
     '/cmp-unlisted': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#bar{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="bar"><button onclick="this.parentNode.remove()">Disallow all</button><button onclick="this.parentNode.remove()">Accept only necessary</button><button onclick="this.parentNode.remove()">Allow all</button></div>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
+  // a strict Content-Security-Policy (nonce, no 'unsafe-inline') and a running animation on a bar 1000 px tall — it
+  // crosses chunks 1 and 2, taken at least 450 ms apart: the same x in both only when the animation is frozen
+  const CSP = "default-src 'self'; style-src 'self' 'nonce-abc123'; script-src 'self' 'nonce-abc123'";
+  pages['/csp'] = '<!doctype html><html><head><meta charset="utf-8"><title>Strict policy</title><style nonce="abc123">html,body{margin:0}section{height:600px;background:#ddd}@keyframes slide{from{transform:translateX(0)}to{transform:translateX(600px)}}#mv{width:100px;height:1000px;background:#c00;animation:slide 1.7s linear infinite alternate}</style></head><body><h1>Strict policy</h1><div id="mv"></div><section></section><section></section><section></section></body></html>';
+  // 1205 px at scroll 0 (two viewports + 5); a header 154 → 146 px after the first scroll event leaves 1197 px. Sticky:
+  // scroll anchoring pulls the window back. Fixed + a padding-top that follows it: no anchoring, the window is clamped —
+  // the shape the height read once reported as a scroll stall. A green 51 px tail ends the page.
+  const shrinkBody = '<div id="hd">Header</div><main><section style="height:1000px"></section><div id="tail"></div></main><script>addEventListener(\'scroll\', () => { if (scrollY > 0) document.body.classList.add(\'small\'); }, { passive: true });</script>';
+  pages['/shrink'] = html('Sticky', `<style>#hd{position:sticky;top:0;height:154px;background:#000;color:#fff}.small #hd{height:146px}#tail{height:51px;background:#0f0}</style>${shrinkBody}`);
+  pages['/shrink-pad'] = html('Fixed', `<style>#hd{position:fixed;top:0;left:0;right:0;height:154px;background:#000;color:#fff}main{padding-top:154px}.small #hd{height:146px}.small main{padding-top:146px}#tail{height:51px;background:#0f0}</style>${shrinkBody}`);
+  // 700 more px once scrolled past 500
+  pages['/grow'] = html('Grow', '<style>h1{margin:0}#more{height:0;background:#00f}#more.on{height:700px}</style><section></section><section></section><section></section><div id="more"></div><script>addEventListener(\'scroll\', () => { if (scrollY > 500) document.getElementById(\'more\').classList.add(\'on\'); }, { passive: true });</script>');
+  // the window cannot scroll: a real stall
+  pages['/jacked'] = html('Jacked', '<style>html,body{height:100%;overflow:hidden}</style><section></section><section></section><section></section><section></section>');
+  // the timer hold: a hero whose colour is its slide (red, green, blue, yellow, …) above an ordinary section.
+  // /carousel-interval advances on a 5 s setInterval; /carousel-chain on a 3 s setTimeout that re-arms itself;
+  // /late-content is white until one-shot timeouts paint it (2.5 s twice, armed together, and 3 s)
+  const SLIDES = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'];
+  const hero = (script) => html('Carousel', `<div id="hero" style="height:300px;background:${SLIDES[0]}"></div><section></section><script>const S = ${JSON.stringify(SLIDES)}; let i = 0; const next = () => { i = (i + 1) % S.length; document.getElementById('hero').style.background = S[i]; }; ${script}</script>`);
+  pages['/carousel-interval'] = hero('setInterval(next, 5000);');
+  pages['/carousel-chain'] = hero('const tick = () => { next(); setTimeout(tick, 3000); }; setTimeout(tick, 3000);');
+  pages['/late-content'] = html('Late', '<div id="a" style="height:100px"></div><div id="b" style="height:100px"></div><div id="c" style="height:100px"></div><section></section><script>const paint = (id, c) => () => { document.getElementById(id).style.background = c; }; setTimeout(paint("a", "#ff0000"), 2500); setTimeout(paint("b", "#00ff00"), 2500); setTimeout(paint("c", "#0000ff"), 3000);</script>');
   const server = createServer((req, res) => {
-    const body = pages[new URL(req.url, 'http://127.0.0.1/').pathname];
+    const path = new URL(req.url, 'http://127.0.0.1/').pathname;
+    const body = pages[path];
     if (!body) { res.writeHead(404); res.end('not here'); return; }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...(path === '/csp' ? { 'content-security-policy': CSP } : {}) });
     res.end(body);
   });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
@@ -557,11 +796,80 @@ if (pwProbe.status !== 0) {
     writeFileSync(join(work, 'failed.capture.json'), '{ "stale": true }\n');
     const [ok, article, consent, noDismiss, allowAll, fixed, late, hiddenFirst, unlisted, fonts, unread, failedCap, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/cmp-hidden-first', 'hidden-first'), stitch('/cmp-unlisted', 'unlisted'), stitch('/fonts', 'fonts'), stitch('/fonts-unreadable', 'unread'), stitch('/nope', 'failed'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     const warnings = (r) => r.stderr.split('\n').filter((l) => /WARNING/.test(l));
-    await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', fontsFailed, fixedLayers, at }', () => {
+    const [csp, csp2, shrink, shrinkPad, grow, jacked] = await Promise.all([stitch('/csp', 'csp'), stitch('/csp', 'csp2'), stitch('/shrink', 'shrink'), stitch('/shrink-pad', 'shrink-pad'), stitch('/grow', 'grow'), stitch('/jacked', 'jacked')]);
+    await check('e2e: a strict Content-Security-Policy (style-src nonce, no unsafe-inline) → exit 0, freeze \'applied\', no WARNING; the running animation is frozen (the moving bar has the same x in chunk 1 and in chunk 2)', async () => {
+      assert.equal(csp.status, 0, csp.stderr); assert.equal(csp2.status, 0, csp2.stderr);
+      assert.equal(csp.cap.freeze, 'applied'); assert.deepEqual(warnings(csp), []);
+      assert.doesNotMatch(csp.stderr, /Content Security Policy/);
+      const { PNG } = await import('pngjs');
+      const span = (f, y) => { const png = PNG.sync.read(readFileSync(f)); let a = -1; let b = -1; for (let x = 0; x < png.width; x += 1) { const i = (y * png.width + x) * 4; if (png.data[i] > 150 && png.data[i + 1] < 50) { if (a < 0) a = x; b = x; } } return [a, b]; };
+      for (const r of [csp, csp2]) {
+        const [a, b] = span(r.out, 100); const [c, d] = span(r.out, 900);
+        assert.ok(a >= 0 && b - a >= 97 && b - a <= 101, `the bar at y 100: x ${a}–${b}`);
+        assert.deepEqual([c, d], [a, b], `the bar in chunk 2 (y 900) where it is in chunk 1 (y 100): x ${a}–${b} vs ${c}–${d}`);
+      }
+    });
+    for (const [r, name, n] of [[shrink, 'a sticky header', 3], [shrinkPad, 'a fixed header with a padding-top that follows it', 2]]) {
+      await check(`e2e: ${name} 8 px shorter after the first scroll (1205 → 1197 px) → exit 0, no stall, the PNG is the settled height with the page's last row in it; heightChange on the record, one WARNING`, async () => {
+        assert.equal(r.status, 0, r.stderr + r.stdout);
+        assert.doesNotMatch(r.stderr, /scroll stall/);
+        assert.deepEqual(pngSize(r.out), { width: 800, height: 1197 });
+        assert.equal(r.cap.height, 1197); assert.equal(r.cap.chunks, n); assert.deepEqual(r.cap.heightChange, { initial: 1205, final: 1197 });
+        const keys = Object.keys(r.cap); assert.equal(keys[keys.indexOf('heightChange') + 1], 'at', keys.join(','));
+        assert.equal(warnings(r).length, 1, r.stderr); assert.match(warnings(r)[0], /the document's height changed during the capture \(1205px → 1197px\)/);
+        const { PNG } = await import('pngjs');
+        const png = PNG.sync.read(readFileSync(r.out));
+        const at = (x, y) => { const i = (y * png.width + x) * 4; return [png.data[i], png.data[i + 1], png.data[i + 2], png.data[i + 3]]; };
+        assert.deepEqual(at(400, 1196), [0, 255, 0, 255], 'the tail\'s last row is the PNG\'s last row');
+        assert.deepEqual(at(400, 1197 - 51), [0, 255, 0, 255], 'the tail\'s first row'); assert.deepEqual(at(400, 1197 - 52), [221, 221, 221, 255], 'the section above it');
+      });
+    }
+    await check('e2e: a page that grows 700 px during the capture is captured to its settled height (heightChange, one WARNING)', async () => {
+      assert.equal(grow.status, 0, grow.stderr + grow.stdout);
+      assert.deepEqual(grow.cap.heightChange, { initial: 1800, final: 2500 }); assert.deepEqual(pngSize(grow.out), { width: 800, height: 2500 });
+      const { PNG } = await import('pngjs');
+      const png = PNG.sync.read(readFileSync(grow.out));
+      for (const y of [1801, 2499]) assert.deepEqual([...png.data.slice((y * 800 + 400) * 4, (y * 800 + 400) * 4 + 3)], [0, 0, 255], `the added block at y ${y}`);
+    });
+    await check('e2e: a scroll-jacked page (html/body overflow hidden) is still a scroll stall — exit 1, no PNG, no record', () => {
+      assert.equal(jacked.status, 1, jacked.stdout);
+      assert.match(jacked.stderr, /stitch-shot error: scroll stall at chunk target 600px: window scroll is a no-op \(window\.scrollY stuck at 0px\) while the document reports 2400px/);
+      assert.deepEqual([existsSync(jacked.out), existsSync(jacked.sidecar)], [false, false]);
+    });
+    // the timer hold. --wait 6200: the capture clears the page's timers at least 6.2 s after the load, so without the
+    // flag the 5 s interval has ticked once or more and the 3 s chain twice or more — lower bounds that hold on a slow machine
+    const [ivHeld, ivHeld2, ivFree, chHeld, chFree, lateHeld] = await Promise.all([stitch('/carousel-interval', 'iv-held', ['--hold-timers', '--wait', '6200']), stitch('/carousel-interval', 'iv-held2', ['--hold-timers', '--wait', '6200']), stitch('/carousel-interval', 'iv-free', ['--wait', '6200']),
+      stitch('/carousel-chain', 'ch-held', ['--hold-timers', '--wait', '6200']), stitch('/carousel-chain', 'ch-free', ['--wait', '6200']), stitch('/late-content', 'late-held', ['--hold-timers', '--wait', '4000'])]);
+    const { PNG: PNGT } = await import('pngjs');
+    const hex = (f, x, y) => { const png = PNGT.sync.read(readFileSync(f)); const i = (y * png.width + x) * 4; return `#${[png.data[i], png.data[i + 1], png.data[i + 2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`; };
+    await check('e2e --hold-timers: a 5 s setInterval carousel is captured on its FIRST slide, twice, byte-identical; the record says timers { hold 2000, held 1, intervals 1, delays [5000] } and stdout says so; without the flag the same page has advanced and its record has no timers', () => {
+      for (const r of [ivHeld, ivHeld2, ivFree]) assert.equal(r.status, 0, r.stderr + r.stdout);
+      assert.equal(hex(ivHeld.out, 400, 150), SLIDES[0]); assert.equal(hex(ivHeld2.out, 400, 150), SLIDES[0]);
+      assert.ok(readFileSync(ivHeld.out).equals(readFileSync(ivHeld2.out)), 'two held captures are the same bytes');
+      assert.deepEqual(ivHeld.cap.timers, { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] });
+      const keys = Object.keys(ivHeld.cap); assert.equal(keys[keys.indexOf('timers') + 1], 'at', keys.join(','));
+      assert.match(ivHeld.stdout, /^timers held: 1 of ≥ 2000 ms \(1 interval\(s\), 0 timeout chain link\(s\); delays 5000 ms\)$/m);
+      assert.notEqual(hex(ivFree.out, 400, 150), SLIDES[0], 'unheld: the carousel advanced before the capture');
+      assert.equal('timers' in ivFree.cap, false); assert.doesNotMatch(ivFree.stdout, /timers held/);
+    });
+    await check('e2e --hold-timers: a self-re-arming 3 s setTimeout carousel is captured after exactly ONE advance (held 1, chains 1, the line says so); without the flag it has advanced twice or more', () => {
+      assert.equal(chHeld.status, 0, chHeld.stderr + chHeld.stdout); assert.equal(chFree.status, 0, chFree.stderr + chFree.stdout);
+      assert.equal(hex(chHeld.out, 400, 150), SLIDES[1]);
+      assert.deepEqual(chHeld.cap.timers, { hold: 2000, held: 1, intervals: 0, chains: 1, delays: [3000] });
+      assert.match(chHeld.stdout, /timers held: 1 .*a timeout chain is held after its first tick/);
+      assert.ok(SLIDES.indexOf(hex(chFree.out, 400, 150)) >= 2, `unheld: slide ${hex(chFree.out, 400, 150)}`);
+    });
+    await check('e2e --hold-timers: content that arrives through one-shot timeouts of 2.5 s (two, armed together) and 3 s still renders — nothing held', () => {
+      assert.equal(lateHeld.status, 0, lateHeld.stderr + lateHeld.stdout);
+      assert.deepEqual([hex(lateHeld.out, 400, 50), hex(lateHeld.out, 400, 150), hex(lateHeld.out, 400, 250)], ['#ff0000', '#00ff00', '#0000ff']);
+      assert.deepEqual(lateHeld.cap.timers, { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
+    });
+    await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', freeze: \'applied\', fontsFailed, fixedLayers, at } (no heightChange: the height did not move)', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
       assert.ok(ok.cap, 'the sidecar');
-      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'fontsFailed', 'fixedLayers', 'at']);
+      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'freeze', 'fontsFailed', 'deadFaces', 'fixedLayers', 'at']);
+      assert.equal(ok.cap.freeze, 'applied');
       assert.deepEqual(ok.cap.fontsFailed, [], 'a page with no @font-face: every declared face loaded');
       assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0, late: 0 });
       assert.deepEqual([ok.cap.writtenBy, ok.cap.url, ok.cap.width, ok.cap.vh, ok.cap.denialCheck], ['skills/replica/scripts/stitch-shot.mjs', `${base}/ok`, 800, 600, 'ok']);
@@ -657,6 +965,15 @@ if (pwProbe.status !== 0) {
     rmSync(work, { recursive: true, force: true });
   }
 }
+
+await check('checkPageSize (#602): a page at Chrome\'s layout maximum is refused with a LayoutOverflowError (exit 1) naming the defect, the chunks and the buffer it would take; an ordinary page passes', () => {
+  assert.deepEqual(checkPageSize({ w: 1440, h: 12074 }), { w: 1440, h: 12074 });
+  assert.throws(() => checkPageSize({ w: 33554432, h: 33554432 }, 1440, 900), (e) => e instanceof LayoutOverflowError
+    && /^layout overflow: the page lays out at 33554432x33554432px/.test(e.message) && /37283 chunks and a 193 GB buffer/.test(e.message)
+    && /inconsistency-register\.md/.test(e.message));
+  assert.throws(() => checkPageSize({ w: 1440, h: 33554432 }), LayoutOverflowError);
+  assert.equal(exitCodeFor(new LayoutOverflowError('x')), 1);
+});
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nstitch-shot: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);

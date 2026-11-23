@@ -1,0 +1,26 @@
+.promo-banner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  background-color: var(--dark-color);
+  color: var(--background-color);
+}
+
+.title {
+  font-size: var(--heading-font-size-xl);
+}
+
+.promo-banner .countdown {
+  font-weight: 700;
+}
+
+header.has-promo {
+  border-bottom: 4px solid var(--link-color);
+}
+
+@media (max-width: 899px) {
+  .promo-banner {
+    grid-template-columns: 1fr;
+  }
+}

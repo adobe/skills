@@ -20,7 +20,7 @@ const run = async (...args) => {
 test('doc without a topic lists the topics as commands', async () => {
   const { code, out } = await run();
   assert.equal(code, 0);
-  assert.equal(out, 'web doc extending\n');
+  assert.equal(out, 'web doc extending\nweb doc header\nweb doc remote-browser\n');
 });
 
 test('doc <topic> prints the Markdown text, not JSON', async () => {
@@ -28,6 +28,13 @@ test('doc <topic> prints the Markdown text, not JSON', async () => {
   assert.equal(code, 0);
   assert.match(out, /^# Extending `web`/);
   assert.equal(out, readFileSync(new URL('../docs/extending.md', import.meta.url), 'utf-8'));
+});
+
+test('doc remote-browser prints the remote browser guide', async () => {
+  const { code, out } = await run('remote-browser');
+  assert.equal(code, 0);
+  assert.match(out, /^# Remote browsers/);
+  assert.match(out, /WEB_TIMEOUT/);
 });
 
 test('an unknown topic is a USAGE error with the topic list as hint', async () => {

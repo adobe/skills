@@ -1,0 +1,14 @@
+{
+  "id": "plan-offer",
+  "source": "target",
+  "variants": [
+    {
+      "name": "free-trial",
+      "fragment": "/fragments/personalization/plan-offer/free-trial"
+    },
+    {
+      "name": "demo",
+      "fragment": "/fragments/personalization/plan-offer/demo"
+    }
+  ]
+}

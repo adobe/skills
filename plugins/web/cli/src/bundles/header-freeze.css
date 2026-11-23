@@ -1,0 +1,11 @@
+/* Injected before screenshots on both the source and the EDS page: CSS motion jumps to its end
+   state (like the reduced-motion technique), so marquees and fades do not depend on timing.
+   JS-driven motion (carousel timers, rotating words) is not covered. */
+*, *::before, *::after {
+  animation-delay: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
+  caret-color: transparent !important;
+}

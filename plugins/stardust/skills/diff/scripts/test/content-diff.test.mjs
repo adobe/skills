@@ -11,7 +11,7 @@
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,8 +20,9 @@ import { ATTRIBUTE_HINTS, alignPrimary, applyAccepted, attributeInventory, diffA
 import { resolveProfile } from '../diff-profiles.mjs';
 import { diffInventories, inventory, editableInventory } from '../content-inventory.mjs';
 import * as deployInventory from '../../../deploy/scripts/content-inventory.mjs';
-import { CONSENT_CANDIDATES } from '../live-session.mjs';
 
+// the front door (browser.mjs) in either layout (plugin tree / project copy)
+const { CONSENT_CANDIDATES } = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'content-diff.mjs');
 let failed = 0;
@@ -469,6 +470,22 @@ if (playwrightOk) {
   });
   server.close();
 }
+
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+await check('a copy without the master scripts stops with the copy instruction, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'content-diff.mjs'), 'https://a.test/', 'https://b.test/'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} failing` : '\ncontent-diff: all checks passed');
 process.exit(failed ? 1 : 0);

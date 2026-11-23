@@ -91,20 +91,7 @@ public final class Analyze {
         out.sort(Comparator.comparing((Finding f) -> f.file).thenComparingLong(f -> f.line).thenComparing(f -> f.pattern));
         String json = toJson(out, warnings);
         System.out.println(json);
-        writeDump(root, json);
         if (unknownPattern) System.exit(4);
-    }
-
-    static void writeDump(Path root, String json) {
-        try {
-            Path dir = root.resolve(".autofix");
-            Files.createDirectories(dir);
-            Path gi = dir.resolve(".gitignore");
-            if (!Files.exists(gi)) Files.write(gi, "*\n".getBytes(StandardCharsets.UTF_8));
-            Files.write(dir.resolve("analyzer-output.json"), json.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception ex) {
-            System.err.println("warn: could not write .autofix/analyzer-output.json — " + ex.getClass().getSimpleName());
-        }
     }
 
     static boolean isOsgiConfig(String name) {

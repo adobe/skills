@@ -1,0 +1,56 @@
+{
+  "context": "Tests whether the agent systematically validates an existing custom component against the documented conventions and fixes all defects: JS file/folder name mismatch, fd:viewType mismatch, missing mappings.js registration, unresolvable shared-field include path, extensionless import, non-bubbling change event, and the legacy subscribe pattern — and reports verification honestly.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "JS file renamed",
+      "max_score": 12,
+      "description": "The component JS lives at `blocks/form/components/star-rating/star-rating.js` (the mismatched `starRating.js` is renamed/removed)"
+    },
+    {
+      "name": "viewType fixed",
+      "max_score": 12,
+      "description": "`_star-rating.json` template now has `\"fd:viewType\": \"star-rating\"` (not `starRating`)"
+    },
+    {
+      "name": "Registered in mappings.js",
+      "max_score": 12,
+      "description": "`'star-rating'` is added to `customComponents` in `blocks/form/mappings.js`"
+    },
+    {
+      "name": "Include path fixed",
+      "max_score": 10,
+      "description": "The basic-fields include in `_star-rating.json` is corrected to a path that resolves from the component folder (e.g. `../../models/form-common/_basic-input-fields.json`)"
+    },
+    {
+      "name": "Import extension fixed",
+      "max_score": 8,
+      "description": "The `subscribe` import uses `'../../rules/index.js'` (with `.js`)"
+    },
+    {
+      "name": "Bubbling change event",
+      "max_score": 10,
+      "description": "Star clicks update the model either via `fieldModel.value = ...` or `new Event('change', { bubbles: true })` (the non-bubbling `new Event('change')` is fixed)"
+    },
+    {
+      "name": "Modern subscribe pattern",
+      "max_score": 12,
+      "description": "The legacy `fieldModel.subscribe(cb, 'change')` is replaced with `subscribe(fieldDiv, formId, cb, { listenChanges: true })` handling `'register'` (initial stars from current value) and `'change'` (`propertyName === 'value'`)"
+    },
+    {
+      "name": "Authoring filter",
+      "max_score": 6,
+      "description": "`star-rating` is added to the `\"form\"` filter in `blocks/form/_form.json` and/or referenced from the custom-components group in `models/_component-definition.json`"
+    },
+    {
+      "name": "README added",
+      "max_score": 6,
+      "description": "`blocks/form/components/star-rating/README.md` is created with authoring properties and usage notes (base type `number-input`, viewType `star-rating`)"
+    },
+    {
+      "name": "Fix report with verification",
+      "max_score": 12,
+      "description": "`FIX-REPORT.md` lists the individual defects with file and cause, and for each states how it was verified (e.g. a validator/structural check, lint, or explicit statement that a check could not be run), without claiming runtime/browser verification that was not performed"
+    }
+  ]
+}

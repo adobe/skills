@@ -1,0 +1,2 @@
+{"url":"https://www.example.com/en/a.html","links":{"https://www.example.com/en/old.html":"main"}}
+{"url":"https://www.example.com/en/b.html","links":{"https://www.example.com/en/old.html":"chrome"}}

@@ -9,6 +9,7 @@ Patterns are **self-contained expert skills** (one subdirectory each):
 
 - [`outdated-dependencies/`](outdated-dependencies/SKILL.md) — Maven version upgrades.
 - [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) — `@Inject` → injector-specific annotations.
+- [`request-controlled-security-bypass/`](request-controlled-security-bypass/guide.md) — security checks a cookie, header or parameter can skip (captcha, login, rate limit).
 - [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) — deprecated/removed AEM Cloud Service API migration (log4j, commons-lang, XSS APIs, OSGi configs, and more).
 
 The runbook and contracts live in [`references/`](references/): `runbook.md` (the run procedure),

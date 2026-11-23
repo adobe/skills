@@ -17,7 +17,8 @@ $destructiveTools = @(
   'delete_project',
   'delete_subscriber_filter',
   'delete_workspace',
-  'unsubscribe_credential_from_service'
+  'unsubscribe_credential_from_service',
+  'unsubscribe_admin_enterprise_credential_from_service'
 )
 
 $ask = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This permanently deletes or removes Adobe Developer Console resources and cannot be undone. Confirm the exact resource before approving."}}'

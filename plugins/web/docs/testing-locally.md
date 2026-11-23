@@ -33,7 +33,8 @@ Commit `dist/` with any change under `cli/src/`.
 ## Testing SKILL.md changes
 
 Skills resolve the CLI as `web` on PATH, then `<skill-dir>/../../cli/dist/web.mjs`
-(plugin layout). To try an edited skill in a Claude Code session, copy it into the
+(plugin layout); page-reduce tries that bundled CLI first and falls back to `web`
+on PATH. To try an edited skill in a Claude Code session, copy it into the
 worktree's project-scope `.claude/skills/`; the plugin-relative CLI path no longer
 resolves there, so set `WEB='node plugins/web/cli/dist/web.mjs'` when following it.
 

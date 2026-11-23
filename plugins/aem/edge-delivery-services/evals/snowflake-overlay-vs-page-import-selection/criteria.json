@@ -30,7 +30,7 @@
     {
       "name": "No premature implementation",
       "max_score": 10,
-      "description": "Does not execute any phase, write code, modify the repo, or make tool calls beyond what is needed to plan the response"
+      "description": "Does not execute any phase, write code, modify the repo (other than writing ANSWER.md), or make tool calls beyond what is needed to plan the response"
     },
     {
       "name": "Calls out substrate impact",

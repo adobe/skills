@@ -166,6 +166,24 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
 });
 
+check('archetypes-only mode: a roster URL with a trailing slash is the migrated archetype, not a second sibling row; a sibling keeps its roster path', () => {
+  const pages = JSON.parse(readFileSync(join(root, 'rollout-state', 'coverage', 'pages.json'), 'utf8')).pages;
+  const slugs = pages.map((p) => p.slug);
+  assert.equal(slugs.filter((s) => s.startsWith('tours-bali')).length, 1, slugs.join(','));
+  // the folder-index slash survives on the sibling row, so publicUrl still serves /tours/fiji/
+  assert.equal(pages.find((p) => p.slug === 'tours-fiji').path, '/tours/fiji/');
+});
+
+check('archetypes-only mode: a content-pending sibling that gains its own migrated document becomes pending on the next run', () => {
+  const out2 = join(root, 'rollout-state'); const state = join(root, 'roster.json');
+  page('tours/fiji/index.html', { slug: 'tours-fiji', type: 'program', fidelityTier: 'sibling', archetypeSource: 'tours-bali', template: 'tours-bali', modules: [] });
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', out2, '--state', state], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
+    const fiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.filter((p) => p.slug === 'tours-fiji');
+    assert.equal(fiji.length, 1); assert.equal(fiji[0].delivery.status, 'pending');
+  } finally { rmSync(join(migrated, 'tours', 'fiji'), { recursive: true, force: true }); }
+});
+
 check('scope: state.json site.totalDiscovered above the roster → rollout.json scope { capped: true } and a loud Scope line; equal → "the whole site"; no count → no line', () => {
   const state = join(root, 'roster-scope.json');
   const inv = (site, name) => {

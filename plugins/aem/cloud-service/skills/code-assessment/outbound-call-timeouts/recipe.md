@@ -1,6 +1,6 @@
 # Recipe — outbound HTTP calls without a timeout
 
-> Read this fully before editing. Control plane: [SKILL.md](SKILL.md).
+> Read this fully before editing. Control plane: [guide.md](guide.md).
 
 ## Input contract
 
@@ -22,7 +22,7 @@ Per invocation, a deduplicated list of findings — each a client-construction s
 Sources:
 
 1. **User-named** — the user names the Java file(s) directly.
-2. **Discover** — the file/line list is the output of the **Discovery** scan in [`SKILL.md`](SKILL.md).
+2. **Discover** — the file/line list is the output of the **Discovery** scan in [`guide.md`](guide.md).
 
 The per-library recipe and skip policy apply identically in both sources. The `line` + `snippet`
 locate the construction; remediation edits the surrounding builder/configuration, which may span more
@@ -74,6 +74,11 @@ CloseableHttpClient client = HttpClientBuilder.create()
 `HttpClients.createDefault()` has no hook for config — replace it with the `HttpClientBuilder.create()…build()`
 form above. Imports to add: `org.apache.http.client.config.RequestConfig`,
 `org.apache.http.impl.client.HttpClientBuilder` (drop `HttpClients` import if now unused).
+
+`HttpClients.createMinimal()` (4.x and 5.x) builds a minimal client that has no default `RequestConfig`; it
+only reads the config set on each request. Do not swap it for the builder, which adds
+redirect, retry, cookie and auth handling. Set `request.setConfig(config)` on every request it
+executes when they are all in the same method; otherwise skip it as `ambiguous-construction`.
 
 ### Apache HttpClient 5.x (`org.apache.hc`)
 

@@ -92,21 +92,21 @@
  *
  * Exit codes: 0 measured, 1 a page failed to load (named on stderr; what was
  * measured is still printed), 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live side served an edge
+ * browser.mjs not found, 3 bot challenge — the live side served an edge
  * interstitial (fail loud; nothing is printed as measured; escalate --headed).
  * A delta or an overflow never changes the exit code — this is a measurement,
  * not a gate; gate.sh turns the root line into the round's verdict.
  *
- * Requires playwright importable from the script's location and the diff
- * skill's live-session.mjs in one of two layouts — the plugin tree
- * (../../diff/scripts/live-session.mjs) or the project copy
- * (../diff/live-session.mjs; replica SKILL.md § Setup copies both scripts
+ * Requires playwright importable from the script's location and the master
+ * skill's browser.mjs in one of two layouts — the plugin tree
+ * (../../stardust/scripts/browser.mjs) or the project copy
+ * (../stardust/browser.mjs; replica SKILL.md § Setup copies both scripts
  * dirs into the project and you run the copy). The delta and table functions
  * are exported and pure — the contract test runs them without a browser.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, resolve as resolvePath } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -125,16 +125,15 @@ const VIEWPORT_H = 900;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist: the plugin tree
-// (skills/replica/scripts ↔ skills/diff/scripts) and the documented project copy (scripts/replica ↔
-// scripts/diff) — resolve either, so a project re-copy can't silently sever the shared hardening.
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist: the plugin tree
+// (skills/replica/scripts ↔ skills/stardust/scripts) and the documented project copy (scripts/replica ↔
+// scripts/stardust) — resolve either, so a project re-copy can't silently sever the shared hardening.
 // Resolved lazily (in main) so the pure exports stay importable without it.
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'];
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 async function loadLiveSession() {
-  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-  if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
-  return import(pathToFileURL(found).href);
+  if (!BROWSER) throw new UsageError('browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -236,12 +235,13 @@ async function settle(page) {
 // never measured as the source; solveWindow only under --headed), then both overlay classes
 // dismissed. The local prototype side is a plain page from the same browser.
 async function measurePage(browser, url, o, session) {
+  const { goto, newContext } = session;
   const live = isLiveHttpUrl(url);
   const viewport = { width: o.widths[0], height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, stateUrl: url, ...common })
-    : await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
+    : await newContext(browser, { ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   const byWidth = {};
   try {
@@ -252,7 +252,7 @@ async function measurePage(browser, url, o, session) {
       for (const sel of d.extra) console.error(`measure: overlay dismissed via extra selector ${sel}`);
       for (const sel of d.marketing) console.error(`measure: marketing modal dismissed via ${sel}`);
     } else {
-      const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+      const resp = await goto(page, url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
       if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
       await page.waitForTimeout(300);
     }
@@ -269,15 +269,13 @@ async function measurePage(browser, url, o, session) {
 
 async function main(argv) {
   const o = parseArgs(argv);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) {
-    throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`);
-  }
   const urls = o.against ? [o.url, o.against] : [o.url];
   const session = await loadLiveSession();
+  const { loadPlaywright, openBrowser } = session;
+  try { await loadPlaywright(); } catch (e) { throw new UsageError(e.message); }
   const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
-  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
+  const browser = await openBrowser(o.headed ? { mode: 'headed' } : { mode: 'plain', launchOptions: { headless: true } });
   try {
     for (const url of urls) {
       try { result.pages[url] = await measurePage(browser, url, o, session); } catch (e) {

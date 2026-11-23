@@ -10,11 +10,13 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          node-version: '24'
+          fetch-depth: 0 # the check of the generated files needs the merge base
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
           cache: 'npm'
 
       - run: npm ci
@@ -24,17 +26,122 @@ jobs:
       - name: Skill release configs extend a file that exists
         run: node scripts/check-release-configs.mjs
 
+      - name: Repository scripts pass their tests
+        run: npm test
+
+      # facts.yaml of a plugin names skills, references and evals. A pull request that
+      # renames or removes one of those updates it too.
+      - name: Facts name files that exist
+        run: node scripts/check-facts.mjs
+
+      # trigger-queries/ of a plugin names its skills. A pull request that renames or
+      # removes a skill updates the queries about it too.
+      - name: Trigger queries name skills that exist
+        run: node scripts/check-trigger-queries.mjs
+
+      # A skill that installs a package of this repository from git pins a commit. Pull
+      # requests are squash-merged, so a commit of a branch is never on main: the pin must be
+      # the commit of a release on the base branch, and a cache folder named after a commit
+      # must name the pinned one. Needs the history and the tags (fetch-depth: 0).
+      - name: Installs of this repository are pinned to a release on the base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: node scripts/check-pins.mjs "origin/$BASE_REF"
+
+      # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes
+      # the Claude Code, Tessl and Cursor manifests and the marketplace entries from it.
+      # Nobody edits those: after the merge, the Release workflow rebuilds them on main and
+      # pushes them. Here a pull request fails when it changes one of them to anything but
+      # what the build writes.
+      - name: The pull request leaves the generated plugin manifests alone
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npm run plugins:check -- "origin/$BASE_REF"
+
+      # The version of a skill and of a plugin is computed by semantic-release after the
+      # merge. A version changed by hand would be overwritten, or throw the count off.
+      - name: The pull request leaves the versions alone that a release sets
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-versions.mjs "origin/$BASE_REF"
+
+      # The steps below look at the manifests as they will be on main.
+      - name: Build the plugin manifests in this checkout
+        run: npm run plugins:build
+
+      - name: Claude Code accepts the marketplace and every plugin manifest
+        run: |
+          npx claude plugin validate .
+          find plugins -path '*/.claude-plugin/plugin.json' | sort | while read -r manifest; do
+            npx claude plugin validate "${manifest%/.claude-plugin/plugin.json}"
+          done
+
+  # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
+  # long, over its token limit (5,000 with an eval, 1,000 without), shares its name with
+  # another skill, has a Tessl lint warning or is one no client finds has to fix that in the
+  # same pull request.
+  # Renovate can't shorten a skill, so its version updates are left out; they don't make a
+  # SKILL.md longer, and a failed check here would keep them from merging by themselves.
+  boy-scout:
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'renovate[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the gate needs the merge base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+
+      # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+
+      - uses: ai-ecoverse/boy-scout@beb07aa7b5a822f1e36f0eb593af6df3931f3256  # v1.1.0
+
+  # Plugins and skills brought in from another repository (scripts/lib/imported.mjs) are
+  # left out of the checks above. A pull request that changes them is held to the same rules
+  # here, and fails with the list of what breaks one. A maintainer merges it anyway: the
+  # fixes belong in the repository the copy comes from (CONTRIBUTING.md).
+  imported:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the check needs the merge base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+
+      # for the Tessl lint warnings of an import; needs no token
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+
+      - name: What is brought in from another repository meets the rules of this one
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-imported.mjs "origin/$BASE_REF"
+
   web-cli:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: plugins/web/cli
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - run: npm ci
 
@@ -44,14 +151,39 @@ jobs:
 
       - run: npm run check:dist
 
+  web-cli-browser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugins/web/cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+
+      - run: npm ci
+
+      # `web header` launches Playwright's own headless Chromium. Other commands use the
+      # runner's Chrome. npm exec installs the build that the pinned playwright-cli expects.
+      - run: npm exec -- playwright-cli install-browser chromium --only-shell --with-deps
+
+      - name: Fixture tests on real renders
+        run: npm run test:smoke
+
   stardust-harness-neutral:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Stardust skill text stays harness-neutral
         run: node plugins/stardust/evals/lint/harness-neutral.mjs
@@ -62,87 +194,84 @@ jobs:
       - name: Stardust scripts index names every shipped script once
         run: node plugins/stardust/evals/lint/scripts-index.mjs
 
+      - name: Stardust scripts take their browser from the front door
+        run: node plugins/stardust/evals/lint/browser-front-door.mjs
+
       - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
         run: node plugins/stardust/evals/lint/script-help.mjs
 
       - name: Stardust source names no site (placeholders, infrastructure and vendor patterns are allowlisted)
         run: node plugins/stardust/evals/lint/site-names.mjs
 
+      # an intended output change re-baselines expected/ in the same pull request (evals/golden/README.md)
+      - name: Stardust golden pipeline snapshot is byte-identical to expected/
+        run: node plugins/stardust/evals/golden/golden.test.mjs
+
+      - name: Stardust contracts characterization keeps its pinned outputs and known divergences
+        run: node plugins/stardust/skills/stardust/scripts/test/contracts-characterize.test.mjs
+
       - name: Stardust skill prose delta against main (advisory — printed, never fails)
         run: |
           git fetch --no-tags --depth=1 origin main
           node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
 
+      # the manifests as they will be on main: a pull request may change only plugin.json
+      - name: Build the plugin manifests in this checkout
+        run: npm ci --ignore-scripts && npm run plugins:build
+
+      - name: Stardust version agrees across plugin.json, marketplace.json and the Tessl manifest
+        run: node scripts/plugin-version.mjs plugins/stardust && node --test 'scripts/test/*.test.mjs'
+
+  aem-forms-validator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+
+      - name: AEM Forms create-custom-component script tests
+        run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
+
+  # The tests install the pinned @adobe/rum-distiller themselves, so a Renovate bump of it
+  # or an edit to the script is checked before it ships. fetch is stubbed: no network to OpTel.
+  optel-interpreter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+
+      - name: optel-interpreter report script tests
+        run: node --test plugins/aem/edge-delivery-services-content-ops/skills/optel-interpreter/scripts/*.test.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Check CODEOWNERS covers all skill directories
-        run: |
-          codeowners=".github/CODEOWNERS"
-          if [ ! -f "$codeowners" ]; then
-            echo "::error::CODEOWNERS file not found at $codeowners"
-            exit 1
-          fi
+      - name: Check CODEOWNERS covers all plugin directories
+        run: node scripts/check-plugins.mjs codeowners
 
-          missing=()
-          while IFS= read -r plugin_json; do
-            # Extract the directory path from the plugin.json file path
-            path="/${plugin_json%/.claude-plugin/plugin.json}"
-            echo "Checking $path in CODEOWNERS..."
-            if ! grep -q "^${path}[/ ]" "$codeowners"; then
-              missing+=("$path")
-            fi
-          done < <(find plugins -name "plugin.json" -path "*/.claude-plugin/plugin.json")
+      # Claude Code reads hooks/hooks.json; GitHub Copilot CLI reads
+      # com.github.copilot/hooks/hooks.json in a plugin with a root plugin.json
+      - name: Check that plugins keep their hooks where each client looks for them
+        run: node scripts/check-plugins.mjs hooks
 
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::The following skill directories are not covered in CODEOWNERS:"
-            for p in "${missing[@]}"; do
-              echo "  $p"
-            done
-            exit 1
-          fi
-
-          echo "All skill directories are covered in CODEOWNERS."
-
+      - name: Check that every plugin has a root plugin.json with a Tessl target
+        run: node scripts/check-plugins.mjs source
 
   license-field:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check SKILL.md files have license field in frontmatter
-        run: |
-          missing=()
-          for file in $(find plugins -name SKILL.md); do
-            # Extract frontmatter (between first two --- delimiters) and check for license field
-            if ! awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$file" | grep -q "^license:"; then
-              missing+=("$file")
-            fi
-          done
-
-          # Write GitHub Step Summary
-          echo "## License Field Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Skill | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-
-          for file in $(find plugins -name SKILL.md | sort); do
-            if printf '%s\n' "${missing[@]}" | grep -qx "$file"; then
-              echo "| $file | ❌ Missing |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "| $file | ✅ Pass |" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo ""
-            echo "::error::The following SKILL.md files are missing a 'license:' field in their frontmatter:"
-            for f in "${missing[@]}"; do
-              echo "  $f"
-            done
-            exit 1
-          fi
-
-          echo "All SKILL.md files have a license field."
+        run: node scripts/check-plugins.mjs license

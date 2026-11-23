@@ -23,14 +23,14 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
+  openBrowser, newContext, goto, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
 } from '../lib.mjs';
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ];
-const AXE_CDN = 'https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js';
+const AXE_CDN = 'https://cdn.jsdelivr.net/npm/axe-core@4.14.0/axe.min.js';
 const SETTLE_MS = 2000;
 const DECORATION_TIMEOUT = 15000;
 const DIFF_WARN = 0.005; // 0.5% pixels changed
@@ -214,8 +214,7 @@ export function judgeVideos(samples) {
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const baselineDir = opts.baselineDir;
   const shotDir = join(opts.outDir, 'shots');
   ensureDir(shotDir);
@@ -227,7 +226,7 @@ export async function run(ctx) {
   // canvas diff worker; recreated on demand — a crashed tab must not sink the sweep
   let diffPage = null;
   const getDiffPage = async () => {
-    if (!diffPage || diffPage.isClosed()) { const dctx = await browser.newContext(); await attachOriginAuth(dctx); diffPage = await dctx.newPage(); }
+    if (!diffPage || diffPage.isClosed()) { const dctx = await newContext(browser); await attachOriginAuth(dctx); diffPage = await dctx.newPage(); }
     return diffPage;
   };
 
@@ -245,7 +244,7 @@ export async function run(ctx) {
 
   async function sweepPage(p, vp) {
     {
-      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      const context = await newContext(browser, { viewport: { width: vp.width, height: vp.height } });
       await attachOriginAuth(context);
       const page = await context.newPage();
       const consoleErrors = []; const pageErrors = []; const badRequests = [];
@@ -264,7 +263,7 @@ export async function run(ctx) {
       });
 
       try {
-        await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await goto(page, pageUrl(base, p.url || p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
       } catch (e) {
         findings.push(finding('rendered', 'load-failed', 'error', p.path,
           `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));

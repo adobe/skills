@@ -1,0 +1,11 @@
+{
+  "id": "home-banner",
+  "source": "target",
+  "location": "offer-mgmt-01234567",
+  "variants": [
+    {
+      "name": "spring",
+      "fragment": "/fragments/personalization/home-banner/spring"
+    }
+  ]
+}

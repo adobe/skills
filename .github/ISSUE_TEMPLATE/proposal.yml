@@ -1,0 +1,50 @@
+name: Propose a skill, a plugin or a change
+description: A new skill or plugin, or a change to how an existing one behaves.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      description: The plugin it belongs to. Choose "New plugin" if none fits.
+      options:
+        - New plugin
+        - adobe-analytics
+        - adobe-cja
+        - adobe-for-creativity
+        - adobe-for-developers
+        - aem-6-5-lts
+        - aem-cloud-service
+        - aem-edge-delivery-services
+        - aem-eds-content-ops
+        - aem-project-management
+        - app-builder
+        - commerce-app-management
+        - commerce-app-migration
+        - commerce-app-review
+        - run-workflow
+        - stardust
+        - web
+        - workfront
+        - Repository (CI, docs, installation)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What agents get wrong today
+      description: The task, and what an agent does without this. A transcript or an eval result helps.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: What the skill would teach, and when it should load.
+    validations:
+      required: true
+  - type: textarea
+    id: owner
+    attributes:
+      label: Who would own it
+      description: For a new plugin, the GitHub users or team for CODEOWNERS.

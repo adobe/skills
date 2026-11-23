@@ -21,11 +21,13 @@
  * Contract: deploy SKILL.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg,
+  openBrowser, finding, pageUrl, pMap, arg, loadSibling,
 } from '../lib.mjs';
-import {
+
+// deploy's instrument, found in the plugin tree or a project copy (a static ../../../deploy/scripts/ path resolves only in the plugin tree)
+const {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
-} from '../../../deploy/scripts/ew-editability-probe.mjs';
+} = await loadSibling('deploy', 'ew-editability-probe.mjs');
 
 const VIEWPORT_WIDTH = 1440;
 const SETTLE_MS = 1500;
@@ -36,8 +38,7 @@ const quote = (d) => `<${d.tag}> "${d.text.slice(0, 40)}${d.text.length > 40 ? '
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const cliExempt = parseExemptList(arg('ew-exempt', ''));
   const blocksDir = arg('blocks-dir', null);
 

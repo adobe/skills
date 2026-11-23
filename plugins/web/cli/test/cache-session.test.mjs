@@ -52,6 +52,13 @@ const isAlive = (pid) => {
   }
 };
 
+// The keeper answers /__stop before it shuts down, so give it a moment to exit.
+const exits = async (pid, timeoutMs = 5_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (isAlive(pid) && Date.now() < deadline) await new Promise((ok) => setTimeout(ok, 50));
+  return !isAlive(pid);
+};
+
 before(async () => {
   if (!available) return;
   cwd = mkdtempSync(join(tmpdir(), 'web-cache-smoke-'));
@@ -108,6 +115,6 @@ test('session cache records pages and replays shared assets', async (t) => {
   assert.ok(second.closed.cache.hits >= 4, JSON.stringify(second.closed.cache));
   assert.equal(second.closed.cache.errors, 0);
   for (const path of Object.keys(ROUTES)) assert.equal(hits[path], 1, `${path}: ${hits[path]}`);
-  assert.equal(isAlive(second.pid), false);
+  assert.equal(await exits(second.pid), true);
   assert.equal(existsSync(join(cwd, '.web', `${session}-cache-keeper.json`)), false);
 });

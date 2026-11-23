@@ -1,0 +1,79 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/plan",
+    "writtenAt": "2026-01-01T00:00:00.000Z",
+    "readArtifacts": [
+      "stardust/rollout/coverage"
+    ],
+    "stardustVersion": "<plugin-version>"
+  },
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "fragments": [
+    {
+      "id": "nav",
+      "blockPath": "fragments/nav.html",
+      "status": "pending"
+    }
+  ],
+  "deliveryOrder": [
+    "docs",
+    "docs-getting-started",
+    "home"
+  ],
+  "steps": [
+    {
+      "slug": "docs",
+      "path": "/docs",
+      "templateId": "docs",
+      "status": "pending",
+      "isRepresentative": true,
+      "convert": [
+        {
+          "id": "cards",
+          "edsBlockName": "cards"
+        },
+        {
+          "id": "site-search",
+          "edsBlockName": "site-search",
+          "kind": "widget"
+        }
+      ],
+      "reuse": []
+    },
+    {
+      "slug": "docs-getting-started",
+      "path": "/docs/getting-started",
+      "templateId": "docs",
+      "status": "pending",
+      "isRepresentative": false,
+      "convert": [],
+      "reuse": [
+        {
+          "id": "cards",
+          "edsBlockName": "cards",
+          "convertedBy": "docs"
+        }
+      ]
+    },
+    {
+      "slug": "home",
+      "path": "/",
+      "templateId": "home",
+      "status": "pending",
+      "isRepresentative": true,
+      "convert": [
+        {
+          "id": "hero",
+          "edsBlockName": "hero"
+        }
+      ],
+      "reuse": [
+        {
+          "id": "cards",
+          "edsBlockName": "cards",
+          "convertedBy": "docs"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "description": "Content model checkpoint on aem-boilerplate 5cea543: frozen requirements in, content model plus questions out (ANSWER.md)",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
+    "remote": "https://github.com/adobe/aem-boilerplate.git"
+  }
+}

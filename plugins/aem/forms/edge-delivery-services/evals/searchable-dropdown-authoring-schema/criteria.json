@@ -1,0 +1,51 @@
+{
+  "context": "Tests whether the agent designs the _<name>.json authoring model with the correct Universal Editor widget types (boolean, number, select with options, text, container grouping), reuses shared field groups via \"...\" includes with correct relative paths, and wires runtime enum/enumNames changes through subscribe.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Files, viewType and registration",
+      "max_score": 12,
+      "description": "Files exist under `blocks/form/components/searchable-dropdown/` with matching names, `_searchable-dropdown.json` sets `\"fd:viewType\": \"searchable-dropdown\"` with `\"fieldType\": \"drop-down\"`, and `'searchable-dropdown'` is in `customComponents` in `mappings.js`"
+    },
+    {
+      "name": "Collapsible Search container",
+      "max_score": 10,
+      "description": "The model has a `component: \"container\"` field with a `name`, label \"Search\" (or similar) and `collapsible: true` that groups the four search properties"
+    },
+    {
+      "name": "Correct widget types",
+      "max_score": 16,
+      "description": "Enable search uses `component: \"boolean\"`, minimum characters uses `component: \"number\"` (ideally with min/max validation 0–5), match mode uses `component: \"select\"` (or `radio-group`) with an `options` array of `{ name, value }` for starts-with and contains, and placeholder uses `component: \"text\"`"
+    },
+    {
+      "name": "Unique field names",
+      "max_score": 8,
+      "description": "All property `name`s in the model are unique and do not collide with standard field names (e.g. not `placeholder` if the shared basic fields already define it — a distinct name like `searchPlaceholder` is used)"
+    },
+    {
+      "name": "Reuses shared groups",
+      "max_score": 12,
+      "description": "Basic, validation and help sections are included through `\"...\"` references to `../../models/form-common/...` files (paths resolve from the component folder) rather than being re-declared field by field"
+    },
+    {
+      "name": "Properties read in JS",
+      "max_score": 8,
+      "description": "`searchable-dropdown.js` reads the four settings from the field JSON `properties` with defaults matching the spec (search enabled by default)"
+    },
+    {
+      "name": "Options from enum",
+      "max_score": 8,
+      "description": "The filter list is built from the existing `<select>` options or the model `enum`/`enumNames`, not a hard-coded list"
+    },
+    {
+      "name": "Runtime enum updates",
+      "max_score": 14,
+      "description": "`subscribe` from `'../../rules/index.js'` is called with `{ listenChanges: true }` and a `'change'` payload with `propertyName` `enum` or `enumNames` rebuilds the filtered list; selecting an option updates the model value (setting `model.value` or a bubbling `change` on the select)"
+    },
+    {
+      "name": "Component README",
+      "max_score": 12,
+      "description": "`README.md` documents each authoring property (name, type, default) in a table, plus usage notes with base type and viewType"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * skills/replica/scripts/breakpoint-lint.mjs — every layout switch in the delivered code sits on
- * a target breakpoint (replica `--target-breakpoints`, persisted in DESIGN.json
- * `extensions.breakpoints.target`).
+ * skills/replica/scripts/breakpoint-lint.mjs — the delivered CSS is mobile-first (deploy rule 162:
+ * no `@media` upper bound), and every layout switch sits on a target breakpoint when one is set
+ * (replica `--target-breakpoints`, persisted in DESIGN.json `extensions.breakpoints.target`).
  *
  * Why: blocks reused from a boilerplate or library carry its steps while blocks recreated from
  * the source copy the source's, because the gate rewards matching them — a recorded run ended
@@ -15,13 +15,21 @@
  *   node stardust/scripts/replica/breakpoint-lint.mjs --inventory <file|dir>…
  *
  *   lint (default)  scan .css/.js/.mjs/.html under --dirs (relative to --root, default `.`; missing dirs
- *            are skipped; node_modules, dot-entries and *.min.* are not walked). Target =
- *            --target, else `extensions.breakpoints.target` in --design (default ./DESIGN.json,
- *            the project root's). No target → `breakpoint-lint: no target set — skipped`, exit 0,
- *            so the script can sit in `npm run lint` unconditionally.
- *            One line per off-target switch: `<file>:<line>  <source text>  → switches at <N>px`,
- *            then `breakpoint-lint: <n> off-target in <f> files (target …)`, exit 1; clean →
- *            `breakpoint-lint: clean — <k> switches in <f> files, all on …`, exit 0.
+ *            are skipped, but a missing entry with one of those extensions is exit 2; node_modules,
+ *            dot-entries and *.min.* are not walked). Two checks:
+ *            direction (always) — an `@media` / `@custom-media` / `@import` condition with an upper
+ *              bound (`max-width`, `width <`, `width <=`, the upper end of a range, a lower bound
+ *              under `not`) is desktop-first: `<file>:<line>  <source text>  → desktop-first: write
+ *              the narrow layout as the base, the wider one in (width >= <N>px)`; with a target set,
+ *              <N> is the nearest target step (`…, the nearest target step to <M>px`) and the row is
+ *              not listed again as off-target. `media="…"` attributes (art direction) and JS
+ *              thresholds are not direction-checked.
+ *            target (when set) — Target = --target, else `extensions.breakpoints.target` in
+ *              --design (default ./DESIGN.json, the project root's). One line per off-target
+ *              switch: `<file>:<line>  <source text>  → switches at <N>px`.
+ *            Then `breakpoint-lint: <a> desktop-first, <b> off-target in <f> files (…)`, exit 1;
+ *            clean → `breakpoint-lint: clean — <k> switches in <f> files, all mobile-first[, all
+ *            on …]`, exit 0. So the script sits in `npm run lint` unconditionally (deploy Step 3).
  *            A prototype dir: `--root stardust/prototypes --dirs .`.
  *   --inventory  the distinct switch points in the given files/dirs (same file types — e.g.
  *            the fetched live stylesheets), one line each: `<N>px  ×<count>  min <a> / max <b>
@@ -31,7 +39,8 @@
  *   CSS  @media / @custom-media / @import preludes, plus `media="…"` attributes in .html — never
  *        declarations (a `max-width` declaration is not a query):
  *        (min-width: N) and (width >= N) → N; (max-width: N) and (width <= N) → N+1;
- *        (width < N) → N; (width > N) → N+1; reversed and range forms alike; em/rem × 16.
+ *        (width < N) → N; (width > N) → N+1; reversed and range forms alike; em/rem × 16;
+ *        `not all and (min-width: N)` and `not (min-width: N)` → N, an upper bound.
  *        So `max-width: 899px` passes on a 900 step and `max-width: 900px` does not (it
  *        switches at 901), and a complementary 840/841 pair is ONE switch point.
  *   JS   parenthesised media features in any string (`matchMedia('(min-width: 900px)')`, a
@@ -39,8 +48,9 @@
  *        documentElement.clientWidth / screen.width
  *        comparisons with a number. A media feature built by interpolation (`${BP}px`) cannot be
  *        resolved: it prints as `?` — advisory, never a failure; resolve it by hand.
- *   Comments are blanked first; zero-width switches (`min-width: 0`) are ignored.
- * Exit codes: 0 clean / skipped / inventory · 1 off-target switches · 2 usage or unreadable input
+ *   Comments are blanked first (in .html also `<!-- -->` outside <style>/<script>); zero-width
+ *   switches (`min-width: 0`) are ignored.
+ * Exit codes: 0 clean / inventory · 1 desktop-first or off-target switches · 2 usage or unreadable input
  * (one stderr line). --help / -h prints this usage and reads nothing.
  */
 
@@ -75,6 +85,11 @@ export function blankComments(text, js = false) {
   return out.join('');
 }
 
+// Blank `<!-- -->` outside <style> and <script> (newlines kept); their content is left to blankComments.
+export function blankHtmlComments(text) {
+  return text.replace(/<(style|script)\b[\s\S]*?<\/\1\s*>|<!--[\s\S]*?(?:-->|$)/gi, (m) => (m.startsWith('<!--') ? m.replace(/[^\n]/g, ' ') : m));
+}
+
 const toPx = (num, unit) => Number(num) * (/^r?em$/i.test(unit || '') ? 16 : 1);
 // The first integer width at which the min-side of the comparison holds.
 function switchPoint(op, px) {
@@ -93,9 +108,32 @@ const JS_R = new RegExp(`${JS_WIDTH}\\s*(<=|>=|<|>)\\s*(\\d+(?:\\.\\d+)?)(?![\\w
 const JS_L = new RegExp(`(?<![\\w.])(\\d+(?:\\.\\d+)?)\\s*(<=|>=|<|>)\\s*(?:window\\.|document\\.)?${JS_WIDTH}`, 'g');
 const JS_UNRESOLVED = /\(\s*(?:(?:min|max)-width\s*:|width\s*[<>]=?)\s*\$\{/g;
 
+// 1 where a `not` reverses the condition: a query-level `not` (`not all and …`) its comma-separated
+// query, a condition-level `not (…)` its parenthesised group; nested negations cancel.
+function negations(cond) {
+  const neg = new Array(cond.length + 1).fill(0);
+  const flip = (a, b) => { for (let k = a; k < b; k += 1) neg[k] ^= 1; };
+  for (let i = 0, start = 0, depth = 0; i <= cond.length; i += 1) {
+    if (cond[i] === '(') depth += 1;
+    else if (cond[i] === ')') depth -= 1;
+    else if (i === cond.length || (cond[i] === ',' && depth === 0)) {
+      if (/^\s*not\s+(?!\()/i.test(cond.slice(start, i))) flip(start, i);
+      start = i + 1;
+    }
+  }
+  for (const m of cond.matchAll(/\bnot\s*\(/gi)) {
+    const open = m.index + m[0].length - 1;
+    let k = open;
+    for (let d = 0; k < cond.length; k += 1) { if (cond[k] === '(') d += 1; else if (cond[k] === ')') { d -= 1; if (d === 0) break; } }
+    flip(open, k + 1);
+  }
+  return neg;
+}
+
 // Switch points in one media-condition string; `base` is its offset in the file.
-function fromCondition(cond, base) {
+function fromCondition(cond, base, src) {
   const hits = [];
+  const neg = negations(cond);
   for (const m of cond.matchAll(FEATURE)) {
     const op = m[1].toLowerCase() === 'min' ? '>=' : '<=';
     hits.push({ px: switchPoint(op, toPx(m[2], m[3])), form: op === '>=' ? 'min' : 'max', at: base + m.index, text: m[0] });
@@ -107,27 +145,30 @@ function fromCondition(cond, base) {
     const op = FLIP[m[3]];
     hits.push({ px: switchPoint(op, toPx(m[1], m[2])), form: op[0] === '>' ? 'min' : 'max', at: base + m.index, text: m[0] });
   }
-  return hits;
+  return hits.map((h) => {
+    if (!neg[h.at - base]) return { ...h, src };
+    return { ...h, form: h.form === 'min' ? 'max' : 'min', text: `not ${h.text}`, src };
+  });
 }
 
-// [{ px, form: 'min'|'max'|'?', line, text }] for one file's text; kind = 'css' | 'js' | 'html'.
+// [{ px, form: 'min'|'max'|'?', src: 'css'|'attr'|'js', line, text }] for one file's text; kind = 'css' | 'js' | 'html'.
 export function switchPoints(raw, kind) {
   const js = kind === 'js';
-  const text = blankComments(raw, js);
+  const text = blankComments(kind === 'html' ? blankHtmlComments(raw) : raw, js);
   const hits = [];
   if (js) {
-    for (const m of text.matchAll(/\(\s*(?:(?:min|max)-(?:device-)?width\s*:|\d[^()]*?[<>]=?\s*width|width\s*[<>])[^()]*\)/gi)) hits.push(...fromCondition(m[0], m.index));
-    for (const m of text.matchAll(JS_R)) hits.push({ px: switchPoint(m[1], Number(m[2])), form: m[1][0] === '>' ? 'min' : 'max', at: m.index, text: m[0] });
-    for (const m of text.matchAll(JS_L)) { const op = FLIP[m[2]]; hits.push({ px: switchPoint(op, Number(m[1])), form: op[0] === '>' ? 'min' : 'max', at: m.index, text: m[0] }); }
-    for (const m of text.matchAll(JS_UNRESOLVED)) hits.push({ px: null, form: '?', at: m.index, text: m[0] });
+    for (const m of text.matchAll(/\(\s*(?:(?:min|max)-(?:device-)?width\s*:|\d[^()]*?[<>]=?\s*width|width\s*[<>])[^()]*\)/gi)) hits.push(...fromCondition(m[0], m.index, 'js'));
+    for (const m of text.matchAll(JS_R)) hits.push({ px: switchPoint(m[1], Number(m[2])), form: m[1][0] === '>' ? 'min' : 'max', src: 'js', at: m.index, text: m[0] });
+    for (const m of text.matchAll(JS_L)) { const op = FLIP[m[2]]; hits.push({ px: switchPoint(op, Number(m[1])), form: op[0] === '>' ? 'min' : 'max', src: 'js', at: m.index, text: m[0] }); }
+    for (const m of text.matchAll(JS_UNRESOLVED)) hits.push({ px: null, form: '?', src: 'js', at: m.index, text: m[0] });
   } else {
-    for (const m of text.matchAll(/@(?:media|custom-media|import)\b([^{;]*)/gi)) hits.push(...fromCondition(m[1], m.index + m[0].length - m[1].length));
-    if (kind === 'html') for (const m of text.matchAll(/\bmedia\s*=\s*["']([^"']*)/gi)) hits.push(...fromCondition(m[1], m.index + m[0].length - m[1].length));
+    for (const m of text.matchAll(/@(?:media|custom-media|import)\b([^{;]*)/gi)) hits.push(...fromCondition(m[1], m.index + m[0].length - m[1].length, 'css'));
+    if (kind === 'html') for (const m of text.matchAll(/\bmedia\s*=\s*["']([^"']*)/gi)) hits.push(...fromCondition(m[1], m.index + m[0].length - m[1].length, 'attr'));
   }
   return hits
     .filter((h) => h.px === null || h.px > 0)
     .sort((a, b) => a.at - b.at)
-    .map((h) => ({ px: h.px, form: h.form, line: raw.slice(0, h.at).split('\n').length, text: h.text.replace(/\s+/g, ' ').trim() }));
+    .map((h) => ({ px: h.px, form: h.form, src: h.src, line: raw.slice(0, h.at).split('\n').length, text: h.text.replace(/\s+/g, ' ').trim() }));
 }
 
 const kindOf = (file) => ({ '.css': 'css', '.html': 'html' }[extname(file)] || 'js');
@@ -144,10 +185,21 @@ export function walk(path, exts, out = []) {
   return out;
 }
 
-// { offTarget: [{file, line, px, text}], unresolved: [...], count, files } for the scanned files.
+// A CSS query with an upper bound — the desktop-first form (deploy rule 162).
+export const isDesktopFirst = (h) => h.src === 'css' && h.form === 'max';
+
+// The target step closest to px; a tie goes to the lower step.
+export const nearestStep = (px, target) => target.reduce((best, t) => {
+  const d = Math.abs(t - px) - Math.abs(best - px);
+  return d < 0 || (d === 0 && t < best) ? t : best;
+});
+
+// { desktopFirst: [{file, line, px, text, step?}], offTarget: [{file, line, px, text}], unresolved, count, files }
+// for the scanned files; target null → direction only. With a target, a desktop-first row carries the
+// nearest target `step` for its rewrite and is not also an off-target row.
 export function lintFiles(files, target, root = '.') {
-  const allowed = new Set(target);
-  const res = { offTarget: [], unresolved: [], count: 0, files: 0 };
+  const allowed = target ? new Set(target) : null;
+  const res = { desktopFirst: [], offTarget: [], unresolved: [], count: 0, files: 0 };
   for (const f of files) {
     const hits = switchPoints(readFileSync(f, 'utf8'), kindOf(f));
     if (hits.length) res.files += 1;
@@ -155,7 +207,8 @@ export function lintFiles(files, target, root = '.') {
       const row = { file: relative(root, f) || f, line: h.line, px: h.px, text: h.text };
       if (h.px === null) { res.unresolved.push(row); continue; }
       res.count += 1;
-      if (!allowed.has(h.px)) res.offTarget.push(row);
+      if (isDesktopFirst(h)) res.desktopFirst.push(target ? { ...row, step: nearestStep(h.px, target) } : row);
+      else if (allowed && !allowed.has(h.px)) res.offTarget.push(row);
     }
   }
   return res;
@@ -215,17 +268,24 @@ function main(argv) {
         if (!target) return fail(`${design} extensions.breakpoints.target is not a list of positive integers`);
       }
     }
-    if (!target) { console.log('breakpoint-lint: no target set — skipped'); return 0; }
-    const dirs = opts.dirs.split(',').map((d) => join(opts.root, d.trim())).filter((d) => existsSync(d));
+    const entries = opts.dirs.split(',').map((d) => join(opts.root, d.trim()));
+    const missing = entries.find((d) => !existsSync(d) && EXT.has(extname(d)));
+    if (missing) return fail(`${missing} does not exist`);
+    const dirs = entries.filter((d) => existsSync(d));
     const res = lintFiles(dirs.flatMap((d) => walk(d, EXT)), target, opts.root);
+    for (const r of res.desktopFirst) {
+      const at = r.step === undefined ? `${r.px}px)` : `${r.step}px)${r.step === r.px ? '' : `, the nearest target step to ${r.px}px`}`;
+      console.log(`${r.file}:${r.line}  ${r.text}  → desktop-first: write the narrow layout as the base, the wider one in (width >= ${at}`);
+    }
     for (const r of res.offTarget) console.log(`${r.file}:${r.line}  ${r.text}  → switches at ${r.px}px`);
     for (const r of res.unresolved) console.log(`${r.file}:${r.line}  ${r.text}  → ? interpolated — check by hand (advisory)`);
-    const set = target.join(',');
-    if (res.offTarget.length) {
-      console.log(`breakpoint-lint: ${res.offTarget.length} off-target in ${new Set(res.offTarget.map((r) => r.file)).size} files (target ${set})`);
+    const set = target ? `target ${target.join(',')}` : 'no target set';
+    const bad = [...res.desktopFirst, ...res.offTarget];
+    if (bad.length) {
+      console.log(`breakpoint-lint: ${res.desktopFirst.length} desktop-first, ${res.offTarget.length} off-target in ${new Set(bad.map((r) => r.file)).size} files (${set})`);
       return 1;
     }
-    console.log(`breakpoint-lint: clean — ${res.count} switches in ${res.files} files, all on ${set}`);
+    console.log(`breakpoint-lint: clean — ${res.count} switches in ${res.files} files, all mobile-first${target ? `, all on ${target.join(',')}` : ' (no target set)'}`);
     return 0;
   } catch (e) {
     return fail(e.message);

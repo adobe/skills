@@ -1,0 +1,46 @@
+{
+  "context": "The working directory is aem-boilerplate 5cea543 with a new `stats` block in blocks/stats/ and git remote origin https://github.com/myorg/mysite.git; content lives in DA (da.live, myorg/mysite). The sandbox has no DA access, so grade the files the agent created and the commands/URLs in ANSWER.md, not a real clone or push. Facts (@adobe/aem-cli 16.22.16): `aem up` serves files from ./content/ before proxying, so content/drafts/x.html is at /drafts/x with no flag (--html-folder is only for HTML outside ./content/); `aem content clone --path <folder>` (or --all) clones DA content into ./content/ after a browser sign-in and fails if ./content/ already exists unless --force, which deletes it; edits go back with `aem content add`, `aem content commit -m`, `aem content push`; push only writes the DA source and does not preview, so the page needs a preview (Sidekick or POST https://admin.hlx.page/preview/myorg/mysite/main/<path>) before https://main--mysite--myorg.aem.page/<path> shows it. Backing facts: facts.yaml (aem-cli-content-dir, aem-cli-content-clone, aem-cli-clone-existing-content, aem-cli-push-no-preview, aem-cli-da-token-file).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Test page lives under content/",
+      "max_score": 15,
+      "description": "The agent created an HTML test page under the project's content/ folder (e.g. content/drafts/stats.html or content/docs/library/blocks/stats.html), as a full document (body with header, main, footer) whose main contains a `<div class=\"stats\">` with one row per statistic and two cells (number, label). Fail if the page is only outside content/ (e.g. drafts/stats.html at the project root) or has no stats block."
+    },
+    {
+      "name": "No --html-folder or --html-mount",
+      "max_score": 15,
+      "description": "The local server is started with plain `aem up` (optionally --no-open, --port, --forward-browser-logs). ANSWER.md, .env and package.json scripts contain no --html-folder, --html-mount or AEM_HTML_FOLDER. Fail if any of them is used to serve the test page, including `--html-folder content --html-mount /`."
+    },
+    {
+      "name": "Local URL matches the file",
+      "max_score": 10,
+      "description": "The local URL given is the file's path under content/ without the `content/` prefix and without `.html` (e.g. content/drafts/stats.html → http://localhost:<port>/drafts/stats). Port 3000 or 'the port aem up logs' are both fine. Fail if the URL includes /content/ or a path that doesn't match the file."
+    },
+    {
+      "name": "Clones DA with --path before adding the page",
+      "max_score": 15,
+      "description": "To get the page into DA, the commands start with `aem content clone --path <folder>` (e.g. /drafts or /docs/library; --org myorg --site mysite optional), not a bare `aem content clone`. The answer handles that clone fails when content/ already exists: it moves the test page aside (or clones elsewhere) and copies it into the cloned tree afterwards, or clones first. Partial credit (half) if --path is used but the existing content/ conflict is ignored or solved with --force without saving the page first. `--all` instead of --path earns half."
+    },
+    {
+      "name": "Stages, commits and pushes with aem content",
+      "max_score": 15,
+      "description": "After the page is in the cloned content/ tree: `aem content add <page path>`, `aem content commit -m \"...\"`, `aem content push`, in that order. Fail if the answer pushes by another route (curl to admin.da.live, manual upload in the da.live UI as the main path) or skips add/commit."
+    },
+    {
+      "name": "No separately obtained DA token",
+      "max_score": 10,
+      "description": "Relies on the CLI's own browser sign-in (token cached in .hlx/.da-token.json). Fail if the answer tells the user to obtain an IMS/DA bearer token by hand (browser dev tools, copying from da.live, an API key) or puts a token in .env or a curl command."
+    },
+    {
+      "name": "Says push does not preview and gives the preview step",
+      "max_score": 15,
+      "description": "States that `aem content push` only updates the DA source and the page must be previewed (Sidekick, the da.live Preview button, or POST https://admin.hlx.page/preview/myorg/mysite/main/<path>) before it is visible, and gives the review URL https://main--mysite--myorg.aem.page/<path> matching the pushed path. Fail if it claims the page is on .aem.page right after push."
+    },
+    {
+      "name": "Complete and concrete",
+      "max_score": 5,
+      "description": "ANSWER.md gives runnable commands in order for both parts and the exact URLs, with no placeholders other than the port."
+    }
+  ]
+}

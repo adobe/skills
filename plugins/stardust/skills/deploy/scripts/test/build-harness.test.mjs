@@ -290,6 +290,14 @@ test('orphan WARN: a stray </div> after the metadata section is reported; harnes
   assert.match(mainOf(r.doc), /<div><p>x<\/p><\/div>/);
 });
 
+test('a missing output directory is created, nested levels included', () => {
+  const dir = project();
+  writeFileSync(join(dir, 'page.html'), page('  <div><h1>Hi</h1></div>'));
+  const r = run(['page.html', 'new/deep/h.html', '--root', dir], dir);
+  assert.equal(r.code, 0, r.err);
+  assert.match(readFileSync(join(dir, 'new', 'deep', 'h.html'), 'utf8'), /<h1>Hi<\/h1>/);
+});
+
 test('--help / -h: exit 0, prints the usage header (flags, folds, Writes:), writes nothing in an empty cwd', () => {
   const empty = mkdtempSync(join(BASE, 'empty-'));
   for (const flag of ['--help', '-h']) {

@@ -3,13 +3,25 @@
  * a bounded concurrency pool, url keys, and a dependency-free HTML tree reader (the plugin ships no
  * node_modules; the spec stages parse thousands of server-rendered pages without a browser).
  * No site-specific values live here; everything a site contributes arrives through spec.config.json.
+ * The rules more than one skill applies (the coded kinds, the chrome ids, the sibling-script resolver) are the shared
+ * library's (the master skill's contracts.mjs, skills/stardust/scripts/lib/README.md); this file resolves it once and
+ * re-exports them under the names the stages import.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, no-continue, no-plusplus */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+
+// The shared rules live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) throw new Error('spec/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+const C = await import(CONTRACTS.href);
+const { CHROME_IDS } = C;
+/** The kinds a component maps to that need code (lib/kinds.mjs CODED); a sibling skill's script module in either layout
+ *  (lib/resolve.mjs loadSibling); the dynamics vocabulary and class labels, the delivered URL and the redirect key spec-knowledge applies. */
+export const { CODED, loadSibling, CLASS_NAMES, TAXONOMY, deliveredUrl, redirectKey } = C;
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -114,29 +126,11 @@ export async function pool(items, n, fn, onProgress) {
   return out;
 }
 
-/** A sibling skill's script module: the plugin tree (../../<skill>/scripts/) or a project copy (../<skill>/). */
-export async function loadSibling(skill, file) {
-  const p = [join(HERE, '..', '..', skill, 'scripts', file), join(HERE, '..', skill, file)].find((x) => existsSync(x));
-  if (!p) throw new Error(`${skill}/${file} not found (../../${skill}/scripts/ or ../${skill}/): copy the ${skill} skill's scripts next to these (spec SKILL.md § Setup)`);
-  return import(pathToFileURL(p).href);
-}
-
 /**
- * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
- * stealth real-Chrome `--headed` tier, document-only standard headers).
+ * The master skill's browser.mjs, the front door: Playwright, the browser, and the plugin's one hardened way to
+ * reach a live site (challenge detection, the stealth real-Chrome `--headed` tier, document-only standard headers).
  */
-export const loadLiveSession = () => loadSibling('diff', 'live-session.mjs');
-
-/** Playwright from the project (the plugin tree ships none). */
-export async function loadPlaywright() {
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = await import(req.resolve('playwright'));
-    return mod.chromium ? mod : mod.default;
-  } catch { /* fall through */ }
-  const mod = await import('playwright');
-  return mod.chromium ? mod : mod.default;
-}
+export const loadBrowser = () => loadSibling('stardust', 'browser.mjs');
 
 /* ----------------------------------------------------- HTML tree reader --- */
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
@@ -256,7 +250,6 @@ export const isInside = (el, ancestor) => { for (let n = el.parent; n; n = n.par
  */
 export function genericRules(A, opts = {}) {
   const SKIP = new Set(['script', 'style', 'link', 'meta', 'noscript', 'template', 'br', 'svg', 'path', 'head', 'title']);
-  const CHROME = new Set(['header', 'footer', 'nav']);
   const CONTAINER = new Set(['div', 'section', 'article', 'aside', 'form', 'ul', 'ol', 'figure', 'details', 'dl', 'table', 'main', 'header', 'footer', 'nav']);
   const NAME_ATTRS = [...(opts.nameAttrs || []), 'data-component', 'data-block-name', 'data-module', 'data-widget_type', 'data-section-type', 'data-block', 'data-cmp', 'data-component-name'];
   const UTIL = /^-?(?:[a-z]+:)|[[\]/:!@]|^(?:uppercase|lowercase|capitalize|italic|underline|whitespace-[a-z-]+|break-[a-z]+|light-theme|dark-theme|relative|absolute|fixed|sticky|static|hidden|block|inline|inline-block|inline-flex|inline-grid|contents|flow-root|prose|not-prose|isolate|truncate|antialiased|group|peer|dark|light|visible|invisible|sr-only|container)$|^-?(?:p[xytblr]?|m[xytblr]?|w|h|min-w|max-w|min-h|max-h|gap|space-[xy]|flex|grid|grid-cols|col|col-span|row|row-span|items|justify|content|self|place|order|text|font|leading|tracking|bg|border|rounded|shadow|opacity|z|top|left|right|bottom|inset|overflow|object|aspect|d|align|float|pull|push|offset|order|g|gx|gy|ps|pe|ms|me|fs|fw|lh|basis|grow|shrink|fill|stroke|ring|outline|divide|blur|transition|duration|ease|delay|animate|transform|scale|rotate|translate|cursor|select|pointer-events|sr|visible|invisible|is|has|js|u|t|l|o|c|lg|md|sm|xl|xs|xxl)(?:-|$)/;
@@ -295,7 +288,7 @@ export function genericRules(A, opts = {}) {
     for (const c of A.cls(el)) { const n = fromClass(c); if (n) return n; }
     return CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el);
   };
-  const significant = (el, top) => A.kids(el).filter((k) => !SKIP.has(A.tag(k)) && !(top && CHROME.has(A.tag(k))) && A.weight(k) > 0);
+  const significant = (el, top) => A.kids(el).filter((k) => !SKIP.has(A.tag(k)) && !(top && CHROME_IDS.has(A.tag(k))) && A.weight(k) > 0);
   const roots = (container, depth, isBody) => {
     let level = container;
     for (let i = 0; i < 8; i += 1) { const ks = significant(level, isBody); if (ks.length === 1 && CONTAINER.has(A.tag(ks[0]))) level = ks[0]; else break; }
@@ -309,9 +302,6 @@ export function genericRules(A, opts = {}) {
 
 /* ------------------------------------------------- profiles and layout ---- */
 /** Group aem-core grid members into rows: consecutive members narrower than 12 whose widths fill the grid. Pure. */
-/** Kinds that ship as code — counted, cropped, variant-signed and capture-picked alike. */
-export const CODED = new Set(['block', 'dynamic', 'widget']);
-
 export function groupRows(items, width, newline) {
   const out = []; let row = []; let sum = 0;
   const flush = () => { if (row.length > 1) out.push({ row }); else if (row.length) out.push(row[0]); row = []; sum = 0; };
@@ -340,20 +330,42 @@ export function groupRows(items, width, newline) {
 export function profileRules(profile, A, opts = {}) {
   if (profile === 'generic') return genericRules(A, opts);
   if (profile === 'aem-classic') {
+    // Classic components may also sit in responsive grids (experience fragments): a grid member (`aem-GridColumn`) is
+    // the root, named by the classic component it wraps, so one component has one name inside and outside grids; its
+    // width groups members into rows, and the wrapped component is not a second root. opts.extraRoots: component
+    // classes without the `c-` prefix that are components too.
+    const extra = new Set(opts.extraRoots || []);
+    const isGrid = (el) => A.cls(el).includes('aem-GridColumn');
+    const isGridBox = (el) => isGrid(el) && A.cls(el).includes('responsivegrid');
+    const classic = (el) => {
+      for (const c of A.cls(el)) {
+        if (c === 'colctrl') { const w = (A.parent(el) ? A.cls(A.parent(el)) : [])[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
+        if (c.startsWith('c-') && !c.endsWith('-content')) return c;
+        if (extra.has(c)) return c;
+      }
+      return null;
+    };
+    const wrapped = (el) => A.kids(el).map(classic).find(Boolean) || null;
     const R = {
       name(el) {
-        for (const c of A.cls(el)) {
-          if (c === 'colctrl') { const w = (A.parent(el) ? A.cls(A.parent(el)) : [])[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
-          if (c.startsWith('c-') && !c.endsWith('-content')) return c;
+        if (isGrid(el)) {
+          if (isGridBox(el)) return A.cls(el).find((c) => !c.startsWith('aem-') && c !== 'responsivegrid') || 'container';
+          const inner = wrapped(el);
+          if (inner && inner.startsWith('colctrl')) return null; // the column control stays the root
+          return inner || A.cls(el).find((c) => !c.startsWith('aem-')) || 'grid';
         }
-        return null;
+        const par = A.parent(el);
+        if (par && isGrid(par) && !isGridBox(par) && classic(el) && !classic(el).startsWith('colctrl')) return null;
+        return classic(el);
       },
+      width(el) { if (!isGrid(el)) return 12; const m = A.cls(el).map((c) => c.match(/^aem-GridColumn--default--(\d+)$/)).find(Boolean); return m ? Number(m[1]) : 12; },
+      newline: (el) => A.cls(el).includes('aem-GridColumn--default--newline'),
       columns(el) {
         const row = A.kids(el).find((c) => A.cls(c).includes('row')) || el;
         return A.kids(row).filter((c) => A.cls(c).some((x) => x.startsWith('col-')));
       },
     };
-    R.isColumns = (el) => (R.name(el) || '').startsWith('colctrl'); // the name decides: a c-* class listed first wins
+    R.isColumns = (el) => !isGrid(el) && (R.name(el) || '').startsWith('colctrl'); // the name decides: a c-* class listed first wins
     return R;
   }
   if (profile === 'aem-core') {

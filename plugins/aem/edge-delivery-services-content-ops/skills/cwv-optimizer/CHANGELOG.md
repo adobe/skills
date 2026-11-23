@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/adobe/skills/compare/cwv-optimizer-v1.0.0...cwv-optimizer-v1.0.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **aem-eds-content-ops:** cwv-optimizer follows aem.live on fonts, the delayed phase, image loading and byte sizes ([#683](https://github.com/adobe/skills/issues/683)) ([4fe5fb5](https://github.com/adobe/skills/commit/4fe5fb5de1e60c7ca1b1be94794125f4e640c5b3))
+
 # Changelog
 
 ## 1.0.0 (2026-05-15)

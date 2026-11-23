@@ -191,8 +191,8 @@ excludes them.
 
 The EDS post-pipeline drops `<span class="...">` wrappers — the tag
 disappears and the class is lost, text content survives bare in the
-parent. See `da-content` §3.9 for the full preserve/rewrite/strip
-behavior across all inline tags.
+parent. See `da-content` (Inline tags) for the preserve/rewrite/strip
+behavior across inline tags.
 
 ### Why this bites
 
@@ -236,7 +236,7 @@ load-bearing semantically, choose ONE of:
    ```
 
 2. **Swap `<span>` for a semantic element** that survives the pipeline.
-   Per `da-content` §3.9 the safest targets are tags in the
+   Per `da-content` the safest targets are tags in the
    preserve list (`<strong>`, `<em>`, `<u>`, `<del>`, `<code>`,
    `<sub>`, `<sup>`). Rewrite-target tags (`<b>`, `<i>`, `<s>`,
    `<mark>`, `<kbd>`) work too but their wrapper tag changes on the
@@ -994,7 +994,7 @@ decoration falls through → one 404 per block trying to load
 `/blocks/<name>/<name>.{css,js}`).
 
 Snowflake emits metadata as `<div class="metadata">` inside `<main>`.
-Block format itself is covered by `da-content` §5.
+Block format itself is covered by `da-content` (Page metadata).
 
 ## 2026-05-18 — DA stores HTML literally; tables survive intact
 

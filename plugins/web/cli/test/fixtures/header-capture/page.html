@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Header capture fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.5 sans-serif; }
+  /* as an SEO blog does it: an empty spacer reserves the height of a fixed promo bar */
+  .promo-spacer { height: 48px; }
+  .promo { position: fixed; top: 0; left: 0; right: 0; z-index: 2; box-sizing: border-box; height: 48px; padding: 12px; background: #222; color: #fff; text-align: center; }
+  .promo a { color: #fff; }
+  header { display: flex; align-items: center; gap: 24px; height: 64px; padding: 0 24px; border-bottom: 1px solid #ddd; }
+  nav > ul { display: flex; gap: 24px; margin: 0; padding: 0; list-style: none; }
+  nav li { position: relative; }
+  nav li ul { display: none; position: absolute; top: 100%; left: 0; flex-direction: column; gap: 8px; min-width: 160px; margin: 0; padding: 12px; background: #fff; box-shadow: 0 2px 8px #0003; list-style: none; }
+  nav li:hover ul { display: flex; }
+  .burger { display: none; }
+  main { padding: 24px; }
+  @media (width < 1000px) {
+    nav { display: none; }
+    .burger { display: block; margin-left: auto; }
+    body.open nav { display: block; position: absolute; top: 113px; left: 0; right: 0; padding: 12px 24px; background: #fff; }
+    body.open nav > ul { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="promo-spacer"></div>
+<div class="promo">Free shipping this week <a href="/shipping">Details</a></div>
+<header>
+  <a href="/" class="logo">Logo</a>
+  <nav>
+    <ul>
+      <li><a href="/products">Products</a>
+        <ul><li class="title">Resources</li><li><a href="/products/a">Product A</a></li><li><a href="/products/b">Product B</a></li></ul>
+      </li>
+      <li><a href="/resources">Resources</a>
+        <ul><li><a href="/blog">Blog</a></li><li><a href="/guides">Guides</a></li><li><a href="/help">Help</a></li></ul>
+      </li>
+      <li><a href="/pricing">Pricing</a></li>
+    </ul>
+  </nav>
+  <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('open')">Menu</button>
+</header>
+<main>
+  <h1>Header capture fixture</h1>
+  <p>A fixed promo bar over an empty spacer above the header, two hover menus (the first one's panel titled like the second), a burger under 1000 px.</p>
+</main>
+</body>
+</html>

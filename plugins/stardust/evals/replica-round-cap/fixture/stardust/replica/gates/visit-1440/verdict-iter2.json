@@ -1,0 +1,36 @@
+{
+  "round": "iter2",
+  "width": 1440,
+  "stage": "prototype",
+  "pixel": {
+    "rc": 2,
+    "diff": "stardust/replica/gates/visit-1440/diff-iter2.png",
+    "json": "stardust/replica/gates/visit-1440/pixel-iter2.json",
+    "pct": 4.73,
+    "alignedPct": 3.94,
+    "alignedUsed": true,
+    "totalShift": 30,
+    "steps": [
+      {
+        "y": 928,
+        "shift": -30,
+        "cumulative": -30
+      }
+    ],
+    "offsetBound": 8,
+    "maskedRows": 116,
+    "noiseFloor": 1.52,
+    "reason": "offsets: 1 step(s), 30px total — −30px at y=928 (bound 8px)"
+  },
+  "reference": {
+    "origin": "frozen",
+    "capturedAt": "2026-11-20T08:02:01.829Z",
+    "primed": true,
+    "stable": true,
+    "maskArg": "812:116"
+  },
+  "probes": {},
+  "structural": 0,
+  "nothingLost": 0,
+  "at": "2026-11-20T08:03:18.239Z"
+}

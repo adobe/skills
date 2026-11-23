@@ -25,7 +25,6 @@ aio auth ctx --list
 ```
 
 **Prevention:**
-- In CI/CD, use `adobe/aio-cli-setup-action@3` which handles auth setup automatically
 - Ensure all 14 repository secrets are set with correct workspace suffix (`_STAGE` / `_PROD`)
 - Never use the deprecated `auth` command in `aio-apps-action` — it is JWT-based and no longer supported
 
@@ -62,26 +61,20 @@ aio runtime action get <action-name> --url
 
 ## 3. GitHub Actions Workflow Fails at "Setup CLI" Step
 
-**Symptom:** Workflow fails at the `adobe/aio-cli-setup-action@3` step with `Error: Node.js version 16.x is not supported` or `Cannot find module '@adobe/aio-cli'`.
+**Symptom:** Workflow fails at the `adobe/aio-cli-setup-action` step with `Error: Node.js version 16.x is not supported` or `Cannot find module '@adobe/aio-cli'`.
 
-**Cause:** Node.js version mismatch. `aio-cli-setup-action@3` requires Node.js 18+. The workflow runner may be using an older default.
+**Cause:** Node.js version mismatch. `aio-cli-setup-action` runs `npm install -g @adobe/aio-cli` with the runner's Node.js, and `@adobe/aio-cli` 11 requires Node.js 20.17 or later. The workflow runner may be using an older default.
 
 **Fix:**
 ```yaml
 # Ensure setup-node runs BEFORE aio-cli-setup-action
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v7
   with:
-    node-version: '20'  # Minimum: 18. Recommended: 20
-
-# Node version compatibility matrix:
-# Node 16 — NOT SUPPORTED (EOL Dec 2023)
-# Node 18 — Minimum supported
-# Node 20 — Recommended (LTS until Apr 2026)
-# Node 22 — Supported (LTS until Apr 2027)
+    node-version: '20'  # @adobe/aio-cli 11 requires >=20.17.0
 ```
 
 **Prevention:**
-- Always pin `actions/setup-node@v4` with `node-version: '20'` before CLI setup
+- Always pin `actions/setup-node@v7` with `node-version: '20'` before CLI setup
 - Use the workflow templates from `assets/` which include correct Node.js version
 - Add a Node.js version check to your CI: `node --version` as a debug step
 
@@ -218,7 +211,7 @@ git commit -m "chore: update lockfile"
 # 3. Match Node.js version between local and CI
 node --version  # Check local version
 # Update workflow to match:
-# - uses: actions/setup-node@v4
+# - uses: actions/setup-node@v7
 #   with:
 #     node-version: '20'
 
