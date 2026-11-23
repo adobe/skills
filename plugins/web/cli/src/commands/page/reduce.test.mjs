@@ -17,6 +17,7 @@ const OK = {
   hasMainContent: true,
 };
 const SECTION = { id: 's1' };
+const FALLBACK = { id: 'body', fallback: true };
 const PHASE1 = {
   url: 'http://x/p1',
   title: 'T',
@@ -74,6 +75,26 @@ test('throws EMPTY_RESULT after retries', async () => {
   assert.equal(code, 1);
   assert.equal(JSON.parse(stdout.buf).error.code, 'EMPTY_RESULT');
   assert.equal(detects(calls).length, 2);
+});
+
+test('retries scroll while the only section is the fallback', async () => {
+  const { code, calls, stdout } = await run(
+    ['page', 'reduce', 'http://x'],
+    [{ sections: [FALLBACK] }, { sections: [SECTION] }],
+  );
+  assert.equal(code, 0);
+  assert.equal(detects(calls).length, 2);
+  assert.deepEqual(JSON.parse(stdout.buf).sections, [SECTION]);
+});
+
+test('returns the fallback section after retries', async () => {
+  const { code, calls, stdout } = await run(
+    ['page', 'reduce', 'http://x', '--retries', '1'],
+    [{ sections: [FALLBACK] }],
+  );
+  assert.equal(code, 0);
+  assert.equal(detects(calls).length, 2);
+  assert.deepEqual(JSON.parse(stdout.buf).sections, [FALLBACK]);
 });
 
 test('returns phase1 unchanged on success', async () => {

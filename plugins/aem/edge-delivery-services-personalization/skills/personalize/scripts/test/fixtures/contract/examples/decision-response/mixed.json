@@ -1,0 +1,37 @@
+{
+  "decisions": {
+    "home-hero": {
+      "variant": "pro",
+      "tracking": {
+        "engine": "of1",
+        "requestId": "r-91",
+        "model": "clef",
+        "confidence": 0.82,
+        "cached": false
+      }
+    },
+    "promo": {
+      "fragment": "/fragments/personalization/promo/festive"
+    },
+    "banner": {
+      "variant": "default",
+      "tracking": {
+        "engine": "of1",
+        "requestId": "r-94"
+      }
+    },
+    "holdout": {
+      "control": true
+    },
+    "offer": {
+      "reason": "low_confidence",
+      "tracking": {
+        "engine": "of1",
+        "requestId": "r-92",
+        "confidence": 0.41
+      }
+    }
+  },
+  "ttl": 300,
+  "cacheable": false
+}

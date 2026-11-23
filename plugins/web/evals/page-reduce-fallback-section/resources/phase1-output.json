@@ -1,0 +1,26 @@
+{
+  "url": "https://www.northwind-gardens.example/",
+  "title": "Northwind Gardens: houseplants delivered",
+  "viewport": {
+    "width": 1440
+  },
+  "templateHash": "0",
+  "sections": [
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]",
+      "xpathWithDetails": "/html/body",
+      "tokenizedHtml": "<body><header class=\"site-header\">{LINK:Northwind Gardens home}<nav class=\"main-nav\"><ul><li>{LINK:Shop}</li><li>{LINK:Plant care}</li><li>{LINK:Workshops}</li><li>{LINK:Delivery}</li><li>{LINK:About us}</li><li>{LINK:Contact}</li></ul></nav></header><div class=\"page-content\"><section class=\"hero\"><h1>{HEADING:1}</h1><p>{TEXT}</p>{IMAGE:1440x600}{CTA:Shop plants}</section><section class=\"featured\"><h2>{HEADING:2}</h2><div class=\"product-grid\"><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p>{LINK:View plant}</div><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p>{LINK:View plant}</div><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p>{LINK:View plant}</div></div></section><section class=\"newsletter\"><h2>{HEADING:2}</h2><p>{TEXT}</p><form action=\"/subscribe\" method=\"post\">{INPUT:email}<button>{TEXT}</button></form></section></div><footer class=\"site-footer\"><p>{TEXT}</p>{LINK:Privacy}{LINK:Terms}</footer></body>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [],
+      "section": null,
+      "fallback": true,
+      "index": 0
+    }
+  ],
+  "session": "s-1",
+  "durationMs": 21400
+}

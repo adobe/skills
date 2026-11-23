@@ -7,6 +7,7 @@ import {
   access,
   rm,
 } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -94,6 +95,24 @@ export async function materializeWorkspace(evalName, dest) {
     await cp(fixture, workspace, { recursive: true });
   } catch {
     // No fixture: from-scratch eval starts in an empty workspace.
+  }
+  // setup.sh next to task.md runs in the workspace after the fixture is in, as the
+  // scenario convention has it (scripts/skill-eval.mjs and Tessl run it the same way):
+  // it starts what the task needs beside the files, such as the local fixture site.
+  // A setup that fails is a run that cannot be judged, so it throws.
+  const setup = join(evalDir(evalName), "setup.sh");
+  let hasSetup = true;
+  try {
+    await access(setup);
+  } catch {
+    hasSetup = false;
+  }
+  if (hasSetup) {
+    execFileSync("bash", [setup], {
+      cwd: workspace,
+      stdio: ["ignore", "inherit", "inherit"],
+      timeout: 600_000,
+    });
   }
   return workspace;
 }

@@ -1,0 +1,20 @@
+{
+  "version": "2",
+  "page": {
+    "path": "/home"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

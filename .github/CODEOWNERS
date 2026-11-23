@@ -24,6 +24,9 @@
 # AEM Forms on Edge Delivery Services (Form block)
 /plugins/aem/forms/edge-delivery-services/             @ravise5
 
+# AEM EDS Personalization
+/plugins/aem/edge-delivery-services-personalization/   @srshrm
+
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
 

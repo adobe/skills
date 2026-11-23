@@ -1,0 +1,14 @@
+{
+  ":version": 3,
+  ":names": ["helix-blocks"],
+  ":type": "multi-sheet",
+  "helix-blocks": {
+    "total": 2,
+    "limit": 2,
+    "offset": 0,
+    "data": [
+      { "name": "Cards", "path": "/tools/sidekick/blocks/cards" },
+      { "name": "Columns", "path": "/tools/sidekick/blocks/columns" }
+    ]
+  }
+}

@@ -143,6 +143,9 @@ for (const relHtml of htmlFiles) {
       pinnedChanged.push(slug);
     } else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
+    } else if (prior.delivery.status === 'content-pending') {
+      // a roster sibling that now has its own migrated document is an ordinary page to push
+      delivery = { ...prior.delivery, status: 'pending' };
     } else {
       delivery = prior.delivery;
     }
@@ -182,7 +185,10 @@ if (STATE) {
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
-    if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    // the roster keeps a URL's trailing slash; a migrated tree path never has one (`/a/` is `/a`).
+    // Match on the bare form only; the row keeps the roster path so publicUrl still serves `/a/`.
+    const key = path.replace(/\/+$/, '') || '/';
+    if (coveredPaths.has(key)) continue; // the archetype itself — already inventoried
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
     const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
@@ -206,7 +212,7 @@ if (STATE) {
       widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
-    coveredPaths.add(path);
+    coveredPaths.add(key);
   }
 }
 

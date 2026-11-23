@@ -1,0 +1,26 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "events": [
+    {
+      "id": "promo",
+      "variant": "festive",
+      "type": "seen",
+      "tracking": {
+        "decisionId": "d-42"
+      },
+      "decisionId": "promo#1"
+    },
+    {
+      "id": "promo",
+      "variant": "festive",
+      "type": "clicked",
+      "tracking": {
+        "decisionId": "d-42"
+      },
+      "decisionId": "promo#1"
+    }
+  ]
+}

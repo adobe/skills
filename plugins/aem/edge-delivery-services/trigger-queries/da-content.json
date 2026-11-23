@@ -1,6 +1,6 @@
 {
   "name": "da-content trigger queries",
-  "description": "Should trigger when generating or fixing HTML for DA upload (block/section/page metadata structure, icons, images, cell content), calling the DA Source API for uploads, uploading media, or diagnosing silent content failures after preview; near misses are token acquisition (da-auth), local dev server and aem content clone/pull (aem-cli), block JS/CSS, content modeling, page import and testing.",
+  "description": "Should trigger when generating or fixing page HTML for Experience Workspace / DA, including hand-written sample pages for local testing (block/section/page metadata structure, icons, images, cell content), uploading pages or media to the DA source API or the Source Bus API, or diagnosing silent content failures after preview; near misses are token acquisition (da-auth), dev-server setup and aem content clone/push (aem-cli), block JS/CSS, content modeling, page import and testing.",
   "fixture": {
     "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
     "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
@@ -154,9 +154,9 @@
       "split": "train"
     },
     {
-      "id": "n-local-test-html",
+      "id": "y-local-test-html",
       "query": "I want to try my new block locally with a test page. Write the sample page HTML and put it where the dev server will serve it; I don't need to sync anything with our content source.",
-      "should_trigger": false,
+      "should_trigger": true,
       "skill": "da-content",
       "split": "train"
     },
@@ -205,6 +205,13 @@
     {
       "id": "y-local-test-format",
       "query": "I'm writing a static test page by hand for my new block so I can view it locally. What HTML structure must it have so the pipeline and decoration treat it like real authored content (sections, block markup, metadata)?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-sourcebus-write",
+      "query": "Our site acme/docs keeps its content in Source Bus (api.aem.live). I have a token. How do I write a new about page there and get it onto the preview?",
       "should_trigger": true,
       "skill": "da-content",
       "split": "test"

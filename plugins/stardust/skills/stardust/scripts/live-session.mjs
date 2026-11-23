@@ -1372,6 +1372,46 @@ export async function gotoLive(page, url, options = {}) {
 // STARDUST_STEALTH=0 disables them together with the per-context navigator.webdriver spoof.
 const STEALTH_LAUNCH = Object.freeze({ args: Object.freeze(['--disable-blink-features=AutomationControlled']), ignoreDefaultArgs: Object.freeze(['--enable-automation']) });
 
+const FAST_CLOSE_EXIT_MS = 3000;
+
+/**
+ * Real Chrome (seen on 157, macOS) hangs in browser teardown once any incognito context has existed — even one already
+ * closed, even one that never had a page — until its teardown watchdog fires 10 s later, records a crash dump and
+ * terminates (exit 2). Every probe paid those 10 s at close and left a ~1.2 MB dump in the operator's Chrome profile
+ * (Crashpad), thousands per day under parallel gates. So close() closes the contexts, then ends the browser process
+ * with SIGTERM: it exits in milliseconds, without a dump. The pid comes from CDP at launch; any failure on the way
+ * (no CDP, no pid, kill refused, no exit within FAST_CLOSE_EXIT_MS) falls back to Playwright's own close.
+ */
+export async function installFastClose(browser) {
+  if (!browser || typeof browser.newBrowserCDPSession !== 'function') return browser;
+  let pid = null;
+  try {
+    const cdp = await browser.newBrowserCDPSession();
+    const { processInfo } = await cdp.send('SystemInfo.getProcessInfo');
+    pid = (processInfo || []).find((p) => p.type === 'browser')?.id ?? null;
+    await cdp.detach().catch(() => {});
+  } catch { return browser; }
+  if (!Number.isInteger(pid) || pid <= 0) return browser;
+  const playwrightClose = browser.close.bind(browser);
+  browser.close = async (options) => {
+    if (!browser.isConnected()) return playwrightClose(options);
+    await Promise.allSettled(browser.contexts().map((c) => c.close(options)));
+    let timer;
+    const exited = new Promise((resolve) => {
+      browser.once('disconnected', () => resolve(true));
+      timer = setTimeout(() => resolve(false), FAST_CLOSE_EXIT_MS);
+    });
+    try { process.kill(pid, 'SIGTERM'); } catch { clearTimeout(timer); return playwrightClose(options); }
+    await exited;
+    clearTimeout(timer);
+    // Still connected: SIGTERM did not end it in time, so Playwright's close (and its own kill fallback) takes over.
+    // Disconnected: the call returns at once and lets Playwright finish its own cleanup.
+    return playwrightClose(options);
+  };
+  browser.stardustFastClose = true;
+  return browser;
+}
+
 // Chrome first, bundled Chromium when Chrome is not installed. The binary is what clears TLS/H2-fingerprint blocks
 // (#125: `channel:'chrome'` + headless gets HTTP 200 from Akamai where the bundled headless shell gets 400) — and it
 // is the only browser whose identity is a normal Chrome's. Takes the caller's `chromium` so this module stays import-free.
@@ -1380,6 +1420,7 @@ async function launchChromeFirst(chromium, { visible = false, stealth = false } 
   try {
     const b = await chromium.launch(opts);
     b.stardustTier = visible ? 'chrome-window' : 'chrome';
+    await installFastClose(b);
     return b;
   } catch (e) {
     console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium (tier chromium-fallback); bot-managed origins may block this tier`);
@@ -1571,4 +1612,42 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
   await page.mouse.move(0, (vp ? vp.height : 900) - 1).catch(() => {});
 
   return dismissed;
+}
+
+// ---- page size before a screenshot (#602) ----------------------------------------------------------------------------
+// Chrome lays nothing out past 2^25 px, its LayoutUnit maximum: a document that measures that in either direction is
+// a page whose own CSS overflowed (recorded: a CMS listing widget with a column width of `calc(100% / 0)` — the page is
+// 33,554,432 px wide and tall in every browser), not a long page. A full-page screenshot of it takes gigabytes and
+// kills the renderer or the container; a stitched capture would loop for days. Every capture instrument measures the
+// page first (pageSizeInPage) and asks shotPlan / layoutOverflow before it captures more than the viewport.
+export const LAYOUT_MAX_PX = 33554432;
+// The tallest full-page screenshot an instrument takes in one call; a taller page is captured down to here
+// (Playwright: `fullPage: true` with a `clip` — a `clip` without `fullPage` stops at the viewport).
+export const SHOT_MAX_HEIGHT = 30000;
+
+/** Runs IN THE PAGE (page.evaluate(pageSizeInPage)): the document's scroll size → { w, h } in CSS px. */
+export function pageSizeInPage() {
+  const de = document.documentElement; const b = document.body;
+  return { w: Math.max(de.scrollWidth, b ? b.scrollWidth : 0), h: Math.max(de.scrollHeight, b ? b.scrollHeight : 0) };
+}
+
+/** The page reached Chrome's layout maximum in either direction (a CSS defect on the page) → the line that says so, else null. */
+export function layoutOverflow(size) {
+  if (!size || !(size.w >= LAYOUT_MAX_PX || size.h >= LAYOUT_MAX_PX)) return null;
+  return `layout overflow: the page lays out at ${size.w}x${size.h}px, Chrome's layout maximum — a CSS defect on the source page (a size such as calc(100% / 0)), the same in a visitor's browser; capturing it again cannot help`;
+}
+
+/**
+ * How to screenshot a page of `size` ({ w, h } from pageSizeInPage; null = not measured) in a viewport `viewportWidth`
+ * wide → { mode, clip, reason }: 'fullPage' (clip null — as every instrument did before #602), 'capped' (taller than
+ * maxHeight: fullPage with `clip` down to maxHeight), or 'viewport' (layout overflow, or wider than 4 viewports: the
+ * viewport only). `reason` names why a capture is less than the full page.
+ */
+export function shotPlan(size, viewportWidth, { maxHeight = SHOT_MAX_HEIGHT } = {}) {
+  if (!size || !Number.isFinite(size.w) || !Number.isFinite(size.h)) return { mode: 'fullPage', clip: null, reason: null };
+  const overflow = layoutOverflow(size);
+  if (overflow) return { mode: 'viewport', clip: null, reason: overflow };
+  if (size.w > viewportWidth * 4) return { mode: 'viewport', clip: null, reason: `the page is ${size.w}px wide, more than 4 viewports of ${viewportWidth}px — the viewport only` };
+  if (size.h > maxHeight) return { mode: 'capped', clip: { x: 0, y: 0, width: Math.min(size.w, viewportWidth), height: maxHeight }, reason: `the page is ${size.h}px tall — captured down to ${maxHeight}px` };
+  return { mode: 'fullPage', clip: null, reason: null };
 }

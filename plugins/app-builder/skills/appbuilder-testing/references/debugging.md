@@ -21,7 +21,7 @@ Common test failures in App Builder projects and how to fix them.
 
 **Causes & fixes:**
 
-1. **Node version mismatch** — CI may use a different Node version. Pin it in your workflow: `node-version: '18'`. Run `node -v` locally to compare.
+1. **Node version mismatch** — CI may use a different Node version. Pin it in your workflow: `node-version: '20'` (`@adobe/aio-cli` 11 requires `>=20.17.0`). Run `node -v` locally to compare.
 2. **Missing devDependencies** — CI runs `npm ci`, which is stricter than `npm install`. Ensure all test deps are in `devDependencies`, not installed globally.
 3. **Environment variables missing** — Tests that read `process.env` values from a local `.env` file won't find them in CI. Pass them as secrets or mock `process.env` in tests:
    ```js

@@ -3,7 +3,12 @@
 //
 // The version is computed from the commits that touch the plugin, so a change to one of
 // its skills releases the plugin too. It is written to the root plugin.json, the manifests
-// and marketplace entries are built from that, and all of it is one commit. Claude Code
+// and marketplace entries are built from that, and all of it is one commit.
+//
+// The plugin's CHANGELOG.md is written here too, from the same commits: one line for each,
+// with its pull request. Nobody edits that file in a pull request (check-versions.mjs), so
+// two pull requests to one plugin no longer conflict in it. What a change is about goes
+// into the title and the description of its pull request. Claude Code
 // keeps an installed plugin at its version until the version changes, so this is what
 // brings a merged change to the people who installed the plugin.
 const fs = require("fs");
@@ -25,6 +30,11 @@ module.exports = {
       ]
     }],
     [path.join(scripts, "path-filtered-notes-generator.cjs"), {}],
+    // puts the notes of this release below the title, above what the file has
+    ["@semantic-release/changelog", {
+      changelogFile: "CHANGELOG.md",
+      changelogTitle: "# Changelog"
+    }],
     ["@semantic-release/exec", {
       prepareCmd: 'node "' + path.join(scripts, "prepare-plugin-release.mjs") + '" "${nextRelease.version}"'
     }],

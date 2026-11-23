@@ -1,5 +1,6 @@
-// Publishes plugins to the Tessl registry. Every plugin has a Tessl manifest, built from its
-// root plugin.json (check-plugins.mjs source holds a pull request to that), and each is
+// Publishes plugins to the Tessl registry. Every plugin of ours has a Tessl manifest, built
+// from its root plugin.json (check-plugins.mjs source holds a pull request to that); one
+// brought in from another repository has one only if it brings it (lib/imported.mjs). Each is
 // published when the version in that manifest differs from the one before this push: with
 // every release of the plugin, and the first time it has a manifest at all. Without a usable
 // "before" (a first push, a force push), a plugin is published only if its manifest is among
@@ -11,13 +12,17 @@
 // went through. A version that is already on the registry is not a failure, so the job can
 // be run again. At the end it prints what the registry says about each uploaded version,
 // because an accepted upload becomes available only after Tessl's publication checks.
+//
+// When the Tessl organization has run out of credits, that plugin and the ones after it are
+// skipped, not failed: the release on GitHub stands, and a run of the job once there are
+// credits again publishes them.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { error, group, summary, table, warning } from './lib/actions.mjs';
 import { changedFiles, tesslPluginDirs } from './lib/changed.mjs';
-import { publishOutcome } from './lib/tessl.mjs';
+import { outOfCredits, publishOutcome } from './lib/tessl.mjs';
 
 const [before = '', after = 'HEAD'] = process.argv.slice(2);
 const root = process.cwd();
@@ -51,7 +56,8 @@ function publish(dir) {
   const result = spawnSync('tessl', ['plugin', 'publish', dir], { encoding: 'utf8' });
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   process.stdout.write(output);
-  return { outcome: publishOutcome(result.status, output), status: result.status ?? result.error?.message };
+  const outcome = result.status !== 0 && outOfCredits(output) ? 'no-credits' : publishOutcome(result.status, output);
+  return { outcome, status: result.status ?? result.error?.message };
 }
 
 const attempts = Number(process.env.ATTEMPTS || 3);
@@ -59,7 +65,8 @@ const delay = Number(process.env.RETRY_DELAY || 10);
 const files = known ? [] : changed();
 const rows = [];
 const uploaded = [];
-const count = { published: 0, failed: 0 };
+const count = { published: 0, failed: 0, skipped: 0 };
+let credits = true;
 for (const dir of tesslPluginDirs(root)) {
   const manifest = `${dir}/.tessl-plugin/plugin.json`;
   const text = readFileSync(manifest, 'utf8');
@@ -67,6 +74,12 @@ for (const dir of tesslPluginDirs(root)) {
   const wanted = known ? versionBefore(manifest) !== now : files.includes(manifest);
   if (!wanted) continue;
   const name = basename(dir);
+  if (!credits) {
+    // the next publish would get the same answer
+    count.skipped += 1;
+    rows.push([name, 'not published', '⏭️ no credits']);
+    continue;
+  }
   let result;
   let tries = 0;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -76,7 +89,11 @@ for (const dir of tesslPluginDirs(root)) {
     warning(`The publish of ${name} timed out. Trying again in ${delay} seconds.`);
     await sleep(delay * 1000);
   }
-  if (result.outcome === 'published') {
+  if (result.outcome === 'no-credits') {
+    credits = false;
+    count.skipped += 1;
+    rows.push([name, 'not published', '⏭️ no credits']);
+  } else if (result.outcome === 'published') {
     count.published += 1;
     rows.push([name, tries > 1 ? `published, at attempt ${tries}` : 'published', '✅']);
   } else if (result.outcome === 'exists') {
@@ -90,7 +107,7 @@ for (const dir of tesslPluginDirs(root)) {
     rows.push([name, `failed: ${why}`, '❌']);
   }
   // also after a timeout: the upload may have gone through
-  if (result.outcome !== 'failed') {
+  if (result.outcome !== 'failed' && result.outcome !== 'no-credits') {
     try {
       uploaded.push(`${JSON.parse(text).name}@${now}`);
     } catch {
@@ -107,9 +124,14 @@ if (rows.length === 0) {
 for (const plugin of uploaded) {
   group(`On the registry: ${plugin}`, () => spawnSync('tessl', ['plugin', 'info', plugin], { stdio: 'inherit' }));
 }
-rows.push(['**Total**', `**${count.published} published, ${count.failed} failed**`, count.failed === 0 ? '✅' : '❌']);
-summary(['## Plugin Publishes', '', ...table(['Plugin', 'Result', 'Status'], rows)]);
-console.log(`Published: ${count.published}, failed: ${count.failed}`);
+rows.push(['**Total**', `**${count.published} published, ${count.failed} failed, ${count.skipped} skipped**`, count.failed > 0 ? '❌' : count.skipped > 0 ? '⏭️' : '✅']);
+const lines = ['## Plugin Publishes', '', ...table(['Plugin', 'Result', 'Status'], rows)];
+if (count.skipped > 0) {
+  lines.push('', `> ⏭️ ${count.skipped} plugin(s) were not published to Tessl: the Tessl organization has run out of credits.`, '> The release on GitHub is done. Run this job again once there are credits.');
+  warning(`${count.skipped} plugin(s) were not published to Tessl: the Tessl organization has run out of credits`);
+}
+summary(lines);
+console.log(`Published: ${count.published}, failed: ${count.failed}, skipped: ${count.skipped}`);
 if (count.failed > 0) {
   error(`${count.failed} plugin(s) failed to publish`);
   process.exit(1);

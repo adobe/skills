@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/adobe/skills/compare/figma-to-content-v1.0.2...figma-to-content-v1.0.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** trim da-auth under budget and correct token claims ([#715](https://github.com/adobe/skills/issues/715)) ([2b12b8f](https://github.com/adobe/skills/commit/2b12b8f6de2acd3c7cfece9cd8065b146aadeb2a))
+
 ## [1.0.2](https://github.com/adobe/skills/compare/figma-to-content-v1.0.1...figma-to-content-v1.0.2) (2026-11-15)
 
 ## [1.0.1](https://github.com/adobe/skills/compare/figma-to-content-v1.0.0...figma-to-content-v1.0.1) (2026-11-14)

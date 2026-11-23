@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyPlatform, agyBehind, installAgy, latestAgy, sha512 } from './setup-agent-clis.mjs';
-import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, listFiles } from './skill-eval.mjs';
-import { run, tree } from './lib/testing.mjs';
+import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, keeps, listFiles, withoutDependencies } from './skill-eval.mjs';
+import { commit, run, tree, write } from './lib/testing.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const temp = (t) => {
@@ -118,7 +118,7 @@ test('credentials: each client names the variables it is given, and no others', 
     AGY_LLM_GATEWAY_MODELS: 'global.xai.grok-4.6',
     AGY_CLI_DISABLE_AUTO_UPDATE: '1',
   });
-  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex', 'grok', 'agy']);
+  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex', 'grok', 'agy', 'pi']);
   assert.equal(ENDPOINTS.grok('eu-west-1'), 'https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1');
 });
 
@@ -140,7 +140,7 @@ const PLUGIN = {
   'plugins/p/evals/case/task.md': 'Do the task of the scenario.',
   'plugins/p/evals/case/criteria.json': JSON.stringify({ checklist: [{ name: 'done', max_score: 10 }] }),
   'plugins/p/evals/case/resources/start.md': 'given',
-  'plugins/p/evals/case/setup.sh': 'exit 1',
+  'plugins/p/evals/case/setup.sh': 'cat resources/start.md > start.md',
 };
 function cli(t, name, script) {
   const dir = temp(t);
@@ -169,9 +169,159 @@ test('an eval runs the task with the plugin and without it, and reports both ans
   assert.deepEqual(report.arms.with.removed, []);
   assert.equal(report.arms.with.turns, 2);
   assert.deepEqual(report.criteria, { checklist: [{ name: 'done', max_score: 10 }] });
-  assert.match(report.notes.join(' '), /setup\.sh, which this runner does not run/);
+  assert.deepEqual(report.notes, []);
   assert.equal(readFileSync(join(out, 'claude-with', 'workdir', 'result.md'), 'utf8'), 'plugin yes\n');
   assert.equal(readFileSync(join(root, 'plugins/p/evals/case/resources/start.md'), 'utf8'), 'given'); // the scenario is not changed
+});
+
+// A stand-in for Claude Code that says what the manifest of its --plugin-dir declares, and whether a skill is there.
+const MANIFEST = `dir=; while [ $# -gt 0 ]; do [ "$1" = --plugin-dir ] && dir=$2; shift; done
+if [ -z "$dir" ]; then says="no plugin"; elif grep -q dependencies "$dir/.claude-plugin/plugin.json"; then says="dependencies declared"; else says="no dependencies, skill $(ls "$dir/skills")"; fi
+printf '{"result":"%s","num_turns":1,"total_cost_usd":0.01}' "$says"`;
+
+test('for claude, a plugin that depends on another one is loaded from a copy without the dependency, and the report says so', (t) => {
+  const manifest = { name: 'p', version: '1.0.0', dependencies: [{ name: 'other', marketplace: 'elsewhere' }] };
+  const root = tree(t, { ...PLUGIN, 'plugins/p/.claude-plugin/plugin.json': JSON.stringify(manifest) });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, MANIFEST), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  // Claude Code loads no skill of a plugin with an unsatisfied dependency: with it declared, both arms are the same agent
+  assert.equal(report.arms.with.answer, 'no dependencies, skill one');
+  assert.equal(report.arms.without.answer, 'no plugin');
+  assert.equal(report.notes.length, 1);
+  assert.match(report.notes[0], /^The plugin depends on other@elsewhere, which the home of a run does not have\. It was loaded from a copy without that dependency/);
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'plugins/p/.claude-plugin/plugin.json'), 'utf8')), manifest); // the plugin itself is not changed
+
+  // the copy is removed on every way out: after a run, and when there are no credentials (exit 3)
+  const copies = () => readdirSync(tmpdir()).filter((name) => name.startsWith('skill-eval-plugin-')).length;
+  const before = copies();
+  const refused = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, MANIFEST), '--out', temp(t)], { cwd: root, env: {} });
+  assert.equal(refused.status, 3, refused.stdout + refused.stderr);
+  assert.equal(copies(), before);
+
+  const staged = withoutDependencies(join(root, 'plugins/p'));
+  assert.notEqual(staged.dir, join(root, 'plugins/p'));
+  assert.deepEqual(staged.dropped, ['other@elsewhere']);
+  assert.equal(existsSync(join(staged.dir, 'skills/one/SKILL.md')), true);
+  staged.cleanup();
+  assert.equal(existsSync(staged.dir), false);
+});
+
+test('a plugin without dependencies, or without a Claude manifest, is loaded from its own directory', (t) => {
+  const root = tree(t, { ...PLUGIN, 'plugins/q/.claude-plugin/plugin.json': JSON.stringify({ name: 'q', dependencies: [] }), 'plugins/q/skills/one/SKILL.md': '---\nname: one\n---\n' });
+  for (const dir of ['plugins/p', 'plugins/q']) {
+    const same = withoutDependencies(join(root, dir));
+    assert.equal(same.dir, join(root, dir));
+    assert.deepEqual(same.dropped, []);
+  }
+});
+
+// A stand-in for Claude Code that streams events: it loads the skill `one` when the plugin is there.
+const STREAMS = `case "$*" in *--plugin-dir*) echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"p:one"}}]}}' ;; esac
+echo '{"type":"result","result":"streamed","num_turns":3,"total_cost_usd":0.01,"is_error":false}'`;
+
+test('for claude, each run says which skills it loaded, and a scenario which skill it tests', (t) => {
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/one-case/task.md': 'Do it.',
+    'plugins/p/evals/one-case/criteria.json': JSON.stringify({ checklist: [{ name: 'done', max_score: 10 }] }),
+  });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/one-case', '--bin', claude(t, STREAMS), '--out', temp(t)], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.expected, 'one');
+  assert.deepEqual(report.arms.with.skillsLoaded, ['one']);
+  assert.deepEqual(report.arms.without.skillsLoaded, []);
+  assert.equal(report.arms.with.answer, 'streamed');
+  assert.equal(report.arms.with.turns, 3);
+  assert.deepEqual(RUNNERS.claude.command({ prompt: 'task', maxTurns: 5, plugin: { dir: '/p' }, withPlugin: false }).slice(2, 5), ['--output-format', 'stream-json', '--verbose']);
+});
+
+// A stand-in for a client that answers with the files of its work directory and the branch it is on.
+const LISTS = `printf '{"result":"%s on %s"}' "$(find . -type f -not -path './.git/*' | sort | tr '\\n' ' ')" "$( (git branch --show-current; git remote get-url origin) 2>/dev/null | tr '\\n' ' ')"`;
+
+test('a scenario starts from its fixtures, includes and setup scripts, in that order, in each run\'s own directory', (t) => {
+  const upstream = tree(t, { 'README.md': 'upstream', 'docs/guide.md': 'guide', 'src/app.js': 'app', 'src/app.test.js': 'test' });
+  commit(upstream);
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/case/setup.sh': 'echo "$(ls src | tr "\\n" " ")/ $(cat block/block.js)" > setup.txt; git add -A; git -c user.name=e -c user.email=e@example.com commit -q -m setup',
+    'plugins/p/evals/case/first.sh': 'echo first > first.txt',
+    'plugins/p/evals/case/data/seed.json': '{}',
+    'plugins/p/evals/case/fixtures/block/block.js': 'block',
+    'plugins/p/evals/case/fixtures/block/block.md': 'notes',
+    'plugins/p/evals/case/scenario.json': JSON.stringify({
+      fixture: { repoUrl: upstream, ref: 'HEAD', remote: 'https://github.com/org/site.git', exclude: ['*.md', 'src/*.test.js'] },
+      fixtures: { block: { type: 'directory', path: './fixtures/block', installPath: 'block', include: ['*.js'] } },
+      include: ['./data'],
+      setup: ['./first.sh'],
+    }),
+  });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, LISTS), '--out', temp(t)], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  for (const arm of ['with', 'without']) {
+    assert.equal(report.arms[arm].answer, './block/block.js ./data/seed.json ./first.txt ./resources/start.md ./setup.txt ./src/app.js  on main https://github.com/org/site.git ');
+    assert.deepEqual(report.arms[arm].files, []); // what the scenario set up is not what the run wrote
+  }
+  assert.deepEqual(report.notes, []);
+});
+
+test('--no-setup leaves out what needs the network and says so; a step that fails is a failed run', (t) => {
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/case/fixtures/block/block.js': 'block',
+    'plugins/p/evals/case/scenario.json': JSON.stringify({
+      fixture: { repoUrl: 'https://github.com/org/repo.git', ref: 'abc1234' },
+      fixtures: { block: { type: 'directory', path: './fixtures/block', installPath: 'blocks/block' } },
+    }),
+  });
+  const args = ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--arms', 'without', '--bin', claude(t, LISTS), '--out', temp(t)];
+  const offline = run(t, 'skill-eval.mjs', [...args, '--no-setup'], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(offline.status, 0, offline.stdout + offline.stderr);
+  const report = JSON.parse(offline.stdout);
+  assert.equal(report.arms.without.answer, './blocks/block/block.js ./resources/start.md  on ');
+  assert.deepEqual(report.notes, ['--no-setup: the work directory lacks the fixture codebase, a clone of https://github.com/org/repo.git at abc1234, the setup script ./setup.sh.']);
+
+  write(root, { 'plugins/p/evals/case/scenario.json': '{}', 'plugins/p/evals/case/setup.sh': 'echo "no such ref" >&2; exit 1' });
+  const failing = run(t, 'skill-eval.mjs', args, { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(failing.status, 1);
+  assert.deepEqual(JSON.parse(failing.stdout).arms.without, { error: 'setting up the scenario: the setup script ./setup.sh failed: no such ref' });
+
+  write(root, { 'plugins/p/evals/case/scenario.json': JSON.stringify({ fixtures: { up: { type: 'directory', path: './fixtures/block', installPath: '../outside' } } }) });
+  const outside = run(t, 'skill-eval.mjs', args, { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(outside.status, 1);
+  assert.match(JSON.parse(outside.stdout).arms.without.error, /the fixture up is installed at \.\.\/outside, outside the work directory/);
+
+  // a work directory of one's own is taken as it is
+  write(root, { 'mine/file.txt': 'x' });
+  const given = run(t, 'skill-eval.mjs', [...args, '--workdir', 'mine'], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(given.status, 0, given.stdout + given.stderr);
+  assert.equal(JSON.parse(given.stdout).arms.without.answer, './file.txt  on ');
+  assert.match(JSON.parse(given.stdout).notes[0], /^The work directory is the one of --workdir/);
+});
+
+test('the setup scripts get a home of their own, and the sign-in that --auth-home gives the client is not on disk while they run', (t) => {
+  const signedIn = tree(t, { '.claude/.credentials.json': '{"token":"secret"}' });
+  const root = tree(t, {
+    ...PLUGIN,
+    // in its home, and in the client's, at a path that is easy to guess
+    'plugins/p/evals/case/setup.sh': 'if [ -e "$HOME/.claude/.credentials.json" ] || ls "$(dirname "$TMPDIR")"/skill-eval-claude-home-*/.claude/.credentials.json >/dev/null 2>&1; then echo read > setup.txt; else echo none > setup.txt; fi',
+  });
+  const reads = `printf '{"result":"setup %s, client %s"}' "$(cat setup.txt)" "$(grep -q secret "$HOME/.claude/.credentials.json" && echo read || echo none)"`;
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--arms', 'without', '--auth-home', signedIn, '--bin', claude(t, reads), '--out', temp(t)], { cwd: root });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).arms.without.answer, 'setup none, client read');
+});
+
+test('the globs of a fixture match a path, a directory above it, or a file name', () => {
+  assert.equal(keeps('a/b.md', { exclude: ['*.md'] }), false);
+  assert.equal(keeps('.tessl/x/y.json', { exclude: ['.tessl/'] }), false);
+  assert.equal(keeps('src/auth/login.ts', { include: ['src/auth/**'] }), true);
+  assert.equal(keeps('src/other.ts', { include: ['src/auth/**', 'package.json'] }), false);
+  assert.equal(keeps('src/a/b.ts', { include: ['src/**/*.ts'], exclude: ['**/*.test.ts'] }), true);
+  assert.equal(keeps('src/a/b.test.ts', { include: ['src/**/*.ts'], exclude: ['**/*.test.ts'] }), false);
+  assert.equal(keeps('anything'), true);
 });
 
 test('a run that edits a file without changing its size, or only removes one, is reported and its work directory kept', (t) => {

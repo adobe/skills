@@ -31,7 +31,7 @@ The script intentionally only wraps the `aio app *` commands — those need a no
 ## Prerequisites
 
 1. **Adobe I/O CLI (latest bundle)** — `npm install -g @adobe/aio-cli`, then `aio --version`. Always install / refresh the bundle rather than chasing individual plugin versions; the latest bundle is what makes the non-interactive `aio console …` and `aio app init --org/--project/--template-options/--no-config-validation` commands available.
-2. **Node.js 18+** — required by the aio CLI and App Builder SDKs. Node 24 is supported on Stage runtimes.
+2. **Node.js 20.17+** — required by the aio CLI (`@adobe/aio-cli` 11 declares `engines.node >=20.17.0`). Node 24 is supported on Stage runtimes.
 3. **Bash shell** — `scripts/init.sh` requires bash.
 4. **Authenticated session** — `aio auth login` must have been completed. For Docker / CI scenarios, set `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container.
 5. **IMS org selected** — `aio console org select <orgId>`, or pass `--orgId` to every bootstrap command. The Console project / workspace / API subscriptions can all be created from this skill, so they no longer have to exist beforehand.

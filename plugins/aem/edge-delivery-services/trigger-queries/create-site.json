@@ -1,0 +1,122 @@
+{
+  "name": "create-site trigger queries",
+  "description": "New-site onboarding (DA or Source Bus) should pick create-site; import, block work, auth/page-HTML/CLI work on existing sites and branding are near misses.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-new-site-plain",
+      "query": "I want to launch a brand-new site on Edge Delivery Services for my company acme-corp. Nothing exists yet, no repo and no content. Can you set the whole thing up and give me a preview link?",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "y-new-site-sourcebus",
+      "query": "We're starting a new AEM Edge Delivery site and want its content stored in Source Bus (api.aem.live) rather than DA. We have a GitHub org, nothing else yet. Walk me through getting it created and previewable.",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "y-onboard-from-boilerplate",
+      "query": "Create a new repo from the aem-boilerplate template for our org, get it connected so the .aem.page URL works, and put a starter homepage, nav and footer in place.",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "y-new-eds-project",
+      "query": "Set up a new EDS project called harbor-site under github org harbor-labs with a homepage that previews.",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "y-code-sync-next",
+      "query": "I made a repo from the boilerplate template yesterday. What else do I have to do before main--my-shop--my-org.aem.page serves anything, and where does the content live?",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "y-new-site-which-store",
+      "query": "I'm onboarding a fresh Edge Delivery site. Should the content go in DA or Source Bus, and how do I wire up whichever it is?",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "test"
+    },
+    {
+      "id": "y-first-pages-new-site",
+      "query": "The new repo is created and the code sync app is installed. Seed the first pages (home, nav, footer) so the site has something to show.",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "test"
+    },
+    {
+      "id": "y-onboard-demo-site",
+      "query": "Spin up a demo Edge Delivery site for a customer pitch tomorrow: new GitHub repo, hooked up to AEM, starter content, live preview URL.",
+      "should_trigger": true,
+      "skill": "create-site",
+      "split": "test"
+    },
+    {
+      "id": "n-import-existing",
+      "query": "Migrate the pages of our existing marketing site www.example.com into our Edge Delivery project. Build the import script.",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "n-new-block",
+      "query": "Add a new testimonial carousel block to our existing EDS site and make sure it works on mobile.",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "n-auth-401-sourcebus",
+      "query": "My script PUTs to api.aem.live/acme/sites/docs/source/index.html on an existing site and gets 403 although I'm logged in. What do I check?",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "n-page-html",
+      "query": "I'm writing a hand-built HTML page for da.live with a cards block and some metadata. It previews empty. What did I get wrong?",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "n-aem-up",
+      "query": "aem up says the port is already in use in my existing project. How do I run the dev server?",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "train"
+    },
+    {
+      "id": "n-brand-existing-site",
+      "query": "Apply our brand colors, fonts and logo from the old website to the already-created Edge Delivery project.",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "test"
+    },
+    {
+      "id": "n-write-page-existing-sourcebus",
+      "query": "The site acme/docs already exists and its content is in Source Bus. Upload a new about page and make it show on the preview.",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "test"
+    },
+    {
+      "id": "n-edit-content-existing",
+      "query": "Clone the DA content of our existing site locally, fix typos on three pages and push them back.",
+      "should_trigger": false,
+      "skill": "create-site",
+      "split": "test"
+    }
+  ]
+}

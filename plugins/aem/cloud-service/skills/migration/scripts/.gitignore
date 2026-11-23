@@ -1,3 +1,5 @@
 dispatcher-tool/node_modules/
 dispatcher-tool/package-lock.json
 asset-workflow-tool/
+repo-modernizer-tool/node_modules/
+repo-modernizer-tool/package-lock.json

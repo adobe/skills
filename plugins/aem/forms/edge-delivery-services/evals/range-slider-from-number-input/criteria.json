@@ -53,6 +53,11 @@
       "description": "min/max/step are read from the field JSON `properties` object (e.g. `fieldJson.properties.min`) and applied to the range input"
     },
     {
+      "name": "CSS targets rendered classes",
+      "max_score": 6,
+      "description": "`loan-slider.css` scopes its rules to classes that are actually rendered: classes `decorate()` adds (e.g. on a container it creates, or with `fieldDiv.classList.add(...)`) or that the form block renders. Selectors do not rely on a `.loan-slider-wrapper` class that nothing adds: the form block names a `number-input` field's wrapper `number-wrapper`"
+    },
+    {
       "name": "Component README",
       "max_score": 4,
       "description": "`blocks/form/components/loan-slider/README.md` exists with a title, an authoring-properties / how-to-use section, and a usage-notes section naming the base type and viewType"

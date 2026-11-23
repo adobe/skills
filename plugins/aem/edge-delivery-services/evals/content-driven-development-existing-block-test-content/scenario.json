@@ -1,0 +1,13 @@
+{
+  "description": "Pick test content for a change to an existing block (cards horizontal) in aem-boilerplate 5cea543 (cloned by setup.sh) with site content in ./content/",
+  "judge": {
+    "commands": true
+  },
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}

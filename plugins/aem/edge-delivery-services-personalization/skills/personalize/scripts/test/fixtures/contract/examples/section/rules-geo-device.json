@@ -1,0 +1,28 @@
+{
+  "id": "home-hero",
+  "source": "rules",
+  "variants": [
+    {
+      "name": "india",
+      "fragment": "/fragments/personalization/home-hero/india"
+    },
+    {
+      "name": "na-mobile",
+      "fragment": "/fragments/personalization/home-hero/na-mobile"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "india",
+      "condition": "geo: IN"
+    },
+    {
+      "variant": "na-mobile",
+      "condition": "geo: US, CA & device: mobile"
+    },
+    {
+      "variant": "india",
+      "condition": "param: utm_campaign=diwali"
+    }
+  ]
+}

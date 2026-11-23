@@ -1,0 +1,47 @@
+{
+  "skill_name": "cwv-optimizer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our AEM Edge Delivery Services site has a poor mobile LCP. head.html preloads our two brand fonts, both WOFF2 and about 25 KB each. Is that fine, or should we change it?",
+      "expected_output": "The answer treats a font loaded before LCP as a finding, recommends removing the preloads and loading the fonts from styles/fonts.css after the first section, with size-adjusted fallback fonts, and does not accept two preloaded fonts as within the budget.",
+      "assertions": [
+        "Recommends removing the font preloads from head.html",
+        "Says fonts belong in styles/fonts.css, loaded after the first section is shown",
+        "Mentions size-adjusted fallback fonts to avoid CLS",
+        "Does not recommend preloading any font"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We created our AEM Edge Delivery Services project from the boilerplate last month. Where should our Google Tag Manager script go so it doesn't hurt Core Web Vitals? There is no scripts/delayed.js in the repository.",
+      "expected_output": "The answer checks loadDelayed() in scripts/scripts.js, explains that current boilerplate projects load scripts/consent-check.js, which imports scripts/consented.js once the visitor has consented, and puts GTM in consented.js. It notes that nothing enforces a delay and that aem.live's guideline is at least three seconds after LCP.",
+      "assertions": [
+        "Names scripts/consented.js as the place for GTM",
+        "Mentions consent-check.js or loadDelayed() in scripts.js",
+        "Does not tell the user to create or move scripts into delayed.js",
+        "Relates the delay to the LCP event, not to page load"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I ran curl on our AEM Edge Delivery Services home page and every <img>, including the hero in the first section, has loading=\"lazy\". Is that hurting our LCP?",
+      "expected_output": "The answer says loading=\"lazy\" in the delivered HTML is expected and not a defect, because aem.js (waitForFirstImage) sets the first image of the first section to eager at runtime, and suggests checking the rendered DOM instead.",
+      "assertions": [
+        "Says loading=\"lazy\" in the delivered HTML is not a defect",
+        "Explains that aem.js sets the first image of the first section to eager at runtime",
+        "Does not recommend adding loading=\"eager\" to the HTML or the content"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "How do I measure how many bytes our AEM Edge Delivery Services page downloads before LCP, to compare with the 100 KB budget?",
+      "expected_output": "The answer measures compressed transfer sizes, from a Lighthouse report or with curl --compressed, and does not use curl size_download without --compressed.",
+      "assertions": [
+        "Measures compressed transfer sizes",
+        "Every curl size measurement uses --compressed, or sizes come from a Lighthouse report",
+        "Does not count preloaded fonts as a normal part of the budget"
+      ]
+    }
+  ]
+}

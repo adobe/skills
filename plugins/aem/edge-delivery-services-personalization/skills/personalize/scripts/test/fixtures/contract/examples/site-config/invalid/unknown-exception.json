@@ -1,0 +1,9 @@
+{
+  "consent": {
+    "mode": "deny",
+    "withoutConsent": [
+      "target"
+    ],
+    "policyRef": "JIRA-1"
+  }
+}

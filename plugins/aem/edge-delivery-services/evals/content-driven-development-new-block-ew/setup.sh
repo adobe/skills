@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+tmp=$(mktemp -d)
+git clone --quiet https://github.com/adobe/aem-boilerplate.git "$tmp"
+git -C "$tmp" checkout --quiet 5cea543707db900c92014b0bba93564fe325b9e4
+rm -rf "$tmp/.git"
+overlay=$(mktemp -d)
+cp -R ./. "$overlay"
+cp -R "$tmp"/. .
+cp -R "$overlay"/. .
+rm -rf "$tmp" "$overlay"
+git init --quiet --initial-branch=main
+git remote add origin https://github.com/acme/acme-site.git
+git add --all
+git -c user.name=eval -c user.email=eval@example.com commit --quiet -m "project at start"
+git tag eval-base
