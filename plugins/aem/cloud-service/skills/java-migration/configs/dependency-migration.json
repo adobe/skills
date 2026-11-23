@@ -1,4 +1,5 @@
 {
+  "_pinning": "Intentional candidate bytecode/instrumentation minimums; updates require real JVM and Mockito compatibility checks without experimental flags. See references/version-pins.md.",
   "org.ow2.asm:asm": "9.8",
   "org.ow2.asm:asm-analysis": "9.8",
   "org.ow2.asm:asm-commons": "9.8",

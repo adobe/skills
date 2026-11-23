@@ -4,6 +4,8 @@ All commands use absolute installed resource paths, an explicit target, and a
 verified Java environment. Pins and recipe identities are centralized in
 [targets.json](../configs/targets.json). Never invoke an unpinned `RELEASE` plugin.
 
+These are [intentional pins](version-pins.md), excluded from automatic Maven
+updates so recipe/tooling changes require joint integration and license review.
 The candidate pins are `rewrite-maven-plugin:6.45.0` (Rewrite 8.88.0),
 `rewrite-migrate-java:3.40.0` (Rewrite 8.87.0), and
 `rewrite-testing-frameworks:3.40.0` (Rewrite 8.85.4). Their published POMs and the

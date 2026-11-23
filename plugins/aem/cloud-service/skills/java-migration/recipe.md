@@ -42,6 +42,17 @@
     and logs. Apply only bounded repairs from [constraints](references/build-fix-constraints.md).
     Preserve failed command exit codes; the runner never retries silently.
 
+## Review checklist
+
+- [ ] Correct project and explicit target confirmed; evaluation limitations accepted.
+- [ ] Source compiler levels, source/parsing/target JDKs and Maven verified.
+- [ ] Preflight reviewed and user approval obtained before execution or edits.
+- [ ] Source baseline passed; existing failures were not masked by skipping tests.
+- [ ] Recipe and scoped POM diffs preserve unrelated settings and user content.
+- [ ] Final JDK 25 verification includes actual test-report counts.
+- [ ] Every failure, skipped stage and blocked external check appears in the report.
+- [ ] No deployment, pipeline, publishing or production-readiness claim is implied.
+
 ## Mandatory final report
 
 The runner writes `report.json` even for blocked/failed/skipped migrations and
