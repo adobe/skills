@@ -1,10 +1,10 @@
 ---
 name: dispatcher
 description: |
-  Single entry point for all AEM 6.5 LTS Dispatcher skills. Covers config authoring,
-  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
-  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
-  in AEM 6.5 LTS and AMS environments.
+  Use when asked about AEM 6.5 LTS or AMS Dispatcher `.any` farms, filters, vhosts, cache, flush,
+  rewrite rules, security, performance, or publish-tier delivery. Covers configuration authoring,
+  technical guidance, incident response, and lifecycle work; tool-dependent checks require an
+  explicitly approved tool.
 license: Apache-2.0
 compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; this plugin does not provide an AMS Dispatcher MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
@@ -33,6 +33,7 @@ Route user requests to the appropriate specialist skill based on intent.
 2. Read the linked SKILL.md for that specialist skill.
 3. Follow the workflow, references, and output contract defined in that skill.
 4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
+5. If no row fits, ask a clarifying question. If a linked guide is unavailable, provide only bounded explanation/static review and mark tool-dependent checks `NOT VERIFIED`.
 
 ## Runtime Selection
 
@@ -40,13 +41,4 @@ Before runtime-specific edits, confirm project evidence identifies AEM 6.5 LTS o
 
 ## MCP Tool Contract
 
-This plugin does not provide an AMS Dispatcher MCP. For 6.5 LTS/AMS, limit work to explanation and static review unless an approved tool is explicitly configured; report each unavailable tool-dependent check as NOT VERIFIED and never fabricate tool output.
-
-## Specialist Skills
-
-- [config-authoring/SKILL.md](./config-authoring/SKILL.md) — config file design, edits, and validation
-- [technical-advisory/SKILL.md](./technical-advisory/SKILL.md) — policy, documentation, and evidence planning
-- [incident-response/SKILL.md](./incident-response/SKILL.md) — runtime incident triage and remediation
-- [performance-tuning/SKILL.md](./performance-tuning/SKILL.md) — cache and throughput optimization
-- [security-hardening/SKILL.md](./security-hardening/SKILL.md) — security audit and hardening
-- [workflow-orchestrator/SKILL.md](./workflow-orchestrator/SKILL.md) — full lifecycle orchestration across all skills
+This plugin does not provide an AMS Dispatcher MCP. For 6.5 LTS/AMS, limit work to explanation and static review unless an approved tool is explicitly configured; report each unavailable tool-dependent check as NOT VERIFIED and never fabricate tool output. This entrypoint's runtime and MCP gates govern every linked specialist; do not follow a specialist guide to invoke an unavailable tool or claim runtime verification.
