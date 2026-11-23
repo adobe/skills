@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.3...plugin/stardust/v0.46.4) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deps:** update dependency axe-core to v4.14.1 ([#803](https://github.com/adobe/skills/issues/803)) ([659ccbf](https://github.com/adobe/skills/commit/659ccbf32fbaf5c88b8c2636bb2e9ef38d8b2f94))
+
 ## [0.46.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.2...plugin/stardust/v0.46.3) (2026-11-23)
 
 
