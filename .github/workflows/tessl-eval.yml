@@ -118,14 +118,46 @@ jobs:
         if: steps.detect.outputs.skip != 'true'
         run: npm ci --ignore-scripts && npm run plugins:build
 
-      # tessl eval run saves a run to the Tessl project of the nearest tessl.json above the
-      # plugin, and fails without one. Only edge-delivery-services brings its own. Every other
-      # plugin uses a tessl.json at the root of this checkout, linked to the project of this
-      # repository in the adobe workspace: the command links the one that matches, or creates
-      # it on the first run. The token belongs to more than one organization, so name it.
-      - name: Link this checkout to its Tessl project
+      # tessl eval run saves a run to the Tessl project that the nearest tessl.json above the
+      # plugin names, and fails without one ("No Tessl project found"). Only
+      # edge-delivery-services brings its own: {"name": "adobe/<Tessl name>", "mode":
+      # "vendored"}. Every other plugin to evaluate gets the same file, named after its
+      # Tessl target, in this checkout only. Nothing is committed and no project is created.
+      - name: Give each plugin a tessl.json in this checkout
         if: steps.detect.outputs.skip != 'true'
-        run: tessl project create skills --org adobe --workspace adobe
+        run: |
+          # shellcheck disable=SC2016 # the single quotes hold JavaScript
+          while IFS= read -r dir; do
+            [ -f "$dir/tessl.json" ] && continue
+            node -e '
+              const { readFileSync, writeFileSync } = require("node:fs");
+              const dir = process.argv[1];
+              const { name } = JSON.parse(readFileSync(`${dir}/.tessl-plugin/plugin.json`, "utf8"));
+              writeFileSync(`${dir}/tessl.json`, `${JSON.stringify({ name, mode: "vendored", dependencies: {} }, null, 2)}\n`);
+              console.log(`${dir}/tessl.json: ${name}`);
+            ' "$dir"
+          done < "$RUNNER_TEMP/plugin-dirs.txt"
+
+      # Which Tessl projects have this repository as their source: read only, for the log
+      # when an eval can't find its project. Names and paths only.
+      - name: Tessl projects of this repository
+        if: steps.detect.outputs.skip != 'true'
+        continue-on-error: true
+        run: |
+          # shellcheck disable=SC2016 # the single quotes hold JavaScript
+          tessl project list --org adobe --json | node -e '
+            let text = ""; process.stdin.on("data", (c) => (text += c)).on("end", () => {
+              const found = [];
+              const visit = (v) => {
+                if (Array.isArray(v)) return v.forEach(visit);
+                if (!v || typeof v !== "object") return;
+                const a = v.attributes ?? v;
+                if (typeof a.sourceUri === "string" && /adobe\/skills/i.test(a.sourceUri)) found.push(`${a.workspaceName ?? a.workspace?.name ?? "?"}/${a.name} <- ${a.repoSubpath || "(root)"}`);
+                else Object.values(v).forEach(visit);
+              };
+              try { visit(JSON.parse(text)); } catch { console.log("unreadable answer"); }
+              console.log(found.length ? found.join("\n") : "none");
+            });'
 
       - name: Run evals
         id: run-evals
