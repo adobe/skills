@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { released, withVersion } from './prepare-plugin-release.mjs';
+import { createRequire } from 'node:module';
+import { withVersion } from './prepare-plugin-release.mjs';
 import { commit, fakeBin, git, run, tree, write } from './lib/testing.mjs';
 
 const SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
@@ -22,10 +23,19 @@ test('the new version goes to plugin.json, to a target that overrides the versio
   assert.deepEqual(withVersion({ name: 'q' }, '2.0.0', []), { name: 'q', version: '2.0.0' });
 });
 
-test('the first Unreleased heading of a hand-written changelog becomes the version', () => {
-  assert.equal(released('# Changelog\n\n## Unreleased — a title\n\ntext\n\n## 1.0.0\n', '1.1.0'), '# Changelog\n\n## 1.1.0 — a title\n\ntext\n\n## 1.0.0\n');
-  assert.equal(released('## Unreleased\n\n## Unreleased\n', '2.0.0'), '## 2.0.0\n\n## Unreleased\n');
-  assert.equal(released('## 1.0.0\n\nUnreleased work is mentioned here.\n', '1.1.0'), '## 1.0.0\n\nUnreleased work is mentioned here.\n');
+test('the release writes the plugin\'s CHANGELOG.md from the commits, before the version is written and the commit is made', (t) => {
+  // the config reads plugin.json in the directory semantic-release runs in
+  const dir = tree(t, { 'plugin.json': '{"name":"p","version":"1.0.0"}' });
+  const cwd = process.cwd();
+  process.chdir(dir);
+  t.after(() => process.chdir(cwd));
+  const config = createRequire(import.meta.url)(join(cwd, 'plugin.release.config.cjs'));
+  const names = config.plugins.map((plugin) => [plugin].flat()[0].replace(/.*\//, ''));
+  assert.deepEqual(names, ['path-filtered-analyzer.cjs', 'path-filtered-notes-generator.cjs', 'changelog', 'exec', 'github', 'git']);
+  const options = (name) => config.plugins.find((plugin) => [plugin].flat()[0].endsWith(name))[1];
+  assert.deepEqual(options('changelog'), { changelogFile: 'CHANGELOG.md', changelogTitle: '# Changelog' });
+  assert.deepEqual(options('/git').assets, ['plugin.json', 'CHANGELOG.md']); // the changelog is in the release commit
+  assert.equal(config.tagFormat, 'plugin/p/v${version}');
 });
 
 // A repository with one commit before the push and one that is the push.

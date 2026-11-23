@@ -1,16 +1,18 @@
 ---
 name: code-assessment
 description: |
-  Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
-  project — locally, with no external services or network calls. Use whenever a user wants to
-  check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models, OSGi,
-  or Maven code — for example: "check my Sling Models are implemented correctly", "review my
-  @Inject usage", "are my Maven dependencies up to date", "scan this AEM project for issues",
-  "modernize my Sling Models", or "fix code-quality problems". Name the files to assess, or ask
-  it to scan the repo; it detects issues, plans, and — only when you ask — applies surgical
-  edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
+  Detect, review, and fix code-quality, correctness, and security issues in an AEM as a Cloud
+  Service project — locally, with no external services or network calls. Use whenever a user
+  wants to check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models,
+  OSGi, or Maven code — for example: "check my Sling Models are implemented correctly", "review
+  my @Inject usage", "are my Maven dependencies up to date", "scan this AEM project for issues",
+  "can a cookie skip my login captcha", "calls to an external API hang", or "fix code-quality problems". Name the files to
+  assess, or ask it to scan the repo; it detects issues, plans, and — only when you ask —
+  applies surgical edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
 license: Apache-2.0
+metadata:
+  version: "1.1.3"
 ---
 
 # AEM as a Cloud Service — Code Assessment
@@ -53,9 +55,10 @@ Route the request to one expert skill. Two pattern families share this skill:
 |---|---|
 | "update aem sdk", "upgrade mockito", stale `<version>` or `${property}` in pom | [`outdated-dependencies/`](outdated-dependencies/SKILL.md) |
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
-| "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
+| "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/guide.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
 | "query is slow", "traversal warning", "is my query indexed", "tune oak index", index coverage of a JCR/Oak query | [`tuning-oak-query-indexes/`](tuning-oak-query-indexes/SKILL.md) |
+| "can the captcha / login / rate limit be skipped", "test-automation bypass", a cookie, header or parameter named test, debug, bypass or skip read in captcha, auth or rate-limit code | [`request-controlled-security-bypass/`](request-controlled-security-bypass/guide.md) |
 | "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `region-deprecated-api` / `api-regions-check` / `Import-Package not satisfied` pipeline failures, log4j migration, commons-lang/collections upgrades, deprecated Maven deps, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(analyzer detector with dynamic rules — preflight runs `aemanalyser-maven-plugin`; hint-driven fixes; see recipe.md)_ |
 
 **Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):
@@ -100,6 +103,12 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
 
 ## Critical rules
 
+- **Confirm before any write.** For apply intent, the request that asked for the fix ("fix it",
+  "apply") is not the confirmation. Show the Step 7 plan and wait for the user's yes to that plan
+  before you write anything in the project: source edits, the `autofix/*` branch, `.autofix/`, and
+  a bootstrap `AGENTS.md`/`CLAUDE.md`. If you can't ask (a headless or non-interactive run),
+  stop after the plan and say that nothing was changed. When `migration` hands off a
+  `(pattern, file)`, its batch flow decides when to edit.
 - **Local only** — no network calls or external services; operate solely on the workspace.
   **Documented exception:** `remove-deprecated-api` is plugin-driven and needs Maven Central
   (to resolve `aemanalyser-maven-plugin` and, transitively, the AEM SDK's api-regions data) plus
@@ -118,6 +127,8 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
   shared analyzer.
 - **Never commit, push, or open a PR** — branch (git) or in-place edits only; the developer reviews and commits.
 - **Surgical edits** — no reformatting / re-serialization.
+- **No secrets in a report** — name a cookie, header or parameter, never the value it is compared
+  against, nor a token or password from the project: write `<redacted>`. This holds in every report, a full scan included.
 - **Skip with a reason** — record un-applicable findings as `skipped` with an exact reason; never silently drop.
 - **One pattern per session** for apply.
 

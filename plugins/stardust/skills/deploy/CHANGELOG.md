@@ -1,3 +1,24 @@
+## [1.3.1](https://github.com/adobe/skills/compare/deploy-v1.3.0...deploy-v1.3.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+
+# [1.3.0](https://github.com/adobe/skills/compare/deploy-v1.2.1...deploy-v1.3.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [1.2.1](https://github.com/adobe/skills/compare/deploy-v1.2.0...deploy-v1.2.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** qa-gate units by order, build-harness creates out dir, rollout inventory and widget fixes ([#744](https://github.com/adobe/skills/issues/744)) ([e3752d1](https://github.com/adobe/skills/commit/e3752d1ca6a900ed15d41fe34ec92d8065aa90a8)), closes [#464](https://github.com/adobe/skills/issues/464) [#531](https://github.com/adobe/skills/issues/531) [#464](https://github.com/adobe/skills/issues/464)
+
 # [1.2.0](https://github.com/adobe/skills/compare/deploy-v1.1.0...deploy-v1.2.0) (2026-11-15)
 
 

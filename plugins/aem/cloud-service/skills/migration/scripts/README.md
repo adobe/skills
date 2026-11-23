@@ -143,6 +143,18 @@ Wraps Adobe's Asset Workflow Migration Tool ([`adobe/aem-cloud-migration`](https
 
 Tests: `asset-workflow.test.js` covers the pre-flight, argument handling, the success check (with a stub `java`) and the scan; it needs no Java. `asset-workflow-e2e.test.js` runs the real JAR on a small project and is opt-in: `ASSET_WF_E2E=1 npm test` (needs Java 11+, git, curl; `ASSET_WF_JAR=<path>` uses a local JAR).
 
+### Repository restructuring (Branch I, beta)
+
+Wraps Adobe's Repository Modernizer ([`@adobe/aem-cs-source-migration-repository-modernizer`](https://github.com/adobe/aem-cloud-service-source-migration/tree/master/packages/repository-modernizer)) — see [`../references/repo-structure/flow.md`](../references/repo-structure/flow.md). The tool is **not a bundled dependency**: the first `run` installs the exact version named in `repo-modernizer-tool/package.json` into the gitignored `repo-modernizer-tool/node_modules/`.
+
+| Script | Role |
+|---|---|
+| `repo-modernizer-run.js` | CLI with three commands. `plan <project>`: reads the reactor and writes the tool's configuration plus what the user has to decide to `<project>/target/repository-modernizer/plan.json`. `run <plan.json>`: runs the tool into that folder (the project is not changed), fails a run that logged an error or wrote no report, and checks the output for what the tool leaves undone (`findings.json`). `adopt <plan.json>`: copies the output over the project; needs a clean git tree. Exit `0` done, `1` the tool failed, `2` stopped before anything was changed. |
+
+It adds no transformation of its own: a gap of the tool is a finding for the agent and the user, and an issue for the tool's repository.
+
+Tests: `repo-modernizer.test.js` uses a stand-in for the tool and needs no network; it needs git.
+
 ### `bpa-findings-helper.js` (main entry point)
 
 Orchestrates finding BPA data. Called by the skill internally.

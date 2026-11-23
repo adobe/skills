@@ -15,7 +15,7 @@ Pick plugins from the [table below](#plugins). The first column is the name to i
 
 ### GitHub Copilot CLI
 
-Copilot reads the plugin manifests in this repository, so the same marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the `stardust` plugin). Copilot in VS Code and the cloud agent pick the plugins up too.
+Copilot takes the marketplace from `.claude-plugin/marketplace.json`, so the same marketplace works there. Of each plugin it reads the root `plugin.json`, the [Agent Plugins](https://agent-plugins.org) manifest, not `.claude-plugin/plugin.json`: it loads skills only from the folders directly under `skills/`, MCP servers from `mcp.json` and hooks from `com.github.copilot/hooks/hooks.json`. A `skills` list in the Claude Code manifest does not reach Copilot (verified 2026-11-15 with Copilot CLI 1.0.112, the `aem-edge-delivery-services` and `adobe-for-developers` plugins, and the [plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)). Copilot in VS Code and the cloud agent pick the plugins up too.
 
 ```bash
 copilot plugin marketplace add adobe/skills
@@ -71,6 +71,7 @@ These copy skills, not plugins: an MCP server, a hook or a dependency that a plu
 | [`adobe-for-developers`](plugins/adobe-for-developers/README.md) | Search developer.adobe.com; manage Developer Console projects, credentials and I/O Events | [MCP server](#mcp-servers-and-the-clients-they-work-with) |
 | [`aem-edge-delivery-services`](plugins/aem/edge-delivery-services/README.md) | Build sites on Edge Delivery Services: blocks, content models, local development, page import | Node.js. Some skills use a Figma or DA MCP server if one is connected |
 | [`aem-eds-content-ops`](plugins/aem/edge-delivery-services-content-ops/skills) | Content operations on Edge Delivery Services: audits, SEO, accessibility, metadata, sitemaps | |
+| [`aem-eds-personalization`](plugins/aem/edge-delivery-services-personalization/README.md) | Section-based personalization on Edge Delivery Services: rules, a decision API, an A/B split or Adobe Target pick the fragment a section shows | Node.js and Playwright for the checks; a Cloudflare edge worker is optional |
 | [`aem-forms-edge-delivery-services`](plugins/aem/forms/edge-delivery-services/README.md) | Custom components for the Form block on Edge Delivery Services | Node.js |
 | [`aem-project-management`](plugins/aem/project-management/README.md) | Handover documentation and PDF guides for Edge Delivery Services projects | Plugin hooks, which not every client runs |
 | [`aem-cloud-service`](plugins/aem/cloud-service/README.md) | AEM as a Cloud Service: components, Dispatcher, workflows, migration from AEM 6.x | [MCP servers](#mcp-servers-and-the-clients-they-work-with) for Dispatcher and migration findings |
@@ -126,7 +127,7 @@ Listed is not the same as working: no client was signed in, and no hook or MCP s
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or change a skill, and [AGENTS.md](AGENTS.md) for the rules the review checks. Join [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Adobe Slack for questions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or change a skill, and [AGENTS.md](AGENTS.md) for the rules that catch agents out. Join [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Adobe Slack for questions.
 
 ## Resources
 

@@ -266,22 +266,26 @@ naturally append.
 ### Post-injection grep check
 
 After injection, the agent runs this one-shot check to confirm
-ordering. Exit 0 = correct, exit 1 = base appears after the media
-query (regression):
+ordering. It takes the first `min-width` / `width >=` `@media` that
+holds a `.ds-nav-burger` rule, so the step can be 641px or the
+`DESIGN.json` target step deploy Step 3 moves it to. Exit 0 =
+correct, exit 1 = base appears after the media query (regression):
 
 ```bash
 awk '
-  /@media[[:space:]]*\(width[[:space:]]*>=[[:space:]]*641px\)/ && !media_line {
-    media_line = NR
+  /@media[^{]*(min-width[[:space:]]*:|width[[:space:]]*>=)/ && depth == 0 {
+    media_open = NR
   }
-  /\.ds-nav-burger[[:space:]]*\{/ && depth == 0 && !base_line {
-    base_line = NR
+  /\.ds-nav-burger[[:space:]]*\{/ {
+    if (media_open && (depth > 0 || NR == media_open)) { if (!media_line) media_line = media_open }
+    else if (depth == 0 && !base_line) base_line = NR
   }
   /\{/ { depth += gsub(/\{/, "{") }
   /\}/ { depth -= gsub(/\}/, "}") }
+  depth == 0 { media_open = 0 }
   END {
-    if (!base_line)  { print "MISSING base .ds-nav-burger rule";          exit 1 }
-    if (!media_line) { print "MISSING @media (width >= 641px) rule";      exit 1 }
+    if (!base_line)  { print "MISSING base .ds-nav-burger rule";                  exit 1 }
+    if (!media_line) { print "MISSING .ds-nav-burger rule in a min-width @media";   exit 1 }
     if (base_line > media_line) {
       print "WRONG ORDER: base at line " base_line ", @media at " media_line
       print "Base must appear BEFORE the media query — same specificity = later wins."
@@ -292,10 +296,8 @@ awk '
 ' "$file"
 ```
 
-Run this as the last step of the injection. A failure here means
-the agent placed the base block in the wrong spot — fix the
-ordering and re-run rather than shipping a silently-regressed
-file.
+Run it as the last step of the injection; on a failure, fix the
+ordering and re-run.
 
 ## Token inheritance
 

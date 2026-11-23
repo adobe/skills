@@ -28,7 +28,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { error, summary, table } from './lib/actions.mjs';
-import { changedFiles, pluginDirs, touched } from './lib/changed.mjs';
+import { changedFiles, installableDirs, touched } from './lib/changed.mjs';
 import { CLIENTS, drivers, findCli } from './lib/clients.mjs';
 import { isMain } from './lib/is-main.mjs';
 import { written } from './rebuild-plugins.mjs';
@@ -36,10 +36,14 @@ import { written } from './rebuild-plugins.mjs';
 const frontmatterName = (file) => readFileSync(file, 'utf8').match(/^---\r?\n[\s\S]*?^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m)?.[1];
 
 // What a plugin ships, read from its files: the skills directly under skills/, whether it has
-// an MCP configuration and hooks, and its entry in the marketplace.
+// an MCP configuration and hooks, and its entry in the marketplace. Its name and version come
+// from the root plugin.json, or from the Claude Code manifest of a plugin that has none (one
+// brought in from another repository).
 export function describePlugin(root, dir) {
   const abs = resolve(root, dir);
-  const manifest = JSON.parse(readFileSync(join(abs, 'plugin.json'), 'utf8'));
+  const source = [join(abs, 'plugin.json'), join(abs, '.claude-plugin', 'plugin.json')].find((file) => existsSync(file));
+  if (!source) throw new Error(`${relative(root, abs) || '.'} has neither plugin.json nor .claude-plugin/plugin.json`);
+  const manifest = JSON.parse(readFileSync(source, 'utf8'));
   const skillsDir = join(abs, 'skills');
   const skills = existsSync(skillsDir)
     ? readdirSync(skillsDir, { withFileTypes: true })
@@ -164,7 +168,7 @@ function main() {
     console.error(`usage: test-drive.mjs [--build] [--bin <dir>] [--clients ${CLIENTS.join(',')}] [--json <file>] [--markdown <file>] (<plugin dir>… | --changed <git diff args> | --all)`);
     process.exit(2);
   }
-  const all = pluginDirs(root);
+  const all = installableDirs(root);
   const dirs = options.all ? all : options.changed ? pluginsToDrive(changedFiles(root, options.changed), all) : options.dirs;
   const lines = ['## Plugin test drive', ''];
   if (dirs.length === 0) {

@@ -1,0 +1,6 @@
+{
+  "consent": {
+    "mode": "deny",
+    "tool": "onetrust"
+  }
+}

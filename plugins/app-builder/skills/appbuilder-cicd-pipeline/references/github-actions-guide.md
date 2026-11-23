@@ -6,7 +6,7 @@ Source: [Adobe CI/CD Documentation](https://developer.adobe.com/app-builder/docs
 
 App Builder provides CI/CD via GitHub Actions using two official actions:
 
-- `adobe/aio-cli-setup-action@3` — Installs the Adobe I/O CLI
+- `adobe/aio-cli-setup-action@1.3.0` — Installs the Adobe I/O CLI
 - `adobe/aio-apps-action@4.1.0` — Runs build, test, and deploy commands
 
 ## Three Default Workflows
@@ -66,7 +66,7 @@ steps:
   - uses: actions/setup-node@v7
     with:
       node-version: '20'
-  - uses: adobe/aio-cli-setup-action@3
+  - uses: adobe/aio-cli-setup-action@1.3.0
     with:
       os: ubuntu
   - uses: adobe/aio-apps-action@4.1.0

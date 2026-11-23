@@ -25,7 +25,7 @@ guess or a partial capability.
    the size cap (see Phase 1), **not** an access failure: retry narrower, do not
    report it as no access.
 3. **DA write path available.** Confirm a `DA_TOKEN` is obtainable via **da-auth**
-   — prefer the `$DA_TOKEN` it exports into the session, else its cache at
+   — prefer a `$DA_TOKEN` already set in the session, else the helper cache at
    `~/.aem/da-token.json`, else freshly minted. **If the cache exists but can't be
    read because this execution sandbox has no `$HOME` access**, the token is not
    missing — it is *unreachable*; do **not** loop re-minting. Stop with that

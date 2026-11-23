@@ -17,6 +17,7 @@
 // every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/stardust/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { mkdirSync, mkdtempSync as createTempDirectory, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -59,7 +60,7 @@ check('the exported surface the instruments import, the denial-page names includ
     'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT', 'LIVE_RETRY_AFTER_MAX_MS', 'LIVE_BOOKKEEPING_WAIT_MS',
     'livePaceMs', 'liveMaxParallel', 'liveMaxWaitMs', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
     'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'isTransportError', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
-    'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
+    'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'LAYOUT_MAX_PX', 'SHOT_MAX_HEIGHT', 'pageSizeInPage', 'layoutOverflow', 'shotPlan']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
   assert.ok(!('REAL_CHROME_UA' in session), 'no hard-coded user agent is exported any more — the browser presents its own');
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
@@ -1840,6 +1841,86 @@ await checkAsync('gotoLive: a CloudFront 403 throws BotChallengeError with the C
   await assert.rejects(gotoLive(waf, LIVE_URL, { settleMs: 0 }), { name: 'BotChallengeError', marker: 'HTTP 202 + CloudFront/AWS WAF edge signature (x-amzn-waf-action: challenge)' });
   const bare = stubPage({ status: 403, headers: {} });
   await assert.rejects(gotoLive(bare, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 403 });
+});
+
+check('shotPlan / layoutOverflow (#602): a page at Chrome\'s layout maximum gets the viewport and the reason, a tall one is capped by a fullPage clip, an ordinary or unmeasured one the full page', () => {
+  assert.equal(session.LAYOUT_MAX_PX, 2 ** 25);
+  assert.equal(session.layoutOverflow({ w: 1440, h: 2862 }), null);
+  assert.equal(session.layoutOverflow(null), null);
+  for (const size of [{ w: 33554432, h: 33554432 }, { w: 1440, h: 33554432 }, { w: 33554432, h: 900 }]) {
+    assert.match(session.layoutOverflow(size), /^layout overflow: .*Chrome's layout maximum — a CSS defect on the source page/);
+    const plan = session.shotPlan(size, 1440);
+    assert.deepEqual([plan.mode, plan.clip], ['viewport', null]);
+    assert.match(plan.reason, /^layout overflow/);
+  }
+  assert.deepEqual(session.shotPlan({ w: 1440, h: 12074 }, 1440), { mode: 'fullPage', clip: null, reason: null });
+  assert.deepEqual(session.shotPlan(null, 1440), { mode: 'fullPage', clip: null, reason: null }, 'a page that could not be measured is captured as before');
+  assert.deepEqual(session.shotPlan({ w: NaN, h: 10 }, 1440).mode, 'fullPage');
+  const tall = session.shotPlan({ w: 1440, h: 60000 }, 1440);
+  assert.deepEqual([tall.mode, tall.clip], ['capped', { x: 0, y: 0, width: 1440, height: session.SHOT_MAX_HEIGHT }]);
+  assert.equal(session.shotPlan({ w: 1440, h: 60000 }, 1440, { maxHeight: 70000 }).mode, 'fullPage');
+  assert.equal(session.shotPlan({ w: 6000, h: 2000 }, 1440).mode, 'viewport', 'wider than 4 viewports');
+  assert.equal(typeof session.pageSizeInPage, 'function');
+});
+
+// installFastClose: a stub browser whose "browser process" is a real child process, so the SIGTERM is real.
+const fakeBrowserProcess = (ignoreSigterm = false) => spawn(process.execPath, ['-e', `${ignoreSigterm ? "process.on('SIGTERM', () => {});" : ''} setInterval(() => {}, 1000);`], { stdio: 'ignore' });
+const fastCloseStub = (child, { cdpFails = false } = {}) => {
+  const calls = []; const onDisconnect = []; let connected = true;
+  const disconnect = () => { connected = false; onDisconnect.splice(0).forEach((fn) => fn()); };
+  child.once('exit', disconnect);
+  const browser = {
+    newBrowserCDPSession: async () => {
+      if (cdpFails) throw new Error('CDP unavailable');
+      return { send: async (method) => { calls.push(method); return { processInfo: [{ type: 'renderer', id: 1 }, { type: 'browser', id: child.pid }] }; }, detach: async () => {} };
+    },
+    isConnected: () => connected,
+    contexts: () => [{ close: async () => { calls.push('context 1'); } }, { close: async () => { calls.push('context 2'); throw new Error('already closed'); } }],
+    once: (event, fn) => { if (event === 'disconnected') onDisconnect.push(fn); },
+    close: async () => { calls.push(connected ? 'playwright close (connected)' : 'playwright close (exited)'); connected = false; },
+  };
+  return { browser, calls };
+};
+
+await checkAsync('installFastClose: close() closes every context (one failing), SIGTERMs the browser pid from CDP, then lets Playwright finish', async () => {
+  const child = fakeBrowserProcess();
+  const { browser, calls } = fastCloseStub(child);
+  assert.equal(await session.installFastClose(browser), browser);
+  assert.equal(browser.stardustFastClose, true);
+  const t = Date.now();
+  await browser.close();
+  assert.ok(Date.now() - t < 2000, `closed in ${Date.now() - t} ms`);
+  assert.equal(child.signalCode, 'SIGTERM');
+  assert.deepEqual(calls, ['SystemInfo.getProcessInfo', 'context 1', 'context 2', 'playwright close (exited)']);
+});
+
+await checkAsync('installFastClose: no CDP (or no browser pid) leaves Playwright\'s close untouched; a browser without CDP is returned as is', async () => {
+  const child = fakeBrowserProcess();
+  try {
+    const { browser, calls } = fastCloseStub(child, { cdpFails: true });
+    const original = browser.close;
+    await session.installFastClose(browser);
+    assert.equal(browser.close, original);
+    assert.equal(browser.stardustFastClose, undefined);
+    await browser.close();
+    assert.deepEqual(calls, ['playwright close (connected)']);
+    assert.equal(child.exitCode, null, 'the process was not signalled');
+    const bare = {};
+    assert.equal(await session.installFastClose(bare), bare);
+  } finally { child.kill('SIGKILL'); }
+});
+
+await checkAsync('installFastClose: a browser that survives SIGTERM falls back to Playwright\'s close after the exit wait', async () => {
+  const child = fakeBrowserProcess(true);
+  try {
+    await new Promise((r) => setTimeout(r, 300)); // the child installs its SIGTERM handler
+    const { browser, calls } = fastCloseStub(child);
+    await session.installFastClose(browser);
+    const t = Date.now();
+    await browser.close();
+    assert.ok(Date.now() - t >= 2900, `waited ${Date.now() - t} ms`);
+    assert.equal(calls.at(-1), 'playwright close (connected)');
+  } finally { child.kill('SIGKILL'); }
 });
 
 rmSync(GOTO_STATE_ROOT, { recursive: true, force: true });

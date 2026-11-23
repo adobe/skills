@@ -21,7 +21,7 @@ Skills for developing, assessing, migrating, and operating AEM as a Cloud Servic
 
 | Skill | Description | Try it |
 |-------|-------------|--------|
-| [ensure-agents-md](skills/ensure-agents-md/SKILL.md) | Auto-generates `AGENTS.md` and `CLAUDE.md` from `pom.xml` when missing — tailored to the project's modules and add-ons (CIF, Forms, SPA, precompiled scripts). Runs first, before any other work. | `Set up my AEM project for AI agents` |
+| [ensure-agents-md-cloud-service](skills/ensure-agents-md-cloud-service/SKILL.md) | Auto-generates `AGENTS.md` and `CLAUDE.md` from `pom.xml` when missing — tailored to the project's modules and add-ons (CIF, Forms, SPA, precompiled scripts). Runs first, before any other work. | `Set up my AEM project for AI agents` |
 | [create-component](skills/create-component/SKILL.md) | Create complete AEM components following Adobe best practices: component definition, dialog XML, HTL template, Sling Model, unit tests, clientlibs (component and dialog), and optional Sling Servlet for dynamic content. | `Create a hero banner component with title, description, and CTA` |
 
 ### Dispatcher
@@ -56,7 +56,7 @@ Granite Workflow Engine lifecycle: design, develop, deploy, debug.
 | Skill | Description | Try it |
 |-------|-------------|--------|
 | [code-assessment](skills/code-assessment/SKILL.md) | Detect and fix AEM CS code-quality issues locally — Sling Model patterns (`@Inject` to injector-specific), deprecated APIs, scheduler, replication, resource listeners, unbounded queries, outbound call timeouts, event migration, asset manager API, outdated Maven dependencies. Verifies with `mvn compile`. | `Scan this AEM project for code issues` |
-| [migration](skills/migration/SKILL.md) | Migrate legacy AEM (6.x, AMS, on-prem) to AEM CS using BPA CSV/cache or CAM/MCP discovery. Covers scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL lint, Classic UI dialog migration, Custom Design Widgets, static to editable template modernization, DAM asset workflows to processing profiles and post-processing workflows, and OSGi config to Cloud Manager. One pattern per session; delegates refactors to `code-assessment`. Also validates migrated code on a local Cloud SDK via the AEM Quickstart MCP (Branch G, beta). | `Review my code for AEMaaCS migration` |
+| [migration](skills/migration/SKILL.md) | Migrate legacy AEM (6.x, AMS, on-prem) to AEM CS using BPA CSV/cache or CAM/MCP discovery. Covers scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL lint, Classic UI dialog migration, Custom Design Widgets, static to editable template modernization, DAM asset workflows to processing profiles and post-processing workflows, and OSGi config to Cloud Manager. One pattern per session; delegates refactors to `code-assessment`. Also validates migrated code on a local Cloud SDK via the AEM Quickstart MCP (Branch G, beta), and restructures a legacy project into the Cloud Service package layout (`ui.apps`, `ui.apps.structure`, `ui.config`, `ui.content`, `all`) with Adobe's Repository Modernizer (Branch I, beta). | `Review my code for AEMaaCS migration` |
 
 ### Content distribution
 

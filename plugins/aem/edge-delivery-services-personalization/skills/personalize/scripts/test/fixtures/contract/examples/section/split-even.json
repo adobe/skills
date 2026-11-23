@@ -1,0 +1,10 @@
+{
+  "id": "cta",
+  "source": "split",
+  "variants": [
+    {
+      "name": "short",
+      "fragment": "/fragments/personalization/cta/short"
+    }
+  ]
+}

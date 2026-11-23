@@ -4,7 +4,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 ## Deploy (DA Source API + curl)
 
-Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
+Needs an IMS token (`DA_TOKEN`, else `ADOBE_IMS_TOKEN_FILE` — order: `skills/stardust/scripts/lib/da-token.mjs`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
 
 **Two preconditions bite (both cost real debugging):**
 - **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
@@ -12,11 +12,11 @@ Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may 
 
 ```bash
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
-TOKEN="$DA_TOKEN"
+tok() { printf %s "${DA_TOKEN:-$(tr -d '[:space:]' < "$ADOBE_IMS_TOKEN_FILE")}"; }   # read per request (the file is refreshed in place); never echo it
 
 # 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
 #    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $(tok)" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
 for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
   curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
@@ -29,7 +29,7 @@ done
 node skills/deploy/scripts/sanitise.js content/$P.html
 
 # 2. write the body fragment to DA (multipart, field name MUST be `data`, type text/html)
-curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+curl -sS -X PUT -H "Authorization: Bearer $(tok)" \
   -F "data=@content/$P.html;type=text/html" \
   "https://admin.da.live/source/$ORG/$REPO/$P.html"           # expect 201
 
@@ -53,7 +53,7 @@ done
 #     (see deploy SKILL "The ENCODE contract → Images" image-fidelity rules).
 
 # 3. preview (separate, required; path WITHOUT .html; ref = the code branch)
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $(tok)" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
 
 # 3a'. ANY admin 4xx: the reason is in the `x-error` response header, not the body
@@ -81,7 +81,7 @@ curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | gre
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
 
 # 4. publish to aem.live (the default; skip only on an explicit preview-only ask)
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $(tok)" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```
 

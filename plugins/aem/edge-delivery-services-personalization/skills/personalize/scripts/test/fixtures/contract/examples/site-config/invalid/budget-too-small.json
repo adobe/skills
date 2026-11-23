@@ -1,0 +1,8 @@
+{
+  "consent": {
+    "mode": "deny"
+  },
+  "budgets": {
+    "eager": 10
+  }
+}

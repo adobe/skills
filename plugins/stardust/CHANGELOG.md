@@ -1,8 +1,157 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## [0.46.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.2...plugin/stardust/v0.46.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the roster gate judges offsets with the height tolerance, so pages inside the pixel bar stop failing on small shifts ([#790](https://github.com/adobe/skills/issues/790)) ([50de2af](https://github.com/adobe/skills/commit/50de2afe042861b295af64cc4c68e86255caed54))
+
+## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
+## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
+# [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
+# [0.45.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.2...plugin/stardust/v0.45.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [0.44.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.1...plugin/stardust/v0.44.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** header parity pairs a link by address when one side has no text, and the explorer ignores and records what changes on its own ([#767](https://github.com/adobe/skills/issues/767)) ([1ceb7b9](https://github.com/adobe/skills/commit/1ceb7b9cfbd1392d050230b94a5eee3498d3d416))
+
+## [0.44.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.0...plugin/stardust/v0.44.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+# [0.44.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.4...plugin/stardust/v0.44.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
+## [0.43.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.3...plugin/stardust/v0.43.4) (2026-11-21)
+
+## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+## [0.43.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.1...plugin/stardust/v0.43.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
+## [0.43.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.0...plugin/stardust/v0.43.1) (2026-11-20)
+
+# [0.43.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.2...plugin/stardust/v0.43.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [0.42.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.1...plugin/stardust/v0.42.2) (2026-11-20)
+
+## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** qa-gate units by order, build-harness creates out dir, rollout inventory and widget fixes ([#744](https://github.com/adobe/skills/issues/744)) ([e3752d1](https://github.com/adobe/skills/commit/e3752d1ca6a900ed15d41fe34ec92d8065aa90a8)), closes [#464](https://github.com/adobe/skills/issues/464) [#531](https://github.com/adobe/skills/issues/531) [#464](https://github.com/adobe/skills/issues/464)
+
+# [0.42.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.41.0...plugin/stardust/v0.42.0) (2026-11-19)
+
+
+### Features
+
+* **stardust:** replica measures the source before authoring and checks header and footer by landmark ([#701](https://github.com/adobe/skills/issues/701)) ([0df3597](https://github.com/adobe/skills/commit/0df3597c097a425a8192249fc239c9369f3e48f8))
+
+# [0.41.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.40.0...plugin/stardust/v0.41.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate compares against a frozen reference and counts after aligning ([#700](https://github.com/adobe/skills/issues/700)) ([a8f69e3](https://github.com/adobe/skills/commit/a8f69e3086a20b949f7c8352d3bd6bd7505c4968))
+
+# [0.40.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.4...plugin/stardust/v0.40.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate measures the page, width and stage it was asked for, and stops at three rounds ([#699](https://github.com/adobe/skills/issues/699)) ([84eb7c1](https://github.com/adobe/skills/commit/84eb7c1d1e1f791853ac1ec93ef2fc9664c08abc))
+
+## [0.39.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.3...plugin/stardust/v0.39.4) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stardust:** a gate override waives only the criteria it names, and the unit cache knows its width ([#704](https://github.com/adobe/skills/issues/704)) ([aac23ef](https://github.com/adobe/skills/commit/aac23ef68e050294d8fa035c7b3c4a444af2cb19))
+
+## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** ledger.mjs names the readers for a guessed verb such as summary ([#681](https://github.com/adobe/skills/issues/681)) ([facbc0b](https://github.com/adobe/skills/commit/facbc0b30c63229a252e9d7878896ccec7b647b8))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
+## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint fails a missing --dirs file and negated desktop-first queries ([#677](https://github.com/adobe/skills/issues/677)) ([8dda267](https://github.com/adobe/skills/commit/8dda26746899a082dad4cfa3acf1736335064a8c))
+
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
+
+## 0.39.1
+
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
 
 ## 0.39.0 — delivered CSS is mobile-first (#162)
 
@@ -38,7 +187,7 @@ nothing enforced it.
   `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
   `deploy/reference/step-3-foundation.md`.
 
-## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
 
 Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
 widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of

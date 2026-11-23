@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "geo": {
+      "country": "in"
+    },
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

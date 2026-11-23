@@ -74,8 +74,9 @@ const blocks = [...agg.entries()].map(([id, a]) => {
   };
   // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
   // mapping, which is a resolved decision (no block to build) even while its status reads pending.
-  if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
-    delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
+  // A widget id may itself be "default-content" and is not such a mapping; its class stays its stem.
+  if (delivery.status === 'pending' && (kind === 'widget' || delivery.edsBlockName !== DEFAULT_CONTENT)) {
+    delivery.edsBlockName = kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id);
     delivery.blockPath = codePath || delivery.blockPath || null;
   }
   return {

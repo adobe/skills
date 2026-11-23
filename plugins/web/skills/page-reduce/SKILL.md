@@ -9,6 +9,8 @@ description: >-
   writes skeleton.html and manifest.json. Use when migrating a page to AEM Edge
   Delivery Services, extracting a page blueprint, or analyzing page structure for
   block generation.
+metadata:
+  version: "1.0.2"
 ---
 
 # page-reduce
@@ -23,8 +25,10 @@ Node 22+ and `playwright-cli` >= 0.1.20 on PATH (`playwright-cli --version`).
 Locate the `web` CLI once:
 
 ```bash
-# <skill-dir> is the directory containing this SKILL.md
-WEB=$(command -v web || echo "node <skill-dir>/../../cli/dist/web.mjs")
+# <skill-dir> is the directory containing this SKILL.md. The bundled CLI comes
+# first: an older `web` on PATH tokenizes differently from these rules.
+WEB="node <skill-dir>/../../cli/dist/web.mjs"
+[ -f "<skill-dir>/../../cli/dist/web.mjs" ] || WEB=$(command -v web)
 ```
 
 then run `$WEB …`; it prints exactly one JSON document on stdout,
@@ -74,9 +78,14 @@ where each section is:
   "layout": { "numCols": 2, "numRows": 1 }, "features": ["hasHeading", "hasCTA"] }
 ```
 
-Exit 1 (`EMPTY_RESULT`): no sections after `--retries` rescrolls. Report that to
-the user instead of writing empty output files; try `--retries 4 --settle-ms 4000`
-or `--headed` once. Exit 3: blocked, run `browser-probe` and pass `--recipe`.
+A single section with `"fallback": true` is `main` (or `body`) as a whole: no
+section was found after `--retries` rescrolls. Tell the user, and keep it as one
+section (index 0, its xpath) in the skeleton and manifest; name the blocks inside
+it in notes, not as new sections. On a page that is more than one block, try
+`--retries 4 --settle-ms 4000` or `--headed` once.
+Exit 1 (`EMPTY_RESULT`): no reducible content was found (icons only, or content
+the reducer can't read, such as a shadow root). Report that to the user instead
+of writing empty output files. Exit 3: blocked, run `browser-probe` and pass `--recipe`.
 
 If `--phase1-only` was requested, stop here.
 
@@ -85,11 +94,11 @@ If `--phase1-only` was requested, stop here.
 Read [the Phase 2 rules](references/PHASE2-RULES.md) and apply them to each
 section's `tokenizedHtml`. They collapse repeated patterns into `{REPEAT:N}`,
 remove decorative wrappers and utility/tracking attributes, collapse complex
-forms and navs, strip overlay panels, and re-type sections.
+forms and navs, strip overlay panels, drop empty sections and re-type sections.
 
 ## Output files
 
-**skeleton.html**: all sections with comment separators, pretty-printed with
+**skeleton.html**: the retained sections with comment separators, pretty-printed with
 2-space indentation:
 
 ```html
@@ -107,7 +116,13 @@ forms and navs, strip overlay panels, and re-type sections.
     {IMAGE:400x300}
     <h3>{HEADING:3}</h3>
     <p>{TEXT}</p>
-    <a>{LINK:Read more}</a>
+    {LINK:Read more}
+  </div>
+  <div class="card">
+    {IMAGE:400x300}
+    <h3>{HEADING:3}</h3>
+    <p>{TEXT}</p>
+    {LINK:Read more}
   </div>
   {REPEAT:4}
 </div>

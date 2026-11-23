@@ -1,0 +1,17 @@
+{
+  "id": "hero",
+  "source": "rules",
+  "variants": [
+    {
+      "name": "a",
+      "fragment": "/fragments/personalization/hero/a"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "a",
+      "condition": "geo: US"
+    }
+  ],
+  "hint": "Pick the best hero"
+}

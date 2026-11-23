@@ -1,0 +1,23 @@
+{
+  "discovery": {
+    "fetchTechnique": "chrome",
+    "count": 1,
+    "concurrency": 4
+  },
+  "consent": {
+    "method": "auto"
+  },
+  "favicon": {
+    "url": "http://localhost:8780/img/icon.svg",
+    "file": "assets/favicon.svg"
+  },
+  "crawl": {
+    "failures": [],
+    "degraded": [],
+    "pageTimeoutMs": 60000
+  },
+  "captureGaps": {
+    "roots": [],
+    "detail": "uncaptured first-level targets: none (no locale root captured)"
+  }
+}

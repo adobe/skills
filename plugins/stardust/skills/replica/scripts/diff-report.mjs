@@ -65,7 +65,7 @@ export function parseArgs(argv) {
 // (gate.sh writes diff-<label>.png, label default iter).
 export function pickDiff(dir, explicit) {
   if (explicit) return resolve(dir, explicit);
-  const all = readdirSync(dir).filter((f) => /^diff-.*\.png$/.test(f)).sort((a, b) => statSync(join(dir, b)).mtimeMs - statSync(join(dir, a)).mtimeMs);
+  const all = readdirSync(dir).filter((f) => /^diff-.*\.png$/.test(f) && !/-aligned\.png$/.test(f)).sort((a, b) => statSync(join(dir, b)).mtimeMs - statSync(join(dir, a)).mtimeMs);
   if (!all.length) throw new Error(`no diff-*.png in ${dir} — run a gate round first`);
   return join(dir, all[0]);
 }

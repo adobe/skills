@@ -1,0 +1,10 @@
+{
+  "description": "Make a finished block available to authors of a Word/Google Docs project that uses the Sidekick Library, with content in ./content/ (aem-boilerplate 5cea543 cloned by setup.sh)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}

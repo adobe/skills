@@ -91,6 +91,11 @@ results/<label>/<eval>/run-<i>/
 An eval is runnable once it has, next to `task.md` and `criteria.json`:
 
 - `fixture/` — starting project tree (may be empty for from-scratch evals)
+- `setup.sh` — optional; run in the workspace after the fixture is copied
+  (the scenario convention of `scripts/skill-eval.mjs` and Tessl). The
+  `replica-*` evals use it to start the local fixture site
+  (`../fixture-site/`, see `../README.md` § The fixture site). A setup that
+  fails aborts the run.
 - `answers.md` — persona + canned answers for clarifying questions
   (only needed for interactive evals)
 
@@ -101,9 +106,10 @@ An eval is runnable once it has, next to `task.md` and `criteria.json`:
   steps, some requiring manual workspace edits between runs. The runner
   currently executes only step 1; later steps need a per-step setup hook
   (future work).
-- **Parameterized evals** (`replica-source-fidelity`,
-  `reskin-content-fidelity`) have placeholder URLs (`https://<target-site>`)
+- **Parameterized evals** (`reskin-content-fidelity`) have placeholder URLs
   in their prompts; they need concrete targets before they're runnable.
+  `replica-source-fidelity` targets the local fixture site and is the full
+  flow: give it `--timeout-min` well above the default.
 - **Live-network evals** (`extract-multipage` crawls stripe.com) depend on
   the target site being reachable and stable.
 
