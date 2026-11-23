@@ -11,9 +11,9 @@ These skills cover the official APIs for content replication and distribution ev
 
 ## Official Documentation
 
-- **Replication API Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
-- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
-- **Adobe Replication Guide**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **Replication API Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
+- **Sling Distribution API Javadocs (0.7.2)**: [core package](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/package-summary.html), [event package](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html)
+- **Adobe Replication Guide**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
 
 ## Skills Included
 
@@ -140,14 +140,15 @@ public class CacheWarmingHandler implements EventHandler {
 
 | Constraint | Limit |
 |-----------|-------|
-| Paths per API call (recommended) | 100 |
-| Paths per API call (above 100) | System auto-splits into non-transactional chunks |
-| Transactional guarantee | ≤100 paths only |
+| Recommended custom call size | Fewer than 100 paths |
+| Default-call limit | 500 paths; above this, the product guide documents `ReplicationException` |
+| Transactional guarantee | The SDK Javadoc guarantees transactional replication up to 100 paths; larger calls may be split non-transactionally |
+| Larger-batch behavior | Product and SDK docs differ on `setUseAtomicCalls(false)`; see the replication guide and do not assume automatic splitting |
 | Payload size | 10 MB maximum |
 
 ### Best Practices
 
-1. **Respect rate limits**: ≤100 paths per call for transactional guarantee
+1. **Keep custom calls small**: prefer fewer than 100 paths and do not rely on automatic splitting
 2. **Use workflow for large trees**: Tree Activation workflow step for large hierarchical content trees
 3. **Handle failures gracefully**: Always catch `ReplicationException`
 4. **Use service users**: Never replicate with admin credentials
@@ -355,14 +356,14 @@ public class MyDistributionHandler implements EventHandler {
 | ReplicationException | Permission denied | Check service user has `crx:replicate` permission |
 | Content not appearing | Wrong tier selected | Verify agent filter targets correct tier (preview vs publish) |
 | Event handler not firing | Wrong event topic | Use exact constants from `DistributionEventTopics` |
-| "Too many paths" error | >100 paths lose transactional guarantee | Use ≤100 for atomicity; system auto-splits larger sets |
+| "Too many paths" error | Product docs say default calls above 500 paths throw `ReplicationException`; the SDK Javadoc describes possible non-transactional splitting above 100 | Prefer fewer than 100 paths, handle `ReplicationException`, and use Tree Activation for large trees; do not promise automatic splitting |
 
 ### Debug Checklist
 
 1. **Replication fails**:
    - Check logs for `ReplicationException`
    - Verify user has `crx:replicate` permission on content path
-   - Check Sling jobs console: `/system/console/slingjobs`
+   - In **Tools > Deployment > Distribution**, inspect the relevant agent's queues, status, and logs.
 
 2. **Events not firing**:
    - Verify component is active: `/system/console/components`
@@ -378,5 +379,5 @@ public class MyDistributionHandler implements EventHandler {
 
 - **Replication Skill**: [replication/SKILL.md](./replication/SKILL.md)
 - **Sling Distribution Skill**: [sling-distribution/SKILL.md](./sling-distribution/SKILL.md)
-- **Official Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/
-- **Adobe Documentation**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **API Javadocs**: [AEM SDK 2026.9 Replication](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html) and [Sling Distribution 0.7.2 events](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html)
+- **Adobe Documentation**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication

@@ -23,7 +23,7 @@ Use Sling Distribution event handling for:
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+**Javadoc (Apache Sling Distribution API 0.7.2)**: https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html
 
 **Key Packages**:
 - `org.apache.sling.distribution` - Core distribution interfaces
@@ -733,7 +733,7 @@ Target Tier: Imports package → [IMPORTER_PACKAGE_IMPORTED]
 
 ## References
 
-- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+- **Sling Distribution Javadoc (Apache Sling Distribution API 0.7.2)**: https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html
 - **Sling Distribution Docs**: https://sling.apache.org/documentation/bundles/content-distribution.html
 - **Replication API Skill**: [replication/SKILL.md](../replication/SKILL.md)
-- **Adobe AEM Replication**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **Adobe AEM Replication**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication

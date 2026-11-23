@@ -23,7 +23,7 @@ Use the Replication API for programmatic content distribution:
 
 ## Official API Documentation
 
-**Javadoc**: https://javadoc.io/doc/com.adobe.aem/aem-sdk-api/latest/com/day/cq/replication/package-summary.html
+**Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
 
 **Key Classes**:
 - `com.day.cq.replication.Replicator` - Main replication service
@@ -92,10 +92,10 @@ public class ContentPublisher {
 
 ## Bulk Replication: Multiple Paths
 
-**Bulk publishing limits** (Cloud Service operations documentation and AEM SDK Javadocs):
+**Bulk publishing limits** (Cloud Service operations documentation and [AEM SDK Javadocs, version 2026.9.28386.20260923T071724Z-260900](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/Replicator.html)):
 - Prefer fewer than 100 paths per custom call. Use the Tree Activation workflow for large hierarchies.
 - The Cloud Service operations guide documents a 500-path cap for default calls; larger requests throw `ReplicationException`.
-- It separately describes `ReplicationOptions.setUseAtomicCalls(false)` as a way to bucket larger requests, while the current SDK Javadoc marks the option deprecated and “no longer required.” Treat this as a documented conflict: do not promise automatic splitting; handle `ReplicationException` and verify target-runtime behavior before relying on larger requests.
+- It separately describes `ReplicationOptions.setUseAtomicCalls(false)` as a way to bucket larger requests, while the SDK 2026.9 Javadoc marks the option deprecated and “no longer required.” Treat this as a documented conflict: do not promise automatic splitting; handle `ReplicationException` and verify target-runtime behavior before relying on larger requests.
 - **Payload size**: 10 MB maximum (excluding binaries).
 
 ### Example: Bulk Activation
@@ -563,7 +563,7 @@ public class ReplicationEventLogger implements EventHandler {
 ## Best Practices
 
 ### 1. Respect Rate Limits
-- ≤100 paths per call for transactional guarantee; system auto-splits if exceeded
+- Keep custom calls below 100 paths; see the batching caveat above and do not rely on automatic splitting.
 - ≤10 MB payload size
 
 ### 2. Use Workflow for Large Operations
@@ -609,6 +609,6 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ## References
 
-- **AEM SDK Javadocs**: https://javadoc.io/doc/com.adobe.aem/aem-sdk-api/latest/com/day/cq/replication/package-summary.html
+- **AEM SDK Javadocs (2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
 - **Cloud Service replication operations**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
 - **Sling Distribution**: https://sling.apache.org/documentation/bundles/content-distribution.html
