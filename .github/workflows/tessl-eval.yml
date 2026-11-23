@@ -123,6 +123,9 @@ jobs:
       # edge-delivery-services brings its own: {"name": "adobe/<Tessl name>", "mode":
       # "vendored"}. Every other plugin to evaluate gets the same file, named after its
       # Tessl target, in this checkout only. Nothing is committed and no project is created.
+      # The name must be a project that exists in the adobe workspace on Tessl, with this
+      # repository and the plugin's folder as its source: otherwise the eval fails with
+      # "tessl.json links to a project that was not found or is not accessible".
       - name: Give each plugin a tessl.json in this checkout
         if: steps.detect.outputs.skip != 'true'
         run: |
@@ -143,9 +146,12 @@ jobs:
       - name: Tessl projects of this repository
         if: steps.detect.outputs.skip != 'true'
         continue-on-error: true
+        # the organization by id: by name, the project calls of this token answer 404
+        env:
+          TESSL_ORG: d2f8c474-86e0-4ebd-958f-46310dac0f0c
         run: |
           # shellcheck disable=SC2016 # the single quotes hold JavaScript
-          tessl project list --org adobe --json | node -e '
+          { tessl project list --workspace adobe --json || tessl project list --json; } | node -e '
             let text = ""; process.stdin.on("data", (c) => (text += c)).on("end", () => {
               const found = [];
               const visit = (v) => {
@@ -164,6 +170,10 @@ jobs:
         if: steps.detect.outputs.skip != 'true'
         # the tessl-eval job reads the result and decides
         continue-on-error: true
+        env:
+          # seconds to wait for each plugin's run: edge-delivery-services has 34 scenarios,
+          # and 19 of them took about 9 minutes
+          TIMEOUT: '3600'
         run: node scripts/tessl-eval.mjs "$RUNNER_TEMP/plugin-dirs.txt" "$RUNNER_TEMP/eval-comment.md"
 
       - name: Comment eval results on PR

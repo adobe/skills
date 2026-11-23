@@ -12,6 +12,7 @@ test('a run is completed or failed as it says, unknown while it is not there, fa
   assert.equal(statusOf(view(0, 'not json')), 'unknown');
   assert.equal(statusOf(view(1, '', 'Error: run Not Found')), 'unknown');
   assert.equal(statusOf(view(1, '', 'Error: unauthorized')), 'failed');
+  assert.equal(statusOf({ status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawnSync tessl ENOBUFS'), { code: 'ENOBUFS' }) }), 'unknown');
 });
 
 const ID = { ok: '11111111-1111-4111-8111-111111111111', bad: '22222222-2222-4222-8222-222222222222', slow: '33333333-3333-4333-8333-333333333333' };

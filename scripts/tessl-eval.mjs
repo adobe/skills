@@ -21,11 +21,15 @@ import { isMain } from './lib/is-main.mjs';
 import { outOfCredits } from './lib/tessl.mjs';
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
-const tessl = (args) => spawnSync('tessl', args, { encoding: 'utf8' });
+// `eval view --json` of a plugin with many scenarios is several MB: above spawnSync's
+// default buffer of 1 MB, the answer is cut off and the status is null (ENOBUFS).
+const tessl = (args) => spawnSync('tessl', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 // The status of a run: completed, failed, or unknown while it isn't there yet or its
-// answer can't be read. A view that fails for another reason than "not found" is final.
+// answer can't be read, also when the view itself could not be run or read to its end.
+// A view that exits with an error other than "not found" is final.
 export function statusOf(view) {
+  if (view.error || view.status === null) return 'unknown';
   if (view.status !== 0) return /not found/i.test(view.stderr ?? '') ? 'unknown' : 'failed';
   try {
     return JSON.parse(view.stdout).data.attributes.status;
@@ -83,7 +87,7 @@ async function wait(runId, name, interval, timeout) {
   for (let elapsed = interval; elapsed <= timeout; elapsed += interval) {
     await sleep(interval * 1000);
     const view = tessl(['eval', 'view', runId, '--json']);
-    if (view.status !== 0) console.log(`  [${name}] tessl eval view exited ${view.status}: ${view.stderr}`);
+    if (view.status !== 0) console.log(`  [${name}] tessl eval view exited ${view.status}: ${view.error?.code ?? view.stderr}`);
     status = statusOf(view);
     console.log(`  [${name}] Poll at ${elapsed}s: status=${status}`);
     if (status === 'completed' || status === 'failed') break;
