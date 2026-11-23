@@ -67,10 +67,9 @@ No valid URL → exit 1 `EMPTY_RESULT` with the errors in the message. Retry wit
 ## Blocked sites
 
 `HTTP 401`, `403` or `429` on robots.txt and the sitemaps, or `not a sitemap (text/html)`,
-means the site refuses this client. In this order:
+means the site refuses this client. Follow the error's hint, then:
 
-1. **`--user-agent`** with a current browser's string.
-2. **A proxy the user provides** (they bill per request or traffic: ask the user before each
+1. **A proxy the user provides** (they bill per request or traffic: ask the user before each
    scan through it).
    Have the user export the proxy URL, password included, as `WEB_PROXY` in their shell.
    Never ask for the password in chat or pass it with `--proxy`, where `ps` shows it.
@@ -80,7 +79,7 @@ means the site refuses this client. In this order:
    - `read ECONNRESET` on every request: a firewall (a corporate VPN) cuts plain proxy
      traffic; use the `https://` form of the proxy URL.
    - Needs Node 24.14+ or 25.4+: older Node exits 2 `UNSUPPORTED` and sends nothing.
-3. **`browser-probe`**: this command does not drive a browser.
+2. **`browser-probe`**: this command does not drive a browser.
 
 ## Notes
 

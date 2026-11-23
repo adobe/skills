@@ -24,7 +24,7 @@
       "name": "blocked_fallback",
       "max_score": 15,
       "category": "INTENT",
-      "description": "Mentions what to do if the http crawl is refused (bot protection): retry with a browser --user-agent first, then a proxy or the browser-probe skill (site scan does not drive a browser)."
+      "description": "Mentions what to do if the http crawl is refused (bot protection): for example a browser --user-agent, a proxy, or the browser-probe skill (site scan does not drive a browser)."
     }
   ]
 }
