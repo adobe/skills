@@ -225,3 +225,12 @@ test('an existing project of the same source is used; one of another source, or 
   await assert.rejects(ensureProject('plugins/other', { request: api.request, source: SOURCE, root }), /workspace elsewhere: HTTP 404, Not Found/);
   assert.deepEqual(await ensureProject('plugins/own', { request: api.request, source: SOURCE, root }), { project: 'adobe/own-project', action: 'own' });
 });
+
+test('once the time budget of the step is spent, the waits are cut short and no plugin is started', (t) => {
+  const root = tree(t, plugins({ 'dirs.txt': 'plugins/slow\nplugins/ok\n' }));
+  const result = run(t, 'tessl-eval.mjs', ['dirs.txt', 'comment.md'], { cwd: root, env: { ...env(t, root), TIMEOUT: '60', TOTAL_TIMEOUT: '1' } });
+  assert.equal(result.status, 1);
+  assert.match(result.summary, /\| slow \| timeout \| ❌ \|/);
+  assert.match(result.summary, /\| ok \| not started \| ❌ \|/);
+  assert.equal(readFileSync(join(root, 'calls'), 'utf8').split('\n').filter((line) => line.startsWith('eval run')).length, 1, 'ok is not started');
+});

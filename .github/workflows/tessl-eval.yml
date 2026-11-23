@@ -129,8 +129,11 @@ jobs:
         continue-on-error: true
         env:
           # seconds to wait for each plugin's run: edge-delivery-services has 34 scenarios,
-          # and 19 of them took about 9 minutes
+          # and 19 of them took about 9 minutes. The waits run one after another, so all of
+          # them together get 5 hours, below GitHub's 6 hours for a job: then the step still
+          # ends, reports and comments. A run cut short goes on on Tessl.
           TIMEOUT: '3600'
+          TOTAL_TIMEOUT: '18000'
         run: node scripts/tessl-eval.mjs "$RUNNER_TEMP/plugin-dirs.txt" "$RUNNER_TEMP/eval-comment.md"
 
       - name: Comment eval results on PR

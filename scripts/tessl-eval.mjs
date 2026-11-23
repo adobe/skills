@@ -1,7 +1,10 @@
 // Starts a Tessl eval for each changed plugin, waits for it, and fails if one fails or
 // doesn't finish in time. Writes the links to the runs to a file for the pull request comment.
 //   node scripts/tessl-eval.mjs <file with one directory per line> <file for the comment>
-// POLL_INTERVAL (default 30) and TIMEOUT (default 900), both in seconds, come from the environment.
+// POLL_INTERVAL (default 30) and TIMEOUT (default 900), both in seconds, come from the environment;
+// TIMEOUT is the wait for one plugin. TOTAL_TIMEOUT (seconds, default none) is the budget of all
+// the waits together: a wait gets at most what is left of it, and a plugin is not started once it
+// is spent, because a run that nobody waits for spends credits for no result here.
 //
 // An organization without credits is not a failed eval: nothing ran. Those plugins count as
 // skipped and don't fail the run. Each plugin is still asked: the answer costs nothing, and
@@ -104,6 +107,8 @@ async function main() {
   const [dirsFile, commentFile] = process.argv.slice(2);
   const interval = Number(process.env.POLL_INTERVAL || 30);
   const timeout = Number(process.env.TIMEOUT || 900);
+  const deadline = process.env.TOTAL_TIMEOUT ? Date.now() + Number(process.env.TOTAL_TIMEOUT) * 1000 : Infinity;
+  const left = () => (deadline - Date.now()) / 1000;
   const rows = [];
   const links = [];
   const count = { passed: 0, failed: 0, skipped: 0, foreign: 0 };
@@ -130,6 +135,11 @@ async function main() {
       count.foreign += 1;
       rows.push([name, 'not run', '⏭️ brought in from another repository']);
       console.log(`  ⏭️ ${name}: not run, it is brought in from another repository and has no Tessl project here`);
+      continue;
+    }
+    if (left() < interval) {
+      warning(`${name} was not started: the time budget of this step (TOTAL_TIMEOUT) is spent`);
+      fail(name, 'not started', 'not started, the time budget of this step is spent');
       continue;
     }
     try {
@@ -163,7 +173,8 @@ async function main() {
     }
     console.log(`Eval run started for ${name} with run ID: ${runId}`);
     links.push(`- **${name}**: [View results](https://tessl.io/eval-runs/${runId})`);
-    const status = await wait(runId, name, interval, timeout);
+    const limit = Math.round(Math.min(timeout, left()) * 100) / 100;
+    const status = await wait(runId, name, interval, limit);
     if (status === 'completed' || status === 'failed') {
       group(`Eval results for ${name}`, () => spawnSync('tessl', ['eval', 'view', runId], { stdio: 'inherit' }));
     }
@@ -173,8 +184,8 @@ async function main() {
     } else if (status === 'failed') {
       fail(name, 'failed', 'eval failed');
     } else {
-      warning(`Eval for ${name} timed out after ${timeout}s (last status: ${status})`);
-      fail(name, 'timeout', `eval timed out after ${timeout}s (last status: ${status})`);
+      warning(`Eval for ${name} timed out after ${limit}s (last status: ${status}); it goes on on Tessl`);
+      fail(name, 'timeout', `eval timed out after ${limit}s (last status: ${status})`);
     }
   }
   const total = count.passed + count.failed + count.skipped;
