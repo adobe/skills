@@ -20,6 +20,8 @@ property indirection is not promised. Unrelated consumers retain their values.
 Plugin updates match full coordinates and **direct** plugin version children in
 build/pluginManagement, never descendant `version` tags. Existing higher numeric
 versions remain. Non-release version expressions require review, not guessing.
+Versions declared only in a different or parent profile are not treated as
+unconditional inherited versions. Each local profile keeps its own plugin scope.
 Surefire/Failsafe argLine, JaCoCo late evaluation, test includes/excludes,
 execution configuration, nested dependencies and append semantics remain intact.
 No automatic experimental Byte Buddy flag or bnd JavaSE override is added.

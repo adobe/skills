@@ -104,6 +104,63 @@ class PomTests(unittest.TestCase):
         self.assertIsNone(compiler.child("version"))
         self.assertIn("<version>3.99.0</version>", parent.read_text())
 
+    def test_inactive_profile_does_not_supply_default_or_sibling_plugin_version(self):
+        path = self.project / "pom.xml"
+        path.write_text(
+            '<project><properties><maven.compiler.release>21</maven.compiler.release></properties>'
+            '<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId></plugin></plugins></build>'
+            '<profiles><profile><id>inactive</id><build><pluginManagement><plugins>'
+            '<plugin><artifactId>maven-compiler-plugin</artifactId><version>3.99.0</version></plugin>'
+            '</plugins></pluginManagement></build></profile>'
+            '<profile><id>other</id><build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId>'
+            '</plugin></plugins></build></profile></profiles></project>'
+        )
+        poms = reactor(self.project)
+        migrate_plugins.plan(poms, 25)
+        write_changes(poms)
+        pom = Pom(path)
+        default = pom.root.child("build").child("plugins").child("plugin")
+        profiles = pom.root.child("profiles").children
+        inactive = next(profiles[0].walk("plugin"))
+        sibling = next(profiles[1].walk("plugin"))
+        self.assertEqual(default.value("version"), "3.15.0")
+        self.assertEqual(inactive.value("version"), "3.99.0")
+        self.assertEqual(sibling.value("version"), "3.15.0")
+        before = path.read_bytes()
+        poms = reactor(self.project)
+        migrate_plugins.plan(poms, 25)
+        self.assertEqual(write_changes(poms), [])
+        self.assertEqual(before, path.read_bytes())
+
+    def test_same_profile_plugin_management_remains_inherited(self):
+        path = self.project / "pom.xml"
+        path.write_text(
+            '<project><properties><maven.compiler.release>21</maven.compiler.release></properties>'
+            '<profiles><profile><id>local</id><build><pluginManagement><plugins>'
+            '<plugin><artifactId>maven-compiler-plugin</artifactId><version>3.99.0</version></plugin>'
+            '</plugins></pluginManagement><plugins><plugin><artifactId>maven-compiler-plugin</artifactId>'
+            '</plugin></plugins></build></profile></profiles></project>'
+        )
+        poms = reactor(self.project)
+        migrate_plugins.plan(poms, 25)
+        write_changes(poms)
+        build = Pom(path).root.child("profiles").children[0].child("build")
+        self.assertIsNone(build.child("plugins").child("plugin").child("version"))
+        self.assertEqual(build.child("pluginManagement").child("plugins").child("plugin").value("version"), "3.99.0")
+
+    def test_parent_profile_version_does_not_leak_into_child(self):
+        parent = self.project / "pom.xml"
+        parent.write_text(
+            '<project><properties><maven.compiler.release>21</maven.compiler.release></properties>'
+            '<modules><module>core</module></modules>'
+            '<profiles><profile><id>inactive</id><build><pluginManagement><plugins>'
+            '<plugin><artifactId>maven-compiler-plugin</artifactId><version>3.99.0</version></plugin>'
+            '</plugins></pluginManagement></build></profile></profiles></project>'
+        )
+        self.apply()
+        child = Pom(self.project / "core" / "pom.xml")
+        self.assertEqual(next(child.root.walk("plugin")).value("version"), "3.15.0")
+
     def test_mixed_higher_compiler_version_not_downgraded(self):
         path = self.project / "core" / "pom.xml"
         path.write_text(path.read_text().replace("<maven.compiler.release>8</maven.compiler.release>",

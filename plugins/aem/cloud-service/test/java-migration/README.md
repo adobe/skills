@@ -30,6 +30,10 @@ injects fake JDK discovery and fake Maven/recipe execution against disposable Gi
 projects. It exercises sources 8/11/17/21, source 25 skip, missing source/target
 JDKs, gates, preflight/refusal, command failures, partial reports and unique logs.
 It also runs a real failing subprocess to check exit-code propagation.
+Regression cases also ensure Mockito migration runs before test compilation
+without forking the lifecycle, profile-only plugin versions do not leak into
+default/sibling/child scopes, and missing or reduced baseline test-report counts
+produce an unvalidated result even when new suites hide the loss in aggregate.
 It does **not** exercise an LLM agent, upstream recipe transformations, real JVM
 parsing, or AEM tests. Test output and fake test reports are not integration evidence.
 

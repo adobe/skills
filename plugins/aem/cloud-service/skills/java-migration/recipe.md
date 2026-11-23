@@ -31,8 +31,12 @@
    not locally validated** with exit 3. Install JDK 25 and explicitly resume the
    unperformed stages after inspecting the partial diff; rerunning the whole
    runner may now skip because the POM already says 25.
-9. With JDK 25: run `mvn test`, Mockito migration, then `mvn clean verify`.
-   Inspect test reports to prove expected tests actually ran; check bundle
+9. With JDK 25: compile main sources using `mvn compile`, run Mockito migration
+   using the non-forking `runNoFork` goal, then run `mvn clean verify`. This lets
+   Mockito sources migrate before test compilation, without disabling any tests
+   or validators. Compare executed test counts in each baseline report with final
+   reports; missing reports, fewer tests or newly skipped tests leave the result
+   explicitly unvalidated. Inspect reports to prove expected tests ran; check bundle
    manifests and analyser results. A build exit code alone is not acceptance.
 10. Review the diff, changed modules, unrelated content, test counts, warnings
     and logs. Apply only bounded repairs from [constraints](references/build-fix-constraints.md).

@@ -25,12 +25,16 @@ intermediate Java 21 upgrade. Do not chain Java 8/11/17/21 recipes separately or
 repeat `@Serial` insertion. Actual annotation/idempotency behavior must be checked
 on real migrated source; wrapper inspection alone does not prove it.
 
-After deterministic POM edits and a successful target-JDK test build, run
-the analogous command using `rewrite-testing-frameworks:3.40.0`,
+After deterministic POM edits and successful target-JDK main-source compilation
+(`mvn compile`), run the analogous command with goal `runNoFork` using
+`rewrite-testing-frameworks:3.40.0`,
 [mockito_upgrade.yml](../recipes/mockito_upgrade.yml), and
 `adobe.aem.MockitoMigration`. The wrapper invokes
 `org.openrewrite.java.testing.mockito.Mockito1to5Migration`.
-Skip this stage if JDK 25 is missing.
+Skip this stage if JDK 25 is missing. Unlike `run`, `runNoFork` does not fork the
+Maven lifecycle and therefore does not require test compilation before the recipe
+can repair Mockito source incompatibilities. Final `mvn clean verify` still
+compiles and runs the full test suite and existing build gates.
 
 Before each command the runner logs `mvn --version` under that JDK. It records
 command output separately per stage without a pipe that could hide failure.

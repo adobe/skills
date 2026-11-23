@@ -17,7 +17,7 @@ source-to-target acceptance remain separate checks. Read
 | Approval | Present the evaluation limits, planned commands/changes and external recipe licenses; obtain explicit user approval |
 | Baseline | Build and test under the source JDK; stop on existing failures |
 | Migration | Invoke the pinned Java recipe once, then scoped compiler/plugin/dependency/classifier/FileVault edits and the proposed Cloud Manager selector |
-| Verification | With JDK 25, run tests, Mockito migration and final verification; inspect actual test-report counts |
+| Verification | With JDK 25, compile main sources, migrate Mockito without forking test compilation, then run full verification; compare each baseline test report's executed count against the final reports |
 | Report | Return each passed/failed/skipped operation, errors, changed files, logs, blocked checks and manual prerequisites |
 
 Without the source JDK the migration stops. Without the target JDK, applicable

@@ -120,9 +120,10 @@ def workspace_safety(root):
 
 def rewrite_command(maven, config, phase):
     java = phase == "java"
+    goal = "run" if java else "runNoFork"
     return [
         maven, "--batch-mode", "--no-transfer-progress",
-        f"org.openrewrite.maven:rewrite-maven-plugin:{config['rewrite_plugin']}:run",
+        f"org.openrewrite.maven:rewrite-maven-plugin:{config['rewrite_plugin']}:{goal}",
         f"-Drewrite.recipeArtifactCoordinates={config['java_artifact'] if java else config['mockito_artifact']}",
         f"-Drewrite.configLocation={SKILL / 'recipes' / ('java_upgrade.yml' if java else 'mockito_upgrade.yml')}",
         f"-Drewrite.activeRecipes={config['java_recipe'] if java else config['mockito_recipe']}",
@@ -135,13 +136,16 @@ def snapshot(root):
 
 
 def test_counts(poms):
-    counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0, "reports": 0}
+    counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0, "reports": 0, "suites": {}}
+    root = next(iter(poms)).parent
     for path in poms:
         for folder in ("surefire-reports", "failsafe-reports"):
             for report in (path.parent / "target" / folder).glob("TEST-*.xml"):
                 suite = ET.parse(report).getroot()
-                for key in ("tests", "failures", "errors", "skipped"):
-                    counts[key] += int(suite.get(key, "0"))
+                values = {key: int(suite.get(key, "0")) for key in ("tests", "failures", "errors", "skipped")}
+                counts["suites"][str(report.relative_to(root))] = values
+                for key, value in values.items():
+                    counts[key] += value
                 counts["reports"] += 1
     return counts
 
@@ -265,7 +269,7 @@ def migrate(args, *, discover=find_jdk, run=execute):
                 report["operations"][stage]["reason"] = "Target JDK missing"
             report["manual_actions"].append("Install JDK 25; inspect and validate the existing diff before running target build/Mockito/final verification. Do not rely on a repeat-run skip as validation.")
             return report, 3
-        command("target-build", target_home, [maven, "--batch-mode", "--no-transfer-progress", "test"])
+        command("target-build", target_home, [maven, "--batch-mode", "--no-transfer-progress", "compile"])
         command("mockito-recipe", target_home, rewrite_command(maven, config, "mockito"))
         command("final-verify", target_home, [maven, "--batch-mode", "--no-transfer-progress", "clean", "verify"])
         active = "final-verify"
@@ -276,6 +280,19 @@ def migrate(args, *, discover=find_jdk, run=execute):
         if counts["tests"] == 0 or counts["tests"] == counts["skipped"]:
             report["status"] = "local-build-passed-tests-unverified"
             report["manual_actions"].append("No executed tests were found; inspect test/profile configuration before acceptance.")
+            return report, 3
+        losses = []
+        for suite, baseline in report["baseline_tests"]["suites"].items():
+            final = counts["suites"].get(suite, {})
+            before = baseline["tests"] - baseline["skipped"]
+            after = final.get("tests", 0) - final.get("skipped", 0)
+            if after < before:
+                losses.append({"suite": suite, "baseline_executed": before, "final_executed": after})
+        if losses:
+            report["test_coverage_losses"] = losses
+            report["status"] = "local-build-passed-tests-unverified"
+            report["warnings"].append("Final verification executed fewer tests in baseline suites.")
+            report["manual_actions"].append("Review missing reports, test counts and new skips against the baseline; test coverage loss is not validated success.")
             return report, 3
         report["status"] = "local-build-passed-evaluation-only"
         report["manual_actions"].append("Inspect Surefire/Failsafe counts, effective POMs, bundle manifests and analyser output. A zero build exit is not runtime validation.")

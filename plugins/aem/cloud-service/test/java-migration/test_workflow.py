@@ -262,6 +262,71 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(report["status"], "failed")
         self.assertEqual(report["operations"]["final-verify"]["status"], "failed")
 
+    def test_mockito_migration_precedes_test_compilation_without_forking(self):
+        migrated = False
+
+        def mockito_incompatibility(command, root, env, log):
+            nonlocal migrated
+            if log.stem == "target-build" and command[-1] != "compile":
+                raise workflow.CommandError("Test sources require Mockito migration", 7)
+            if log.stem == "mockito-recipe":
+                if not any(arg.endswith(":runNoFork") for arg in command):
+                    raise workflow.CommandError("Forked test compilation blocks Mockito migration", 7)
+                migrated = True
+            if log.stem == "final-verify" and not migrated:
+                raise workflow.CommandError("Mockito source migration was not applied", 7)
+            self.fake_run(command, root, env, log)
+
+        args = workflow.parse_args([str(self.project), "--target", "25", "--evaluation", "--approve"])
+        report, code = workflow.migrate(args, discover=self.discover, run=mockito_incompatibility)
+        self.addCleanup(shutil.rmtree, report["logs"])
+        self.assertEqual(code, 0, report.get("error"))
+        self.assertEqual(report["operations"]["final-verify"]["status"], "passed")
+        commands = [command for command, _, log in self.calls if log in {"target-build.log", "mockito-recipe.log", "final-verify.log"}]
+        self.assertEqual(commands[0][-1], "compile")
+        self.assertEqual(commands[-1][-2:], ["clean", "verify"])
+        self.assertFalse(any("skipTests" in arg or "maven.test.skip" in arg for command in commands for arg in command))
+
+    def test_reduced_or_missing_baseline_tests_are_unvalidated(self):
+        original_suite = "core/target/surefire-reports/TEST-simulation.xml"
+        scenarios = (
+            {"tests": 1, "skipped": 0, "additional_tests": 0, "missing": False},
+            {"tests": 2, "skipped": 1, "additional_tests": 0, "missing": False},
+            {"tests": 0, "skipped": 0, "additional_tests": 10, "missing": True},
+        )
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario):
+                self.set_source(21)
+                self.commit()
+
+                def reduced_tests(command, root, env, log):
+                    target = root / "core" / "target"
+                    if log.stem == "baseline" and target.exists():
+                        shutil.rmtree(target)
+                    self.fake_run(command, root, env, log)
+                    if log.stem == "final-verify":
+                        path = root / original_suite
+                        if scenario["missing"]:
+                            path.unlink()
+                        else:
+                            path.write_text(f'<testsuite tests="{scenario["tests"]}" failures="0" errors="0" skipped="{scenario["skipped"]}"/>')
+                        if scenario["additional_tests"]:
+                            path.with_name("TEST-new.xml").write_text(
+                                f'<testsuite tests="{scenario["additional_tests"]}" failures="0" errors="0" skipped="0"/>')
+
+                args = workflow.parse_args([str(self.project), "--target", "25", "--evaluation", "--approve"])
+                report, code = workflow.migrate(args, discover=self.discover, run=reduced_tests)
+                self.addCleanup(shutil.rmtree, report["logs"])
+                self.assertEqual(code, 3)
+                self.assertEqual(report["status"], "local-build-passed-tests-unverified")
+                self.assertEqual(report["test_coverage_losses"], [{
+                    "suite": original_suite, "baseline_executed": 2,
+                    "final_executed": scenario["tests"] - scenario["skipped"],
+                }])
+                self.assertIn("fewer tests", report["warnings"][-1])
+                shutil.rmtree(self.project / ".cloudmanager")
+                self.commit()
+
     def test_maven_jdk_mismatch_stops_before_baseline_command(self):
         def wrong_jdk(command, root, env, log):
             self.fake_run(command, root, env, log)

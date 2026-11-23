@@ -245,12 +245,27 @@ def plugins(pom):
 
 def inherited_plugin_version(pom, plugin, poms):
     key = coordinate(plugin, "org.apache.maven.plugins")
+    def profile_of(node):
+        while node:
+            if node.name == "profile":
+                return node
+            node = node.parent
+        return None
+
+    scope = profile_of(plugin)
     for owner in ancestors(pom, poms):
-        for candidate in plugins(owner):
+        candidates = list(plugins(owner))
+        if owner is pom and scope:
+            candidates.sort(key=lambda node: profile_of(node) is not scope)
+        for candidate in candidates:
             if candidate is plugin:
                 continue
-            if owner is pom and candidate.parent.parent.name != "pluginManagement":
+            candidate_scope = profile_of(candidate)
+            if candidate_scope is not None and (owner is not pom or candidate_scope is not scope):
                 continue
+            if owner is pom and candidate.parent.parent.name != "pluginManagement":
+                if scope is None or plugin.parent.parent.name == "pluginManagement":
+                    continue
             if coordinate(candidate, "org.apache.maven.plugins") == key:
                 version = candidate.child("version")
                 if version:
