@@ -6,7 +6,7 @@ description: |
   orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
   in AEM 6.5 LTS and AMS environments.
 license: Apache-2.0
-compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; runtime checks require an available, approved tool.
+compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; this plugin does not provide an AMS Dispatcher MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -40,7 +40,7 @@ Before runtime-specific edits, confirm project evidence identifies AEM 6.5 LTS o
 
 ## MCP Tool Contract
 
-For AMS, do not assume Dispatcher runtime tools are available. Confirm an approved tool is configured before a runtime check; otherwise limit work to explanation and static review, report each tool-dependent check as NOT VERIFIED, and never fabricate tool output.
+This plugin does not provide an AMS Dispatcher MCP. For 6.5 LTS/AMS, limit work to explanation and static review unless an approved tool is explicitly configured; report each unavailable tool-dependent check as NOT VERIFIED and never fabricate tool output.
 
 ## Specialist Skills
 
