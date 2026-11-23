@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { CliError } from '#src/errors.mjs';
 
 const PEM = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
+// The settings withProxy changes belong to the whole process: one proxied run at a time.
+let active = false;
 // No user:pass@ example: output redaction would print it as [redacted]@.
 const PROXY_HINT =
   'pass an http:// or https:// URL such as http://proxy.example.com:8080, with user:pass@ before the host if it needs a login';
@@ -47,7 +49,9 @@ function readCertificates(file) {
 /**
  * Run `fn` with every `fetch` and `http(s).request` of the process sent through `proxy`, then
  * restore Node's global agents, dispatcher, trusted certificates and certificate checks.
- * Node's proxy support is process-wide: never run two of these at once.
+ * Node's proxy support is process-wide: while `fn` runs, every request of the process goes
+ * through the proxy, with the extra CAs and, with `insecure`, without certificate checks. A
+ * second call while one runs is refused.
  *
  * Without `http.setGlobalProxyFromEnv` (Node < 24.14, or 25.0 to 25.3) this throws UNSUPPORTED
  * before any request: the requests must never go out directly when a proxy was asked for.
@@ -59,6 +63,11 @@ function readCertificates(file) {
  */
 export async function withProxy({ proxy, ca, insecure } = {}, fn) {
   if (!proxy) return fn();
+  if (active) {
+    throw new CliError('UNSUPPORTED', 'a proxied scan is already running in this process', {
+      hint: 'run proxied scans one after the other',
+    });
+  }
   if (typeof http.setGlobalProxyFromEnv !== 'function') {
     throw new CliError(
       'UNSUPPORTED',
@@ -70,6 +79,7 @@ export async function withProxy({ proxy, ca, insecure } = {}, fn) {
   const roots = tls.getCACertificates('default');
   const reject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   let restoreProxy;
+  active = true;
   try {
     if (extra.length) {
       try {
@@ -80,11 +90,19 @@ export async function withProxy({ proxy, ca, insecure } = {}, fn) {
     }
     // Node reads this on every TLS connection; it prints its own warning the first time.
     if (insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    // An explicit object rather than process.env: every request goes through the proxy,
-    // whatever HTTP(S)_PROXY and NO_PROXY say.
-    restoreProxy = http.setGlobalProxyFromEnv({ http_proxy: proxy, https_proxy: proxy });
+    // Every variable set, in both cases: Node still reads the ones missing from the object in
+    // process.env, and a NO_PROXY there would send matching requests out directly.
+    restoreProxy = http.setGlobalProxyFromEnv({
+      http_proxy: proxy,
+      https_proxy: proxy,
+      HTTP_PROXY: proxy,
+      HTTPS_PROXY: proxy,
+      no_proxy: '',
+      NO_PROXY: '',
+    });
     return await fn();
   } finally {
+    active = false;
     restoreProxy?.();
     if (extra.length) tls.setDefaultCACertificates(roots);
     if (insecure) {

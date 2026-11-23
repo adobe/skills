@@ -133,6 +133,7 @@ test('site scan rejects a bad proxy and proxy options without a proxy, exit 2', 
     [[], { WEB_PROXY: 'user:secret@127.0.0.1:8080' }],
     [['--insecure'], {}],
     [['--proxy-ca', 'ca.pem'], { WEB_PROXY: '' }],
+    [['--proxy', ''], { WEB_PROXY: 'http://user:secret@127.0.0.1:8080' }],
   ]) {
     const { code, doc, out } = await run(['site', 'scan', 'http://x.test', ...args], env);
     assert.equal(code, 2, args.join(' '));

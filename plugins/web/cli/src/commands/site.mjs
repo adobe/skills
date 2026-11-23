@@ -111,7 +111,13 @@ export function registerSite(program, deps = {}) {
           hint: 'pass an absolute URL such as https://example.com',
         });
       }
-      // An empty value (`WEB_PROXY=`) means no proxy.
+      // An empty WEB_PROXY means no proxy. An empty --proxy is a mistake (an unset variable):
+      // it would override WEB_PROXY and scan directly.
+      if (opts.proxy === '') {
+        throw new CliError('USAGE', '--proxy is empty', {
+          hint: 'pass a proxy URL, or leave out --proxy (WEB_PROXY= scans without a proxy)',
+        });
+      }
       const proxy = opts.proxy ?? env.WEB_PROXY ?? '';
       if (proxy) assertProxyUrl(proxy);
       else if (opts.proxyCa || opts.insecure) {

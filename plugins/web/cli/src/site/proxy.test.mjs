@@ -206,3 +206,63 @@ test(
     }
   },
 );
+
+test(
+  'withProxy ignores NO_PROXY and HTTP(S)_PROXY from the environment',
+  { skip: noProxySupport },
+  async () => {
+    const site = await textSite('hello');
+    const proxy = await startForwardProxy();
+    const saved = Object.fromEntries(
+      ['NO_PROXY', 'no_proxy', 'HTTPS_PROXY', 'HTTP_PROXY'].map((k) => [k, process.env[k]]),
+    );
+    Object.assign(process.env, {
+      NO_PROXY: '*',
+      no_proxy: '127.0.0.1',
+      HTTPS_PROXY: 'http://127.0.0.1:9',
+      HTTP_PROXY: 'http://127.0.0.1:9',
+    });
+    try {
+      assert.equal(
+        await withProxy({ proxy: proxy.url }, () => get(`${site.origin}/a`)),
+        '200 hello',
+      );
+      assert.equal(proxy.seen.length, 1, 'the request went around the proxy');
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      proxy.close();
+      site.close();
+    }
+  },
+);
+
+test(
+  'withProxy refuses a second proxied run while one is going',
+  { skip: noProxySupport },
+  async () => {
+    const site = await textSite('hello');
+    const proxy = await startForwardProxy();
+    try {
+      await withProxy({ proxy: proxy.url }, async () => {
+        await assert.rejects(
+          withProxy({ proxy: proxy.url }, async () => 'no'),
+          {
+            code: 'UNSUPPORTED',
+          },
+        );
+      });
+      // Released afterwards, also after a failure.
+      await assert.rejects(withProxy({ proxy: proxy.url }, async () => assert.fail('boom')));
+      assert.equal(
+        await withProxy({ proxy: proxy.url }, () => get(`${site.origin}/`)),
+        '200 hello',
+      );
+    } finally {
+      proxy.close();
+      site.close();
+    }
+  },
+);
