@@ -12,7 +12,7 @@ These skills cover the official APIs for content replication and distribution ev
 ## Official Documentation
 
 - **Replication API Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
-- **Sling Distribution API Javadocs (0.7.2)**: [core package](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/package-summary.html), [event package](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html)
+- **AEM SDK Sling Distribution Javadocs (2026.9.28386.20260923T071724Z-260900)**: [core package](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html), [event package](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/event/package-summary.html)
 - **Adobe Replication Guide**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
 
 ## Skills Included
@@ -379,5 +379,5 @@ public class MyDistributionHandler implements EventHandler {
 
 - **Replication Skill**: [replication/SKILL.md](./replication/SKILL.md)
 - **Sling Distribution Skill**: [sling-distribution/SKILL.md](./sling-distribution/SKILL.md)
-- **API Javadocs**: [AEM SDK 2026.9 Replication](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html) and [Sling Distribution 0.7.2 events](https://javadoc.io/static/org.apache.sling/org.apache.sling.distribution.api/0.7.2/org/apache/sling/distribution/event/package-summary.html)
+- **API Javadocs**: [AEM SDK 2026.9 Replication](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html) and [AEM SDK 2026.9.28386.20260923T071724Z-260900 Sling Distribution events](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/event/package-summary.html)
 - **Adobe Documentation**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
