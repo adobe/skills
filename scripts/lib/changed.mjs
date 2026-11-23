@@ -60,6 +60,16 @@ export function tesslPluginDirs(root) {
   return files(root).filter((file) => file.endsWith(suffix)).map((file) => file.slice(0, -suffix.length)).sort();
 }
 
+// The plugins an eval may run for, relative to root, sorted: those with a root plugin.json,
+// whose Tessl manifest CI builds (a new plugin has none on its own pull request), and those
+// brought in with a Tessl manifest of their own.
+export function evalTargetDirs(root) {
+  return [...new Set([...pluginDirs(root), ...tesslPluginDirs(root)])].sort();
+}
+
+// The files that decide how every eval runs. A change to one is evaluated on every plugin.
+export const EVAL_TOOLING = ['.github/workflows/tessl-eval.yml', 'scripts/tessl-eval.mjs'];
+
 // The directory of `dirs` a file lies in. A skill inside another skill belongs to the
 // outer one: dirs is sorted, so the outer directory comes first.
 function owner(file, dirs) {
@@ -85,11 +95,11 @@ export function releaseDirs(changedFiles, dirs) {
   return found;
 }
 
-// The Tessl plugins to evaluate: the touched ones, or all of them when a file under
-// plugins/ changed that belongs to no Tessl plugin (it may be something they share).
+// The plugins to evaluate: the touched ones, or all of them when a file under plugins/
+// changed that belongs to no plugin (it may be something they share) or the eval tooling changed.
 export function evalPluginDirs(changedFiles, pluginDirs) {
-  const unmatched = changedFiles.some((file) => file.startsWith('plugins/') && !owner(file, pluginDirs));
-  return unmatched ? [...pluginDirs] : touched(changedFiles, pluginDirs);
+  const shared = changedFiles.some((file) => EVAL_TOOLING.includes(file) || (file.startsWith('plugins/') && !owner(file, pluginDirs)));
+  return shared ? [...pluginDirs] : touched(changedFiles, pluginDirs);
 }
 
 // The files that differ, as `git diff --name-only <args>` names them.
