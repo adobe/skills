@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/adobe/skills/compare/qa-v1.2.0...qa-v1.2.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deps:** update dependency axe-core to v4.14.1 ([#803](https://github.com/adobe/skills/issues/803)) ([659ccbf](https://github.com/adobe/skills/commit/659ccbf32fbaf5c88b8c2636bb2e9ef38d8b2f94))
+
 # [1.2.0](https://github.com/adobe/skills/compare/qa-v1.1.0...qa-v1.2.0) (2026-11-15)
 
 
