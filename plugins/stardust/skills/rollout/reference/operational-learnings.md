@@ -36,23 +36,72 @@ reads 100%:
   equivalent — those silently bounce the visitor back to the OLD site (not a 404, so
   plain link-resolution misses them). Rewrite to the local path. Keep an absolute
   source link only when no local page exists (e.g. an un-migrated language tree).
+  Re-run the localizer over the whole tree after every wave: an earlier wave's
+  pages gain valid targets only when a later wave ships them.
+- **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
+  no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's slash
+  404 while `.plain.html` passes. Repoint `.html` links with no local page at the
+  working source URL. The audit GETs each href against the LIVE tree: the ledger
+  alone misses slash and case defects.
+- **Targets missing from the capture.** Two cases, both recorded in
+  `direction.md` as a named decision with the list: a target the direction's
+  caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
+  gate, never authored from a live read) and deliver when the gap is ≤ 12
+  pages, else repoint to the source site and list it as scope debt; a target
+  outside the declared caps is SCOPE EXTENSION — repoint regardless of count.
+  External targets: repoint to the source site; other-locale targets: repoint
+  ONLY when that locale root was never captured. The ≤ 12 rule is for UNcaptured
+  pages: a recorded run dropped ten captured locale roots by citing it, and a
+  recorded audit found 10 uncaptured in-scope pages — delivering them was the
+  right call.
 
 ## Site-assembly learnings (Phase D)
 
-- **The served sitemap is not the assembled one.** `stardust/rollout/site/sitemap.xml`
-  is the EXPECTED set (the directory is in `.hlxignore`); the platform builds
-  `/sitemap.xml` from its index of published documents — chrome documents included
-  unless each carries `Robots | noindex`. A recorded hands-off run reported "sitemap
-  36 urls" from the local file while the served one listed 58. Author the row on
-  every `nav` / `footer` / locale-shell document (or exclude them in
-  `helix-sitemap.yaml` + `helix-query.yaml` as well), then
-  `assemble.mjs --verify-origin <live-origin>` (exit 1 on a mismatch) — and the
-  `D-site end` ledger detail names the SERVED count.
+- **The served sitemap is not the assembled one.** `stardust/rollout/` is in
+  `.hlxignore`, so `site/sitemap.xml` is a local artifact — the EXPECTED url set.
+  The platform serves its own `/sitemap.xml`, built from its index of every
+  published document, chrome documents included unless each carries `Robots |
+  noindex` (SKILL.md Phase C has the row). A recorded hands-off run read the local
+  file, reported "sitemap 36 urls" and shipped a served sitemap of 58 (36 pages +
+  22 `nav` / `footer` documents). Two remedies, the first required:
+  - **Authoring:** every chrome/fragment document — `/nav`, `/footer`, per-locale
+    `nav-*` / `footer-*`, locale shells that are not pages — carries the row; a
+    document already published without it is re-authored and re-published
+    (preview → live) before the check.
+  - **Configuration (alternative, additive):** when the code branch is writable, a
+    `helix-sitemap.yaml` at the project root (`sitemaps.default.include: ['/**']`,
+    `exclude: ['/nav', '/footer', '/**/nav*', '/**/footer*', '/fragments/**']`,
+    `properties.lastmod: lastModified`) keeps chrome out of the served sitemap even
+    when a document lacks the row; the same `exclude` globs go into
+    `helix-query.yaml` (Phase D2) so the index never carries them either.
+
+  `assemble.mjs --verify-origin <live-origin>` compares the served `<loc>` paths
+  with the coverage rows and exits 1 on any difference. An extra path is a chrome
+  document without `noindex` or a page built outside the migrated tree with no
+  coverage row (`update-coverage.mjs --new`, Phase D2); a missing path is a page
+  not published live. The `D-site` ledger `end` line names the SERVED count, never
+  the assembled one — e.g. `--detail "sitemap served 36 = assembled 36; redirects
+  wired; / 200"`.
+- **The redirects sheet, and the root.** `stardust/redirects.tsv` (Phase C's
+  path-safety gate) is wired into the redirects sheet at the content root: on a
+  DA-backed site `/redirects.json`, columns Source / Destination; PUT through the
+  admin API, then preview + publish it like a page. When the source root serves a
+  page, deliver it as the root `index` document (the pipeline serves `/` from it —
+  `/index` ≡ `/`; never also a `/` Source row, which would shadow it); only when
+  the source root itself redirects (`curl -sI <source-url>`, follow the Location
+  chain) does the sheet carry `/` and `/index.html` → the landing page. A 404 on
+  `/` fails the whole delivery after every phase has passed (recorded — a sheet
+  with a row for every `.html` path and none for `/`).
+- **The DA library (#160).** Without a `library` tab in its site config, a
+  migrated site shows authors an inherited or empty block library, never the
+  blocks it shipped. `da-library.mjs` writes one document per block variant and
+  per template, the sheets, and only the Blocks / Templates config rows.
 
 ## Dynamic-features learnings (Phase D2)
 
 - **A 404 on `/query-index.json` means "no `helix-query.yaml`", not "no index can be
-  configured".** Commit the yaml in the code branch, push, publish the pages live and
+  configured".** Commit the yaml in the code branch (a spec's
+  `knowledge/helix-query.yaml` is the draft), push, publish the pages live and
   poll (no more often than every 5 s, bounded) — no configuration-service write is
   involved; a 403 there with the migration token is expected. The sheet-backed
   interim index is the fallback only when the code branch is not writable

@@ -14,11 +14,20 @@ The contract the two scripts maintain. Design rationale is in
 | `plan.json` | plan | dedup-driven delivery order + per-page convert/reuse |
 | `optimize/findings.json` | optimize + findings + autofix | multi-source quality findings (detect→fix→verify) |
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
-| `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts (the EXPECTED sitemap; `manifest.json.servedSitemap` = the `--verify-origin` comparison with the SERVED one) |
+| `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts (the EXPECTED sitemap; `manifest.json` maps the chrome blocks to the authored chrome documents and their `canon/*.html` source, and its `servedSitemap` is the `--verify-origin` comparison with the SERVED one) |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
 
-`rollout` writes nothing outside this directory. `stardust/migrated/`,
-`state.json`, and the rest of the agnostic core are read-only inputs.
+`rollout` writes nothing outside this directory, with one exception: `autofix-aem`
+edits the EDS project (`content/**`, `styles/`). `stardust/migrated/`, `state.json`,
+and the rest of the agnostic core are read-only inputs. Each ledger has its schema
+in `../schemas/` (`rollout-<pages|templates|blocks|findings|scorecard|config>.schema.json`).
+
+**What the inventory reads from a `_meta.json` sidecar:** `templateId` (`template`;
+an archetype with `template: null` groups under its own slug; else `type`), `blocks`
+(`modules` — the inventory report counts sidecars with an empty list: fill them
+before Phase B), `widgets` (`widgets[] {id, href}`), `title`. In archetypes-only
+mode (`--state`), a page present only in `state.json` gets `templateId` from its
+`type` and `blocks` from the archetype's sidecar.
 
 ## Page delivery status lifecycle
 
@@ -80,6 +89,9 @@ On every `inventory.mjs` run:
     `stale` (delivered URL retained); otherwise the prior status is kept.
   - prior status was `content-pending` and migrated HTML now exists → status
     advances to `pending` and `sourceHash` is recomputed from the HTML bytes.
+  - a pinned row (`delivery.pinned`, from `update-coverage.mjs --gate <table>
+    --pin`: replica's first page first) keeps its delivery when its hash changes,
+    never `stale`; the report names it.
 - A page **not** in prior coverage → seeded `content-pending` (if sourced from
   `state.json` only) or `pending` (if migrated HTML is present).
 - Pages are keyed by `slug` (from the `_meta.json` sidecar, else derived from the
@@ -137,9 +149,15 @@ page (the first in delivery order that uses it). Per page it emits:
 - `reuse[]` — blocks already converted → `deploy`'s Step-7 brief reuses them by
   `edsBlockName`, never recreating.
 
-Chrome (`header`/`nav`/`footer`) is not per-page; it's listed once under
+Chrome (`header`/`nav`/`footer`, `kind: chrome`) is not per-page; it's listed once under
 `plan.json.fragments` and delivered as the authored `/nav` + `/footer` documents
-(published content, on the roster like any page).
+(published content, on the roster like any page). A widget (`kind: widget`, from
+the sidecar's `widgets[] {id, href}`) needs no document rows: its code ships at
+`widgets/<path>/<name>.html` and the page carries one `/widgets/…html` link (#133).
+`blocks.mjs` gives every other block a canonical `edsBlockName` (kebab, guarded
+against the reserved class names) and records `usedByPages` / `instanceCount`.
+The pages are ordered representative-first per template; a `content-pending` page
+adds no block and is always `convert: []`.
 
 ## Verify
 
@@ -165,6 +183,20 @@ exits non-zero while any **open P1** is in scope; fixability routes the fix
 informational). Findings that mirror the source capture (`checks.md` § Source
 parity) stay open but are excluded from the score, the open counts and the gate.
 See `checks.md` for the catalog.
+
+## Dashboard stages
+
+`dashboard.mjs` renders a self-contained page with no external JS in the project's
+design identity (brand tokens read from a migrated page's `:root`). Its centre is
+a tree of every identified page, nested by URL path, each node coloured by the
+most advanced stage it reached: `identified → prototyped → deployed → optimised`.
+The stage spans `state.json` (`rostered/extracted/directed` → identified,
+`prototyped/approved/migrated` → prototyped), rollout coverage
+(`deployed`/`verified` → deployed) and optimize (`optimised` = verified and no
+open findings). A `content-pending` sibling stays at `identified`. Legend counts
+are cumulative. Template archetypes are badged `T`; a page with open findings
+shows a red count. Below it: a templates table and the quality scorecard.
+`state.json` is read-only and optional.
 
 ## Roll-ups
 

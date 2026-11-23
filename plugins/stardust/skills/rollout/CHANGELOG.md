@@ -1,3 +1,33 @@
+## [1.4.1](https://github.com/adobe/skills/compare/rollout-v1.4.0...rollout-v1.4.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
+# [1.4.0](https://github.com/adobe/skills/compare/rollout-v1.3.2...rollout-v1.4.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [1.3.2](https://github.com/adobe/skills/compare/rollout-v1.3.1...rollout-v1.3.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+## [1.3.1](https://github.com/adobe/skills/compare/rollout-v1.3.0...rollout-v1.3.1) (2026-11-21)
+
+# [1.3.0](https://github.com/adobe/skills/compare/rollout-v1.2.1...rollout-v1.3.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
 ## [1.2.1](https://github.com/adobe/skills/compare/rollout-v1.2.0...rollout-v1.2.1) (2026-11-20)
 
 

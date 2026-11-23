@@ -1,0 +1,31 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:migrate",
+    "writtenAt": "2026-11-20T09:10:00Z",
+    "readArtifacts": [
+      "stardust/migrated/products/mug/index.html"
+    ]
+  },
+  "slug": "products-lamp",
+  "type": "product",
+  "source": {
+    "url": "https://shop.example.com/products/lamp/"
+  },
+  "renderBranch": "A'",
+  "fidelityTier": "sibling",
+  "archetypeSource": "products-mug",
+  "template": "products-mug",
+  "modules": [
+    "header",
+    "product-hero",
+    "spec-table",
+    "product-cards",
+    "footer"
+  ],
+  "widgets": [],
+  "metadata": {
+    "title": "Desk lamp | Fixture Store",
+    "description": "A desk lamp with warm light for late pages."
+  },
+  "contentDeviations": []
+}

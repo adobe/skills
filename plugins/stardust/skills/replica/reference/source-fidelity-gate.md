@@ -337,9 +337,9 @@ runs over the same stitched PNGs — no live hit):**
 ## Iteration discipline
 
 **Hard cap: 3 rounds per page, breakpoint and stage** (prototype, local-build,
-published): the first and two fix rounds. A round is a `gate.sh` run ending in a verdict;
-a PASS right after a PASS is free. `rounds.mjs` counts, and `gate.sh` exits 6
-until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
+published): the first and two fix rounds. A round is a `gate.sh` or
+`chrome-compare` run ending in a verdict; a PASS after a PASS is free.
+`rounds.mjs` counts; `gate.sh` exits 6 until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
 `extend` (a round lost to a named instrument defect).
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
@@ -568,9 +568,9 @@ rather than erroring.
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
    must be symmetric.
-5. **Freeze animations for capture, injected AFTER lazyload settle.**
-   Injection before the settle breaks some lazy loaders' swaps (recorded
-   failure mode). stitch-shot.mjs orders this correctly.
+5. **Freeze animations AFTER lazyload settle** (stitch-shot.mjs does;
+   earlier breaks lazy loaders' swaps). Self-advancing carousel:
+   the gates hold timers by default (`--no-hold-timers` turns it off).
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
    layout settles as a real visit does). Two classes, one shared
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`

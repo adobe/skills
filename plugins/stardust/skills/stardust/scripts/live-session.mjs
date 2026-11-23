@@ -1381,6 +1381,46 @@ export async function gotoLive(page, url, options = {}) {
 // STARDUST_STEALTH=0 disables them together with the per-context navigator.webdriver spoof.
 const STEALTH_LAUNCH = Object.freeze({ args: Object.freeze(['--disable-blink-features=AutomationControlled']), ignoreDefaultArgs: Object.freeze(['--enable-automation']) });
 
+const FAST_CLOSE_EXIT_MS = 3000;
+
+/**
+ * Real Chrome (seen on 157, macOS) hangs in browser teardown once any incognito context has existed — even one already
+ * closed, even one that never had a page — until its teardown watchdog fires 10 s later, records a crash dump and
+ * terminates (exit 2). Every probe paid those 10 s at close and left a ~1.2 MB dump in the operator's Chrome profile
+ * (Crashpad), thousands per day under parallel gates. So close() closes the contexts, then ends the browser process
+ * with SIGTERM: it exits in milliseconds, without a dump. The pid comes from CDP at launch; any failure on the way
+ * (no CDP, no pid, kill refused, no exit within FAST_CLOSE_EXIT_MS) falls back to Playwright's own close.
+ */
+export async function installFastClose(browser) {
+  if (!browser || typeof browser.newBrowserCDPSession !== 'function') return browser;
+  let pid = null;
+  try {
+    const cdp = await browser.newBrowserCDPSession();
+    const { processInfo } = await cdp.send('SystemInfo.getProcessInfo');
+    pid = (processInfo || []).find((p) => p.type === 'browser')?.id ?? null;
+    await cdp.detach().catch(() => {});
+  } catch { return browser; }
+  if (!Number.isInteger(pid) || pid <= 0) return browser;
+  const playwrightClose = browser.close.bind(browser);
+  browser.close = async (options) => {
+    if (!browser.isConnected()) return playwrightClose(options);
+    await Promise.allSettled(browser.contexts().map((c) => c.close(options)));
+    let timer;
+    const exited = new Promise((resolve) => {
+      browser.once('disconnected', () => resolve(true));
+      timer = setTimeout(() => resolve(false), FAST_CLOSE_EXIT_MS);
+    });
+    try { process.kill(pid, 'SIGTERM'); } catch { clearTimeout(timer); return playwrightClose(options); }
+    await exited;
+    clearTimeout(timer);
+    // Still connected: SIGTERM did not end it in time, so Playwright's close (and its own kill fallback) takes over.
+    // Disconnected: the call returns at once and lets Playwright finish its own cleanup.
+    return playwrightClose(options);
+  };
+  browser.stardustFastClose = true;
+  return browser;
+}
+
 // Chrome first, bundled Chromium when Chrome is not installed. The binary is what clears TLS/H2-fingerprint blocks
 // (#125: `channel:'chrome'` + headless gets HTTP 200 from Akamai where the bundled headless shell gets 400) — and it
 // is the only browser whose identity is a normal Chrome's. Takes the caller's `chromium` so this module stays import-free.
@@ -1389,6 +1429,7 @@ async function launchChromeFirst(chromium, { visible = false, stealth = false } 
   try {
     const b = await chromium.launch(opts);
     b.stardustTier = visible ? 'chrome-window' : 'chrome';
+    await installFastClose(b);
     return b;
   } catch (e) {
     console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium (tier chromium-fallback); bot-managed origins may block this tier`);

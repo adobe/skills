@@ -28,3 +28,12 @@ test('verdict: a menu that opened but could not be closed fails (close step thre
     'could not be closed (label covered or not clickable once open)',
   ]);
 });
+
+test('verdict: a click menu that stays open says its label was clicked again', () => {
+  assert.deepEqual(verdict({ trigger: 'click', expected: 5, opened: 5, left: 5 }).problems, [
+    'stays open when its label is clicked again',
+  ]);
+  assert.deepEqual(verdict({ trigger: 'hover', expected: 5, opened: 5, left: 5 }).problems, [
+    'stays open when the pointer leaves',
+  ]);
+});

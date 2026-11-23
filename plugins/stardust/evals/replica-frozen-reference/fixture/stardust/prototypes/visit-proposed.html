@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visit the Fixture Store</title>
+<meta name="description" content="Opening hours and directions for the shop on Sample Lane.">
+<style>
+:root {
+  --ink: #1d2420; --muted: #55605a; --paper: #f4efe6; --card: #fffdf8; --green: #1f3a2e;
+  --brass: #b0762a; --line: #d9d0c0; --container: 1120px; --gutter: 32px;
+  --sans: Helvetica, Arial, sans-serif; --serif: Georgia, "Times New Roman", serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 var(--serif); }
+img { display: block; max-width: 100%; height: auto; }
+h1, h2 { font-family: var(--sans); line-height: 1.15; margin: 0 0 16px; }
+p { margin: 0 0 16px; }
+.container { max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+
+.header { background: var(--card); border-bottom: 1px solid var(--line); }
+.header__bar { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+.header__brand { display: flex; align-items: center; gap: 12px; font: 700 20px/1 var(--sans); color: var(--ink); text-decoration: none; }
+.header__nav { display: flex; align-items: center; gap: 28px; list-style: none; margin: 0; padding: 0; font: 500 15px/1 var(--sans); }
+.header__nav a { color: var(--ink); text-decoration: none; }
+.header__nav .header__cta { background: var(--green); color: var(--paper); padding: 10px 16px; border-radius: 999px; }
+
+.visit { padding: 64px 0 72px; }
+.visit__eyebrow { font: 600 13px/1.4 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass); }
+.visit__title { font-size: 56px; letter-spacing: -0.02em; }
+.visit__lede { font-size: 20px; color: var(--muted); max-width: 36em; }
+.visit__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; margin-top: 40px; }
+.visit h2 { font-size: 24px; margin-top: 8px; }
+.hours { width: 100%; border-collapse: collapse; margin: 0 0 32px; font: 16px/1.6 var(--sans); }
+.hours th, .hours td { text-align: left; padding: 12px 0; border-bottom: 1px solid var(--line); font-weight: 400; }
+.hours td { text-align: right; font-weight: 700; }
+
+.board { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; height: 96px; padding: 12px; border-radius: 8px; }
+.board i { border-radius: 4px; }
+
+.footer { background: var(--ink); color: #d8d3c8; padding: 56px 0 32px; font: 15px/1.6 var(--sans); }
+.footer a { color: #d8d3c8; }
+.footer h2 { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; margin-bottom: 12px; }
+.footer ul { list-style: none; margin: 0; padding: 0; }
+.footer__cols { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 48px; }
+.footer__small { margin-top: 40px; padding-top: 20px; border-top: 1px solid #3a433e; font-size: 13px; color: #9aa39d; }
+
+@media (max-width: 700px) {
+  :root { --gutter: 20px; }
+  body { font-size: 16px; }
+  .visit { padding: 40px 0 48px; }
+  .visit__title { font-size: 34px; }
+  .visit__lede { font-size: 17px; }
+  .visit__grid, .footer__cols { grid-template-columns: 1fr; gap: 28px; }
+  .header__bar { flex-direction: column; align-items: flex-start; height: auto; padding-top: 16px; padding-bottom: 16px; gap: 14px; }
+  .header__nav { gap: 16px; font-size: 14px; flex-wrap: wrap; }
+  .header__nav .header__cta { padding: 8px 12px; }
+  .board { grid-template-columns: repeat(6, 1fr); height: 120px; }
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="container header__bar">
+    <a class="header__brand" href="/" aria-label="Fixture Store, home">
+      <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="8" fill="#1f3a2e"/><path d="M9 14h18l-2 13H11z" fill="#f4efe6"/><path d="M13 14a5 5 0 0 1 10 0" fill="none" stroke="#f4efe6" stroke-width="2"/></svg>
+      <span>Fixture Store</span>
+    </a>
+    <nav aria-label="Main">
+      <ul class="header__nav">
+        <li><a href="/#shelf">Shelf</a></li>
+        <li><a href="/#about">About</a></li>
+        <li><a href="/visit/">Visit</a></li>
+        <li><a class="header__cta" href="/visit/#hours">Open today</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main>
+  <section class="visit">
+    <div class="container">
+      <p class="visit__eyebrow">Sample Lane, by the old mill</p>
+      <h1 class="visit__title">Visit the store</h1>
+      <p class="visit__lede">The door is green and the bell is loud. Come in, put your bag down and ask what arrived this week.</p>
+      <div class="visit__grid">
+        <div id="hours">
+          <h2>Opening hours</h2>
+          <table class="hours">
+            <tbody>
+              <tr><th scope="row">Tuesday to Friday</th><td>10:00 to 18:00</td></tr>
+              <tr><th scope="row">Saturday</th><td>10:00 to 16:00</td></tr>
+              <tr><th scope="row">Sunday and Monday</th><td>Closed</td></tr>
+            </tbody>
+          </table>
+          <h2>Getting here</h2>
+          <p>Ten minutes on foot from the station: follow the river, cross at the footbridge, second door after the bakery. There are bicycle stands in the yard.</p>
+          <h2>On the board today</h2>
+          <p>The colour of the day is chalked up by the door.</p>
+          <div class="board" style="background:hsl(201 46% 88%)" aria-hidden="true"><i style="background:hsl(240 62% 65%)"></i><i style="background:hsl(269 62% 38%)"></i><i style="background:hsl(298 62% 47%)"></i><i style="background:hsl(327 62% 56%)"></i><i style="background:hsl(356 62% 65%)"></i><i style="background:hsl(25 62% 38%)"></i><i style="background:hsl(54 62% 47%)"></i><i style="background:hsl(83 62% 56%)"></i><i style="background:hsl(112 62% 65%)"></i><i style="background:hsl(141 62% 38%)"></i><i style="background:hsl(170 62% 47%)"></i><i style="background:hsl(199 62% 56%)"></i></div>
+        </div>
+        <img src="assets/map.svg" width="480" height="360" alt="A sketch map with the river, the footbridge and the shop">
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="footer">
+  <div class="container footer__cols">
+    <div>
+      <h2>Fixture Store</h2>
+      <p>12 Sample Lane<br>Testville</p>
+    </div>
+    <div>
+      <h2>Hours</h2>
+      <p>Tuesday to Saturday, 10:00 to 18:00<br>Closed Sunday and Monday</p>
+    </div>
+    <div>
+      <h2>More</h2>
+      <ul>
+        <li><a href="/visit/">Plan a visit</a></li>
+        <li><a href="/#shelf">This week's shelf</a></li>
+        <li><a href="/#about">About the shop</a></li>
+      </ul>
+    </div>
+  </div>
+  <p class="container footer__small">A fixture for automated evaluations. Nothing here is for sale.</p>
+</footer>
+</body>
+</html>

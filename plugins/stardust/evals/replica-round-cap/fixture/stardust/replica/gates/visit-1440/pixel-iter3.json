@@ -1,0 +1,93 @@
+{
+  "a": "stardust/replica/gates/visit-1440/live.png",
+  "b": "stardust/replica/gates/visit-1440/build.png",
+  "compared": {
+    "width": 1440,
+    "height": 1234,
+    "mode": "overlap"
+  },
+  "heightDelta": 24,
+  "differingPixels": 64514,
+  "pct": 4.01,
+  "threshold": 10,
+  "pass": false,
+  "diff": "stardust/replica/gates/visit-1440/diff-iter3.png",
+  "masks": [
+    {
+      "yA": 812,
+      "h": 116,
+      "yB": 812
+    }
+  ],
+  "maskedRows": 116,
+  "textPct": null,
+  "textBoxes": null,
+  "textPixels": null,
+  "bands": [
+    {
+      "y0": 0,
+      "y1": 500,
+      "pct": 0.5
+    },
+    {
+      "y0": 500,
+      "y1": 1000,
+      "pct": 7
+    },
+    {
+      "y0": 1000,
+      "y1": 1234,
+      "pct": 3.2
+    }
+  ],
+  "verdict": "aligned",
+  "aligned": {
+    "used": true,
+    "pct": 3.27,
+    "differingPixels": 53813,
+    "compared": {
+      "width": 1440,
+      "height": 1142,
+      "mode": "aligned"
+    },
+    "steps": [
+      {
+        "y": 939,
+        "shift": -24,
+        "cumulative": -24
+      }
+    ],
+    "maxOffset": 24,
+    "totalShift": 24,
+    "insertedRows": 0,
+    "deletedRows": 24,
+    "bands": [
+      {
+        "y0": 0,
+        "y1": 500,
+        "pct": 0.5,
+        "unaligned": 0.5
+      },
+      {
+        "y0": 500,
+        "y1": 1000,
+        "pct": 9.1,
+        "unaligned": 7
+      },
+      {
+        "y0": 1000,
+        "y1": 1258,
+        "pct": 0,
+        "unaligned": null
+      }
+    ],
+    "diff": "stardust/replica/gates/visit-1440/diff-iter3-aligned.png",
+    "reason": null
+  },
+  "offsets": {
+    "bound": 8,
+    "totalShift": 24,
+    "pass": false
+  },
+  "reason": "offsets: 1 step(s), 24px total — −24px at y=939 (bound 8px)"
+}

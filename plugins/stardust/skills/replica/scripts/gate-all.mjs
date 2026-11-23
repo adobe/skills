@@ -44,7 +44,9 @@
  * the usable baseline of the page's archetype gate dir `gates/<slug>-<width>/` (gate.sh's, shared), else (prototype
  * stage) that dir's cached live.png, else the one in the page's own dir, else one is frozen there
  * (`reference.mjs freeze`, the overlay flags and locale passed through) and reused by every later run. origin.png is
- * its copy; origin.json carries `reference` { dir, capturedAt, primed, stable, noiseFloor, variableRows, maskArg };
+ * its copy; origin.json carries `reference` { dir, capturedAt, primed, stable, noiseFloor, variableRows, maskArg[, hint] }
+ * (hint: reference.mjs's, when its captures differed without the timer hold — repeated once per page as the log line
+ * `origin <slug>: hint: …`, the row's `hint` and a `(hint) …` entry of its reasons cell; no verdict or exit code reads it);
  * the reference's self-varying rows join the page's masks.json rows in the compare; the row records `noiseFloor` and
  * `variableRows`. An UNSTABLE reference (the captures are not one page: reference.mjs exit 2, nothing frozen) is an
  * ERROR row — reason `reference-unstable: <its line>`, counted in totals.error and totals.referenceUnstable — never a
@@ -55,7 +57,9 @@
  * SETTINGS: a usable reference frozen under other capture settings than this run's (`reference.mjs settings`: consent,
  * dismiss, noDismiss, locale against baseline.json `flags`) is deleted and frozen again where it lives, one log line
  * `reference: re-frozen — capture settings changed (consent, locale)` (gate.sh's rule and wording; an unstable
- * re-freeze is the error row above); a --skip-existing origin or recorded pass that came from it is not reused. One
+ * re-freeze is the error row above); a --skip-existing origin or recorded pass that came from it is not reused.
+ * TIMER HOLD: on by default at 2000 ms (--help § Timer hold; gate.sh's rule) — a reference frozen without it is frozen
+ * again once, under the settings it recorded plus the hold. One
  * frozen without recorded flags is reused: `reference: reused — settings not recorded`. No round is recorded for a freeze.
  * WIDE (--wide): the same rows at a wide width — DESIGN.json's extensions.breakpoints.probeWidth (--design, default
  * DESIGN.json), else 2560 — written to `gates/wide-<w>/summary.{json,md}`: a REPORT, exit 0 whatever the rows say,
@@ -91,7 +95,7 @@
  * (shown BESIDE the number, never replacing it; `{"<slug>": {verdict, reason, waives: [criteria]}}`, a row passes
  * with it only when every failing criterion is waived — overrideScope), clip-allow.json, presence.json (session-variable
  * regions); repeated units come from stardust/replica/units.json (unit-geometry.mjs header; a legacy
- * <out>/units.json per page still reads). Origin fallback: live stitch → <crawl-shots>/<slug>.png
+ * <out>/units.json per page still reads) — a page none applies to is named, not failed (§ UNITS NOT DECLARED). Origin fallback: live stitch → <crawl-shots>/<slug>.png
  * (`crawl-fullpage`, asymmetric, flagged; never for an unstable reference). A cached live.png or a
  * --skip-existing capture is reused only when its capture record has fixedLayers (gate.sh's rule; staleCapture).
  * Overlays and locale (gate.sh's flags, same spelling): --consent / --dismiss / --no-dismiss / --locale reach both
@@ -99,7 +103,7 @@
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--coverage f] [--out dir] [--width 1440] [--wide] [--design <f>] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--live-origin] [--eds-host <h>]
- *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US]
+ *        [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale en-US] [--no-hold-timers] [--hold-min <ms>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
@@ -108,7 +112,7 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
@@ -159,6 +163,10 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --dismiss <sel,…>         extra overlay-dismiss selectors — both captures
   --no-dismiss              dismiss no overlay (contradicts --consent / --dismiss: exit 1)
   --locale <tag>            en-US — both captures and every probe
+  --no-hold-timers          capture without the timer hold, which is ON by default (§ Timer hold below; exit 1
+                            together with --hold-timers / --hold-min)
+  --hold-min <ms>           the hold with a higher threshold (floor 2000)
+  --hold-timers             the hold, asked for: at GATE_HOLD_TIMERS's threshold when that is a number, else 2000
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -182,6 +190,17 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   (gates/<slug>-<width>/), else one frozen once into the page's dir and reused; its self-varying rows are masked and
   the row records noiseFloor and variableRows. An UNSTABLE reference is an error row — reference-unstable: <line> —
   never a FAIL or a pass: pin the page's state (--consent / --dismiss / --locale), or freeze it by hand with --force.
+  Timer hold: stitch-shot's (its --help; a bare stitch-shot or reference.mjs call stays unheld), ON by default at
+  2000 ms on the reference and both captures, so a page whose carousel advances on its own is captured in one state on
+  both sides. Precedence: a flag wins over GATE_HOLD_TIMERS (0 = off, 1 = 2000, a number = that threshold), which
+  wins over the default. A reference frozen without the hold is frozen again ONCE under the settings it recorded plus
+  the hold ("reference: re-frozen — capture settings changed (holdTimers): the gates hold timers by default …") and
+  later runs reuse it; a run that names no hold takes a held reference's threshold; a --no-hold-timers /
+  GATE_HOLD_TIMERS=0 run freezes a held one again without it and keeps an unheld one. A reused capture taken under
+  another hold is retaken; two sides under different holds are an error row, nothing compared.
+  A reference whose captures differed without the timer hold carries reference.mjs's hint: logged once per page
+  ("origin <slug>: hint: …"), kept as the row's hint and in its reasons cell as "(hint) …" — advice, never a reason:
+  no verdict and no exit code reads it. A run under the hold (the default) has none.
   A reference frozen under other --consent / --dismiss / --no-dismiss / --locale than this run's is frozen again
   ("reference: re-frozen — capture settings changed (consent, locale)"; not a round); one whose settings were not
   recorded is reused, and said so.
@@ -189,6 +208,8 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   <slug>/<side>.capture.json) fails the row: font-not-loaded:<family>; one dead on the source is reported, not failed;
   a font check that could not run (fontsFailed null, or no record) fails it: font-check-skipped:<origin|build>.
   A probe that errored or timed out is an error row (probe-error:<probe>), never a pass and not a FAIL.
+  A page no repeated-unit family applies to did not take that check: unitsDeclared 0 and a note on the row,
+  totals.unitsNotDeclared and the calibration line count it; the verdict and the exit code do not read it.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
   overrides.json: {"<slug>": {"verdict", "reason", "waives": [capture|pixel|height|clip|content|units|fonts, …]}}
   waives only what it names; no "waives" = capture, pixel, height, fonts; clip, content and units only by name.
@@ -199,10 +220,21 @@ Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
 export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
+/** The gates' default timer hold (ms) — stitch-shot's own default threshold; a bare stitch-shot / reference.mjs call stays unheld. */
+export const HOLD_DEFAULT = 2000;
+/** GATE_HOLD_TIMERS → the timer hold's threshold in ms: unset or '' = undefined (not named: the default), 0 = null (off), 1 = 2000, else the number. */
+export const envHold = (v) => (v == null || v === '' ? undefined : v === '0' ? null : v === '1' ? HOLD_DEFAULT : Number(v));
+/** What the re-frozen line adds when only the default asked for the hold (gate.sh's wording). */
+export const HOLD_DEFAULT_WHY = ': the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)';
+/** A frozen reference's recorded hold (baseline.json flags.holdTimers, else timers.hold — reference.mjs's recordedHold), or null. */
+export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Number(b && b.timers && b.timers.hold) || null;
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
+  const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
+  let holdOn = false; let holdOff = false; let holdMin = null;
   let widthGiven = false;
   const need = (flag, val) => { if (val == null || val.startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return val; };
   for (let i = 0; i < rest.length; i += 1) {
@@ -220,9 +252,13 @@ export function parseArgs(argv) {
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
+    else if (a === '--hold-timers') holdOn = true; else if (a === '--no-hold-timers') holdOff = true; else if (a === '--hold-min') holdMin = Number(need(a, v()));
     else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
+  if (holdOff && (holdOn || holdMin != null)) { console.error('gate-all: --no-hold-timers contradicts --hold-timers / --hold-min — drop one (see --help)'); process.exit(1); }
+  if (holdOff || holdOn || holdMin != null) { o.holdTimers = holdOff ? null : holdMin ?? o.holdTimers ?? HOLD_DEFAULT; o.holdGiven = true; }
+  if (o.holdTimers != null && !(Number.isFinite(o.holdTimers) && o.holdTimers >= 2000)) { console.error(`--hold-min / GATE_HOLD_TIMERS needs a number of ms, at least 2000\n\n${HELP}`); process.exit(1); }
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   // --wide: a report table at the derived probe width — its own dir, no content probe (the base width measured it).
@@ -253,8 +289,10 @@ export function wideLine(flagged, { width, threshold = 10, max = 12 } = {}) {
 /** baseline.json (reference.mjs's, or stitch-shot's older freeze) → what the origin meta and the row keep of the page's frozen reference. */
 export function referenceOf(b, dir) {
   const v = Array.isArray(b && b.variable) ? b.variable : [];
-  return { dir, capturedAt: (b && b.capturedAt) ?? null, primed: !!b && b.primed === true, stable: !b || b.stable !== false, noiseFloor: b && typeof b.noiseFloor === 'number' ? b.noiseFloor : null, variableRows: v.reduce((n, r) => n + (Number(r.h) || 0), 0), maskArg: (b && b.maskArg) || '' };
+  return { dir, capturedAt: (b && b.capturedAt) ?? null, primed: !!b && b.primed === true, stable: !b || b.stable !== false, noiseFloor: b && typeof b.noiseFloor === 'number' ? b.noiseFloor : null, variableRows: v.reduce((n, r) => n + (Number(r.h) || 0), 0), maskArg: (b && b.maskArg) || '', ...(hintOf(b) ? { hint: hintOf(b) } : {}) };
 }
+/** reference.mjs's `hint` (baseline.json / reference-unstable.json: the captures differed without the timer hold), or null. Advice: no verdict reads it. */
+export const hintOf = (b) => (b && typeof b.hint === 'string' && b.hint.trim() ? b.hint.trim() : null);
 
 // ---- pure: the font check of a capture ----------------------------------------------------------------
 /**
@@ -397,11 +435,12 @@ export function migratedPathOf(file) {
 // The overlay / locale flags each child accepts (its own parseArgs) — only those are passed. The three probes take
 // --locale and no dismiss flag (they dismiss with the built-in candidates); the test reads each child's source, so a
 // probe that gains one fails there until it is listed here.
-export const CHILD_FLAGS = { 'stitch-shot': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'content-presence': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'clip-probe': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'unit-geometry': ['--consent', '--dismiss', '--no-dismiss', '--locale'] };
+export const CHILD_FLAGS = { 'stitch-shot': ['--consent', '--dismiss', '--no-dismiss', '--locale', '--hold-timers', '--hold-min'], 'content-presence': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'clip-probe': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'unit-geometry': ['--consent', '--dismiss', '--no-dismiss', '--locale'] };
 /** passThrough(child, opts) → the --locale / --consent / --dismiss / --no-dismiss arguments `child` accepts. */
 export function passThrough(child, opts = {}) {
   const takes = (f) => (CHILD_FLAGS[child] || []).includes(f); const a = [];
   if (takes('--locale')) a.push('--locale', opts.locale || 'en-US');
+  if (opts.holdTimers && takes('--hold-timers')) a.push('--hold-timers', '--hold-min', String(opts.holdTimers)); // the timer hold: stitched captures only
   if (opts.noDismiss) { if (takes('--no-dismiss')) a.push('--no-dismiss'); return a; }
   if (opts.consent && takes('--consent')) a.push('--consent', opts.consent);
   if (opts.dismiss && takes('--dismiss')) a.push('--dismiss', opts.dismiss);
@@ -417,12 +456,14 @@ export function inheritedOpts(opts, flags) {
   // a setting the run gives that differs from the recorded one: the reference is frozen again under the run's
   // settings (reference.mjs settings), so nothing of the old one is inherited
   const differs = (opts.noDismiss === true) !== (flags.noDismiss === true) && (opts.noDismiss || text(opts.consent) || text(opts.dismiss))
+    || (opts.holdGiven && (opts.holdTimers || null) !== (Number(flags.holdTimers) || null)) // the default hold never drops the recorded settings
     || ['consent', 'dismiss', 'locale'].some((k) => (k === 'locale' ? opts.localeGiven : true) && text(opts[k]) && text(opts[k]) !== (text(flags[k]) || (k === 'locale' ? 'en-US' : null)));
   if (differs) return opts;
   const gave = opts.noDismiss || text(opts.consent) || text(opts.dismiss); const o = { ...opts };
   if (flags.noDismiss === true && !gave) o.noDismiss = true;
   if (!opts.noDismiss && !o.noDismiss) for (const k of ['consent', 'dismiss']) if (!text(opts[k]) && text(flags[k])) o[k] = text(flags[k]);
   if (!opts.localeGiven && text(flags.locale)) o.locale = text(flags.locale);
+  if (!opts.holdGiven && Number(flags.holdTimers) > 0) o.holdTimers = Number(flags.holdTimers); // no hold named: a held reference's threshold
   return o;
 }
 /** A capture, either side: stitch-shot <url> <out> --width --settle + the overlay / locale flags [+ --vh] [+ tail]. */
@@ -491,7 +532,8 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   if (compared && !heightPass) reasons.push(`Δh ${pixel.heightDelta}px > ${Math.round(heightTol * 100)}% of ${originH}`);
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
-  if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}`);
+  // a selector error is named: "off 0 hidden 0 missing 0" said nothing about what to fix
+  if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}${units.verdict.errors ? ` — ${units.verdict.errors} selector error(s)${units.errors && units.errors.length ? `: ${units.errors.slice(0, 2).join('; ')}` : ''} (fix the family's selector in stardust/replica/units.json)` : ''}`);
   const probeErrors = [];
   if (contentOn && content && content.probeError) probeErrors.push({ probe: 'content', error: String(content.error || 'no result') });
   if (clipOn && clip && clip.error) probeErrors.push({ probe: 'clip', error: String(clip.error) });
@@ -515,6 +557,19 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
 export const UNSTABLE = /^reference-unstable: /;
 // Totals: an error row has no percentage or a probe that errored — never counted as FAIL; a FAIL was fully measured.
 export const isErrorRow = (r) => r.pct == null || !!(r.probeErrors && r.probeErrors.length);
+// UNITS NOT DECLARED: a page no family applies to (no units.json, an empty one, none naming its slug or template) did
+// not take the repeated-unit check — `unitsDeclared: 0`, one `notes` entry, totals.unitsNotDeclared. Never a reason.
+export const SCHEMA_DIR = 'stardust/eds-schema';
+/** Repeat groups of ≥ 2 units in the page's section schema (deploy/section-schema.mjs); null = no readable schema. */
+export const repeatGroups = (schema) => (schema && Array.isArray(schema.sections) ? schema.sections.reduce((n, s) => n + (s && Array.isArray(s.repeats) ? s.repeats.filter((x) => x && x.count >= 2).length : 0), 0) : null);
+/** The row's note when no family applies to the page (null when one does); `recorded` = repeatGroups of its schema. */
+export const unitsNote = (declared, recorded = null, slug = '<slug>') => (declared > 0 ? null
+  : `units: no family declared for this page — the repeated-unit check did not run${recorded > 0 ? ` (${recorded} repeated module(s) recorded for this page in ${SCHEMA_DIR}/${slug}.json, 0 unit families declared in stardust/replica/units.json)` : ''}`);
+/** The row's unit fields: { unitsDeclared, unitsRecorded, notes } — `notes` = the verdict's notes plus the units one. */
+export function unitsState(declared, schema, slug, notes = []) {
+  const recorded = declared > 0 ? null : repeatGroups(schema); const note = unitsNote(declared, recorded, slug);
+  return { unitsDeclared: declared, unitsRecorded: recorded, notes: note ? [...notes, note] : notes };
+}
 
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
 export function formatSummary(summary) {
@@ -524,15 +579,15 @@ export function formatSummary(summary) {
   const named = (list) => [...new Set(list.map(fontLabel))].sort();
   const fonts = named(faces.filter(fontFails)); const sourceDead = named(faces.filter((f) => !fontFails(f)));
   const title = p.wide ? `Wide report — ${p.stage === 'prototype' ? 'every crafted prototype' : 'all deployed pages'} (a report, not a delivery criterion)` : p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages';
-  const head = [`# ${title}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}${t.failOffsets ? ` (${t.failOffsets} on offsets alone)` : ''}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}${t.probeErrors ? `; probe errors ${t.probeErrors} (error rows, not FAIL)` : ''}${sourceDead.length ? `; fonts dead on the source — reported, not failing: ${t.fontsDeadOnSource ?? summary.rows.filter((r) => (r.fontsNotLoaded || []).some((f) => !fontFails(f))).length} (${sourceDead.join(', ')})` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}${t.alignedOnlyPass != null ? `; pixel criterion met only thanks to alignment (unaligned % over the threshold): ${t.alignedOnlyPass}` : ''}${t.referenceUnstable ? `; **${t.referenceUnstable} unstable reference(s)** (error rows — pin the page's state, then --recapture-origin)` : ''}${p.wide ? `; over the threshold at this width: **${t.overThreshold ?? 0} of ${t.pages}**` : ''}.`, ''];
+  const head = [`# ${title}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}${t.failOffsets ? ` (${t.failOffsets} on offsets alone)` : ''}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}${t.probeErrors ? `; probe errors ${t.probeErrors} (error rows, not FAIL)` : ''}${sourceDead.length ? `; fonts dead on the source — reported, not failing: ${t.fontsDeadOnSource ?? summary.rows.filter((r) => (r.fontsNotLoaded || []).some((f) => !fontFails(f))).length} (${sourceDead.join(', ')})` : ''}; content n/a (origin not probed) ${t.contentNA}${t.unitsNotDeclared ? `; **units not declared ${t.unitsNotDeclared} of ${t.pages}** (no repeated-unit family applies: the check did not run on them${t.unitsRecordedNotDeclared ? `; ${t.unitsRecordedNotDeclared} of them have repeated modules recorded` : ''})` : ''}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}${t.alignedOnlyPass != null ? `; pixel criterion met only thanks to alignment (unaligned % over the threshold): ${t.alignedOnlyPass}` : ''}${t.referenceUnstable ? `; **${t.referenceUnstable} unstable reference(s)** (error rows — pin the page's state, then --recapture-origin)` : ''}${p.wide ? `; over the threshold at this width: **${t.overThreshold ?? 0} of ${t.pages}**` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % aligned (unaligned) [text] | offsets | Δh px | clipped | content | units | verdict | reasons |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const probeErr = (r.probeErrors || []).map((e) => e.probe);
     const content = probeErr.includes('content') ? 'ERROR' : r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
-    const units = probeErr.includes('units') ? 'ERROR' : r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
+    const units = probeErr.includes('units') ? 'ERROR' : r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}${r.unitsDeclared > 0 ? ` (${r.unitsDeclared} famil${r.unitsDeclared > 1 ? 'ies' : 'y'} checked)` : ''}` : r.unitsDeclared === 0 ? 'not declared' : r.unitsDeclared > 0 ? `no result (${r.unitsDeclared} declared)` : '-';
     const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
     const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : probeErr.length ? `ERROR (probe: ${probeErr.join(', ')})` : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`)].join('; ') || '-'} |`);
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`), ...(r.hint ? [`(hint) ${r.hint}`] : [])].join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -554,12 +609,26 @@ const readJsonSafe = (p) => { try { return readJson(p); } catch { return null; }
 // asymmetric diff. A live.png copied from the frozen baseline (live.json origin "baseline") has no capture record;
 // baseline.json's fixedLayers decides. → true when the capture must be retaken.
 export const captureRecordOf = (png) => `${png.replace(/\.png$/i, '')}.capture.json`;
-export function staleCapture(png) {
+// `hold` (the timer hold the run captures this page under: ms, or null) joins the rule: a capture taken under another
+// hold — none against one, or another threshold — is retaken too (record.timers.hold; stitch-shot --hold-timers).
+// staleReason → null (reusable) | the words for the log line; staleCapture → true when the capture must be retaken.
+export function staleReason(png, hold = null) {
+  const FIXED = 'predates the fixed-layer capture (no fixedLayers in its record)';
+  const why = (r) => (!r.fixedLayers ? FIXED : ((r.timers && r.timers.hold) || null) !== (hold || null) ? `was captured under another timer hold (${(r.timers && r.timers.hold) || 'none'}, this run ${hold || 'none'})` : null);
   const rec = readJsonSafe(captureRecordOf(png));
-  if (rec) return !rec.fixedLayers;
+  if (rec) return why(rec);
   const live = basename(png) === 'live.png' ? readJsonSafe(join(dirname(png), 'live.json')) : null;
-  if (live && live.origin === 'baseline') return !(readJsonSafe(join(dirname(png), 'baseline.json')) || {}).fixedLayers;
-  return true;
+  if (live && live.origin === 'baseline') return why(readJsonSafe(join(dirname(png), 'baseline.json')) || {});
+  return FIXED;
+}
+export const staleCapture = (png, hold = null) => staleReason(png, hold) !== null;
+
+/** Two capture records (stitch-shot's) → null when both were taken under the same timer hold (or one has no record: a
+ * crawl shot, already flagged asymmetric), else the one-line error of the row. */
+export function holdMismatch(originRec, buildRec) {
+  if (!originRec || !buildRec) return null;
+  const h = (r) => (r.timers && r.timers.hold) || null;
+  return h(originRec) === h(buildRec) ? null : `timer hold differs: origin ${h(originRec) ?? 'none'}, build ${h(buildRec) ?? 'none'} (ms) — not compared; re-run with --recapture-origin or --recapture-eds`;
 }
 
 // Disk (#156): a passed page keeps its records, not its pictures. Every PNG in its dir goes (an extra capture put
@@ -661,11 +730,21 @@ async function main() {
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
   // The capture settings a usable reference was frozen with against this run's (header § SETTINGS): reference.mjs's
-  // own comparison, once per reference dir → { changed: 'consent, locale' | null, unrecorded }. A reference.mjs
-  // without the subcommand answers nothing: reused as before.
+  // own comparison, once per reference dir → { changed: 'consent, locale' | null, unrecorded, why }. A reference.mjs
+  // without the subcommand answers nothing: reused as before. The hold (--help § Timer hold): a run that names none
+  // does not give it against a held reference (its threshold is inherited); one that turns it off never reuses a held
+  // reference; `why` = HOLD_DEFAULT_WHY when the default is what asked for the hold.
   const settingsSeen = new Map();
   const settingsOf = (refDir) => {
-    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
+    if (!settingsSeen.has(refDir)) {
+      const held = refHold(readJsonSafe(join(refDir, 'baseline.json')));
+      settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(!opts.holdGiven && held ? { ...opts, holdTimers: null } : opts)]).then((s) => {
+        const line = lastLine(s.out);
+        const names = [s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : s.code !== 0 && opts.holdTimers ? 'holdTimers (reference.mjs settings gave no answer)' : null, opts.holdGiven && !opts.holdTimers && held ? 'holdTimers' : null].filter(Boolean);
+        const changed = names.join(', ') || null;
+        return { changed, unrecorded: s.code === 0 && line === 'not recorded', why: !opts.holdGiven && s.code === 0 && /holdTimers/.test(changed || '') ? HOLD_DEFAULT_WHY : '' };
+      }));
+    }
     return settingsSeen.get(refDir);
   };
   // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
@@ -683,8 +762,9 @@ async function main() {
   // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
   const reusable = (p, side, png, meta) => {
     if (!existsSync(png) || !existsSync(meta)) return false;
-    if ((readJsonSafe(meta) || {}).instrument !== 'stitch-live' || !staleCapture(png)) return true;
-    log(`${side} ${p.slug}: ${png} predates the fixed-layer capture (no fixedLayers in its record) — retaking it`);
+    const stale = (readJsonSafe(meta) || {}).instrument === 'stitch-live' ? staleReason(png, optsFor(p).holdTimers) : null;
+    if (!stale) return true;
+    log(`${side} ${p.slug}: ${png} ${stale} — retaking it`);
     return false;
   };
   // stitch-shot's capture record (captureRecordOf: <side>.capture.json beside the PNG; stitch-shot removes it when a
@@ -713,7 +793,7 @@ async function main() {
   const fromReference = (refDir, out, how) => {
     const base = readJsonSafe(join(refDir, 'baseline.json')) || {};
     copyFileSync(join(refDir, 'baseline.png'), out);
-    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
+    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...(base.timers ? { timers: base.timers } : {}), ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
     writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
     return { instrument: 'stitch-live', url: base.url, reference: referenceOf(base, refDir), note: `${how} ${join(refDir, 'baseline.png')} (the page's frozen reference — primed, not re-captured)`, ...shotFonts(src) };
   };
@@ -738,29 +818,33 @@ async function main() {
       } else if (await usable(gateDir, p)) refDir = gateDir;
     }
     let useCached = !refDir && !freezeInto && opts.stage === 'prototype' && existsSync(cachedLive);
-    if (useCached && staleCapture(cachedLive)) { useCached = false; log(`origin ${p.slug}: ${cachedLive} predates the fixed-layer capture (no fixedLayers in its record) — not reused, capturing the origin`); }
+    const staleLive = useCached ? staleReason(cachedLive, optsFor(p).holdTimers) : null;
+    if (staleLive) { useCached = false; log(`origin ${p.slug}: ${cachedLive} ${staleLive} — not reused, capturing the origin`); }
     if (!opts.liveOrigin && !blocked && !refDir && !freezeInto && !useCached) { if (await usable(d, p)) refDir = d; else freezeInto = d; }
-    let refrozen = null;
+    let refrozen = null; let why = ''; let freezeOpts = opts;
     if (refDir) {
       const st = await settingsOf(refDir);
       if (st.changed) {
-        refrozen = st.changed; freezeInto = refDir; refDir = null; settingsSeen.delete(freezeInto);
+        // frozen again under the settings the build side runs under (optsFor, read before the old reference goes):
+        // the run's — plus, when only the default hold changed, the ones the old reference recorded
+        freezeOpts = optsFor(p);
+        refrozen = st.changed; why = st.why; freezeInto = refDir; refDir = null; settingsSeen.delete(freezeInto);
         for (const f of ['baseline.png', 'baseline.json']) rmSync(join(freezeInto, f), { force: true });
       } else if (st.unrecorded) log(`origin ${p.slug}: reference: reused — settings not recorded (${join(refDir, 'baseline.json')} was frozen by an older version)`);
     }
     let r;
     if (freezeInto) {
-      const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
+      const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', freezeOpts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
       const line = lastLine(s.out).replace(/^reference: /, '');
       // frozen (0) or measured unstable (2): the old reference is superseded; anything else answered nothing
       for (const from of setAside) { if (s.code === 0 || s.code === 2) rmSync(`${from}.prev`, { force: true }); else renameSync(`${from}.prev`, from); }
       if (s.code !== 0 && s.code !== 2 && setAside.length && await usable(freezeInto, p)) { refDir = freezeInto; log(`origin ${p.slug}: re-freeze exit ${s.code} (${line || lastLine(s.err)}) — the previous frozen reference is kept`); }
       else if (s.code === 0) {
         refDir = freezeInto;
-        if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})`);
+        if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})${why}`);
         // the page dir keeps the frozen reference only: reference.mjs's kept captures and their diffs go (#156, disk)
         if (freezeInto === d) for (const f of readdirSync(d)) if (/^ref-(\d|diff-).*\.(png|capture\.json)$/.test(f)) rmSync(join(d, f), { force: true });
-      } else if (s.code === 2) r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})` };
+      } else if (s.code === 2) { const hint = hintOf(readJsonSafe(join(freezeInto, 'reference-unstable.json'))); r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})`, ...(hint ? { hint } : {}) }; }
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `reference freeze exit ${s.code}: ${line || lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `reference freeze exit ${s.code}: ${line || lastLine(s.err)}` };
     }
@@ -771,7 +855,7 @@ async function main() {
       // its record goes with it (a frozen-baseline copy has none: baseline.json's fixedLayers and fontsFailed stand in),
       // so a later --skip-existing round reads the same rule, and the font check (shotFonts) reads the record that went
       const base = readJsonSafe(join(dirname(cachedLive), 'baseline.json')) || {};
-      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
+      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...(base.timers ? { timers: base.timers } : {}), ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
       writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
       r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(src) };
     }
@@ -787,6 +871,8 @@ async function main() {
     }
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
     log(`origin ${p.slug} → ${r.instrument}${r.reference ? ` (frozen reference ${r.reference.dir}${r.reference.noiseFloor != null ? `, noise floor ${r.reference.noiseFloor}%, ${r.reference.variableRows} self-varying rows masked` : ', noise floor not measured'})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
+    const hint = (r.reference && r.reference.hint) || r.hint || null;
+    if (hint) log(`origin ${p.slug}: hint: ${hint}`);
   }
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -846,7 +932,7 @@ async function main() {
       const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p)));
       const res = readJsonSafe(join(d, 'units.json'));
       const required = units.some((x) => x.required);
-      if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
+      if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required, errors: (res.results || []).filter((x) => x.error).map((x) => `${String(x.sel).slice(0, 80)} — ${x.error}`) }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
       else { put('units', { error: `unit-geometry exit ${s.code}: ${lastLine(s.err)}`, required }); log(`units ${p.slug} → ERROR ${lastLine(s.err)}`); }
     }
     writeFileSync(join(d, 'probes.json'), JSON.stringify({ writtenBy: 'gate-all.mjs', at: new Date().toISOString(), ...got }, null, 1));
@@ -865,6 +951,9 @@ async function main() {
     if (!existsSync(join(d, 'origin.png')) || !existsSync(join(d, 'eds.png'))) {
       const px = { error: UNSTABLE.test(originMeta.error || '') ? originMeta.error : 'missing capture' }; mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); return;
     }
+    // the two sides stitched under different timer holds are two instruments: an error row, nothing compared
+    const hm = holdMismatch(readJsonSafe(captureRecordOf(join(d, 'origin.png'))), readJsonSafe(captureRecordOf(join(d, 'eds.png'))));
+    if (hm) { const px = { error: hm }; writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); log(`pixel ${p.slug} → ERROR ${hm}`); return; }
     // masks: the page's masks.json rows, then the frozen reference's self-varying rows (origin.json `reference`)
     const mk = MASKS[p.slug]; const ref = originMeta.reference || null;
     const masks = [...((mk && mk.masks) || []), ...(ref && ref.maskArg ? ref.maskArg.split(',') : [])];
@@ -886,10 +975,11 @@ async function main() {
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
+      ...unitsState(unitsOf(p).length, readJsonSafe(join(SCHEMA_DIR, `${p.slug}.json`)), p.slug, v.notes),
       units: r.units && r.units.verdict ? r.units.verdict : null, unitsRequired: !!(r.units && r.units.required), unitsError: (r.units && r.units.error) || null,
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: OVERRIDES[p.slug] || null, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
-      reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0,
+      reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0, hint: (ref && ref.hint) || (r.origin && r.origin.hint) || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null };
   };
   let dropped = 0;
@@ -913,7 +1003,7 @@ async function main() {
   const overCap = opts.wide ? [] : await recordRounds(measured.map((p) => rowOf(p)), opts); // a report records no round
   if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — fix per § What a failing row means, or record the decision: rounds.mjs decide ${join(dirname(opts.out), `<slug>-${opts.width}`)} --stage all-pages --decision accept-residual|re-prototype --reason "<why>" (a closed page is not listed again)`);
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
-    failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
+    failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), unitsNotDeclared: n((r) => r.unitsDeclared === 0), unitsRecordedNotDeclared: n((r) => r.unitsDeclared === 0 && r.unitsRecorded > 0), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     alignedOnlyPass: n((r) => r.pixelPass && r.pct > opts.threshold), failOffsets: n((r) => r.pct != null && !r.pixelPass && r.alignedPct <= opts.threshold), referenceUnstable: n((r) => UNSTABLE.test(r.error || '')),
     ...(opts.wide ? { overThreshold: n((r) => r.alignedPct != null && r.alignedPct > opts.threshold), heightOff: n((r) => r.pct != null && !r.heightPass) } : {}) };
   const flagged = opts.wide ? wideFlagged(rows, opts) : []; const flaggedLine = wideLine(flagged, opts);

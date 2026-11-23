@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "web",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Browser automation and web page analysis skills: probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, extract page resources, and detect page languages via the `web` CLI (plugins/web/cli; `web doc extending` shows how to add your own commands); drive Chrome and test extensions; mask domains for demos.",
   "author": {
     "name": "Adobe"
@@ -25,17 +25,17 @@
           "description": "Browser automation and web page analysis skills for working with arbitrary sites — probe bot protection, dismiss overlays, capture DOM trees, reduce pages to structural skeletons, extract page resources, and detect page languages via the `web` CLI (plugins/web/cli); drive Chrome and test extensions; mask domains for demos.",
           "private": false,
           "skills": [
+            "skills/browser-probe",
             "skills/cdp-connect",
             "skills/cdp-ext-pilot",
-            "skills/browser-probe",
-            "skills/page-prep",
-            "skills/page-tree",
-            "skills/page-reduce",
-            "skills/page-collect",
             "skills/domain-mask",
+            "skills/page-cache",
+            "skills/page-collect",
             "skills/page-langs",
-            "skills/site-scan",
-            "skills/page-cache"
+            "skills/page-prep",
+            "skills/page-reduce",
+            "skills/page-tree",
+            "skills/site-scan"
           ]
         }
       },

@@ -1,0 +1,31 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:migrate",
+    "writtenAt": "2026-11-20T09:10:00Z",
+    "readArtifacts": [
+      "stardust/prototypes/visit-proposed.html"
+    ]
+  },
+  "slug": "visit",
+  "type": "info",
+  "source": {
+    "url": "https://shop.example.com/visit/"
+  },
+  "renderBranch": "A",
+  "fidelityTier": "archetype",
+  "template": null,
+  "modules": [
+    "header",
+    "page-intro",
+    "opening-hours",
+    "directions",
+    "today-band",
+    "footer"
+  ],
+  "widgets": [],
+  "metadata": {
+    "title": "Visit the Fixture Store",
+    "description": "Opening hours and directions."
+  },
+  "contentDeviations": []
+}
