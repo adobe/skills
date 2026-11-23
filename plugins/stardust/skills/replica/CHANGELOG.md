@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/adobe/skills/compare/replica-v1.8.0...replica-v1.8.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the roster gate judges offsets with the height tolerance, so pages inside the pixel bar stop failing on small shifts ([#790](https://github.com/adobe/skills/issues/790)) ([50de2af](https://github.com/adobe/skills/commit/50de2afe042861b295af64cc4c68e86255caed54))
+
 # [1.8.0](https://github.com/adobe/skills/compare/replica-v1.7.0...replica-v1.8.0) (2026-11-21)
 
 
