@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fixture Store: things for a slower day</title>
+  <meta name="description" content="A small store with mugs, lamps and baskets.">
+  <style>
+    :root { --ink: #1d2a24; --paper: #f7f4ec; --leaf: #2f6b4f; --line: #d9d3c3; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+    header, footer, main > section { padding: 24px max(24px, calc((100vw - 1100px) / 2)); }
+    header { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    header nav a { margin-left: 24px; color: inherit; }
+    h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .cards article { border: 1px solid var(--line); padding: 16px; }
+    .today { background: var(--leaf); color: #fff; }
+    table { border-collapse: collapse; width: 100%; } td, th { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
+    a.cta { display: inline-block; padding: 10px 20px; background: var(--leaf); color: #fff; text-decoration: none; }
+    footer { border-top: 1px solid var(--line); font-size: 14px; }
+    @media (width < 700px) { .cards { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
+  </style>
+</head>
+<body>
+  <header data-module="header">
+    <a href="/">Fixture Store</a>
+    <nav><a href="/products/mug/">Products</a><a href="/visit/">Visit</a><a href="/about/">About</a></nav>
+  </header>
+  <main>
+    <section data-module="hero">
+      <h1>Things for a slower day</h1>
+      <p>A small store with mugs, lamps and baskets, open six days a week.</p>
+      <p><a class="cta" href="/visit/">Plan a visit</a></p>
+    </section>
+    <section class="today" data-module="today-band">
+      <h2>Today in the store</h2>
+      <p>Fresh stock on the front table, and the kettle is on.</p>
+    </section>
+    <section data-module="product-cards">
+      <h2>On the shelves</h2>
+      <div class="cards">
+        <article><img src="/assets/img/mug.svg" alt="A stoneware mug"><h3><a href="/products/mug/">Stoneware mug</a></h3><p>Holds a proper cup of tea.</p></article>
+        <article><img src="/assets/img/lamp.svg" alt="A desk lamp"><h3><a href="/products/lamp/">Desk lamp</a></h3><p>Warm light for late pages.</p></article>
+        <article><img src="/assets/img/basket.svg" alt="A woven basket"><h3><a href="/products/basket/">Woven basket</a></h3><p>Carries the lot home.</p></article>
+      </div>
+    </section>
+    <section data-module="about-teaser">
+      <img src="/assets/img/shopfront.svg" alt="The shop front">
+      <h2>Run by two people and a kettle</h2>
+      <p>We choose every piece ourselves. <a href="/about/">Read how the store began</a>.</p>
+    </section>
+  </main>
+  <footer data-module="footer">
+    <p>Fixture Store, 1 Sample Lane. <a href="/visit/">Opening hours</a> · <a href="/about/">About us</a></p>
+  </footer>
+</body>
+</html>

@@ -58,7 +58,7 @@ adj = upm*size_adjust
 print(f"size-adjust:{size_adjust*100:.2f}% ascent-override:{hhea.ascent/adj*100:.2f}% "
       f"descent-override:{abs(hhea.descent)/adj*100:.2f}% line-gap-override:{hhea.lineGap/adj*100:.2f}%")
 ```
-Apply those to the `<brand>-fallback` `@font-face` (sourcing `local("Arial")` / `local("Times New Roman")`) exactly as in principle 3.
+Apply those to the `<brand>-fallback` `@font-face` exactly as in principle 3.
 
 **3. Deferred `fonts.css` with a metric-matched `-fallback` `@font-face` — the stock boilerplate mechanism, aimed at your brand.**
 The brand font must NOT render at first paint — and under vanilla EDS it can't: the brand `@font-face` lives in `styles/fonts.css`, which `loadFonts()` loads after first paint (immediately on desktop/repeat views, in `loadLazy` otherwise). Until it lands, the stack's SECOND family renders — so make that second family a metric-matched local face, declared in `styles/styles.css` following the boilerplate's own `roboto-fallback` convention:
@@ -79,7 +79,7 @@ The brand font must NOT render at first paint — and under vanilla EDS it can't
    (the stock convention — see roboto-fallback in the boilerplate). */
 @font-face {
   font-family: "<brand>-fallback";
-  src: local("Arial");           /* local("Times New Roman") for a serif brand */
+  src: <local() sources>;  /* the gate's browser lacks Arial and Times: replica/reference/recreation-procedure.md § Fonts policy */
   size-adjust: <X>%;
   ascent-override: <Y>%;
   descent-override: <Z>%;

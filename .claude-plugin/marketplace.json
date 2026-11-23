@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.42.1",
+      "version": "0.46.2",
       "category": "design",
       "keywords": [
         "design",
@@ -35,7 +35,7 @@
       "name": "web",
       "source": "./plugins/web",
       "description": "Browser automation and web page analysis skills using playwright-cli: connect via CDP, probe bot protection, dismiss overlays, capture DOM trees, reduce pages to skeletons, extract page resources.",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "category": "web",
       "keywords": [
         "browser",
@@ -56,7 +56,7 @@
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development",
-      "version": "1.3.3"
+      "version": "1.3.5"
     },
     {
       "name": "aem-cloud-service",

@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyPlatform, agyBehind, installAgy, latestAgy, sha512 } from './setup-agent-clis.mjs';
-import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, keeps, listFiles } from './skill-eval.mjs';
+import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, keeps, listFiles, withoutDependencies } from './skill-eval.mjs';
 import { commit, run, tree, write } from './lib/testing.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -172,6 +172,48 @@ test('an eval runs the task with the plugin and without it, and reports both ans
   assert.deepEqual(report.notes, []);
   assert.equal(readFileSync(join(out, 'claude-with', 'workdir', 'result.md'), 'utf8'), 'plugin yes\n');
   assert.equal(readFileSync(join(root, 'plugins/p/evals/case/resources/start.md'), 'utf8'), 'given'); // the scenario is not changed
+});
+
+// A stand-in for Claude Code that says what the manifest of its --plugin-dir declares, and whether a skill is there.
+const MANIFEST = `dir=; while [ $# -gt 0 ]; do [ "$1" = --plugin-dir ] && dir=$2; shift; done
+if [ -z "$dir" ]; then says="no plugin"; elif grep -q dependencies "$dir/.claude-plugin/plugin.json"; then says="dependencies declared"; else says="no dependencies, skill $(ls "$dir/skills")"; fi
+printf '{"result":"%s","num_turns":1,"total_cost_usd":0.01}' "$says"`;
+
+test('for claude, a plugin that depends on another one is loaded from a copy without the dependency, and the report says so', (t) => {
+  const manifest = { name: 'p', version: '1.0.0', dependencies: [{ name: 'other', marketplace: 'elsewhere' }] };
+  const root = tree(t, { ...PLUGIN, 'plugins/p/.claude-plugin/plugin.json': JSON.stringify(manifest) });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, MANIFEST), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  // Claude Code loads no skill of a plugin with an unsatisfied dependency: with it declared, both arms are the same agent
+  assert.equal(report.arms.with.answer, 'no dependencies, skill one');
+  assert.equal(report.arms.without.answer, 'no plugin');
+  assert.equal(report.notes.length, 1);
+  assert.match(report.notes[0], /^The plugin depends on other@elsewhere, which the home of a run does not have\. It was loaded from a copy without that dependency/);
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'plugins/p/.claude-plugin/plugin.json'), 'utf8')), manifest); // the plugin itself is not changed
+
+  // the copy is removed on every way out: after a run, and when there are no credentials (exit 3)
+  const copies = () => readdirSync(tmpdir()).filter((name) => name.startsWith('skill-eval-plugin-')).length;
+  const before = copies();
+  const refused = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, MANIFEST), '--out', temp(t)], { cwd: root, env: {} });
+  assert.equal(refused.status, 3, refused.stdout + refused.stderr);
+  assert.equal(copies(), before);
+
+  const staged = withoutDependencies(join(root, 'plugins/p'));
+  assert.notEqual(staged.dir, join(root, 'plugins/p'));
+  assert.deepEqual(staged.dropped, ['other@elsewhere']);
+  assert.equal(existsSync(join(staged.dir, 'skills/one/SKILL.md')), true);
+  staged.cleanup();
+  assert.equal(existsSync(staged.dir), false);
+});
+
+test('a plugin without dependencies, or without a Claude manifest, is loaded from its own directory', (t) => {
+  const root = tree(t, { ...PLUGIN, 'plugins/q/.claude-plugin/plugin.json': JSON.stringify({ name: 'q', dependencies: [] }), 'plugins/q/skills/one/SKILL.md': '---\nname: one\n---\n' });
+  for (const dir of ['plugins/p', 'plugins/q']) {
+    const same = withoutDependencies(join(root, dir));
+    assert.equal(same.dir, join(root, dir));
+    assert.deepEqual(same.dropped, []);
+  }
 });
 
 // A stand-in for Claude Code that streams events: it loads the skill `one` when the plugin is there.

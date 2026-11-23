@@ -25,6 +25,13 @@
  * The budget counts every request to the site's host, subresources included — an image-heavy page spends a
  * few hundred on its first load alone, so the default leaves room for the exploration after it.
  *
+ * A panel is what the control reveals, not what the page does meanwhile. The first time content appears outside the
+ * header root, the page is watched for 8 s with no control in play; a region that changes in that time (a hero carousel
+ * changing slide) is left out of every state from then on, and the control is acted on again. A panel rendered outside
+ * the header element stays: it does not change by itself. Each width records it as `watch` and prints one line: `ran`
+ * (ms, samples, excluded, the first 8 regions' selector and box), `not-triggered` (nothing appeared outside the header:
+ * the page was not watched) or `failed` (it was to be watched and no sample could be read: nothing was excluded).
+ *
  * Usage: node skills/diff/scripts/chrome-explore.mjs <url> <out.json> [options]
  *   --width <w,…>        viewport widths (default 1440,390; below 768 is touch: no hover)
  *   --root <sel>         header root (default: first visible header, [role=banner], .header)
@@ -38,7 +45,7 @@
  *   --max-requests <n>   requests to the site's host per width — documents and subresources alike (images,
  *                        CSS, scripts, fonts, XHR), first load included (default 600; 0 = unlimited)
  *   --max-typeahead <n>  inputs probed per width (default 2); the rest are listed, not typed into
- * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `parseArgs`,
+ * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `watchLine`, `controlKind`, `normName`, `parseArgs`,
  * `requestBudget`, `sameSite`, `siteHost` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -55,6 +62,9 @@ const frontDoor = () => {
 };
 
 const TOUCH_BELOW = 768;
+// the control-free watch: longer than the autoplay interval carousels ship with (3 to 5 s by default, heroes up to about 8)
+const WATCH_MS = 8000;
+const WATCH_LIST = 8; // regions listed in the record and on the line; `excluded` is the full count
 
 /** Lower-case, collapse whitespace, strip punctuation: the pairing key of a control. Pure. */
 export const normName = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
@@ -98,6 +108,17 @@ export function summarize(doc) {
   });
 }
 
+/** The at-rest watch of one width's record, in words: how long, how many self-changing regions were excluded and which.
+ * A record without one, and a watch that could not run, say so: neither reads as "nothing excluded". Pure. */
+export function watchLine(d) {
+  const w = d && d.watch;
+  if (!w) return 'at-rest watch: not recorded (a chrome-explore without it)';
+  if (w.status === 'not-triggered') return 'at-rest watch: not run (no action revealed content outside the header)';
+  if (w.status !== 'ran') return `at-rest watch: COULD NOT RUN (${w.reason || `status ${w.status}`}), no self-changing region was excluded`;
+  const shown = (w.regions || []).map((r) => `${r.sel}${r.rect ? ` [${r.rect.join(',')}]` : ''}`);
+  return `at-rest watch: ${(w.ms / 1000).toFixed(1)} s, ${w.excluded} self-changing region(s) excluded${w.excluded ? `: ${shown.join('; ')}${w.excluded > shown.length ? '; …' : ''}` : ''}`;
+}
+
 const DEFAULTS = { width: '1440,390', 'max-states': 400, 'max-depth': 4, 'pace-ms': 400, 'reload-pause-ms': 1500, 'max-requests': 600, 'max-typeahead': 2, locale: 'en-US' };
 /** argv → options. A number flag that is missing, negative or not a number takes its default. Pure. */
 export function parseArgs(argv) {
@@ -129,7 +150,7 @@ export function requestBudget(siteUrl, max = DEFAULTS['max-requests']) {
 }
 
 // ---- in-page library (installed once per document; ONE argument object per call) ------------------
-function installInPage({ rootSel }) {
+function installInPage({ rootSel, ambient = [] }) {
   if (window.__sdtc) return true;
   const ATOMS = 'a[href],button,input:not([type=hidden]),select,textarea,summary,h1,h2,h3,h4,h5,h6,[role=heading],[role=button],[role=tab],[role=menuitem],[role=option],img,label';
   const CTRL = 'button,summary,input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,[role=button],[role=tab],[role=menuitem],[role=switch],[role=combobox],[aria-expanded],[aria-haspopup],[aria-controls],label[for],a[href]';
@@ -154,16 +175,25 @@ function installInPage({ rootSel }) {
     return !clipped(el, r);
   };
   const skip = (el) => { const m = el.closest('main,footer,[role=contentinfo]'); const rt = root(); return m && !(rt && m.contains(rt)); };
-  const atoms = () => [...document.querySelectorAll(ATOMS)].filter((el) => !skip(el));
+  // AMBIENT: regions outside the header seen changing with no control in play (a carousel's slides, a ticker). They are
+  // the page's own, never a control's panel: left out of every snapshot, state and at-rest check. Kept as paths, so a
+  // reload keeps them.
+  const ambientSel = [...ambient];
+  const atoms = () => {
+    const amb = ambientSel.map((s) => document.querySelector(s)).filter(Boolean);
+    return [...document.querySelectorAll(ATOMS)].filter((el) => !skip(el) && !amb.some((r) => r.contains(el)));
+  };
   // visible text minus icons (svg, aria-hidden, icon-font ligatures): what pairs a control across source and build
   const ICON_FONT = /icon|symbol|awesome|glyph|ligature/i;
+  const shown = (el) => { for (let e = el; e; e = e.parentElement) if (getComputedStyle(e).display === 'none') return false; return true; };
   const text = (el) => {
     const parts = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       const p = n.parentElement;
       const cs = p && getComputedStyle(p);
       if (!p || p.closest('svg,[aria-hidden=true],script,style') || ICON_FONT.test(cs.fontFamily) || /transparent/.test(cs.fontFamily) || cs.color === 'rgba(0, 0, 0, 0)') continue;
-      if (p.closest('[hidden]') || getComputedStyle(p).display === 'none') continue;
+      // hidden is what the style computes to, up the ancestors: a `hidden` attribute on a displayed element hides nothing
+      if (cs.visibility !== 'visible' || !shown(p)) continue;
       parts.push(n.nodeValue);
     }
     return parts.join(' ').replace(/\s+/g, ' ').trim();
@@ -205,6 +235,29 @@ function installInPage({ rootSel }) {
     },
     // atoms not as the page loaded: shown or hidden differently, or (for the ones it loaded with) in another aria state
     changed() { return atoms().filter((el) => vis(el) !== (rootBase.get(el) === true) || (rootState.has(el) && rootState.get(el) !== ariaState(el))).length; },
+    // content the last action revealed outside the header root: a panel rendered beside it, or the page changing by itself
+    outside() { const rt = root(); return lib.diff().appeared.filter((el) => !(rt && rt.contains(el))).length; },
+    // called with the header at rest and the pointer parked: whatever changed outside the header since the snapshot did so
+    // by itself. Marks it ambient and returns the atoms' paths (the explorer widens them to one region once the watch ends).
+    selfChanged() {
+      const rt = root();
+      const moved = atoms().filter((el) => vis(el) !== (base.get(el) === true) && !(rt && rt.contains(el))).map(cssPath);
+      ambientSel.push(...moved);
+      lib.snapshot();
+      return moved;
+    },
+    // the region of a set of self-changing atoms: their common ancestor (a carousel's track holds every slide, the ones
+    // not seen yet included) unless that would take in the header or the whole page; then the atoms alone
+    region({ paths }) {
+      const els = paths.map((s) => document.querySelector(s)).filter(Boolean); const rt = root();
+      let lca = els[0] || null;
+      while (lca && !els.every((el) => lca.contains(el))) lca = lca.parentElement;
+      const out = lca && lca !== document.body && lca !== document.documentElement && !(rt && (lca.contains(rt) || rt.contains(lca))) ? [cssPath(lca)] : paths;
+      ambientSel.push(...out);
+      lib.snapshot();
+      return out;
+    },
+    boxes({ sels }) { return sels.map((sel) => { const el = document.querySelector(sel); const r = el && el.getBoundingClientRect(); return { sel, rect: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null }; }); },
     controls({ scope }) {
       const rt = root();
       const pool = scope === 'root' ? (rt ? [...rt.querySelectorAll(CTRL)] : []) : lib.diff().appeared.flatMap((el) => [el, ...el.querySelectorAll(CTRL)]).filter((el) => el.matches(CTRL));
@@ -312,8 +365,8 @@ function installInPage({ rootSel }) {
 const call = async (page, fn, arg = {}) => { try { return await page.evaluate(async ({ f, a }) => (window.__sdtc ? { v: await window.__sdtc[f](a) } : null), { f: fn, a: arg }); } catch { return null; } };
 
 /** Explore one width. `probe` is the term or an async (page) => term resolved on first use (saves a load).
- * Returns { root, controls[], scroll[], truncated, states, loads, requests, maxRequests, inputsSkipped, probe }. */
-export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, paceMs = DEFAULTS['pace-ms'], reloadPauseMs = DEFAULTS['reload-pause-ms'], maxRequests = DEFAULTS['max-requests'], maxTypeahead = DEFAULTS['max-typeahead'] }) {
+ * Returns { root, controls[], scroll[], truncated, states, loads, requests, maxRequests, inputsSkipped, watch, probe }. */
+export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, paceMs = DEFAULTS['pace-ms'], reloadPauseMs = DEFAULTS['reload-pause-ms'], maxRequests = DEFAULTS['max-requests'], maxTypeahead = DEFAULTS['max-typeahead'], watchMs = WATCH_MS }) {
   const { goto } = await frontDoor();
   const touch = width < TOUCH_BELOW;
   const vh = page.viewportSize().height;
@@ -337,13 +390,15 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   const pace = async () => { if (paceMs > 0) await page.waitForTimeout(paceMs); };
   let at = url; let loads = 0;
   const trail = []; // the controls acted on since the header was last at rest, in order: what reset re-acts to close them
+  const ambient = []; let watched = false; // paths of the regions that change by themselves; the watch runs once per width
+  let watchRec = { status: 'not-triggered' }; // what the watch did, for the record
   // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered)
   // navigations are answered 204 throughout (the page never leaves), except our own reloads
   const load = async () => {
     armed = false;
     if (loads++ === 0) { await gotoFn(page, url, visitOpts); at = page.url(); budget.rebase(at); }
     else { if (reloadPauseMs > 0) await page.waitForTimeout(reloadPauseMs); await goto(page, at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
-    await page.evaluate(installInPage, { rootSel }); await call(page, 'snapshot', { root: true });
+    await page.evaluate(installInPage, { rootSel, ambient }); await call(page, 'snapshot', { root: true });
     trail.length = 0;
     armed = true;
   };
@@ -396,14 +451,37 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     shotN += 1; const f = join(shotsDir, `${width}-${String(shotN).padStart(3, '0')}-${tag.replace(/[^\w-]+/g, '-').slice(0, 40)}.png`);
     try { await page.screenshot({ path: f, clip: { x: rect[0], y: rect[1], width: rect[2], height: rect[3] } }); return basename(f); } catch { return null; }
   };
+  // With the header at rest and the pointer parked, watch the page for `watchMs`: what changes outside the header in that
+  // time changes without any control (an auto-advancing carousel) and is ambient from here on.
+  const watch = async () => {
+    watched = true;
+    await reset();
+    const moved = new Set(); let samples = 0; const t0 = Date.now();
+    while (Date.now() - t0 < watchMs) { await page.waitForTimeout(Math.min(400, watchMs)); const m = await C('selfChanged'); if (m) { samples += 1; for (const p of m) moved.add(p); } }
+    const ms = Date.now() - t0;
+    // no sample read: the page was never seen at rest, so nothing is known to change by itself
+    if (!samples) { watchRec = { status: 'failed', ms, reason: `no sample of the page at rest in ${ms} ms` }; return; }
+    const sels = moved.size ? (await C('region', { paths: [...moved] }) || [...moved]) : [];
+    ambient.push(...sels);
+    const listed = sels.slice(0, WATCH_LIST);
+    watchRec = { status: 'ran', ms, samples, excluded: sels.length, regions: await C('boxes', { sels: listed }) || listed.map((sel) => ({ sel, rect: null })) };
+  };
   const observe = async (c, action, path) => {
-    await reset(); await replay(path);
-    nav = null;
-    await C('motionStart');
-    if (!await act(c, action)) return null;
-    const motion = await C('motionSettle', { maxMs: 2000 });
-    await page.waitForTimeout(settleMs);
-    const s = await C('state', { sel: c.sel });
+    let s; let motion;
+    const once = async () => {
+      await reset(); await replay(path);
+      nav = null;
+      await C('motionStart');
+      if (!await act(c, action)) return false;
+      motion = await C('motionSettle', { maxMs: 2000 });
+      await page.waitForTimeout(settleMs);
+      s = await C('state', { sel: c.sel });
+      return true;
+    };
+    if (!await once()) return null;
+    // Content that appeared outside the header is this control's panel only if the page does not change there by itself:
+    // the first time it happens, watch the page with no control in play, then act again and record what still appears.
+    if (!watched && !nav && s && s.opened && await C('outside') > 0) { await watch(); if (!await once()) return null; }
     if (nav) return { opened: false, navigates: nav };
     if (!s || !s.opened) return s && s.hidden ? { opened: false, hides: s.hidden } : null;
     states += 1;
@@ -499,7 +577,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     }
   }
   await page.unroute('**/*');
-  return { root: rootPath, controls, scroll, states, truncated, loads, requests: budget.count, maxRequests, inputsSkipped, probe: typeof probe === 'function' ? null : probe };
+  return { root: rootPath, controls, scroll, states, truncated, loads, requests: budget.count, maxRequests, inputsSkipped, watch: watchRec, probe: typeof probe === 'function' ? null : probe };
 }
 
 async function main() {
@@ -540,6 +618,7 @@ async function main() {
   await browser.close();
   writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
   for (const line of summarize(doc)) console.log(`chrome-explore ${line}`);
+  for (const [w, d] of Object.entries(doc.widths)) console.log(`chrome-explore ${w}: ${watchLine(d)}`);
   console.log(`→ ${out} (crops in ${shotsDir})`);
 }
 

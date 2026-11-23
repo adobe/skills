@@ -1,0 +1,10 @@
+{
+  "description": "A replica pilot on one page, extracted and directed, with no prototype yet (fixture/), against the fixture site on localhost (setup.sh starts it and copies the plugin scripts)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixture",
+      "installPath": "."
+    }
+  }
+}

@@ -1,3 +1,17 @@
+## [1.0.4](https://github.com/adobe/skills/compare/migrate-header-v1.0.3...migrate-header-v1.0.4) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** update dependency pnpm to v12.21.0 ([#778](https://github.com/adobe/skills/issues/778)) ([a9e7de9](https://github.com/adobe/skills/commit/a9e7de976a969259a1d30ef8d24a4ef699d6d49e))
+
+## [1.0.3](https://github.com/adobe/skills/compare/migrate-header-v1.0.2...migrate-header-v1.0.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** migrate-header installs the web CLI from a release commit on main ([#768](https://github.com/adobe/skills/issues/768)) ([31043e4](https://github.com/adobe/skills/commit/31043e4ee57885d2aa2687885f6149323f528570))
+
 ## [1.0.2](https://github.com/adobe/skills/compare/migrate-header-v1.0.1...migrate-header-v1.0.2) (2026-11-19)
 
 

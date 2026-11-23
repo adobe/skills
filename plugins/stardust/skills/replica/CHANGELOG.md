@@ -1,3 +1,54 @@
+# [1.8.0](https://github.com/adobe/skills/compare/replica-v1.7.0...replica-v1.8.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
+# [1.7.0](https://github.com/adobe/skills/compare/replica-v1.6.1...replica-v1.7.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [1.6.1](https://github.com/adobe/skills/compare/replica-v1.6.0...replica-v1.6.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+# [1.6.0](https://github.com/adobe/skills/compare/replica-v1.5.2...replica-v1.6.0) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
+## [1.5.2](https://github.com/adobe/skills/compare/replica-v1.5.1...replica-v1.5.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
+## [1.5.1](https://github.com/adobe/skills/compare/replica-v1.5.0...replica-v1.5.1) (2026-11-20)
+
+# [1.5.0](https://github.com/adobe/skills/compare/replica-v1.4.1...replica-v1.5.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [1.4.1](https://github.com/adobe/skills/compare/replica-v1.4.0...replica-v1.4.1) (2026-11-20)
+
 # [1.4.0](https://github.com/adobe/skills/compare/replica-v1.3.0...replica-v1.4.0) (2026-11-19)
 
 

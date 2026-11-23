@@ -27,7 +27,8 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { repeatGroups, unitsNote, unitsState } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -283,7 +284,8 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     writeFileSync(out, 'png');
     const json = out.replace(/\\.png$/i, '') + '.capture.json';
     const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' } : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
-    if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
+    const hold = process.argv.includes('--hold-min') ? Number(process.argv[process.argv.indexOf('--hold-min') + 1]) : null; // the timer hold, as stitch-shot records it
+    if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, ...(hold ? { timers: { hold, held: 1, intervals: 1, chains: 0, delays: [5000] } } : {}), height: 2000 }, null, 2) + '\\n');
     console.log('overflow: scrollWidth=1440 viewport=1440 delta=0'); console.log('stitched ' + out);`);
   // gate-all imports the pixel criterion from pixel-compare.mjs: the stub re-exports the real module and is a stub only when run
   stub('pixel-compare.mjs', `export * from ${JSON.stringify(REAL_PIXEL)};\n${MAIN_ONLY} console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 2000 }, pass: true, bands: [] }));`);
@@ -319,7 +321,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       const r = runAll('dead-source', [], { STUB_FONTS_ORIGIN: 'Brand Sans,Brand Serif', STUB_FONTS_EDS: 'Brand Serif' });
       assert.equal(r.status, 0, r.stderr);
       const row = r.summary.rows[0];
-      assert.deepEqual([row.pass, row.reasons, row.notes, row.fontsNotLoaded], [true, [], ['font-dead-on-source:Brand Sans', 'font-dead-on-both:Brand Serif'], [{ family: 'Brand Sans', side: 'origin' }, { family: 'Brand Serif', side: 'both' }]]);
+      assert.deepEqual([row.pass, row.reasons, row.notes, row.fontsNotLoaded], [true, [], ['font-dead-on-source:Brand Sans', 'font-dead-on-both:Brand Serif', unitsNote(0)], [{ family: 'Brand Sans', side: 'origin' }, { family: 'Brand Serif', side: 'both' }]]);
       assert.deepEqual([r.summary.totals.fontsNotLoaded, r.summary.totals.fontsDeadOnSource, r.summary.totals.pass], [0, 1, 1]);
       assert.match(readFileSync(join(r.out, 'summary.md'), 'utf8'), /fonts dead on the source — reported, not failing: 1 \(Brand Sans \[origin\], Brand Serif \[both\]\)/);
     });
@@ -347,19 +349,19 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       assert.match(none.stdout, /live\.png predates the fixed-layer capture \(no fixedLayers in its record\) — not reused, capturing the origin/);
       assert.ok(!/^reused /.test(none.origin.note || ''), `not reused: ${none.origin.note}`);
       assert.deepEqual([none.origin.instrument, none.origin.fontsFailed, none.record.fontsFailed], ['stitch-live', [], []], 'captured afresh by the stub, its own record checked');
-      const layers = { capture: 'once', count: 0, late: 0 };
-      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fixedLayers: layers, height: 2000 }));
+      const layers = { capture: 'once', count: 0, late: 0 }; const timers = { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] }; // the archetype round held, as this run does
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fixedLayers: layers, timers, height: 2000 }));
       const pre = runAll('proto-pre', protoArgs, {}, proto);
       assert.equal(pre.status, 2, pre.stderr);
       assert.match(pre.origin.note, /^reused .*live\.png/);
       assert.deepEqual([pre.origin.fontsFailed, pre.origin.fontCheck], [null, 'failed: the capture record predates the font check — re-copy stitch-shot.mjs']);
       assert.deepEqual(pre.summary.rows[0].reasons, ['font-check-skipped:origin']);
       assert.deepEqual(pre.record.fixedLayers, layers, 'the cached record went with the copy');
-      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], fixedLayers: layers, height: 2000 }));
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], fixedLayers: layers, timers, height: 2000 }));
       const some = runAll('proto-some', protoArgs, {}, proto);
       assert.equal(some.status, 0, some.stderr);
-      assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons, some.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif']], 'the cached capture\'s dead face is the source\'s: reported, the row passes');
-      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], fixedLayers: layers, height: 2000 }));
+      assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons, some.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif', unitsNote(0)]], 'the cached capture\'s dead face is the source\'s: reported, the row passes');
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], fixedLayers: layers, timers, height: 2000 }));
       const clean = runAll('proto-clean', protoArgs, {}, proto);
       assert.equal(clean.status, 0, clean.stderr);
       assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
@@ -370,13 +372,14 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
       rmSync(join(cached, 'live.capture.json'), { force: true });
       writeFileSync(join(cached, 'live.json'), JSON.stringify({ origin: 'baseline' }));
-      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: ['Brand Serif'], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      const timers = { hold: 2000, held: 0, intervals: 0, chains: 0, delays: [] }; // frozen under the default hold
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: ['Brand Serif'], fixedLayers: { capture: 'once', count: 1, late: 0 }, timers }));
       const r = runAll('proto-baseline', protoArgs, {}, proto);
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.origin.note, /^reused .*live\.png/);
-      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons, r.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif']], 'the baseline\'s dead face is read and reported');
-      assert.deepEqual(r.record, { writtenBy: 'gate-all.mjs', copiedFrom: 'stardust/replica/gates/a-1440/live.png', fixedLayers: { capture: 'once', count: 1, late: 0 }, fontsFailed: ['Brand Serif'] });
-      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: [], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons, r.summary.rows[0].notes], [['Brand Serif'], [], ['font-dead-on-source:Brand Serif', unitsNote(0)]], 'the baseline\'s dead face is read and reported');
+      assert.deepEqual(r.record, { writtenBy: 'gate-all.mjs', copiedFrom: 'stardust/replica/gates/a-1440/live.png', fixedLayers: { capture: 'once', count: 1, late: 0 }, timers, fontsFailed: ['Brand Serif'] });
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: [], fixedLayers: { capture: 'once', count: 1, late: 0 }, timers }));
       const clean = runAll('proto-baseline-clean', protoArgs, {}, proto);
       assert.equal(clean.status, 0, clean.stderr);
       assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
@@ -437,7 +440,8 @@ if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
 if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
 if (url === process.env.STUB_FAIL) { console.error('capture failed'); process.exit(1); }
-writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] }));\n`);
+const hold = process.argv.includes('--hold-min') ? Number(process.argv[process.argv.indexOf('--hold-min') + 1]) : null; // the timer hold, as stitch-shot records it
+writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [], ...(hold ? { timers: { hold, held: 1, intervals: 1, chains: 0, delays: [5000] } } : {}) }));\n`);
   // pixel-compare: `/bad/` pages read 30 %, the rest 1 %; STUB_PX = { "<slug>": { pct, aligned: { used, pct, steps } } } gives
   // a page an aligned summary (and heightDelta) (totalShift = the sum of |shift|); STUB_PX_ARGV logs each call's argv (apart from STUB_ARGV: the captures and probes).
   writeFileSync(join(rep, 'pixel-compare.mjs'), `export * from ${JSON.stringify(REAL_PIXEL)};
@@ -464,10 +468,13 @@ if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(
 mkdirSync(dir, { recursive: true });
 for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
 if (url === process.env.STUB_REF_FAIL) { console.log('reference: not frozen — the capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
-if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), '{}'); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
+const hold = rest.includes('--hold-min') ? Number(flag('--hold-min')) : null; // the timer hold, as reference.mjs records it
+const hint = process.env.STUB_REF_HINT && !hold ? process.env.STUB_REF_HINT : null; // reference.mjs's hint: only without the hold, before its verdict line
+if (hint) console.log('hint: ' + hint);
+if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), JSON.stringify(hint ? { hint } : {})); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
 const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 9 }));
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
-writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed') } }));
+writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, ...(hold ? { timers: { hold, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] } } : {}), primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, ...(hint ? { hint } : {}), flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed'), ...(hold ? { holdTimers: hold } : {}) } }));
 console.log('reference: frozen, primed');\n`);
   // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
   // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
@@ -635,9 +642,10 @@ check('child commands: both captures get --consent, --dismiss and --locale (or -
   assert.deepEqual([tail(probes['content-presence'], '--variable'), tail(probes['content-presence'], '--main'), tail(probes['content-presence'], '--warmup')], ['.news', 'main', 'https://origin.example/']);
   { const ua = probes['unit-geometry']; const k = ua.indexOf('--unit-pair'); assert.deepEqual([ua[k + 1], ua[k + 2], tail(ua, '--n'), tail(ua, '--tol'), tail(ua, '--slug')], ['.card', '.cards > div', '3', '4', 'a']); assert.equal(ua.includes('--unit'), false); }
   const off = parseArgs(['node', 'x', '--no-dismiss']);
-  assert.deepEqual(passThrough('stitch-shot', off), ['--locale', 'en-US', '--no-dismiss']);
+  assert.deepEqual(passThrough('stitch-shot', off), ['--locale', 'en-US', '--hold-timers', '--hold-min', '2000', '--no-dismiss']);
   assert.deepEqual(passThrough('clip-probe', off), ['--locale', 'en-US', '--no-dismiss']);
-  assert.deepEqual(stitchArgs('s', 'u', 'o.png', parseArgs(['node', 'x'])), ['s', 'u', 'o.png', '--width', '1440', '--settle', '--locale', 'en-US'], 'no flag: the command line as it was');
+  assert.deepEqual(stitchArgs('s', 'u', 'o.png', parseArgs(['node', 'x'])), ['s', 'u', 'o.png', '--width', '1440', '--settle', '--locale', 'en-US', '--hold-timers', '--hold-min', '2000'], 'no flag: the default hold and nothing else');
+  assert.deepEqual(stitchArgs('s', 'u', 'o.png', parseArgs(['node', 'x', '--no-hold-timers'])), ['s', 'u', 'o.png', '--width', '1440', '--settle', '--locale', 'en-US'], '--no-hold-timers: the command line as it was');
 });
 check('CHILD_FLAGS is what each child\'s own parseArgs accepts — a flag listed is accepted, an accepted one is listed (a probe that gains --dismiss fails here until it is wired)', () => {
   const src = { 'stitch-shot': join(HERE, '../stitch-shot.mjs'), 'content-presence': join(HERE, '../../../diff/scripts/content-presence.mjs'), 'clip-probe': join(HERE, '../../../diff/scripts/clip-probe.mjs'), 'unit-geometry': join(HERE, '../../../diff/scripts/unit-geometry.mjs') };
@@ -645,12 +653,20 @@ check('CHILD_FLAGS is what each child\'s own parseArgs accepts — a flag listed
   for (const [name, file] of Object.entries(src)) {
     const text = readFileSync(file, 'utf8');
     // a probe takes the three overlay flags through measure-live's overlayFlag(); --locale and stitch-shot's own flags are parsed in place
-    const accepted = ['--consent', '--dismiss', '--no-dismiss', '--locale'].filter((flag) => text.includes("=== '" + flag + "'") || (flag !== '--locale' && text.includes('overlayFlag(a,')));
+    const accepted = ['--consent', '--dismiss', '--no-dismiss', '--locale', '--hold-timers', '--hold-min'].filter((flag) => text.includes("=== '" + flag + "'") || (['--consent', '--dismiss', '--no-dismiss'].includes(flag) && text.includes('overlayFlag(a,')));
     assert.deepEqual([...CHILD_FLAGS[name]].sort(), accepted.sort(), name);
   }
 });
 
 // ---- verdict integrity: a probe error is an error row -------------------------------------------------------------------
+check('verdict: a unit selector error is named in the reason, with the selector and what to fix — "off 0 hidden 0 missing 0" alone said nothing', () => {
+  const ok = { pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) };
+  const v = verdict({ ...ok, units: { verdict: { off: 0, hidden: 0, missing: 0, errors: 1 }, required: true, errors: ['.cards > li=.cards > div — no visible unit on the served side (3 / 0 DOM matches)'] } });
+  assert.equal(v.pass, false);
+  assert.deepEqual(v.reasons, ['units off 0 hidden 0 missing 0 — 1 selector error(s): .cards > li=.cards > div — no visible unit on the served side (3 / 0 DOM matches) (fix the family\'s selector in stardust/replica/units.json)']);
+  assert.deepEqual(verdict({ ...ok, units: { verdict: { off: 2, hidden: 0, missing: 0, errors: 0 }, required: true } }).reasons, ['units off 2 hidden 0 missing 0']);
+  assert.match(verdict({ ...ok, units: { verdict: { off: 0, hidden: 0, missing: 0, errors: 2 }, required: true } }).reasons[0], /2 selector error\(s\) \(fix the family/);
+});
 check('verdict: a probe that errored is never a pass — probeErrors + one probe-error:<probe> reason each; not applicable (origin not probed, no units, a criterion switched off) stays as it was', () => {
   const ok = { pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) };
   const c = verdict({ ...ok, content: { error: 'content-presence exit 1: boom', probeError: true } });
@@ -836,15 +852,106 @@ check('referenceIgnoreNote: a project .gitignore from before the per-page refere
   for (const l of REFERENCE_IGNORES) assert.ok(tpl.includes(l), l);
 });
 check('givenFlags / inheritedOpts: the locale default is not a given setting; a page\'s build capture and probes take the settings the run omits from its frozen reference, never over a given one', () => {
-  assert.deepEqual(givenFlags(parseArgs(['node', 'x'])), []);
-  assert.deepEqual(givenFlags(parseArgs(['node', 'x', '--locale', 'de-DE', '--consent', '#a'])), ['--locale', 'de-DE', '--consent', '#a']);
-  const run = parseArgs(['node', 'x']);
+  assert.deepEqual(givenFlags(parseArgs(['node', 'x', '--no-hold-timers'])), []);
+  assert.deepEqual(givenFlags(parseArgs(['node', 'x', '--no-hold-timers', '--locale', 'de-DE', '--consent', '#a'])), ['--locale', 'de-DE', '--consent', '#a']);
+  const run = parseArgs(['node', 'x', '--no-hold-timers']);
   const o = inheritedOpts(run, { consent: '#ok', dismiss: null, noDismiss: false, locale: 'de-DE' });
   assert.deepEqual([o.consent, o.locale, passThrough('stitch-shot', o)], ['#ok', 'de-DE', ['--locale', 'de-DE', '--consent', '#ok']]);
   assert.deepEqual(passThrough('stitch-shot', inheritedOpts(run, { noDismiss: true, locale: null })), ['--locale', 'en-US', '--no-dismiss']);
   const given = parseArgs(['node', 'x', '--locale', 'fr-FR']);
   assert.equal(inheritedOpts(given, { consent: '#ok', locale: 'de-DE' }), given, 'a given setting that differs: the reference is frozen again, nothing inherited');
   assert.equal(inheritedOpts(run, null), run);
+});
+check('timer hold (ON by default at 2000 ms; --no-hold-timers / --hold-min / --hold-timers / GATE_HOLD_TIMERS): reaches stitch-shot only, both sides; a run that names no hold takes a held reference\'s threshold; a capture taken under another hold is stale; two sides under different holds are an error row', () => {
+  const dflt = parseArgs(['node', 'x']);
+  assert.deepEqual([dflt.holdTimers, dflt.holdGiven, HOLD_DEFAULT], [2000, false, 2000]);
+  const off = parseArgs(['node', 'x', '--no-hold-timers']);
+  assert.deepEqual([off.holdTimers, off.holdGiven], [null, true]); assert.equal(passThrough('stitch-shot', off).join(' ').includes('hold'), false);
+  assert.equal(parseArgs(['node', 'x', '--hold-timers']).holdTimers, 2000); assert.equal(parseArgs(['node', 'x', '--hold-min', '3000', '--hold-timers']).holdTimers, 3000);
+  assert.deepEqual([envHold(undefined), envHold(''), envHold('0'), envHold('1'), envHold('2500')], [undefined, undefined, null, 2000, 2500]);
+  const on = parseArgs(['node', 'x', '--hold-timers']);
+  for (const o of [dflt, on]) for (const side of [stitchArgs('s', 'https://origin.example/a', 'o.png', o, ['--headed']), stitchArgs('s', 'https://eds.example/a', 'e.png', o)]) assert.deepEqual(side.slice(side.indexOf('--hold-timers'), side.indexOf('--hold-timers') + 3), ['--hold-timers', '--hold-min', '2000']);
+  for (const probe of ['content-presence', 'clip-probe', 'unit-geometry']) assert.equal(passThrough(probe, dflt).join(' ').includes('hold'), false, probe);
+  assert.deepEqual(givenFlags(on), ['--hold-timers', '--hold-min', '2000'], 'a given setting for reference.mjs settings');
+  assert.deepEqual(givenFlags(dflt), ['--hold-timers', '--hold-min', '2000'], 'the default hold is given too: an unheld reference is "changed: holdTimers"');
+  assert.equal(inheritedOpts(dflt, { consent: null, locale: null, holdTimers: 3000 }).holdTimers, 3000, 'no hold named: the reference\'s threshold');
+  assert.equal(inheritedOpts(dflt, { consent: null, locale: null }).holdTimers, 2000, 'an unheld reference: the default stands');
+  assert.deepEqual([inheritedOpts(dflt, { consent: '#ok', locale: null }).consent, inheritedOpts(dflt, { consent: '#ok', locale: null }).holdTimers], ['#ok', 2000], 'the default hold against an unheld reference keeps the settings it recorded');
+  assert.equal(inheritedOpts(on, { consent: '#ok', locale: null }), on, 'asked for against an unheld reference: frozen again, nothing inherited');
+  assert.equal(inheritedOpts(on, { consent: '#ok', locale: null, holdTimers: 2000 }).consent, '#ok');
+  assert.equal(inheritedOpts(off, { consent: '#ok', locale: null, holdTimers: 2000 }), off, 'turned off against a held reference: frozen again without it, nothing inherited');
+  assert.deepEqual([inheritedOpts(off, { consent: '#ok', locale: null }).consent, inheritedOpts(off, { consent: '#ok', locale: null }).holdTimers], ['#ok', null], 'turned off against an unheld reference: reused');
+  assert.deepEqual([refHold({ flags: { holdTimers: 3000 } }), refHold({ timers: { hold: 2000 } }), refHold({ flags: {} }), refHold(null)], [3000, 2000, null, null]);
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-hold-'));
+  try {
+    const eds = join(d, 'eds.png'); writeFileSync(eds, 'png');
+    const fixedLayers = { capture: 'once', count: 0, late: 0 }; const timers = { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] };
+    writeFileSync(captureRecordOf(eds), JSON.stringify({ fixedLayers }));
+    assert.equal(staleCapture(eds), false); assert.equal(staleCapture(eds, 2000), true, 'unheld, the run holds');
+    assert.equal(staleReason(eds, 2000), 'was captured under another timer hold (none, this run 2000)');
+    writeFileSync(captureRecordOf(eds), JSON.stringify({ fixedLayers, timers }));
+    assert.equal(staleCapture(eds, 2000), false); assert.equal(staleCapture(eds), true, 'held, the run does not'); assert.equal(staleCapture(eds, 3000), true, 'another threshold');
+    const live = join(d, 'live.png'); writeFileSync(live, 'png'); writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers, timers }));
+    assert.equal(staleCapture(live, 2000), false, 'a copy of a held reference'); assert.equal(staleCapture(live), true);
+    assert.equal(holdMismatch({ fixedLayers, timers }, { fixedLayers, timers }), null); assert.equal(holdMismatch({ fixedLayers }, { fixedLayers }), null);
+    assert.equal(holdMismatch(null, { fixedLayers, timers }), null, 'no record on one side (a crawl shot): flagged asymmetric elsewhere');
+    assert.match(holdMismatch({ fixedLayers, timers }, { fixedLayers }), /^timer hold differs: origin 2000, build none \(ms\) — not compared/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+  const help = spawnSync(process.execPath, [join(HERE, '../gate-all.mjs'), '--help'], { encoding: 'utf8' }).stdout;
+  assert.match(help, /--hold-timers /); assert.match(help, /--no-hold-timers /); assert.match(help, /--hold-min <ms>/); assert.match(help, /ON by default at\s+2000 ms/);
+  assert.match(help, /Precedence: a flag wins over GATE_HOLD_TIMERS \(0 = off, 1 = 2000, a number = that threshold\), which\s+wins over the default/);
+});
+check('timer hold precedence: a flag wins over GATE_HOLD_TIMERS, which wins over the default; --no-hold-timers with --hold-timers / --hold-min is a usage error', () => {
+  const was = process.env.GATE_HOLD_TIMERS;
+  const under = (env, flags) => { if (env === undefined) delete process.env.GATE_HOLD_TIMERS; else process.env.GATE_HOLD_TIMERS = env; const o = parseArgs(['node', 'x', ...flags]); return [o.holdTimers, o.holdGiven]; };
+  try {
+    assert.deepEqual([under(undefined, []), under('0', []), under('1', []), under('2500', [])], [[2000, false], [null, true], [2000, true], [2500, true]], 'the variable over the default');
+    assert.deepEqual([under('2500', ['--no-hold-timers']), under('0', ['--hold-min', '4000']), under('0', ['--hold-timers']), under('3000', ['--hold-min', '4000'])], [[null, true], [4000, true], [2000, true], [4000, true]], 'a flag over the variable');
+    assert.deepEqual(under('3000', ['--hold-timers']), [3000, true], '--hold-timers alone keeps the variable\'s threshold');
+  } finally { if (was === undefined) delete process.env.GATE_HOLD_TIMERS; else process.env.GATE_HOLD_TIMERS = was; }
+  for (const bad of [['--no-hold-timers', '--hold-timers'], ['--hold-min', '3000', '--no-hold-timers']]) {
+    const r = spawnSync(process.execPath, [join(HERE, '../gate-all.mjs'), ...bad], { encoding: 'utf8' });
+    assert.equal(r.status, 1, bad.join(' ')); assert.match(r.stderr, /--no-hold-timers contradicts --hold-timers \/ --hold-min/);
+  }
+});
+check('timer hold default (runner): a default run holds on both sides; --no-hold-timers and GATE_HOLD_TIMERS=0 do not, and a project run that way keeps its unheld references; an old unheld reference is frozen again once, under the settings it recorded plus the hold, with one line saying why', () => {
+  const holdArgs = (box) => box.spawned().filter((a) => a[0] === 'stitch-shot' || (a[0] === 'reference' && a[1] === 'freeze')).map((a) => [a[0], a.includes('--hold-min') ? a[a.indexOf('--hold-min') + 1] : null]);
+  const recHold = (box, f) => { const j = JSON.parse(readFileSync(join(box.out, f), 'utf8')); return (j.timers && j.timers.hold) ?? null; };
+  const frozen = (box) => box.shots().filter((x) => x.startsWith('freeze'));
+  const dflt = sandbox(['good']); const flag = sandbox(['good']); const env = sandbox(['good']);
+  try {
+    let r = dflt.gateAll([], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(holdArgs(dflt).sort(), [['reference', '2000'], ['stitch-shot', '2000']], 'the freeze and the build capture both get --hold-min 2000');
+    assert.deepEqual([recHold(dflt, 'good/baseline.json'), recHold(dflt, 'good/origin.capture.json'), recHold(dflt, 'good/eds.capture.json')], [2000, 2000, 2000], 'both sides\' records say 2000');
+    r = dflt.gateAll([], { ...REF });
+    assert.deepEqual(frozen(dflt), [], 'the next default run reuses the held reference'); assert.doesNotMatch(r.stdout, /re-frozen/);
+    for (const [box, args, extra] of [[flag, ['--no-hold-timers'], {}], [env, [], { GATE_HOLD_TIMERS: '0' }]]) {
+      r = box.gateAll(args, { ...REF, ...extra });
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(holdArgs(box).sort(), [['reference', null], ['stitch-shot', null]], 'no hold flag on either side');
+      assert.deepEqual([recHold(box, 'good/baseline.json'), recHold(box, 'good/origin.capture.json'), recHold(box, 'good/eds.capture.json')], [null, null, null]);
+      r = box.gateAll(args, { ...REF, ...extra });
+      assert.deepEqual(frozen(box), [], 'an unheld project keeps its unheld reference'); assert.doesNotMatch(r.stdout, /re-frozen/);
+    }
+    // the existing project: env's reference was frozen without the hold, with a consent selector; now a default run
+    r = env.gateAll(['--consent', '#ok'], { ...REF, GATE_HOLD_TIMERS: '0' });
+    assert.match(r.stdout, /origin good: reference: re-frozen — capture settings changed \(consent\)$/m);
+    r = env.gateAll([], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(frozen(env), ['freeze https://origin.example/good']);
+    assert.equal(r.stdout.split('\n').filter((l) => l.endsWith(`origin good: reference: re-frozen — capture settings changed (holdTimers)${HOLD_DEFAULT_WHY}`)).length, 1, r.stdout);
+    assert.equal((r.stdout.match(/re-frozen/g) || []).length, 1, 'one line');
+    assert.match(HOLD_DEFAULT_WHY, /^: the gates hold timers by default and this reference was frozen without the hold — frozen again once \(--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld\)$/);
+    const freeze = env.spawned().find((a) => a[0] === 'reference'); const eds = env.spawned().find((a) => a[0] === 'stitch-shot');
+    for (const a of [freeze, eds]) assert.deepEqual([a[a.indexOf('--consent') + 1], a[a.indexOf('--hold-min') + 1]], ['#ok', '2000'], 'the recorded consent selector goes into the freeze and the build capture, with the hold');
+    assert.deepEqual([recHold(env, 'good/baseline.json'), recHold(env, 'good/eds.capture.json'), JSON.parse(readFileSync(join(env.out, 'good/baseline.json'), 'utf8')).flags.consent], [2000, 2000, '#ok']);
+    for (const again of [1, 2]) { r = env.gateAll([], { ...REF }); assert.deepEqual(frozen(env), [], `once: run ${again} after it freezes nothing`); assert.doesNotMatch(r.stdout, /re-frozen/); }
+    // turned off against the held reference: frozen again without it
+    r = env.gateAll(['--no-hold-timers'], { ...REF });
+    assert.match(r.stdout, /origin good: reference: re-frozen — capture settings changed \(holdTimers\)$/m); assert.equal(recHold(env, 'good/baseline.json'), null);
+  } finally { dflt.done(); flag.done(); env.done(); }
 });
 check('unselected: an --only slug that selection neither kept nor skipped gets its own NOT gated line', () => {
   assert.deepEqual(unselected(['a', 'b', 'c'], [{ slug: 'a' }], [{ slug: 'b', why: 'x' }]), ['c']);
@@ -940,7 +1047,7 @@ check('dropPassedCaptures keeps baseline.png — the page\'s frozen reference ou
 });
 
 // The runner on the default origin (REF: no GATE_REFERENCE): the frozen reference per page.
-const BASELINE = (url, extra = {}) => ({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-10-30T08:00:00.000Z', url, width: 1440, vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 3.5, variable: [{ y: 100, h: 40, pct: 9 }], maskArg: '100:40', stable: true, reason: null, ...extra });
+const BASELINE = (url, extra = {}) => ({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-10-30T08:00:00.000Z', url, width: 1440, vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 3.5, variable: [{ y: 100, h: 40, pct: 9 }], maskArg: '100:40', stable: true, reason: null, timers: { hold: 2000, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] }, ...extra }); // frozen under the default hold; { timers: undefined } = an unheld one
 check('reference: the archetype gate dir\'s frozen baseline is the origin (no freeze, no origin stitch); otherwise one is frozen into the page dir, once, and reused by the next run', () => {
   const { root, out, gateAll, shots, rows, compares, files, done } = sandbox(['arch', 'page', 'bad']);
   try {
@@ -980,6 +1087,37 @@ check('reference: the archetype gate dir\'s frozen baseline is the origin (no fr
     assert.equal(JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8')).totals.failOffsets, 1);
     assert.deepEqual(compares().page.slice(compares().page.indexOf('--offset-max'), compares().page.indexOf('--offset-max') + 2), ['--offset-max', '16']);
   } finally { done(); }
+});
+check('hint: a reference whose captures differed with the hold turned off carries reference.mjs\'s hint — logged once per page, kept on the row and in its reasons cell; none on a default run (held), under --hold-timers or GATE_HOLD_TIMERS=1, none for a stable page; rows, totals and exit code are those of the run without it', () => {
+  const HINT = 'the page changes on its own between captures (2 self-varying region(s) masked) — when a timer drives the change (a carousel that advances by itself), freezing again with --hold-timers (the gates hold by default: drop --no-hold-timers / GATE_HOLD_TIMERS=0) captures it in one state';
+  assert.equal(referenceOf({ capturedAt: 'T', hint: HINT }, 'd').hint, HINT); assert.equal('hint' in referenceOf({ capturedAt: 'T' }, 'd'), false);
+  assert.deepEqual([hintOf({ hint: ` ${HINT} ` }), hintOf({ hint: '' }), hintOf({ hint: 7 }), hintOf(null)], [HINT, null, null, null]);
+  const hintLogs = (r, slug) => (r.stdout.match(new RegExp(`origin ${slug}: hint: .*$`, 'gm')) || []);
+  const strip = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { ...v, hint: null }]));
+  const plain = sandbox(['good', 'wobbly']); const self = sandbox(['good', 'wobbly']); const held = sandbox(['good', 'wobbly']); const env = sandbox(['good', 'wobbly']); const dflt = sandbox(['good', 'wobbly']);
+  try {
+    const UN = { ...REF, STUB_REF_MASK: '392:56,4000:652', STUB_REF_UNSTABLE: 'https://origin.example/wobbly' }; const OFF = { GATE_HOLD_TIMERS: '0' };
+    const r0 = plain.gateAll([], { ...UN, ...OFF });
+    let r = self.gateAll([], { ...UN, ...OFF, STUB_REF_HINT: HINT });
+    assert.equal(r.status, r0.status, r.stderr); assert.equal(r.status, 2);
+    for (const slug of ['good', 'wobbly']) { assert.deepEqual(hintLogs(r, slug).length, 1, `${slug}: ${r.stdout}`); assert.ok(hintLogs(r, slug)[0].endsWith(`origin ${slug}: hint: ${HINT}`)); assert.equal(self.rows()[slug].hint, HINT); assert.equal(hintLogs(r0, slug).length, 0); assert.equal(plain.rows()[slug].hint, null); }
+    assert.deepEqual(strip(self.rows()), strip(plain.rows()), 'the hint changes no verdict, reason or number'); assert.deepEqual(self.totals(), plain.totals());
+    assert.equal(self.rows().good.pass, true); assert.deepEqual(self.rows().wobbly.reasons, plain.rows().wobbly.reasons);
+    const md = readFileSync(join(self.out, 'summary.md'), 'utf8');
+    assert.equal(md.split(`(hint) ${HINT}`).length - 1, 2, 'once per row'); assert.doesNotMatch(readFileSync(join(plain.out, 'summary.md'), 'utf8'), /hint/);
+    // the next run reuses the frozen reference: the row keeps the hint
+    r = self.gateAll(['--no-hold-timers'], { ...REF, STUB_REF_HINT: HINT, STUB_REF_UNSTABLE: 'https://origin.example/wobbly' });
+    assert.equal(self.rows().good.hint, HINT);
+    for (const [box, args, extra] of [[dflt, [], {}], [held, ['--hold-timers'], {}], [env, [], { GATE_HOLD_TIMERS: '1' }]]) {
+      r = box.gateAll(args, { ...UN, STUB_REF_HINT: HINT, ...extra });
+      assert.equal(r.status, 2, r.stderr); assert.doesNotMatch(r.stdout + r.stderr, /hint/); assert.deepEqual([box.rows().good.hint, box.rows().wobbly.hint], [null, null]);
+    }
+    // a default run over the reference frozen with the hold off: frozen again under the hold, the hint gone with it
+    r = self.gateAll([], { ...REF, STUB_REF_HINT: HINT, STUB_REF_MASK: '392:56,4000:652' });
+    assert.doesNotMatch(r.stdout + r.stderr, /hint/); assert.equal(self.rows().good.hint, null);
+  } finally { plain.done(); self.done(); held.done(); env.done(); dflt.done(); }
+  const help = spawnSync(process.execPath, [join(HERE, '../gate-all.mjs'), '--help'], { encoding: 'utf8' }).stdout;
+  assert.match(help, /origin <slug>: hint: …/);
 });
 check('reference: an UNSTABLE reference is an error row — reason reference-unstable: <line>, counted in totals.error, not a FAIL, not a pass, no crawl shot in its place; the next run tries again; --recapture-origin re-freezes without --force', () => {
   const { root, out, gateAll, shots, rows, totals, spawned, files, done } = sandbox(['good', 'wobbly']);
@@ -1157,12 +1295,12 @@ check('reference settings: a reference frozen under other overlay flags or local
     assert.match(rows().arch.reasons[0], /^reference-unstable: /); assert.doesNotMatch(r.stdout, /origin arch: reference: re-frozen/); assert.equal(rounds(), before + 1, 'an error row records no round');
   } finally { done(); }
 });
-check('reference settings not recorded (a baseline from before flags were recorded): reused as before, and said so', () => {
+check('reference settings not recorded (a baseline from before flags were recorded, an unheld run): reused as before, and said so', () => {
   const { root, gateAll, shots, rows, done } = sandbox(['arch']);
   try {
     const gdir = join(root, 'stardust/replica/gates/arch-1440'); mkdirSync(gdir, { recursive: true });
-    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch')));
-    const r = gateAll(['--consent', '#ok', '--locale', 'de-DE'], { ...REF });
+    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch', { timers: undefined })));
+    const r = gateAll(['--consent', '#ok', '--locale', 'de-DE', '--no-hold-timers'], { ...REF });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(shots(), ['https://eds.example/arch'], 'no freeze');
     assert.equal((r.stdout.match(/origin arch: reference: reused — settings not recorded \(/g) || []).length, 1);
@@ -1174,6 +1312,60 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node gate-all\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
+});
+check('units not declared: a page no family applies to is a named state — unitsDeclared 0, one note, the recorded repeat groups when its schema has them; never a reason', () => {
+  const schema = { sections: [{ section: 'hero', repeats: [] }, { section: 'cards', repeats: [{ unitSelector: 'LI.card', count: 3 }, { unitSelector: 'A.pill', count: 1 }] }, { section: 'rows', repeats: [{ unitSelector: 'DIV.row', count: 2 }] }, { section: 'bare' }] };
+  assert.deepEqual([repeatGroups(schema), repeatGroups({ sections: [] }), repeatGroups(null), repeatGroups({ sections: 'x' })], [2, 0, null, null]);
+  const plain = 'units: no family declared for this page — the repeated-unit check did not run';
+  assert.deepEqual([unitsNote(0), unitsNote(0, 0), unitsNote(0, null), unitsNote(2, 5)], [plain, plain, plain, null]);
+  assert.equal(unitsNote(0, 2, 'a'), `${plain} (2 repeated module(s) recorded for this page in stardust/eds-schema/a.json, 0 unit families declared in stardust/replica/units.json)`);
+  assert.deepEqual(unitsState(0, schema, 'a', ['font-dead-on-source:X']), { unitsDeclared: 0, unitsRecorded: 2, notes: ['font-dead-on-source:X', unitsNote(0, 2, 'a')] });
+  assert.deepEqual(unitsState(0, null, 'a'), { unitsDeclared: 0, unitsRecorded: null, notes: [plain] });
+  assert.deepEqual(unitsState(3, schema, 'a', ['n']), { unitsDeclared: 3, unitsRecorded: null, notes: ['n'] }, 'a family applies: no note, the schema is not read');
+});
+check('formatSummary: the units cell names the state (not declared / N families checked / no result) and the calibration line counts the pages that took no unit check', () => {
+  const base = { pct: 1, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, pixelOnlyPass: true, reasons: [], override: null, error: null };
+  const rows = [
+    { ...base, slug: 'a', path: '/a', units: null, ...unitsState(0, { sections: [{ repeats: [{ count: 3 }] }] }, 'a') },
+    { ...base, slug: 'b', path: '/b', units: { off: 0, hidden: 0, missing: 0 }, unitsRequired: true, ...unitsState(3, null, 'b') },
+    { ...base, slug: 'c', path: '/c', units: { off: 1, hidden: 0, missing: 0 }, unitsRequired: false, ...unitsState(1, null, 'c') },
+    { ...base, slug: 'd', path: '/d', units: null, ...unitsState(2, null, 'd') },
+    { ...base, slug: 'e', path: '/e', units: null },
+  ];
+  const totals = { pages: 5, pass: 5, pixelOnlyPass: 5, overridePass: 0, fail: 0, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, unitsNotDeclared: 1, unitsRecordedNotDeclared: 1 };
+  const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals, rows });
+  assert.match(md, /; \*\*units not declared 1 of 5\*\* \(no repeated-unit family applies: the check did not run on them; 1 of them have repeated modules recorded\)/);
+  assert.match(md, /\| `\/a` \|.*\| not declared \| PASS \| \(reported\) units: no family declared for this page — the repeated-unit check did not run \(1 repeated module\(s\) recorded for this page in stardust\/eds-schema\/a\.json, 0 unit families declared in stardust\/replica\/units\.json\) \|/);
+  assert.match(md, /\| `\/b` \|.*\| off 0 hidden 0 missing 0 \(3 families checked\) \| PASS \| - \|/);
+  assert.match(md, /\| `\/c` \|.*\| off 1 hidden 0 missing 0 \(advisory\) \(1 family checked\) \| PASS \|/);
+  assert.match(md, /\| `\/d` \|.*\| no result \(2 declared\) \| PASS \|/);
+  assert.match(md, /\| `\/e` \|.*\| - \| PASS \| - \|/, 'a row from before the state reads as it did');
+  assert.doesNotMatch(formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals: { ...totals, unitsNotDeclared: 0 }, rows: rows.slice(1) }), /units not declared/);
+});
+check('runner: pages with no family carry unitsDeclared 0, the note and the totals; declaring a family or recording repeat groups changes the row, never the verdict or the exit code', () => {
+  const { root, out, gateAll, rows, totals, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    const before = Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass]));
+    assert.deepEqual([rows().good.unitsDeclared, rows().good.unitPass, rows().good.pass, rows().good.reasons, rows().good.notes], [0, null, true, [], [unitsNote(0)]]);
+    assert.deepEqual([totals().unitsNotDeclared, totals().unitsRecordedNotDeclared, totals().pass], [2, 0, 1]);
+    assert.match(r.stdout, /\*\*units not declared 2 of 2\*\*/, 'the calibration line on stdout says so');
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /\| not declared \| PASS \| \(reported\) units: no family declared for this page/);
+    mkdirSync(join(root, 'stardust/eds-schema'), { recursive: true });
+    writeFileSync(join(root, 'stardust/eds-schema/good.json'), JSON.stringify({ sections: [{ section: 'cards', repeats: [{ unitSelector: 'LI.card', count: 3 }] }] }));
+    writeFileSync(join(root, 'stardust/eds-schema/bad.json'), '{ not json');
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().good.unitsRecorded, rows().good.notes, rows().bad.unitsRecorded], [1, [unitsNote(0, 1, 'good')], null], 'an unreadable schema is no record');
+    assert.deepEqual([totals().unitsNotDeclared, totals().unitsRecordedNotDeclared], [2, 1]);
+    assert.deepEqual(Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass])), before);
+    writeFileSync(join(out, 'units.json'), JSON.stringify({ good: { units: [{ origin: '.card' }] } }));
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().good.unitsDeclared, rows().good.notes, rows().bad.unitsDeclared, totals().unitsNotDeclared], [1, [], 0, 1], 'a declared page loses the note');
+    assert.deepEqual(Object.fromEntries(Object.entries(rows()).map(([k, v]) => [k, v.pass])), before);
+  } finally { done(); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

@@ -2,7 +2,7 @@
 // skills/rollout/scripts/test/done-check.test.mjs — the completion verdict of done-check.mjs: each gap fires
 // on its own condition and only then (unfinished rows, failed rows and failed gate rows, delivered rows the
 // live host does not serve, open P1 findings the optimize gate would count, a rollout whose last I-dashboard
-// line is not an `end`); a clean run is complete; the live probe keeps input order and treats non-200 and
+// line is not an `end`, delivered pages without a published DA library); a clean run is complete; the live probe keeps input order and treats non-200 and
 // network errors as not live; a migration project's header must be proven (header_parity: contract, comparison,
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
 // probe runs against a stub fetch. --help writes nothing.
@@ -13,8 +13,8 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readWideTables, rolloutEnded, wideAdvisories } from '../done-check.mjs';
-import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
+import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readGateTables, readWideTables, rolloutEnded, unitsAdvisories, wideAdvisories } from '../done-check.mjs';
+import { SOURCE_PARITY_PREFIX, libraryGap, publicUrl } from '../lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'done-check.mjs');
@@ -84,10 +84,37 @@ check('the rollout is ended only when its LAST I-dashboard line is an end', () =
   assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [] }).gaps.includes('rollout_incomplete'));
 });
 
+check('library_missing fires only when a page was delivered and the library is not published', () => {
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['library_missing']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: null }).gaps, []);
+  assert.deepEqual(doneGaps({ pages: [row('a', '/a', 'pending')], ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['pages_unfinished:1']);
+});
+
+check('libraryGap: absent marker, another DA site, and delivered pages the library never read', () => {
+  const da = { org: 'o', site: 's' };
+  assert.equal(libraryGap(null, { da, delivered: ['/'] }), 'library_missing');
+  assert.equal(libraryGap({ org: 'o', site: 's', pages: ['/', '/about'] }, { da, delivered: ['/', '/about'] }), null);
+  assert.match(libraryGap({ org: 'o', site: 'old', pages: ['/'] }, { da, delivered: ['/'] }), /^library_missing:published to o\/old, site\.da is o\/s/);
+  assert.match(libraryGap({ org: 'o', site: 's', pages: ['/'] }, { da, delivered: ['/', '/about'] }), /^library_missing:stale: 1 delivered page\(s\) not in the library: \/about — re-run da-library\.mjs$/);
+  assert.equal(libraryGap({ pages: ['/'] }, { delivered: ['/'] }), null, 'no site.da: only staleness is checked');
+  const many = Array.from({ length: 23 }, (_, i) => `/p${i}`);
+  assert.match(libraryGap({ org: 'o', site: 's', pages: [] }, { da, delivered: many }), /stale: 23 .*, … \(\+3\) — re-run/);
+});
+
+check('libraryGap: a page re-delivered after the library ran is stale even though the library read it', () => {
+  const marker = { org: 'o', site: 's', pages: ['/', '/about'], at: '2026-05-01T10:00:00.000Z' };
+  const da = { org: 'o', site: 's' };
+  const at = (path, deployedAt) => ({ path, deployedAt });
+  assert.equal(libraryGap(marker, { da, delivered: [at('/', '2026-05-01T09:00:00.000Z'), at('/about', null)] }), null, 'delivered before the run, or no deployedAt');
+  assert.match(libraryGap(marker, { da, delivered: [at('/', '2026-05-01T09:00:00.000Z'), at('/about', '2026-05-01T11:00:00.000Z')] }), /^library_missing:stale: 1 page\(s\) re-delivered after it ran: \/about — re-run da-library\.mjs$/);
+  assert.match(libraryGap(marker, { da, delivered: [at('/about', '2026-05-01T11:00:00.000Z'), at('/new', null)] }), /^library_missing:stale: 1 delivered page\(s\) not in the library: \/new; 1 page\(s\) re-delivered after it ran: \/about — re-run/);
+  assert.equal(libraryGap({ pages: ['/'] }, { delivered: [at('/', '2026-05-01T11:00:00.000Z')] }), null, 'a marker without `at` cannot be dated');
+});
+
 check('gaps come in a fixed order and long path lists are capped', () => {
   const many = Array.from({ length: 25 }, (_, i) => row(`f${i}`, `/f${i}`, 'failed'));
-  const v = doneGaps({ pages: [row('u', '/u', 'pending'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'] });
-  assert.deepEqual(v.gaps.map((g) => g.split(':')[0]), ['pages_unfinished', 'pages_failed', 'pages_not_live', 'open_p1', 'rollout_incomplete']);
+  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('d', '/d', 'deployed'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'], library: 'library_missing' });
+  assert.deepEqual(v.gaps.map((g) => g.split(':')[0]), ['pages_unfinished', 'pages_failed', 'pages_not_live', 'open_p1', 'library_missing', 'rollout_incomplete']);
   assert.match(v.gaps[1], /, … \(\+5\)$/);
 });
 
@@ -111,10 +138,11 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
 });
 
 // --- CLI ------------------------------------------------------------------------------------------
-function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost } = {}) {
+function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, library = true, libraryAt } = {}) {
   const proj = mkdtempSync(join(tmpdir(), 'done-check-'));
   const out = join(proj, 'stardust', 'rollout');
   mkdirSync(join(out, 'coverage'), { recursive: true });
+  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), JSON.stringify({ pages: (pages || []).map((p) => p.path), at: libraryAt })); }
   if (pages) writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
   writeFileSync(join(out, 'rollout.json'), JSON.stringify(liveHost ? { site: { liveHost } } : {}));
   writeFileSync(join(proj, 'stardust', 'status.jsonl'), ledger.map((l) => JSON.stringify(l)).join('\n'));
@@ -140,6 +168,25 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('CLI: delivered pages without library/published.json are not complete (library-rows.json alone is a dry run)', () => {
+  const proj = project({ library: false });
+  mkdirSync(join(proj, 'stardust', 'rollout', 'library'), { recursive: true });
+  writeFileSync(join(proj, 'stardust', 'rollout', 'library', 'library-rows.json'), '[]');
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.deepEqual(r.stdout.trim().split('\n'), ['library_missing', '✗ 1 gap(s) (live probe skipped: --offline)']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: a page re-delivered (coverage deployedAt) after the library ran is a library gap', () => {
+  const pages = [{ ...row('a', '/a', 'deployed'), delivery: { status: 'deployed', deployedAt: '2026-05-01T11:00:00.000Z' } }];
+  const proj = project({ pages, libraryAt: '2026-05-01T10:00:00.000Z' });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^library_missing:stale: 1 page\(s\) re-delivered after it ran: \/a — re-run da-library\.mjs$/m);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('CLI: gaps exit 1, one line each, then the summary line', () => {
   const proj = project({ pages: [row('a', '/a', 'pending')], ledger: [] });
   const r = run(proj, ['--offline']);
@@ -162,8 +209,28 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.match(headerGap({ flow: 'replica', contract, parity: { ...parity, build: 'https://main--site--org.aem.page/' }, liveHost: live }), /not the live host/);
   const findings = [{ key: 'state-missing@1440 Shop [hover]', severity: 'error' }, { key: 'motion@390 Open menu [click]', severity: 'error', decided: { by: 'Site owner' } }, { key: 'link-href@1440 Shop', severity: 'warn' }];
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings }, liveHost: live }), 'header_parity:1: state-missing@1440 Shop [hover]');
+  // classes written at the comparison's round cap: printed with the gap, which stays a gap
+  const classed = [{ ...findings[0], classed: { class: 'owner', reason: 'the menu service' } }, { key: 'panel-visual@390 Menu [click]', severity: 'error', classed: { class: 'instrument' } }, { key: 'keyboard@1440 Shop', severity: 'error', classed: { class: 'owner' } }, { key: 'motion@1440 Shop [hover]', severity: 'error' }, findings[1]];
+  const held = classed.filter((f) => f.classed).map((f) => ({ finding: f.key, class: f.classed.class, reason: 'why' }));
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live }), 'header_parity:4: state-missing@1440 Shop [hover], panel-visual@390 Menu [click], keyboard@1440 Shop, motion@1440 Shop [hover]', 'a class the decisions file does not hold is not printed');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live, decisions: [held[0], { ...held[1], reason: '' }, { ...held[2], class: 'instrument' }] }), 'header_parity:4 — 1 owner, 3 no class: state-missing@1440 Shop [hover] (owner), panel-visual@390 Menu [click], keyboard@1440 Shop, motion@1440 Shop [hover]');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live, decisions: held }), 'header_parity:4 — 2 owner, 1 instrument, 1 no class: state-missing@1440 Shop [hover] (owner), panel-visual@390 Menu [click] (instrument), keyboard@1440 Shop (owner), motion@1440 Shop [hover]');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed.slice(0, 1) }, liveHost: live, decisions: held }), 'header_parity:1 — 1 owner: state-missing@1440 Shop [hover] (owner)');
 });
 
+check('CLI: a replica project with no header contract → the never-recorded gap keeps it incomplete; a project with no flow in state.json → no header gap', () => {
+  const proj = project();
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout); assert.doesNotMatch(r.stdout, /header_parity/);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
+  r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^header_parity:no contract — the header contract was never recorded, so the header's behaviour was never compared: node stardust\/scripts\/diff\/chrome-explore\.mjs <source home> stardust\/chrome\/header-contract\.json/m);
+  assert.match(r.stdout, /^✗ 1 gap\(s\)/m);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'redesign' }));
+  assert.match(run(proj, ['--offline']).stdout, /^header_parity:no contract/m, 'a redesign migration has a header contract too (as before)');
+  rmSync(proj, { recursive: true, force: true });
+});
 check('CLI: a replica project without a header contract is not complete', () => {
   const proj = project();
   writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
@@ -206,8 +273,32 @@ check('CLI: usage errors exit 2 — no pages.json; no live host without --offlin
   [noPages, noHost].forEach((p) => rmSync(p, { recursive: true, force: true }));
 });
 
+check('units_not_declared: an advisory line per published table with pages that took no repeated-unit check — after the verdict, never a gap; complete and the exit code unchanged', () => {
+  const table = (w, rows, extra = {}) => ({ _provenance: { breakpoint: w, ...extra }, totals: {}, rows });
+  const none = (slug, unitsRecorded = null) => ({ slug, unitsDeclared: 0, unitsRecorded });
+  assert.deepEqual(unitsAdvisories([table(1440, [none('home', 2), none('about'), { slug: 'faq', unitsDeclared: 2 }]), table(360, [{ slug: 'faq', unitsDeclared: 1 }])]), ['units_not_declared:2: 1440px — home, about (1 with repeated modules recorded)']);
+  assert.deepEqual(unitsAdvisories([table(1440, [none('home')])]), ['units_not_declared:1: 1440px — home']);
+  assert.deepEqual(unitsAdvisories([table(1440, [{ slug: 'old', unitPass: null }]), table(2560, [none('home')], { wide: true }), { _provenance: { breakpoint: 1440 } }, null]), [], 'a table from before the count, a wide report, a table without rows: no line');
+  assert.deepEqual(unitsAdvisories(), []);
+  const proj = project();
+  assert.deepEqual(readGateTables(join(proj, 'stardust/replica/gates')), []);
+  mkdirSync(join(proj, 'stardust/replica/gates/all-1440'), { recursive: true });
+  writeFileSync(join(proj, 'stardust/replica/gates/all-1440/summary.json'), JSON.stringify(table(1440, [none('home', 2), none('about')])));
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, 'a page without a unit family does not block the handoff');
+  assert.match(r.stdout, /^✓ complete \(live probe skipped: --offline\)\nunits_not_declared:2: 1440px — home, about \(1 with repeated modules recorded\)$/m);
+  const j = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual([j.complete, j.gaps, j.advisories], [true, [], ['units_not_declared:2: 1440px — home, about (1 with repeated modules recorded)']]);
+  writeFileSync(join(proj, 'stardust/replica/gates/all-1440/summary.json'), JSON.stringify(table(1440, [{ slug: 'home', unitsDeclared: 3 }])));
+  r = run(proj, ['--offline', '--json']);
+  assert.equal(r.status, 0); assert.equal('advisories' in JSON.parse(r.stdout), false, 'every page declared: the JSON is as it was');
+  assert.match(run(proj, ['--help']).stdout, /units_not_declared:N/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
 }
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

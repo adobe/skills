@@ -39,6 +39,15 @@ jobs:
       - name: Trigger queries name skills that exist
         run: node scripts/check-trigger-queries.mjs
 
+      # A skill that installs a package of this repository from git pins a commit. Pull
+      # requests are squash-merged, so a commit of a branch is never on main: the pin must be
+      # the commit of a release on the base branch, and a cache folder named after a commit
+      # must name the pinned one. Needs the history and the tags (fetch-depth: 0).
+      - name: Installs of this repository are pinned to a release on the base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: node scripts/check-pins.mjs "origin/$BASE_REF"
+
       # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes
       # the Claude Code, Tessl and Cursor manifests and the marketplace entries from it.
       # Nobody edits those: after the merge, the Release workflow rebuilds them on main and

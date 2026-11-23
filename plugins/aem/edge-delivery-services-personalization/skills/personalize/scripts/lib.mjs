@@ -37,7 +37,7 @@ export const PLAYWRIGHT_CACHE = process.env.PZN_PLAYWRIGHT_DIR
   || join(homedir(), '.cache', 'aem-eds-personalization', 'playwright');
 // The version the checks were run against; Renovate moves it.
 // renovate: datasource=npm depName=playwright
-export const PLAYWRIGHT_VERSION = '1.65.0';
+export const PLAYWRIGHT_VERSION = '1.65.1';
 export const PLAYWRIGHT_INSTALL = `npm i --prefix ${PLAYWRIGHT_CACHE} playwright@${PLAYWRIGHT_VERSION}`
   + ` && npx --prefix ${PLAYWRIGHT_CACHE} playwright install chromium`;
 

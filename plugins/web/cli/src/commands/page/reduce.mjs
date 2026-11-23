@@ -14,6 +14,10 @@ function detect(driver, session) {
   return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
+// When the detector finds no section, the bundle returns main (else body) as one section with
+// `fallback: true`. That can also mean the page has not finished rendering, so keep rescrolling.
+const detected = (phase1) => phase1.sections?.some((s) => !s.fallback);
+
 const HELP = `
 Example:
   web page reduce https://example.com --retries 3
@@ -21,9 +25,10 @@ Output:
   { url, title, viewport, templateHash, sections: [...], session, durationMs }
 Notes:
   Phase 1 only: section detection. Phase 2 (PHASE2-RULES) stays with the agent.
-  Rescrolls up to --retries times when no sections are found.
+  Rescrolls up to --retries times when no sections are found. A page with content but no
+  detected section then gives one section for main (else body), marked fallback: true.
 Exit codes:
-  1 EMPTY_RESULT when no sections are detected; 3 when blocked.
+  1 EMPTY_RESULT when no reducible content was found; 3 when blocked.
 `;
 
 /**
@@ -35,13 +40,13 @@ export function reducePage(driver, session, { retries = 2, settleMs } = {}) {
   preparePage(driver, session, { unpin: true, settleMs });
   driver.inject(session, loadBundle('page-reduce.js'));
   let phase1 = detect(driver, session);
-  for (let i = 0; i < retries && !phase1.sections?.length; i += 1) {
+  for (let i = 0; i < retries && !detected(phase1); i += 1) {
     scrollForLazyContent(driver, session, settleMs === undefined ? {} : { settleMs });
     phase1 = detect(driver, session);
   }
   if (!phase1.sections?.length) {
-    throw new CliError('EMPTY_RESULT', `no sections detected after ${retries} retries`, {
-      hint: 'page did not finish rendering; retry with --headed or a longer --settle-ms',
+    throw new CliError('EMPTY_RESULT', `no reducible content found after ${retries} retries`, {
+      hint: 'if the page should have content, retry with --headed or a longer --settle-ms',
     });
   }
   return phase1;
