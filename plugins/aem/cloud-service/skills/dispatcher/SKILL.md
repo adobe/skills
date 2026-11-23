@@ -1,9 +1,10 @@
 ---
 name: dispatcher
 description: |
-  Single entry point for all AEM as a Cloud Service Dispatcher skills. Covers config authoring,
-  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
-  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration.
+  Use when the user asks to edit or review AEM as a Cloud Service Dispatcher `.any` farms, filters,
+  vhosts, cache or rewrite rules; troubleshoot cache invalidation or publish-tier delivery; or plan
+  approved Dispatcher MCP checks. Covers configuration, technical guidance, incident response,
+  performance, security, and lifecycle orchestration.
 license: Apache-2.0
 compatibility: Tool-dependent checks require Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
@@ -32,6 +33,7 @@ Route user requests to the appropriate specialist skill based on intent.
 2. Read the linked SKILL.md for that specialist skill.
 3. Follow the workflow, references, and output contract defined in that skill.
 4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
+5. If no row fits, ask a clarifying question. If a linked guide is unavailable, provide only bounded explanation/static review and mark tool-dependent checks `NOT VERIFIED`.
 
 ## Runtime Selection
 
@@ -39,7 +41,7 @@ Before runtime-specific edits, confirm project evidence identifies AEM as a Clou
 
 ## MCP Tool Contract
 
-The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
+The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output. This entrypoint's runtime and MCP gates govern every linked specialist and cannot be bypassed by a routed guide.
 
 All specialist skills share the same core-7 MCP tool set:
 
@@ -50,12 +52,3 @@ All specialist skills share the same core-7 MCP tool set:
 - `inspect_cache` — inspect cache state
 - `monitor_metrics` — runtime metrics
 - `tail_logs` — log tailing
-
-## Specialist Skills
-
-- [config-authoring/SKILL.md](./config-authoring/SKILL.md) — config file design, edits, and validation
-- [technical-advisory/SKILL.md](./technical-advisory/SKILL.md) — policy, documentation, cloud guardrails, and evidence planning
-- [incident-response/SKILL.md](./incident-response/SKILL.md) — runtime incident triage and remediation
-- [performance-tuning/SKILL.md](./performance-tuning/SKILL.md) — cache and throughput optimization
-- [security-hardening/SKILL.md](./security-hardening/SKILL.md) — security audit and hardening
-- [workflow-orchestrator/SKILL.md](./workflow-orchestrator/SKILL.md) — full lifecycle orchestration across all skills
