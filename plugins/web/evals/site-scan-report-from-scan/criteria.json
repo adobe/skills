@@ -6,7 +6,7 @@
       "name": "counts_by_language",
       "max_score": 20,
       "category": "INTENT",
-      "description": "Reports page counts per language from the lang field: 46 en (41 without the archive), 13 de, 7 fr-FR, plus one page with no language (/contact). Counts before and after removing the archive are both acceptable if stated clearly."
+      "description": "Reports page counts per language from the variants' lang arrays: 46 en (41 without the archive), 13 de, 7 fr-FR, plus one page with no language (/contact). Counts before and after removing the archive are both acceptable if stated clearly."
     },
     {
       "name": "archive_excluded",
