@@ -9,7 +9,7 @@ description: >-
   list pages, discover urls, site inventory, url collection, find all pages, site-scan,
   website urls, enumerate pages, map site, how many pages.
 metadata:
-  version: "1.1.0"
+  version: "2.0.0"
 ---
 
 # site-scan
