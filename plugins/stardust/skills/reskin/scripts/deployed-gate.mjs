@@ -113,7 +113,7 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          run, rooted at the project root (the parent of --dir) so root-relative fonts and ../ assets resolve (a
          page outside the project: its own directory), never file://. Reads preview.json (no record, or one with problems, is exit 2;
          a skipped leg prints "not run: skipped", exit 0) and needs replica's scripts beside the reskin ones
-         (stitch-shot, pixel-compare, crop-compare, chrome-parity, cap-probe; and the diff skill's live-session).
+         (stitch-shot, pixel-compare, crop-compare, chrome-parity, cap-probe; and the master skill's browser.mjs).
          Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
            pixel          pixel-compare: differing pixels at most 10%
            height         |Δh| at most 5% of the reskin page's height (Δh = the preview's height − the reskin page's)

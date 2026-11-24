@@ -34,7 +34,7 @@ await check('parseArgs: selectors split on commas, widths repeatable + comma-sep
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('backgroundColor') + 1], 'backgroundImage', 'backgroundImage sits right after backgroundColor');
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('position') + 1], 'boxSizing', 'boxSizing is a default prop — the box model is a lifted value the gate compares per box'); assert.equal(DEFAULT_PROPS.length, 24);
   assert.equal(o.against, null); assert.equal(o.allMatches, false); assert.equal(o.json, false); assert.equal(o.out, null);
-  assert.equal(o.timeoutMs, 20000); assert.match(o.ua, /Chrome\//);
+  assert.equal(o.timeoutMs, 20000); assert.equal(o.ua, null, 'the browser presents its own user agent unless --ua is given');
   assert.deepEqual(parseArgs(['http://a/', '--selectors', 'h1']).widths, [1440]);
 });
 await check('parseArgs: --props replaces the default list; --against, --all-matches, --json, --out, --timeout-ms, --ua', () => {
@@ -62,11 +62,11 @@ await check('parseArgs: a value flag followed by nothing or by another --flag is
   const r = spawnSync(process.execPath, [SCRIPT, 'http://a/', '--selectors', '.x', '--width', '--json'], { encoding: 'utf8' });
   assert.equal(r.status, 2); assert.match(r.stderr, /measure: --width needs a value/);
 });
-await check('parseArgs: live-side flags — --consent, --dismiss (comma list, repeatable), --headed, --locale; live-session.mjs resolves from the plugin tree', () => {
+await check('parseArgs: live-side flags — --consent, --dismiss (comma list, repeatable), --headed, --locale; browser.mjs resolves in either layout', () => {
   const o = parseArgs(['http://a/', '--selectors', 'h1', '--consent', '#ok', '--dismiss', '.close, .later', '--dismiss', '.x', '--headed', '--locale', 'en-GB']);
   assert.equal(o.consent, '#ok'); assert.deepEqual(o.dismiss, ['.close', '.later', '.x']); assert.equal(o.headed, true); assert.equal(o.locale, 'en-GB');
   const d = parseArgs(['http://a/', '--selectors', 'h1']); assert.equal(d.consent, null); assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
-  assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+  assert.ok(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].some((p) => existsSync(new URL(p, import.meta.url))), 'browser.mjs resolves in the plugin tree or the project copy');
 });
 await check('isLiveHttpUrl: live origins yes; localhost, loopback and file no', () => {
   assert.equal(isLiveHttpUrl('https://www.example.org/x'), true);

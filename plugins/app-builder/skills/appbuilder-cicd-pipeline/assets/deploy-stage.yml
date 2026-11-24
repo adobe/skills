@@ -26,26 +26,26 @@ jobs:
       AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES_STAGE }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
       - name: Setup AIO CLI
-        uses: adobe/aio-cli-setup-action@3
+        uses: adobe/aio-cli-setup-action@1.3.0
         with:
           os: ubuntu
 
       - name: Build
-        uses: adobe/aio-apps-action@3.3.0
+        uses: adobe/aio-apps-action@4.1.0
         with:
           os: ubuntu
           command: build
 
       - name: Deploy
-        uses: adobe/aio-apps-action@3.3.0
+        uses: adobe/aio-apps-action@4.1.0
         with:
           os: ubuntu
           command: deploy

@@ -1,0 +1,17 @@
+[
+ {
+  "code": "page#1",
+  "template_id": "page",
+  "rank": 1,
+  "label": "hero",
+  "core": [
+   "hero"
+  ],
+  "optional": [],
+  "url_count": 2,
+  "pageviews_90d": 0,
+  "distinct_sets": 2,
+  "rep_url": "https://www.example.com/en/a.html",
+  "rep_capture_key": null
+ }
+]

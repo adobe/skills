@@ -12,7 +12,11 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA } from '../style-census.mjs';
+import * as censusModule from '../style-census.mjs';
+
+const {
+  aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS,
+} = censusModule;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -50,6 +54,47 @@ about.iconFont = { families: ['icomoon'], glyphs: [{ class: 'icon icon-search', 
 const pages = { 'https://x.test/about': { 1440: about }, 'https://x.test/': { 1440: home, 360: base() } };
 
 // ---- part (a): pure ------------------------------------------------------------------------------------
+await check('liveContextFor: session.isLiveHttpUrl selects live URLs and one context is cached per host', async () => {
+  assert.equal(typeof censusModule.liveContextFor, 'function');
+  const calls = [];
+  const browser = { kind: 'browser' };
+  const session = {
+    isLiveHttpUrl: (url) => /^https?:/.test(url) && url.includes('selected'),
+    newLiveContext: async (actualBrowser, options) => {
+      calls.push({ actualBrowser, options });
+      return { host: new URL(options.stateUrl).host };
+    },
+  };
+  const contexts = new Map();
+  const options = {
+    ua: 'test-agent', locale: 'en-GB', viewport: { width: 1440, height: 900 },
+    reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true,
+  };
+  const first = await censusModule.liveContextFor(session, browser, contexts, 'https://selected.example/a', options);
+  const second = await censusModule.liveContextFor(session, browser, contexts, 'https://selected.example/b', options);
+  assert.equal(first, second, 'two URLs on one host share the context');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].actualBrowser, browser);
+  assert.deepEqual(calls[0].options, { ...options, stateUrl: 'https://selected.example/a' });
+  assert.equal(await censusModule.liveContextFor(session, browser, contexts, 'file:///tmp/selected.html', options), null, 'file URLs stay local');
+  assert.equal(await censusModule.liveContextFor(session, browser, contexts, 'https://ordinary.example/', options), null, 'the session predicate decides');
+  assert.equal(calls.length, 1, 'local URLs create no live context');
+  // a job list that starts local: the local job gets null (measure() reads contexts.local for it), the live job that
+  // follows gets its context before measure() reads contexts.live
+  const mixed = new Map();
+  assert.equal(await censusModule.liveContextFor(session, browser, mixed, 'file:///tmp/first.html', options), null);
+  assert.equal((await censusModule.liveContextFor(session, browser, mixed, 'https://selected.example/later', options)).host, 'selected.example');
+
+  const concurrentContexts = new Map();
+  calls.length = 0;
+  const [concurrentFirst, concurrentSecond] = await Promise.all([
+    censusModule.liveContextFor(session, browser, concurrentContexts, 'https://selected.example/a', options),
+    censusModule.liveContextFor(session, browser, concurrentContexts, 'https://selected.example/b', options),
+  ]);
+  assert.equal(concurrentFirst, concurrentSecond, 'concurrent jobs share the in-flight context creation');
+  assert.equal(calls.length, 1);
+});
+
 await check('parseColor: rgb/rgba/percent alpha/color(srgb); alpha 0 and junk are not colours; toHex incl. alpha suffix', () => {
   assert.deepEqual(parseColor('rgb(20, 122, 255)'), { r: 20, g: 122, b: 255, a: 1 });
   assert.deepEqual(parseColor('rgba(0, 0, 0, 0.5)'), { r: 0, g: 0, b: 0, a: 0.5 });
@@ -113,21 +158,40 @@ await check('aggregate is deterministic: reversed page/width key order gives a d
   assert.deepEqual(aggregate(reversed), agg);
 });
 await check('parseArgs: defaults, repeatable + comma widths deduped, usage errors', () => {
-  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
-  assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
+  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, null, 'the browser presents its own user agent unless --ua is given');
+  assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null); assert.equal(d.parallelLiveOk, false);
   assert.deepEqual(parseArgs(['--width', '360,1440', '--width', '1440']).widths, [360, 1440]);
   assert.deepEqual(parseArgs(['--urls', 'https://a.test/, https://b.test/x']).urls, ['https://a.test/', 'https://b.test/x']);
-  const l = parseArgs(['--concurrency', '2', '--dismiss', '.close, .later', '--dismiss', '#x', '--headed', '--locale', 'en-GB']);
-  assert.equal(l.concurrency, 2); assert.deepEqual(l.dismiss, ['.close', '.later', '#x']); assert.equal(l.headed, true); assert.equal(l.locale, 'en-GB');
+  const l = parseArgs(['--concurrency', '2', '--parallel-live-ok', '--dismiss', '.close, .later', '--dismiss', '#x', '--headed', '--locale', 'en-GB']);
+  assert.equal(l.concurrency, 2); assert.equal(l.parallelLiveOk, true); assert.deepEqual(l.dismiss, ['.close', '.later', '#x']); assert.equal(l.headed, true); assert.equal(l.locale, 'en-GB');
   assert.deepEqual(DEFAULTS.dismiss, [], 'parseArgs never mutates the shared default list');
   for (const bad of [['--bogus'], ['--width'], ['--width', 'wide'], ['--width', '100'], ['--concurrency', '0'], ['--timeout-ms', '10'], ['--pages', 'p', '--urls', 'https://a.test/'], ['--urls', '']]) assert.throws(() => parseArgs(bad), UsageError, bad.join(' '));
+});
+await check('parseArgs: live concurrency needs explicit approval; local URLs and files do not', () => {
+  const warnings = [];
+  const original = console.error;
+  console.error = (line) => warnings.push(line);
+  try {
+    assert.equal(parseArgs(['--concurrency', '2']).concurrency, 1);
+    assert.deepEqual(warnings, ['style-census: --concurrency 2 ignored — one live page at a time unless --parallel-live-ok (a source edge rate-limits bursts from one address)']);
+    warnings.length = 0;
+    assert.equal(parseArgs(['--concurrency', '2', '--parallel-live-ok']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'http://localhost/a,http://127.0.0.1/b', '--concurrency', '2']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'file:///tmp/a.html,file:///tmp/b.html', '--concurrency', '2']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'http://[::1]:8080/c,http://0.0.0.0/d,http://app.localhost/e', '--concurrency', '2']).concurrency, 2, 'IPv6 loopback, the any-address and *.localhost are local too');
+    assert.deepEqual(warnings, []);
+    assert.equal(parseArgs(['--urls', 'http://[::1]/a,https://www.example.com/b', '--concurrency', '2']).concurrency, 1, 'one live input among local ones keeps the guard');
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.error = original;
+  }
 });
 await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
   for (const [flag, ...tail] of [['--pages'], ['--urls'], ['--out'], ['--width'], ['--concurrency'], ['--max-pages'], ['--timeout-ms'], ['--ua'], ['--dismiss'], ['--locale'], ['--out', '--headed'], ['--concurrency', '--width', '360'], ['--urls', '--out', 'x.json'], ['--locale', '--headed']]) {
     assert.throws(() => parseArgs([flag, ...tail]), (e) => e instanceof UsageError && e.code === 2 && e.message.startsWith(`${flag} needs a value`), `${flag} ${tail.join(' ')}`);
   }
   const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
-  assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+  assert.ok(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].some((p) => existsSync(new URL(p, import.meta.url))), 'browser.mjs resolves in the plugin tree or the project copy');
 });
 await check('listUrls: finalUrl over url, non-records skipped, deduped in file order, --max-pages, missing dir and bad URL are usage errors', () => {
   const dir = join(root, 'pages'); mkdirSync(dir);
@@ -141,9 +205,32 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
   assert.throws(() => listUrls(parseArgs(['--urls', 'not a url'])), /not a URL/);
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
-  const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
+  const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/); assert.match(h.out, /--parallel-live-ok/); assert.match(h.out, /source edge rate-limits bursts from one address/);
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
+});
+await check('flat copy: stardust/scripts/style-census.mjs finds the front door in stardust/scripts/stardust/, and names three places when it is missing', () => {
+  const flat = join(root, 'flat', 'stardust', 'scripts');
+  mkdirSync(flat, { recursive: true });
+  writeFileSync(join(flat, 'style-census.mjs'), readFileSync(SCRIPT, 'utf8'));
+  const args = [join(flat, 'style-census.mjs'), '--urls', 'https://x.test/', '--out', join(root, 'flat', 'out.json')];
+  const missing = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: root });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /browser\.mjs not found \(looked in \.\.\/\.\.\/stardust\/scripts\/, \.\.\/stardust\/ and \.\/stardust\/\)/);
+  mkdirSync(join(flat, 'stardust'));
+  writeFileSync(join(flat, 'stardust', 'browser.mjs'), "export const loadPlaywright = async () => { throw new Error('fake front door reached'); };\n");
+  const found = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: root });
+  assert.equal(found.status, 2);
+  assert.match(found.stderr, /fake front door reached/);
+  assert.doesNotMatch(found.stderr, /not found/);
+});
+await check('browser launch: the census asks the front door for real Chrome, or the headed tier under --headed', async () => {
+  assert.equal(typeof censusModule.launchCensusBrowser, 'function');
+  const modes = [];
+  const session = { openBrowser: async (options) => { modes.push(options); return 'front-door-browser'; } };
+  assert.equal(await censusModule.launchCensusBrowser({ headed: false }, session), 'front-door-browser');
+  assert.equal(await censusModule.launchCensusBrowser({ headed: true }, session), 'front-door-browser');
+  assert.deepEqual(modes, [{ mode: 'chrome' }, { mode: 'headed' }]);
 });
 
 // ---- part (b): end-to-end against a fixture site (needs playwright) --------------------------------------

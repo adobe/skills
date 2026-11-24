@@ -1,0 +1,8 @@
+{
+  "decisions": {
+    "promo": {
+      "variant": "default",
+      "reason": "low_confidence"
+    }
+  }
+}

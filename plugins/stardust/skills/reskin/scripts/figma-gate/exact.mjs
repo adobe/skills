@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { readJsonIf } from '../figma/io.mjs';
 import { pixelComparePath } from './pixel.mjs';
-import { loadChromium, toUrl } from './target.mjs';
+import { openPlain, toUrl } from './target.mjs';
 
 export const DEFAULT_BAR = 3;
 export const DEFAULT_HEIGHT_TOL = 8;
@@ -130,8 +130,7 @@ function loadRenders(dir) {
 }
 
 async function withBrowser(fn) {
-  const chromium = await loadChromium();
-  const browser = await chromium.launch();
+  const browser = await openPlain();
   try { return await fn(browser); } finally { await browser.close(); }
 }
 

@@ -24,8 +24,11 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
   - `dialog/` — Classic UI (ExtJS `cq:Dialog`) → Coral 3 `_cq_dialog`; Coral 2 in-place upgrade. BPA `lui` pattern (dialog sub-types only). Handles listeners, optionsProvider, namePrefix, filter.xml.
   - `cdw/` — Custom ExtJS widget (`cq:Widget` with unknown xtype) → known Coral 3 mapping or scaffolded Granite UI form component. BPA `cdw` pattern.
   - Future: `foundation-component/`, `cf-template/` sub-folders.
+- **Dispatcher conversion (Branch E):** AMS / on-prem Dispatcher → Cloud Service via Adobe's `dispatcher-converter` (`references/dispatcher/`)
+- **Asset workflow migration (Branch H):** DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) → processing profiles + post-processing workflows via Adobe's [`aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration) `wf-migrator`, then reviewing its report and diff with the user and handing over post-deploy checks (`references/asset-workflow/`). Needs Java 11+; the pinned [wf-migrator 0.7.0](https://github.com/adobe/aem-cloud-migration/releases/tag/v0.7.0) JAR is downloaded and checksum-verified on first run (or pass a local copy with `--jar`).
+- **Repository restructuring (Branch I, beta):** a legacy Maven project → the Cloud Service package layout (`ui.apps`, `ui.apps.structure`, `ui.config`, `ui.content`, `all`) via Adobe's [`repository-modernizer`](https://github.com/adobe/aem-cloud-service-source-migration/tree/master/packages/repository-modernizer). The skill plans the run with the user, checks the tool's output and adopts it on a branch (`references/repo-structure/`). Needs Node.js and git; Maven and JDK 11+ for the build.
 
-**First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `SKILL.md` for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
+**First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See [references/quick-start.md](references/quick-start.md) for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
 
 **Legacy UI starter prompts:**
 - *"Fix LUI dialog findings using BPA CSV at `./reports/bpa.csv`."*

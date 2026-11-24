@@ -1,0 +1,25 @@
+{
+ "site": "Example",
+ "origin": "https://www.example.com",
+ "scope_path": "/en/",
+ "reference_blocks": null,
+ "rum": {
+  "available": false,
+  "window": null,
+  "bundles": null
+ },
+ "sitemap_urls": 4,
+ "inventory_total": null,
+ "inventory_source": null,
+ "sample_note": null,
+ "fetch_sources": {
+  "live": 4
+ },
+ "evidence_note": null,
+ "built_at": "2026-01-01T00:00:00",
+ "built_by": "stardust spec skill",
+ "provenance": "built from the live site only; it uses no output from any migration work",
+ "variant_cut": "Jaccard 0.5 average linkage",
+ "capture_format": "jpg",
+ "i18n_notes": []
+}

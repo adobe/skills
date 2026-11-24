@@ -1,0 +1,13 @@
+{
+  "name": "@adobe/aem-boilerplate",
+  "private": true,
+  "version": "1.3.0",
+  "description": "Starter project for Adobe Helix",
+  "scripts": {
+    "lint:js": "eslint .",
+    "lint:css": "stylelint \"blocks/**/*.css\" \"styles/*.css\"",
+    "lint": "npm run lint:js && npm run lint:css",
+    "lint:fix": "npm run lint:js -- --fix && npm run lint:css -- --fix"
+  },
+  "license": "Apache License 2.0"
+}

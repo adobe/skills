@@ -107,32 +107,18 @@ invoked directly; `direct` when a zero-movement phrase hands off
 **Guards that read it.** `migrate`, `deploy`, `rollout` and (for migration
 asks only) `extract` refuse to run a migration on a project that has
 `state.json` but no `flow`: they print the two-flow table and hand back to
-the master routing. `prepare-migration` and `direct` refuse under
-`flow: replica` and `flow: reskin`; `replica` refuses under `flow: redesign`
-and `flow: reskin`; `reskin` refuses under `flow: replica`. Each prints the
-never-mix line and the one command that switches flows explicitly. `migrate`
-(sibling tier) and `rollout` additionally require a gated archetype per page
-type before siblings ship (`skills/rollout/SKILL.md` § Setup): under
-`flow: replica` from `stardust/replica/progress.json`; under `flow: reskin`
-from `stardust/reskin/ledger.json`, i.e. `reskin/scripts/reskin-preflight.mjs`
-exits 0 (`skills/reskin/reference/handoff.md`).
-
-**Writers of `approved` and `designSource`.** `prototype` (the user's
-approval) and, under `flow: reskin`, `reskin` Phase 6 write `approved`; the
-reskin approval carries `approvedBy` (`user`, or `hands-off` only when
-`state.json` has `handsOff: true` — anything else is refused by preflight).
-`canon-from-reskin.mjs` stamps each page `designSource: "donor"` and
-`DESIGN.json` `source.kind: "donor"`; `direct` never writes under reskin.
-Under `flow: reskin` the bridge also writes `directed` on the `extracted`
-pages of each type that has an approved archetype (since `direct`
-refuses there), so `migrate` renders them at the sibling tier.
+the master routing. `prepare-migration` refuses under `flow: replica`;
+`replica` refuses under `flow: redesign`. Both print the never-mix line and
+the one command that switches flows explicitly. `migrate` (sibling tier)
+and `rollout` additionally require, under `flow: replica`, a gated
+archetype per page type before siblings ship (`skills/rollout/SKILL.md`
+§ Setup).
 
 **Switching.** `$stardust replica --switch-flow` / `$stardust
 prepare-migration --switch-flow` / `$stardust reskin --switch-flow` rewrite `flow` (+ `flowChosenAt`,
 `flowSource: "question"`), append a `MODE SWITCH` entry to
 `stardust/direction.md` naming the artefacts the old flow produced, and
-mark every `prototyped` / `migrated` page — and, leaving `reskin`, every
-`approved` archetype the bridge registered — stale (`staleReason:
+mark every `prototyped` / `migrated` page stale (`staleReason:
 "flow-switch"`, § Stale flagging) — nothing is deleted or re-run
 automatically. A switch is the only way `flow` changes.
 
@@ -317,7 +303,7 @@ be, or say which ignore rule drops it); any tracked file outside
 `stardust/`, the impeccable root files and the EDS project; any tracked
 file matching a secret shape (`.env*`, `_storage-state.json`,
 `*-clearance.json`). Then one line per consequence that applies on this
-checkout (`current/assets/` missing, baselines missing). Above 50 MB of
+checkout (`current/assets/` or its screenshots missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
 
 The `Flow:` line is omitted when no flow key exists; on a migration ask
@@ -327,12 +313,8 @@ below do not apply: recommend from `stardust/replica/progress.json` — an
 ungated archetype → `$stardust replica <archetype>`, all archetypes gated →
 `$stardust migrate` / `rollout` — and print the last gate numbers per
 archetype so a resumed session restarts without re-diagnosis. Under
-`flow: reskin` recommend from `node skills/reskin/scripts/reskin-preflight.mjs`
-and `stardust/reskin/ledger.json`: a failing `archetype-gates` line →
-re-gate that archetype (reskin Phase 5) and `reskin-ledger.mjs record`; no
-eyeball → the side-by-side review; ready → `$stardust migrate` then the
-sibling gate per migrated page (`--stage migrated`); print each archetype's
-gate verdicts and open residuals.
+`flow: reskin` the guards, the archetype predicate and the resume
+recommendation are in `skills/reskin/reference/handoff.md`.
 
 The recommended next step uses these heuristics, in order:
 

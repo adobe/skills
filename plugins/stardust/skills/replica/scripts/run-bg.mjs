@@ -90,7 +90,7 @@
  * an orphaned instrument — the wrapper's own group is still killed.
  *
  * Per-job exit codes are the instrument's (gate.sh: 0 PASS, 2 FAIL, 3 bot
- * challenge, 4 identity, 1 error); 124 = deadline, no verdict — re-run.
+ * challenge, 4 identity, 5 unstable origin reference, 1 error); 124 = deadline, no verdict — re-run.
  *
  * Also importable: start(), wait(), status(), alive(), phase(), report helpers — see the tests.
  */

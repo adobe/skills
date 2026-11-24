@@ -1,0 +1,4 @@
+A  home → index.html  (landing; 3 assets, 5 links, 1 broken, 3 sections)
+A  docs → docs/index.html  (docs; 1 assets, 3 links, 0 broken, 3 sections)
+A' docs-getting-started → docs/getting-started.html  (docs; 1 assets, 3 links, 0 broken, 2 sections)
+rendered 3, unchanged 0, refused 0, passthrough 0 → stardust/migrated/

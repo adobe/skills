@@ -19,9 +19,19 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
    archetype, its `extracted` pages advanced to `directed` (the status `migrate`
    renders at the sibling tier; `direct` refuses under reskin). It names the
    siblings it left: stale ones, and `prototyped` ones (`migrate render --all`
-   skips them). Re-run it after approving another type's archetype.
+   skips them). Re-run it after approving another type's archetype. With
+   `--force` it flags approved/migrated pages stale where the canon change
+   reaches them; a changed canon is captured to `stardust/reskin/approvals/`
+   and pixel-compared with the previous approval (warn above
+   `--visual-threshold`, default 10 %, recorded in the canon history). Never
+   run `prepare-migration` or `direct` under `flow: reskin`: they rewrite the
+   donor-sourced `DESIGN.*`.
 4. Render each sibling: `stream-render.mjs <slug> --register --type <type>`
    (the archetype's type; it stays `directed`, with the `prototypePath` migrate reads as its source).
+   Every sibling is captured with the archetype's scope, so its `residue[]`
+   and dark `tone`s are its own: run `source-coverage.mjs` (`gates.md` § (a′))
+   per sibling — an archetype that declared nothing can still have a sibling
+   with a sidebar.
 5. `reskin-preflight.mjs` exit 0 (§ The predicate).
 6. `migrate render --all` with its default flags — archetypes at their own tier,
    same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`
@@ -194,6 +204,26 @@ node stardust/scripts/reskin/reskin-ledger.mjs record <slug> --stage migrated
 `<outputPath>` is the page's path under `stardust/migrated/` (its sidecar,
 `_meta.json` or `<name>._meta.json`, sits beside it). Keep the file to those two keys: any other
 difference on migrate's output is a finding, not a delta.
+
+## What migrate and rollout do under `flow: reskin`
+
+Shared scripts branch on `state.json.flow === 'reskin'` only; other flows
+are unchanged.
+
+- `migrate.mjs`: each rewritten `<a>`/`<area>` carries
+  `data-source-href="<absolute source URL>"`, and a JSON-LD block migrate
+  inserts carries `data-migrate-default`. `slot-coverage` matches links by
+  the first and skips the second, so a migrated page re-passes the content
+  gates its prototype passed. A section's `data-slot` names its slot.
+  Gates in `ledger.handoff.<type>.gates.<slug>` land in the first sidecar.
+- `rollout/inventory.mjs` (`--state`): a roster page joins the archetype
+  in `ledger.handoff.<type>.archetype` before `representative` or `type`.
+- Guards: `prepare-migration` and `direct` never run here (the bridge
+  writes `directed`); `canon-from-reskin.mjs` stamps `designSource: "donor"`.
+- Resume: recommend from `reskin-preflight.mjs` and the ledger — a failing
+  `archetype-gates` line → re-gate (Phase 5) and `reskin-ledger.mjs record`;
+  no eyeball → the side-by-side; ready → `$stardust migrate`, then the
+  sibling gate per migrated page (`--stage migrated`).
 
 ## Switching away
 

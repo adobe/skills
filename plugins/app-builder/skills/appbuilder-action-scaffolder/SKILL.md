@@ -4,7 +4,7 @@ description: Create, implement, deploy, and debug Adobe Runtime actions with con
 metadata:
   category: action-lifecycle
 license: Apache-2.0
-compatibility: Requires aio CLI (Adobe I/O CLI), Node.js 18+, and Python 3 for manifest validation
+compatibility: Requires aio CLI (Adobe I/O CLI), Node.js 20.17+ (required by `@adobe/aio-cli` 11), and Python 3 for manifest validation
 allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(python3:*) Read Write Edit
 ---
 # App Builder Action Scaffolder

@@ -1,0 +1,25 @@
+.tabs .tabs-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  border-block-end: 1px solid var(--light-color);
+}
+
+.tabs .tabs-tab {
+  margin: 0;
+  border: 0;
+  border-block-end: 3px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--text-color);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tabs .tabs-tab[aria-selected="true"] {
+  border-block-end-color: var(--link-color);
+}
+
+.tabs .tabs-panel {
+  padding-block: 16px;
+}

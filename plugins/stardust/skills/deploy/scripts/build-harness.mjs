@@ -60,7 +60,7 @@
  * determinism, no guaranteed 404 per load).
  */
 import {
-  existsSync, mkdirSync, readFileSync, writeFileSync,
+  readFileSync, writeFileSync, existsSync, mkdirSync,
 } from 'fs';
 import {
   dirname, isAbsolute, join, relative, sep,

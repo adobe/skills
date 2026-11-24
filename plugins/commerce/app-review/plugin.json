@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "commerce-app-review",
+  "version": "1.0.0",
+  "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
+  "author": {
+    "name": "Adobe"
+  },
+  "keywords": [
+    "commerce",
+    "app-builder",
+    "marketplace",
+    "exchange",
+    "review",
+    "app-review"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/commerce-app-review",
+          "private": false,
+          "skills": [
+            "skills/commerce-app-review"
+          ]
+        }
+      }
+    }
+  }
+}

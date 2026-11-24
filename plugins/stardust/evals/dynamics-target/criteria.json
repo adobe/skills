@@ -1,0 +1,41 @@
+{
+  "context": "dynamics Phase 3 triage on saved findings. Task and setup in task.md; each item is judged pass/fail by inspecting the workspace artifacts (stardust/dynamics/*, stardust/dynamic-features.md) and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 10,
+      "description": "The stardust `dynamics` skill was invoked for the triage (the session loaded the dynamics skill / read its SKILL.md or reference/triage.md and worked from `stardust/current/_dynamics.json`)."
+    },
+    {
+      "name": "plan_script_used",
+      "max_score": 15,
+      "description": "ARTIFACT: `stardust/dynamics/dynamic-features.generated-plan.json` exists, carries a `_provenance` object written by the script (not hand-typed) and a `rows` array with nine entries whose ids are F1, S1, F2, A1, F3, L1, M1, X1, X2; the sibling `dynamic-features.generated-plan.md` begins with the script's provenance comment (`phase=plan draft`). The session shows `dynamics-plan.mjs` being executed, not the table being written by hand."
+    },
+    {
+      "name": "target_column_present",
+      "max_score": 15,
+      "description": "ARTIFACT: the curated `stardust/dynamic-features.md` has a `## Features` table whose header row contains a `target` column (alongside class, disposition, reproducibility, status), and every row whose disposition is not `decided-out` carries one of `block`, `widget`, `runtime`, `content`, `embed` in that column (no blanks, no invented values)."
+    },
+    {
+      "name": "widget_targets",
+      "max_score": 25,
+      "description": "ARTIFACT: in the curated `stardust/dynamic-features.md` Features table ALL FOUR of these rows have target `widget`: the calculator form F1 (`form \"calc\"`), the site search S1, the form-less control group F2, and the store-locator API A1. Any of the four landing on `block`, `content`, `embed`, `runtime` or blank fails."
+    },
+    {
+      "name": "block_targets",
+      "max_score": 15,
+      "description": "ARTIFACT: in the curated Features table the authored contact form F3 (`form \"contact\" → /thanks`) and the news listing L1 both have target `block`."
+    },
+    {
+      "name": "runtime_modal",
+      "max_score": 10,
+      "description": "ARTIFACT: in the curated Features table the modal trigger row M1 has target `runtime` (page-wide modal loader), not `block` or `widget`."
+    },
+    {
+      "name": "decided_out_rule",
+      "max_score": 10,
+      "description": "ARTIFACT: decided-out is owner-stated, never assumed. (a) In the script draft `stardust/dynamics/dynamic-features.generated-plan.json` the rows X1 and X2 carry disposition `decided-out` and `target` null (no delivery form), and the draft `.md` table shows `—` in their target cell. (b) In the curated `stardust/dynamic-features.md` — a hands-off run with no recorded owner answer — neither X1 (sign-in / account links) nor X2 (session-bound shortlist) is written with disposition `decided-out`, and neither is placed in the `## Register (decided-out)` table as decided; each carries an interim disposition (e.g. `static-snapshot` with reason 'undecided — revisit at rollout', or `rebuild-native`) and its owner decision appears in `## Decision batch`. A curated row marked `decided-out` on the run's own assumption fails."
+    }
+  ]
+}

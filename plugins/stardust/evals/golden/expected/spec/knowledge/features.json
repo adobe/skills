@@ -1,0 +1,22 @@
+[
+ {
+  "id": "player",
+  "class": "V",
+  "class_name": "media",
+  "name": "Player",
+  "disposition": "embed-passthrough",
+  "reproducibility": "self",
+  "status": "pending",
+  "decisions": [
+   "Q-1"
+  ],
+  "sitewide": 0,
+  "reach": "live sitemap signal:script:*player*",
+  "reach_pages": 1,
+  "reach_templates": 1,
+  "pageviews_90d": 0,
+  "pages": [
+   1
+  ]
+ }
+]

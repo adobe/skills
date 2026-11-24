@@ -1,3 +1,12 @@
+## [1.1.2](https://github.com/adobe/skills/compare/da-auth-v1.1.1...da-auth-v1.1.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** trim da-auth under budget and correct token claims ([#715](https://github.com/adobe/skills/issues/715)) ([2b12b8f](https://github.com/adobe/skills/commit/2b12b8f6de2acd3c7cfece9cd8065b146aadeb2a))
+
+## [1.1.1](https://github.com/adobe/skills/compare/da-auth-v1.1.0...da-auth-v1.1.1) (2026-11-14)
+
 # [1.1.0](https://github.com/adobe/skills/compare/da-auth-v1.0.0...da-auth-v1.1.0) (2026-05-29)
 
 

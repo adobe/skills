@@ -8,7 +8,8 @@
 //   resolveImsAuthParams -> getAccessToken -> init -> connect -> use collection -> ALWAYS close.
 //
 // Registration requirements (in src/commerce-extensibility-1/ext.config.yaml):
-//   - include-ims-credentials: true   (REQUIRED — provides the IMS token below)
+//   - include-ims-credentials: true   (REQUIRED — injects the OAuth Server-to-Server
+//     credentials that resolveImsAuthParams reads from params)
 //   - web: "yes" for an HTTP-invokable web action; "no" for an event or webhook handler
 //   - the "App Builder Data Services" API must be added to the project in the
 //     Adobe Developer Console (every workspace that uses the database)
@@ -20,6 +21,7 @@ import {
   getImsAuthProvider,
   resolveImsAuthParams,
 } from "@adobe/aio-commerce-lib-auth";
+import { stringifyError } from "@adobe/aio-commerce-lib-core/error";
 import { buildErrorResponse, ok } from "@adobe/aio-commerce-lib-core/responses";
 import AioLogger from "@adobe/aio-lib-core-logging";
 import { init as initDb } from "@adobe/aio-lib-db";
@@ -37,8 +39,8 @@ export async function main(params: Record<string, unknown>) {
   let client: DbClient | undefined;
 
   try {
-    // 1. Resolve the AIO_COMMERCE_AUTH_IMS_* params injected because
-    //    include-ims-credentials is true, then mint a raw access token string.
+    // 1. Resolve the OAuth Server-to-Server credentials made available on params
+    //    because include-ims-credentials is true, then mint a raw access token string.
     const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
     const token = await authProvider.getAccessToken();
 
@@ -111,9 +113,9 @@ export async function main(params: Record<string, unknown>) {
       statusCode?: number;
     };
     if (dbError.name === "DbError") {
-      logger.error("Database error", dbError.message);
+      logger.error("Database error", dbError.message ?? "");
     } else {
-      logger.error("Unexpected error", error);
+      logger.error("Unexpected error", stringifyError(error));
     }
     return buildErrorResponse(dbError.statusCode ?? 500, {
       body: { message: dbError.message ?? "Unexpected error" },

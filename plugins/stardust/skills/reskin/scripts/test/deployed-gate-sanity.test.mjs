@@ -498,6 +498,8 @@ if (playwrightOk) {
     const copy = join(scratch, 'copy');
     cpSync(SCRIPTS, join(copy, 'reskin'), { recursive: true, filter: (src) => src !== join(SCRIPTS, 'test') });
     cpSync(DIFF_SCRIPTS, join(copy, 'diff'), { recursive: true, filter: (src) => src !== join(DIFF_SCRIPTS, 'test') });
+    const MASTER = join(SCRIPTS, '..', '..', 'stardust', 'scripts');
+    cpSync(MASTER, join(copy, 'stardust'), { recursive: true, filter: (src) => src !== join(MASTER, 'test') });
     symlinkSync(join(dirname(fileURLToPath(import.meta.resolve('playwright'))), '..'), join(copy, 'node_modules'));
     const gate = join(copy, 'reskin', 'deployed-gate.mjs');
     const server = await startPreviewServer({ pages: { '/ns/home': HOME } });

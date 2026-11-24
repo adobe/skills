@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-01-01T00:00:00Z
+  page:             Home
+  slug:             home
+  pagePath:         migrated/index.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/home-proposed.html
+  sourceCurrent:    stardust/current/pages/home.json
+  againstDirection: stardust/direction.md (absent)
+  designMd:         DESIGN.md (sha: 17d4361babe8)
+  designJson:       DESIGN.json (sha: 237588f19883)
+  canonShas:        header:1125b139fad3 footer:53a9e1a10d87 css:4b44d98880af
+  decisionTrace:    _meta.json
+  brokenInternalLinks: 1
+  stardustVersion:  golden
+-->
+<style>
+:root{--brand:#123456;--space:1rem}
+</style>
+<link rel="stylesheet" href="./assets/canon.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Home","description":"A developer-tools vendor home page.","url":"https://www.example.com/"}</script>
+<title>Home</title>
+<meta name="description" content="A developer-tools vendor home page.">
+<link rel="stylesheet" href="./assets/site.css">
+<style>.hero{padding:2rem}</style>
+</head>
+<body>
+<header><a href="./index.html">Example</a></header>
+<main data-template="home">
+  <section class="hero" data-module="hero" data-section="1">
+    <img src="./assets/img/hero.jpg" alt="">
+    <h1>Build faster</h1>
+    <p><a href="./docs/index.html">Read the docs</a></p>
+  </section>
+  <section class="cards" data-module="cards" data-section="2">
+    <a href="./docs/getting-started.html">Getting started</a>
+    <a href="./pricing/index.html" data-broken-link="true">Pricing</a>
+    <a href="./docs/index.html#top">Docs (absolute)</a>
+  </section>
+  <nav class="in-page-nav" data-module="nav" data-section="3"><a href="#top">Top</a></nav>
+</main>
+<footer>© Example</footer>
+</body>
+</html>

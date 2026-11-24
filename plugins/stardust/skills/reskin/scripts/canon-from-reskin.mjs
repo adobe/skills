@@ -65,6 +65,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { donorModulesEds } from './figma/eds-map.mjs';
+import { loadMeasureLive, openPlain } from './figma-gate/target.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HELP = `usage: node canon-from-reskin.mjs <archetype-slug> [--dir stardust] [--root .] [--tokens <file>]
@@ -410,11 +411,11 @@ async function main(argv) {
   // 4. pinned tokens (measured)
   const pinned = {};
   try {
-    const { chromium } = await import('playwright');
-    const browser = await chromium.launch(); const pg = await browser.newPage();
+    const [{ openPage }, { goto }] = await Promise.all([loadMeasureLive(), import('./deployed/eds.mjs').then((m) => m.loadLiveSession())]);
+    const browser = await openPlain(); const { page: pg } = await openPage(browser, { width: 1440, height: 900 });
     for (const [name, w] of [['desktop', 1440], ['tablet', 768], ['mobile', 360]]) {
       await pg.setViewportSize({ width: w, height: 900 });
-      await pg.goto(pathToFileURL(resolve(page.prototypePath)).href, { waitUntil: 'load' });
+      await goto(pg, pathToFileURL(resolve(page.prototypePath)).href, { waitUntil: 'load' });
       const r = await pg.evaluate(() => { const s = document.querySelector('main section'); const c = document.querySelector('main .container'); const cs = (e) => (e ? getComputedStyle(e) : null); return { pad: cs(s)?.paddingTop, max: cs(c)?.maxWidth }; });
       if (r.pad) pinned[`sectionPadding.${name}`] = r.pad;
       if (name === 'desktop' && r.max) pinned['layout.containerMaxWidth'] = r.max;

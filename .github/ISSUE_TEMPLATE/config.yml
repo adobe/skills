@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security issue
+    url: https://helpx.adobe.com/security/alertus.html
+    about: Please don't report vulnerabilities in public issues.
+  - name: Agent Skills specification
+    url: https://agentskills.io
+    about: Questions about the SKILL.md format itself.

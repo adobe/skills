@@ -31,10 +31,7 @@
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype recorded in reskin's handoff
  * ledger for their type (falling back to `representative` or the type slug), inheriting
- * that archetype's blocks, pushing no document. Figma-sourced rows keep their frame
- * URL as provenance and use migrate's site-path contract; their project copy needs
- * the current migrate script. An unmapped Figma sibling is refused rather than
- * emitted without its archetype's blocks. Block code ships from the archetypes;
+ * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
@@ -51,9 +48,11 @@
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname, relative, basename } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { pageWidgets, scopeOf, scopeLine } from './lib.mjs';
+import { join, dirname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+// the path rules (sidecar name, a file's key path, a roster URL's key path, the slug) are the shared library's (lib/paths.mjs),
+// each pinned by skills/stardust/scripts/test/contracts-characterize.test.mjs under this script's name
+import { pageWidgets, scopeOf, scopeLine, sidecarName as sidecarFor, treePath as deliveredPath, rosterPath as urlToDeliveredPath, pathSlug as pathToSlug } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -96,38 +95,6 @@ function walkHtml(dir, root = dir, acc = []) {
     }
   }
   return acc;
-}
-
-/** Sidecar path for a migrated HTML rel path (index.html -> _meta.json; x.html -> x._meta.json). */
-function sidecarFor(relHtml) {
-  const dir = dirname(relHtml);
-  const leaf = basename(relHtml);
-  const name = leaf === 'index.html' ? '_meta.json' : `${leaf.replace(/\.html$/, '')}._meta.json`;
-  return dir === '.' ? name : join(dir, name);
-}
-
-/** Delivered (extensionless) path on the EDS site for a migrated HTML rel path. */
-function deliveredPath(relHtml) {
-  const noExt = relHtml.replace(/\.html$/, '');
-  if (noExt === 'index') return '/';
-  if (noExt.endsWith('/index')) return `/${noExt.slice(0, -'/index'.length)}`;
-  return `/${noExt}`;
-}
-
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
-function urlToDeliveredPath(url) {
-  let p;
-  try { p = new URL(url).pathname; } catch { p = String(url); }
-  p = p.replace(/\.html$/, '');
-  if (p === '' || p === '/' || p === '/index') return '/';
-  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
-  return p.replace(/\/+$/, '') || '/';
-}
-
-/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */
-function pathToSlug(path) {
-  if (path === '/') return 'home';
-  return path.replace(/^\//, '').replace(/\/+$/, '').replace(/\//g, '-');
 }
 
 function readJSON(path, fallback = null) {
@@ -178,6 +145,7 @@ for (const relHtml of htmlFiles) {
     } else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
     } else if (prior.delivery.status === 'content-pending') {
+      // a roster sibling that now has its own migrated document is an ordinary page to push
       delivery = { ...prior.delivery, status: 'pending' };
     } else {
       delivery = prior.delivery;
@@ -206,55 +174,30 @@ for (const relHtml of htmlFiles) {
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
 // In --state mode each migrated archetype is keyed by its own fine slug (the
 // archetypes are genuinely distinct templates that share only chrome). A roster
-// page resolves to its registered reskin handoff archetype for that type; it joins
+// page (under flow: reskin, through its type's handoff archetype) joins
 // that archetype's template group as a `content-pending` sibling, inheriting blocks
 // and pushing no document of its own.
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
-  const ledgerPath = stateFile ? join(dirname(stateFile), 'reskin', 'ledger.json') : null;
-  const handoff = (ledgerPath && readJSON(ledgerPath, {}))?.handoff || {};
-  const figmaPages = (stateDoc.pages || []).filter((p) => p && p.source === 'figma');
-  for (const p of figmaPages) {
-    if (typeof p.slug !== 'string' || !p.slug.trim() || typeof p.url !== 'string' || !p.url.trim()) {
-      console.error('rollout inventory: a Figma-sourced roster row requires a slug and frame URL (or figma:redacted).');
-      process.exit(1);
-    }
-  }
-  let siteUrlOf;
-  if (figmaPages.length) {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const migrate = [
-      join(here, '..', '..', 'migrate', 'scripts', 'migrate.mjs'),
-      join(here, '..', 'migrate', 'migrate.mjs'),
-    ].find((p) => existsSync(p));
-    if (!migrate) {
-      console.error('rollout inventory: a Figma-sourced roster needs migrate.mjs; copy the migrate script into stardust/scripts/migrate/.');
-      process.exit(1);
-    }
-    ({ siteUrlOf } = await import(pathToFileURL(migrate).href));
-    if (typeof siteUrlOf !== 'function') {
-      console.error('rollout inventory: the migrate script lacks the Figma site-path contract; refresh the migrate script copy.');
-      process.exit(1);
-    }
-  }
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
-  const state = stateDoc;
+  const state = readJSON(STATE, { pages: [] });
+  const handoff = state.flow === 'reskin' ? (readJSON('stardust/reskin/ledger.json', { handoff: {} }).handoff || {}) : {};
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
-    const path = urlToDeliveredPath(sp.source === 'figma' ? siteUrlOf(sp) : sp.url);
-    if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
-    // Reskin's registered handoff archetype is authoritative; other flows can name
-    // the archetype directly in `representative` or use the type as its slug.
-    const rep = archetypeBySlug.get(handoff?.[sp.type]?.archetype)
+    const path = urlToDeliveredPath(sp.url);
+    // the roster keeps a URL's trailing slash; a migrated tree path never has one (`/a/` is `/a`).
+    // Match on the bare form only; the row keeps the roster path so publicUrl still serves `/a/`.
+    const key = path.replace(/\/+$/, '') || '/';
+    if (coveredPaths.has(key)) continue; // the archetype itself — already inventoried
+    // A roster sibling names the archetype it clones via `representative` (preferred)
+    // or its `type`; that archetype supplies the template grouping + block set.
+    // Under flow: reskin the type's handoff archetype (reskin/ledger.json) wins.
+    const rep = archetypeBySlug.get(handoff[sp.type]?.archetype)
       || archetypeBySlug.get(sp.representative)
       || archetypeBySlug.get(sp.type)
       || null;
-    if (sp.source === 'figma' && !rep) {
-      console.error(`rollout inventory: Figma page ${sp.slug || path} has no archetype mapping; register it with --type <type> or set representative before inventory.`);
-      process.exit(1);
-    }
     let slug = sp.slug && !usedSlugs.has(sp.slug) ? sp.slug : pathToSlug(path);
     while (usedSlugs.has(slug)) slug = `${slug}-x`;
     usedSlugs.add(slug);
@@ -275,7 +218,7 @@ if (STATE) {
       widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
-    coveredPaths.add(path);
+    coveredPaths.add(key);
   }
 }
 

@@ -36,17 +36,10 @@ mode to a 30-second `TimeoutError` (connection accepted, no
 content) but doesn't recover.
 
 The known-working fallback is **headed real Chrome**:
+`openBrowser({ mode: 'headed' })` from `skills/stardust/scripts/browser.mjs`.
 
-```
-chromium.launch({ headless: false, channel: 'chrome' })
-```
-
-This pops a visible browser window during the run, which is
-acceptable for a local dogfood / interactive session and
-unacceptable for an unattended pipeline. The trade-off is the
-correct one for stardust's primary use case (presales redesign
-of an existing commercial site, agent-driven from a developer's
-machine) — the alternative is silently failing on most
+It opens no window by default (`STARDUST_HEADED_WINDOW=1` opts in).
+The alternative is silently failing on most
 enterprise / large-retail / commerce origins.
 
 **Retry rule.** Two distinct reject modes must both trigger the
@@ -68,7 +61,7 @@ resolved:
    `server: cloudflare`/`akamai`, edge 403/429/503).
 
 On either: do **not** retry headless. Switch to
-`headless: false, channel: 'chrome'` immediately and record the
+`mode: 'headed'` immediately and record the
 switch in `_crawl-log.json#discovery.fetchTechnique` (with
 `#discovery.botBlock` = `fingerprint | challenge`) so re-runs start
 in headed mode without rediscovering the issue.
@@ -76,13 +69,9 @@ in headed mode without rediscovering the issue.
 **Clearing a managed challenge.** Headed real Chrome alone clears
 the *fingerprint* block, but Cloudflare's managed challenge also
 probes for automation signals — clearing it additionally needs the
-automation flags stripped: launch with
-`args: ['--disable-blink-features=AutomationControlled']` +
-`ignoreDefaultArgs: ['--enable-automation']`, and spoof
-`navigator.webdriver → undefined` via `context.addInitScript` on
+automation flags stripped and `navigator.webdriver` hidden on
 **every** context (the challenge re-fires per context — no
-cross-context cookie sharing — so a worker that skipped the spoof
-is re-challenged even after the probe cleared it). The
+cross-context cookie sharing); `mode: 'headed'` does both. The
 non-interactive challenge serves the interstitial, runs its JS,
 sets a clearance cookie, then the page becomes reachable: wait
 ~4s and `reload()` to pick up the cookie before validating the

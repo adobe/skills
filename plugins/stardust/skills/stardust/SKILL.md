@@ -2,7 +2,9 @@
 name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  version: "1.6.1"
 ---
 
 # stardust
@@ -60,11 +62,13 @@ sub-commands that delegate the actual design work to **impeccable**.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
    to `stardust/status.jsonl` at each phase start/end, per
    `reference/run-status.md` — written with `skills/stardust/scripts/ledger.mjs
-   <skill> <phase> <start|end|blocked> [--detail …]` (it knows each skill's
-   phase names and warns on an unknown one; `--strict` refuses it), never
-   with a hand-built `printf`. Page status moves with
+   <skill> <phase> <start|end|blocked> [--detail …]` (`--strict` refuses
+   unknown phases), never with hand-built `printf`. Page status moves with
    `skills/stardust/scripts/state.mjs advance <slug…> --to <status>`; a
-   resuming agent orients with `ledger.mjs tail` and `state.mjs summary`.
+   resuming agent reads `ledger.mjs tail` and `state.mjs summary`.
+   For progress, recommend `node stardust/scripts/stardust/ledger.mjs
+   tail [-n 10]` or `last [<skill>]`; **ledger has no `summary` command**.
+   Report recorded status, not process liveness.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
    In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed
@@ -73,6 +77,20 @@ sub-commands that delegate the actual design work to **impeccable**.
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
    § Versioning.
+7. **Copy this skill's whole `scripts/` dir to `stardust/scripts/stardust/`**
+   before any other skill's script runs. Its `browser.mjs` is the one entry to
+   the browser for every script. A script you write opens every page this way
+   (#159): `newLiveContext` and `gotoLive`, never `chromium.launch()` or
+   `page.goto`:
+
+   ```js
+   import { pathToFileURL } from 'node:url';
+   const { openBrowser, newLiveContext, gotoLive } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);
+   const browser = await openBrowser({ mode: 'chrome' });
+   const context = await newLiveContext(browser, { viewport: { width: 1440, height: 900 }, stateUrl: url });
+   const page = await context.newPage();
+   await gotoLive(page, url); // paced on a live site. A bot wall throws.
+   ```
 
 ## Routing
 
@@ -158,7 +176,7 @@ selects the flow; the downstream chain is shared.
   replaces `prototype --prep`. **Never run `prepare-migration` before or
   after `replica`**; there is no separate prep step in this flow.
 - **New design from a donor, same content:** `reskin` — content is
-  byte-gated, design comes from another live site, local prototypes or a Figma file.
+  byte-gated, design comes from another live site or local prototypes.
 - **Both migration flows carry the dynamic surface by default.** The
   pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, with
   `migrate` as the safety net) runs the stardust `dynamics` skill Phases 1–3 so
@@ -189,16 +207,11 @@ Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The
 sub-skills enforce it: `migrate`, `deploy`, `rollout` and a
 migration-intent `extract` refuse to start a migration on a project with
-`state.json` and no `flow`; `prepare-migration` and `direct` refuse under
-`flow: replica` or `flow: reskin`, `replica` under `flow: redesign` or
-`flow: reskin`, and `reskin` under any other flow. Switching is
+`state.json` and no `flow`; `prepare-migration` refuses under
+`flow: replica` and `replica` under `flow: redesign`. Switching is
 explicit — `$stardust replica --switch-flow` / `$stardust
-prepare-migration --switch-flow` / `$stardust reskin --switch-flow` — and
-marks the old flow's prototyped or migrated pages (and a reskin's
-registered `approved` archetypes) stale (§ Per-page state). A donor phrase
-— "use this design / Figma file / site for my content", "same content, new
-design from X" — routes to `reskin`, never to `direct`; under reskin the
-migrate/rollout predicate is `reskin/scripts/reskin-preflight.mjs` exit 0.
+prepare-migration --switch-flow` — and marks the old flow's prototyped or
+migrated pages stale (§ Per-page state).
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
 plan and its phase gates, the canon, module catalogs, template plans of
@@ -235,7 +248,6 @@ auto-resolves:
 | `direct` clarifying questions | derive the answers from the captured evidence (`stardust/current/`), and state each as a **named assumption** in `direction.md` |
 | `prototype` brief-confirmation waits | skip; proceed on the authored brief |
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
-| `reskin` archetype approval (Phase 6) | granted only after every Phase 5 gate is PASS or a recorded residual is `accepted`, and the eyeball is recorded (`reskin-ledger.mjs`); recorded as `approvedBy: "hands-off"` with `state.json` `handsOff: true` — preflight refuses any other agent approval |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
 | `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |
@@ -247,7 +259,9 @@ otherwise):
   single direction and record the rationale in `direction.md`.
 - **Volume caps as reasoned proposals, said out loud.** Default **100
   pages overall, 20 per template**; "all pages" (or `--all-pages`) in
-  the invocation lifts them. Roster priority: (1) every page linked from
+  the invocation lifts them; a user-named N replaces both and orders
+  link-first (`../extract/reference/ia-extraction.md` § Priority for the
+  cap). Otherwise roster priority: (1) every page linked from
   the header and footer, (2) section landing/overview pages, (3) a
   representative spread of detail pages across all templates. The setup
   status line names the roster against the site (`roster 94 of 2,532
@@ -386,11 +400,10 @@ script copies, drafts — go under `stardust/.work/<skill>/`; the root
 bug in that skill.
 
 **Versioning.** Everything under `stardust/` is committed except what
-`reference/stardust.gitignore` lists: screenshots, four heavy folders
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
-`.work/`, run residue, session state. Per-directory table and what a clone
-without `current/assets/` can and cannot do: `reference/artifact-map.md`
-§ Versioning.
+`reference/stardust.gitignore` lists: screenshots, gate images, two heavy
+folders (`migrated/assets/`, `rollout/qa/`), `.work/`, run residue, session
+state. Per-directory table and what a clone can and cannot do:
+`reference/artifact-map.md` § Versioning.
 
 ## Provenance
 
@@ -446,7 +459,8 @@ test suites verify code correctness; only browser rendering verifies
 For HTML the user will see (prototypes, migrated pages, the brand-review
 HTML):
 
-1. Render in Playwright (file:// for static, or local dev server).
+1. Render in Playwright (file:// for static, or local dev server), through
+   `browser.mjs` (§ Setup, step 7).
 2. Capture at three viewports — desktop **1440×900**, tablet **768×1024**,
    mobile **390×844**:
    - Full-page screenshot.

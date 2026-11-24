@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
 import { scopeSelector, selectorFor } from './checks.mjs';
 import { stampsOf } from './stamp.mjs';
-import { loadChromium, loadMeasureLive } from './target.mjs';
+import { loadMeasureLive, openPlain } from './target.mjs';
 
 const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft: 3 };
 const fmt = (n) => Number(n.toFixed(2));
@@ -127,8 +127,8 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
   const widths = [...new Set(planned.filter((p) => !p.error).map((p) => p.entry.width))];
   const measured = new Map();
   if (widths.length) {
-    const [chromium, { openBrowser, measureInPage }] = await Promise.all([loadChromium(), loadMeasureLive()]);
-    const browser = await openBrowser(chromium, { tier: 'plain' });
+    const { measureInPage } = await loadMeasureLive();
+    const browser = await openPlain();
     try {
       for (const width of widths) {
         const at = planned.filter((p) => !p.error && p.entry.width === width);

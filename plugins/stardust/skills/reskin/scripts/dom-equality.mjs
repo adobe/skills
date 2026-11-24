@@ -36,7 +36,7 @@
  *     the rendered region lies outside the source's, or when the source
  *     anchors the image off-centre and the render crops it elsewhere. Each
  *     failure names the object-position that fixes it.
- *   - Live navigation via the shared diff live-session module (F-G/F-R1):
+ *   - Live navigation via the shared browser.mjs module (F-G/F-R1):
  *     real-Chrome UA + the standard request headers (UA alone still 403s on
  *     Akamai), domcontentloaded on live targets, webdriver spoof, challenge
  *     detection. This gate RE-CRAWLS the live source at gate time — a bot
@@ -141,8 +141,8 @@ if (Object.hasOwn(args, 'eds-timeout') && !/^[1-9]\d*$/.test(args['eds-timeout']
 }
 
 // Siblings are imported here, after the --help guard: --help answers from a directory holding only this script.
-// live-session.mjs lives in the diff skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
-// the documented project copy stardust/scripts/reskin ↔ stardust/scripts/diff).
+// browser.mjs lives in the master skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
+// the documented project copy stardust/scripts/reskin ↔ stardust/scripts/stardust).
 let eds; let live; let normalizeLib;
 try {
   eds = await import('./deployed/eds.mjs');
@@ -151,18 +151,15 @@ try {
 } catch (e) {
   if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
   console.error(`[dom-equality] ${e.message.split('\n')[0]}`);
-  console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
+  console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the master skill\'s scripts into the project (SKILL.md § Setup).');
   process.exit(2);
 }
 const { edsSettle, isEdsHost } = eds;
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
+const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = live;
 const { loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES, IMG_CROP, compareCrops, compareRegions } = normalizeLib;
 
-let chromium;
-try { ({ chromium } = await import('playwright')); } catch {
-  console.error('[dom-equality] playwright not importable from this script\'s directory.');
-  console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run in stardust/ (its own package root, not the project): npm i -D playwright pixelmatch pngjs  (reskin SKILL.md § Setup step 2)');
+try { await loadPlaywright(); } catch (e) {
+  console.error(`[dom-equality] ${e.message}`);
   process.exit(2);
 }
 
@@ -184,13 +181,14 @@ if (args.deltas) {
 }
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
-const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+const browser = await openBrowser({ mode: args.headed ? 'headed' : 'plain' });
 
 async function capture(url, scopeList, normalize, rendered = false) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
   // local/file targets, mandatory on live ones (F-G/F-R1).
   const ctx = await newLiveContext(browser, {
     ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+    stateUrl: url,
   });
   const page = await ctx.newPage();
   let navErr = null;
@@ -209,7 +207,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
     }
   } else {
     // local/file target (rendered page, saved source snapshot) — legacy path.
-    navErr = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+    navErr = await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
   }
   if (rendered && waitEds) {
     const { stalled } = await edsSettle(page, { timeoutMs: edsTimeoutMs });

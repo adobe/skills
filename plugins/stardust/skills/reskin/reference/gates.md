@@ -12,30 +12,49 @@ content is worthless), then design adoption, then sanity, then (d),
 then (e) once the page is deployed. One fix iteration per gate family
 (§ below); (e) has its own budget (`deployed-leg.md` § The fix budget).
 
+## Install
+
+SKILL.md Setup step 2. `node --version` must be 22 or later. Probe from `stardust/` (`mkdir -p stardust` first):
+
+```bash
+node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"
+```
+
+The copies live under `stardust/scripts/` and ESM resolves upward from there, so the probe sees both
+`stardust/node_modules` and the project's. On failure install into `stardust/`, its own package root:
+
+```bash
+cd stardust && { [ -f package.json ] || echo '{"private":true}' > package.json; } && npm i -D playwright pixelmatch pngjs
+```
+
+and add `stardust/node_modules/` to `.gitignore`. An install at the project root can rewrite `package-lock.json` and
+prune the project's own dev tooling (on the EDS boilerplate it dropped `@babel/core` and broke eslint); a `--no-save`
+install is pruned by a later real `npm i`. If `git diff --stat package-lock.json` is not empty after an install,
+`git checkout package.json package-lock.json` and install into `stardust/`.
+
 ## Project copies
 
 SKILL.md Setup step 3. ESM resolves `import('playwright')` from the *script's* directory and the plugin tree ships no
-`node_modules`: run byte-identical copies under `stardust/scripts/`, with `../diff/`, `../replica/` and `../deploy/`
+`node_modules`: run byte-identical copies under `stardust/scripts/`, with `../stardust/`, `../diff/`, `../replica/` and `../deploy/`
 siblings of `../reskin/`.
 
 - `skills/reskin/scripts/` → `reskin/`, recursively except `test/` (`deployed/`, `figma/`, `figma-gate/` and `render/`
   travel with it).
-- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp`, `stream-render --register` and the
-  canon bridge write through it).
-- `skills/diff/scripts/` → `diff/`, all of it.
+- `skills/stardust/scripts/` → `stardust/` (`browser.mjs`, `live-session.mjs`; `figma-donor.mjs stamp`,
+  `stream-render --register` and the canon bridge write through `state.mjs`).
+- `skills/diff/scripts/` → `diff/`, all of it (`figma-gate` and `deployed-gate` measure through `measure-live.mjs`).
 - `skills/replica/scripts/` → `replica/`: `pixel-compare.mjs`, `run-capped.mjs`, `run-bg.mjs`, `stitch-shot.mjs`,
   `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;
-  `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
+  `stitch-shot`, `chrome-parity` and `cap-probe` need `stardust/browser.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
   `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
 - `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
   mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
   (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
 
-Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
+Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `stardust/browser.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
-`stitch-shot --hide` also needs the current `diff/live-session.mjs`: it checks the unhidden page for late denial
-content before capturing, and refuses an older copy rather than hiding a denial page.
+`stitch-shot --hide` checks the unhidden page for late denial content before capturing.
 
 ## (a) Content gate
 
@@ -172,8 +191,8 @@ snapshot.
 
 **The gate re-crawls the LIVE source at gate time — so its live
 navigation is hardened exactly like the capture's**, via the shared
-`live-session.mjs` (real-Chrome UA + the standard request headers —
-the UA alone still 403s on Akamai-class bot managers —
+`live-session.mjs` (real Chrome's own identity + the standard request headers —
+a bare context still 403s on Akamai-class bot managers —
 `domcontentloaded` on live targets, challenge detection). This is the
 byte gate's own correctness: a gate that silently measured a
 challenge interstitial or a degraded UA-served document as the
@@ -181,8 +200,6 @@ source would pass/fail the render against the wrong reference. A bot
 challenge exits **3** (distinct from 1=FAIL, 2=setup), never
 measured; a non-challenge HTTP ≥ 400 exits 2. Escalate bot-managed
 sites with `--headed`; pin geo-redirecting sources with `--locale`.
-The reskin scripts resolve `live-session.mjs` from the diff scripts
-copied alongside (`stardust/scripts/diff/`, SKILL.md § Setup).
 Local/file targets keep the legacy `networkidle` path — file-path
 sources and rendered pages behave as before.
 
@@ -404,8 +421,19 @@ responsive chrome, not content or tokens.
 
 `figma-gate.mjs` checks the rendered page against the capture
 `figma-donor.mjs` made, offline. Flags, the checks file schema, exit
-codes (0 / 1 / 2 / 3 / 124) and outputs: `figma-gate.mjs --help`; the
-run command is SKILL.md Phase 5 (d).
+codes (0 / 1 / 2 / 3 / 124) and outputs: `figma-gate.mjs --help`.
+Run it under `run-bg` and read it with `wait`, repeating while it exits
+75 (no step blocks past ~110 s):
+
+```bash
+node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
+  --dir stardust/.work/reskin/bg -- \
+  node stardust/scripts/reskin/figma-gate.mjs all --page <slug> \
+  --url stardust/reskin/pages/<slug>.html
+node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
+```
+
+B4, the divergence register (`.work/reskin/gates/<slug>/figma/register.md`), is informational.
 
 **The checks file.** `stardust/reskin/figma-checks/<slug>.json` is the
 agent's reading of the frames, taken from `figma-gate.mjs boxes
@@ -503,9 +531,21 @@ raises the share; `summary.json` and the fragment record it.
 
 `deployed-gate.mjs` holds the page `deploy` made to the local reskin
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
-Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
-lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
+Recipe, delta file, ledger, fix budget: `deployed-leg.md`; flags,
+evidence, exit codes: `deployed-gate.mjs --help`. Command lines:
+
+```bash
+node stardust/scripts/reskin/deployed-gate.mjs preview --page <slug> \
+  --org <o> --repo <r> --branch <b> --path /<ns>/<slug> --namespace <ns>   # or --sandbox
+node stardust/scripts/reskin/deployed-gate.mjs content --page <slug>   # no delta file yet: it measures
+# author stardust/reskin/deltas/<slug>.json, then the whole leg:
+node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
+  --dir stardust/.work/reskin/bg -- \
+  node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
+node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
+```
+
+`all` writes `summary.json`; copy its `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
 settle the EDS decoration (`body.appear`, every section and block `loaded`,
 within 20 s) and name a stall; in `all` a stall is that step's FAIL and the
 run goes on. `parity`'s captures wait a fixed 3 s instead, and `inherited`
@@ -614,7 +654,26 @@ budget would push independent cheap fixes into residuals.
 
 ### Residual logging
 
-`stardust/reskin/ledger.json`, per page:
+The ledger is written by script, never by hand:
+
+```bash
+node stardust/scripts/reskin/reskin-ledger.mjs record <slug> [--stage migrated]
+node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked
+node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
+```
+
+`record` reads the gate reports (`reports/<slug>-{content-gate,slot-coverage,donor-probe}.md` or
+`gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`, and (a′)'s
+`reports/<slug>-source-coverage.json`, required), runs the prototype's
+mobile-adapt audit (static rules + `mobile-nav-audit.mjs`), reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json`
+into `gates.figma` and (e)'s `…/deployed/summary.json` into `gates.deployed`, and sets the page `gated` or `failing`.
+A Figma donor with no figma fragment records `figma.*` NOT-RUN. A Figma residual's `--gate` is its class
+(`figma.geometry`, …). On an approved page `record` fills `handoff.<type>` (the archetype, its prototype sha and the
+tier record), which `reskin-preflight` and `migrate` read (`handoff.md`). Re-run `record` after the approval and after
+every fix; it keeps the `gates.step10` receipts `step10` wrote.
+
+The resulting `stardust/reskin/ledger.json`, per page:
 
 ```json
 {

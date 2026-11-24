@@ -21,6 +21,12 @@
 /plugins/aem/edge-delivery-services/                   @shsteimer
 /plugins/aem/edge-delivery-services-content-ops/       @trieloff
 
+# AEM Forms on Edge Delivery Services (Form block)
+/plugins/aem/forms/edge-delivery-services/             @ravise5
+
+# AEM EDS Personalization
+/plugins/aem/edge-delivery-services-personalization/   @srshrm
+
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
 
@@ -51,10 +57,16 @@
 # Web (browser automation and page analysis)
 /plugins/web                                           @catalan-adobe
 
+# Semrush (third-party competitive SEO data via MCP)
+/plugins/semrush                                       @trieloff
+
 # Commerce (promoted from adobe/aio-commerce-sdk)
 /plugins/commerce/app-management/                      @adobe/commerce-decepticons
 /plugins/commerce/app-migration/                       @adobe/commerce-decepticons
 /plugins/commerce/app-review/                          @adobe/commerce-decepticons @adobe/commerce-mercury
+
+# Adobe for Developers Plugin
+/plugins/adobe-for-developers/                       @shikhartanwar @anujsachdeva10 @vinayshetty20
 
 # Adobe Workfront (Planning solution architecture, Fusion optimizer)
 /plugins/workfront                                     @ashot3232

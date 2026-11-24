@@ -152,8 +152,7 @@ Recipe notes:
 
 `scripts/figma-donor.mjs` reads a Figma file headlessly over the REST
 API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
-(a personal access token with `file_content:read`), from the
-environment only. Recipe:
+(a personal access token), from the environment only. Recipe:
 
 1. `$stardust extract <content-url> --all` — the whole content site,
    uncapped, as for the other donors (it creates `state.json`). A
@@ -340,7 +339,8 @@ Rules:
   block's name). A Figma donor applies it mechanically
   (`scripts/figma/eds-map.mjs`, whose header lists the spellings it
   maps: Q&A → `accordion`, Button → default content, Input / Dropdown /
-  Toggle → field rows of `form`, no EDS match keeps the donor name); a
+  Toggle → `form`, whose cell links a JSON sheet with one row per field
+  and holds no fields inline, no EDS match keeps the donor name); a
   module's `eds` in `curation-rules.json` overrides. Other modules
   sharing an EDS block are its variants, never a second block.
 - **Disposition — the whole vocabulary is handed to deploy**: every
@@ -351,7 +351,7 @@ Rules:
   colon (required for every blockless kind). Blocks are derived from
   the EDS block; a Figma donor names a blockless kind in `eds.as`
   (`eds.name` for a section-style's Style value) and the reason in
-  `edsWhy`. Deploy Step 2c builds every row;
+  `edsWhy`. Deploy builds every row (`vocabulary.md`);
   `scripts/vocabulary-check.mjs` checks the project against it. A table
   without the column is read from its EDS block column.
 

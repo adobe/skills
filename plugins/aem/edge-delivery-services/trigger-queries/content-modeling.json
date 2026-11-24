@@ -1,0 +1,144 @@
+{
+  "name": "content-modeling trigger queries",
+  "description": "Should trigger when the author-facing structure of a block (table layout, what authors type) must be designed or reviewed; near misses are code, import, tests, UE models and finding existing blocks.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
+    "remote": "https://github.com/adobe/aem-boilerplate.git"
+  },
+  "queries": [
+    {
+      "id": "y-testimonial-model",
+      "query": "Marketing wants a testimonial block: quote, person's name and role, headshot, and several of them side by side. Before any code, decide what the authors will type in their documents and give me the table layout.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "y-featured-flag",
+      "query": "In the cards block, product wants some cards marked \"featured\" so they render bigger. How should authors mark a card as featured? Just the authoring side for now, I'll do the CSS.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "y-review-model",
+      "query": "A dev proposed this model for our new pricing block. Review it from an author's point of view:\n\n| pricing |\n| tier | Pro |\n| price | 29 |\n| period | month |\n| feature1 | 10 users |\n| feature2 | priority support |\n| cta-text | Start trial |\n| cta-link | /signup |",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "y-tabs-cards",
+      "query": "We want a tabs component where each tab holds a grid of cards. How should authors build this in Word or Google Docs so it stays easy for them?",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "y-contact-form",
+      "query": "The site needs a contact form with name, email and message, plus a newsletter signup form on the footer. What do authors put in the document to get these forms?",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "y-text-block",
+      "query": "Design handed over an intro section: a small label, an H2, two paragraphs and a centered button. A colleague wants a `text-intro` block for it so styling is consistent. Is that the right call, and what should authors do?",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "y-wide-table",
+      "query": "Our `stats` block has authors fill in a table with 7 columns (icon, number, unit, label, caption, link, style) per row and they keep getting it wrong. Redesign the structure so it's easy for authors.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "y-comparison-data",
+      "query": "We need a feature comparison for 8 features across 5 plans, mostly ticks and short values, shown on the pricing page. How do authors provide that data and what block structure do we use?",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "y-reading-list-vague",
+      "query": "Add a block for our team's recommended reading list: book cover, title, author, one-line reason and a link to buy. I haven't thought about how authors will enter it.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "y-ue-new-block",
+      "query": "We're adding a `promo-banner` block (image, headline, short text, one button) and our authors work in Universal Editor. Design the block so it's easy for them to use, then build it.",
+      "should_trigger": true,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "n-css-bug",
+      "query": "The cards block looks broken on tablet: the third card wraps under the first two and the images stretch. Fix the CSS.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-decorate-given",
+      "query": "The model is decided: each row of the `quote` block has two cells, an image in the first and a blockquote plus attribution in the second. Write quote.js and quote.css for it.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-import",
+      "query": "Take https://www.example-bakery.com/about and bring that page into our EDS project as authored content, reusing our existing blocks.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-find-block",
+      "query": "Is there an accordion block in Adobe's Block Collection I can start from? Show me where it lives and how it's used.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-ue-model",
+      "query": "Add the cards block to our Universal Editor setup: I need the component definition, a model with image and text fields, and the filters.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-code-review",
+      "query": "Please review PR #214 on our EDS repo. Someone added a tabs block; check the JS and CSS for bugs and accessibility problems.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "train"
+    },
+    {
+      "id": "n-aem-up",
+      "query": "`aem up` dies immediately with EADDRINUSE and I don't know what is on the port. How do I fix it?",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "n-tests",
+      "query": "Write Playwright tests for the hero block that check the heading and the CTA link render and that the image has an alt attribute.",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "test"
+    },
+    {
+      "id": "n-perf",
+      "query": "Lighthouse says our LCP is 4s on mobile, mostly because the hero image loads late. What should I change in the project's scripts and the hero block?",
+      "should_trigger": false,
+      "skill": "content-modeling",
+      "split": "test"
+    }
+  ]
+}

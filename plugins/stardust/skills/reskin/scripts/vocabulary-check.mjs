@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/reskin/scripts/vocabulary-check.mjs — the full donor vocabulary is built (deploy Step 2c).
+// skills/reskin/scripts/vocabulary-check.mjs — the full donor vocabulary is built (reference/vocabulary.md).
 // Reads reskin/donor-modules.md (every included module, used by a page or not) and the EDS project, and
 // checks each module's disposition: a block or variant exists in blocks/, a variant is handled by its block
 // code and listed in metadata.json `variants`, a section-style is styled, and each module's library sample

@@ -290,6 +290,14 @@ test('orphan WARN: a stray </div> after the metadata section is reported; harnes
   assert.match(mainOf(r.doc), /<div><p>x<\/p><\/div>/);
 });
 
+test('a missing output directory is created, nested levels included', () => {
+  const dir = project();
+  writeFileSync(join(dir, 'page.html'), page('  <div><h1>Hi</h1></div>'));
+  const r = run(['page.html', 'new/deep/h.html', '--root', dir], dir);
+  assert.equal(r.code, 0, r.err);
+  assert.match(readFileSync(join(dir, 'new', 'deep', 'h.html'), 'utf8'), /<h1>Hi<\/h1>/);
+});
+
 test('--help / -h: exit 0, prints the usage header (flags, folds, Writes:), writes nothing in an empty cwd', () => {
   const empty = mkdtempSync(join(BASE, 'empty-'));
   for (const flag of ['--help', '-h']) {
@@ -317,18 +325,6 @@ test('idempotent: rebuilding from its own output leaves the document unchanged (
   assert.match(again.out, /^0 section-metadata block\(s\) folded$/m);
   assert.match(again.out, /^0 image URL\(s\) remapped to captured files$/m);
   assert.equal(readFileSync(join(dir, 'out', 'h2.html'), 'utf8'), first.doc);
-});
-
-test('the output directory is created when missing (deploy SKILL\'s stardust/.work/harness/ path in a fresh project)', () => {
-  const dir = mkdtempSync(join(BASE, 'fresh-'));
-  writeFileSync(join(dir, 'page.html'), PAGE);
-  const r = run(['page.html', 'stardust/.work/harness/page.html', '--root', dir], dir);
-  assert.equal(r.code, 0, r.err);
-  assert.match(r.out, /^harness written: stardust\/\.work\/harness\/page\.html \(\d+ bytes\)$/m);
-  assert.match(readFileSync(join(dir, 'stardust', '.work', 'harness', 'page.html'), 'utf8'), /<main>[\s\S]*<\/main>/);
-  const bad = run(['missing.html', 'stardust/.work/other/page.html', '--root', dir], dir);
-  assert.notEqual(bad.code, 0);
-  assert.equal(existsSync(join(dir, 'stardust', '.work', 'other')), false);
 });
 
 test('usage: missing positional or dangling flag → exit 1 with the usage line, nothing written', () => {

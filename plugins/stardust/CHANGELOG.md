@@ -1,404 +1,605 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
+## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
+# [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the replica gates hold autoplay timers by default ([#785](https://github.com/adobe/skills/issues/785)) ([9fa3322](https://github.com/adobe/skills/commit/9fa332238e7849efbe3f0cb2e5f05cce8e5e2799))
+
+# [0.45.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.2...plugin/stardust/v0.45.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+## [0.44.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.1...plugin/stardust/v0.44.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** header parity pairs a link by address when one side has no text, and the explorer ignores and records what changes on its own ([#767](https://github.com/adobe/skills/issues/767)) ([1ceb7b9](https://github.com/adobe/skills/commit/1ceb7b9cfbd1392d050230b94a5eee3498d3d416))
+
+## [0.44.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.0...plugin/stardust/v0.44.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
+# [0.44.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.4...plugin/stardust/v0.44.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
+## [0.43.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.3...plugin/stardust/v0.43.4) (2026-11-21)
+
+## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
+## [0.43.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.1...plugin/stardust/v0.43.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
+## [0.43.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.0...plugin/stardust/v0.43.1) (2026-11-20)
+
+# [0.43.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.2...plugin/stardust/v0.43.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
+## [0.42.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.1...plugin/stardust/v0.42.2) (2026-11-20)
+
+## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** qa-gate units by order, build-harness creates out dir, rollout inventory and widget fixes ([#744](https://github.com/adobe/skills/issues/744)) ([e3752d1](https://github.com/adobe/skills/commit/e3752d1ca6a900ed15d41fe34ec92d8065aa90a8)), closes [#464](https://github.com/adobe/skills/issues/464) [#531](https://github.com/adobe/skills/issues/531) [#464](https://github.com/adobe/skills/issues/464)
+
+# [0.42.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.41.0...plugin/stardust/v0.42.0) (2026-11-19)
+
+
+### Features
+
+* **stardust:** replica measures the source before authoring and checks header and footer by landmark ([#701](https://github.com/adobe/skills/issues/701)) ([0df3597](https://github.com/adobe/skills/commit/0df3597c097a425a8192249fc239c9369f3e48f8))
+
+# [0.41.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.40.0...plugin/stardust/v0.41.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate compares against a frozen reference and counts after aligning ([#700](https://github.com/adobe/skills/issues/700)) ([a8f69e3](https://github.com/adobe/skills/commit/a8f69e3086a20b949f7c8352d3bd6bd7505c4968))
+
+# [0.40.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.4...plugin/stardust/v0.40.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate measures the page, width and stage it was asked for, and stops at three rounds ([#699](https://github.com/adobe/skills/issues/699)) ([84eb7c1](https://github.com/adobe/skills/commit/84eb7c1d1e1f791853ac1ec93ef2fc9664c08abc))
+
+## [0.39.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.3...plugin/stardust/v0.39.4) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stardust:** a gate override waives only the criteria it names, and the unit cache knows its width ([#704](https://github.com/adobe/skills/issues/704)) ([aac23ef](https://github.com/adobe/skills/commit/aac23ef68e050294d8fa035c7b3c4a444af2cb19))
+
+## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** ledger.mjs names the readers for a guessed verb such as summary ([#681](https://github.com/adobe/skills/issues/681)) ([facbc0b](https://github.com/adobe/skills/commit/facbc0b30c63229a252e9d7878896ccec7b647b8))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
+## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint fails a missing --dirs file and negated desktop-first queries ([#677](https://github.com/adobe/skills/issues/677)) ([8dda267](https://github.com/adobe/skills/commit/8dda26746899a082dad4cfa3acf1736335064a8c))
+
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.40.0 — Figma-only content and fidelity
+## 0.39.1
 
-The following sections consolidate M4's development history. Version numbers
-in those notes identify development snapshots, not separate releases.
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
 
-- **Figma-only rollout paths.** Inventory and migration summary now use the
-  same site-path rule as migration, keeping design-frame URLs as provenance.
-  A Figma roster requires the current migrate script in the project copy.
-- **Capped rollout scope stays accurate.** Roster URLs with trailing slashes
-  match their migrated archetypes rather than counting them twice, so a subset
-  is not mistaken for the whole discovered site.
-- **Archetypes-only rollout honors reskin handoff.** Roster types resolve to
-  their registered archetype, and a sibling advances from `content-pending` to
-  `pending` when its migrated HTML appears.
+## 0.39.0 — delivered CSS is mobile-first (#162)
 
-### Fidelity fixes on the development renderer
+The EDS code-review checklist flags any `max-width` query: base styles are the mobile layout, wider layouts
+sit in `(width >= …)` queries. Deploy lifted prototype CSS as written, and the prototype nav pattern, the
+deploy `--nav-height` example and the migrate / publish-sample audits all asked for `max-width` rules, so
+delivered sites failed that review. Replica already required mobile-first output (`preserve-direction.md`);
+nothing enforced it.
 
-### The target keeps the source's structure
+- **`replica/scripts/breakpoint-lint.mjs`:** a direction check that runs with or without a target — any
+  `@media` / `@custom-media` / `@import` upper bound (`max-width`, `width <`/`<=`, the top of a range) fails
+  with the mobile-first rewrite point (`max-width: 599px` → `(width >= 600px)`). `media="…"` attributes and
+  JS thresholds are not direction-checked. No target set no longer skips the run.
+- Rule home: deploy Step 3 (`#162`) — convert desktop-first prototype CSS while lifting it; deploy wires
+  `lint:breakpoints` into `npm run lint` on every project (replica C0 already did with a target). Pointers:
+  deploy Lint bullet and checklist row; the `--nav-height` example (on the boilerplate's 600/900 steps) and
+  the `#109` note are now mobile-first.
+- Prototype: the Mobile-adapt audit refuses a desktop-first query (`audit/responsive: desktop-first-query`)
+  instead of requiring a `max-width` rule ≤ 640px; the stock hamburger pattern and its fixture are
+  mobile-first (`@media (width >= 641px)` restores the inline nav; same switch as before). Migrate and
+  publish-sample point at the audit instead of restating it.
+- Folded: the `#113` un-float trap (a mobile query un-floating columns does not occur in mobile-first CSS).
+- Tests: `breakpoint-lint.test.mjs` (direction on CSS only, rewrite point, no-target runs, prototype
+  `<style>` vs `<source media>`). Nav fixture checked with `mobile-nav-audit.mjs` (clean at 360px) and at
+  641 / 1280px (inline nav, no burger).
 
-A 52-page migration's design fidelity (stardust target against the delivered EDS page) sat at 66 % while a run whose
-agent hand-wrote renderers reached 81 %. The EDS blocks were right; the targets were not, and the cause was one
-pattern: the capture recorded each run's kind but not the structure around it, so the generic renderer flattened it —
-tables became a column of paragraphs, accordions rendered open with their icon-font word ("keyboard_arrow_down")
-printed, skip links showed in the header, and a 768 px figure inside a `<p>` shrank to a 24 px icon. Measured on the
-benchmark's 7 pages × 2 viewports: 66.3 % → 76.1 % (1440: 82.4 %, 390: 69.8 %), dom-equality still PASS.
+- **`deploy`, `prototype` and `migrate` `SKILL.md` are outlines now.** This change touches the three files, and
+  each was over the repository's limits for a `SKILL.md` (500 lines, about 5,000 tokens; `deploy` had 1,189
+  lines and 203 KB). Every section keeps its heading there, so `§` pointers from other files still resolve,
+  and names the file under `reference/` that holds its text, moved as it was: 16 files for `deploy`
+  (`step-1-audit.md` … `step-10-reconcile.md`, `encode-contract.md`, `anti-patterns.md`, `checklist.md`, …),
+  7 for `prototype`, 4 for `migrate`. No rule changed. A rule cited as `#N` is found by searching
+  `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
+  `deploy/reference/step-3-foundation.md`.
 
-- **capture-content: structure in the stream.** `table` nodes with rows and cells; disclosure `toggle` / `panels` /
-  `toggleOpen` (rest state read before the ledger runs); `glyph` for icon-font ligatures; `srOnly` for visually hidden
-  text and links; `rw` (rendered width) on images. content-model § Structure the stream keeps.
-- **stream-render: renders it.** Tables (donor light-band rules and header cells); disclosures at the source's rest
-  state, closed as `hidden="until-found"`, with a small toggle script; CSS glyphs with the word kept for the byte gate;
-  `.sr-only`; full-width figures and `.inline-media` for content-sized images; header glyph actions as icon buttons;
-  header nav links no longer repeat their image (the logo) inline.
-- **Cards.** A card that opens with an image shows it full-bleed at 16:9; mapping slot option `cardTone`
-  (`dark | light | accent`), opt-in from the frame (mapping-brief § Frame fit).
-- **Tests.** capture-content: tables, rest state through an expanding ledger, glyph, sr-only, `rw`. stream-render:
-  tables, open and closed disclosures, panel-less toggles, figures, pre-0.41 models without `rw`, `cardTone`, header
-  icon buttons and nav links.
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
 
-### Source coverage: what the content reference did not take in
+Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
+widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of
+class labels).
 
-A 52-page migration passed every content gate while its deployed pages had no breadcrumb and no section sidebar, no
-Facebook posts on the home page, and light bands where the source's callouts were dark. One pattern behind all three:
-every gate compares the target with the captured model, so whatever the capture did not observe — beside the scope
-(space), after it read the page (time) or as a property it never measured (attribute) — is lost without a failure.
+- **`skills/stardust/scripts/lib/`** (`paths`, `names`, `kinds`, `taxonomy`, `resolve`) behind `contracts.mjs`, next to
+  `browser.mjs`. Setup step 7 already copies the master's `scripts/` to `stardust/scripts/stardust/`, so the library
+  ships with it, and a consumer finds `contracts.mjs` with the same two-layout lookup it uses for `browser.mjs` (0.38.0's
+  mechanism; no new copy step). dynamics, qa, rollout and spec resolve it once in their `lib.mjs`.
+- **Swapped**, each script's own copy deleted: rollout (inventory, assemble, delivery-lint, lib, seed-redirects,
+  da-library's page path), deploy (eds-path, deploy-batch, davids-model-lint, ai-readability), qa (lib, from-knowledge,
+  checks), spec (lib, spec-knowledge, spec-map), migrate, dynamics, replica (gate-evidence, gate-all), diff
+  (chrome-compare). Outputs are unchanged (golden snapshots byte-identical, field replays identical) except for these
+  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`, and, as deploy's `block-roundtrip`
+  always did, a `/widgets/…` href with another extension or none (so delivery-lint and qa now read `/widgets/x.js` or
+  `/widgets/x` as a widget link, where they required `.html`); only a `/widgets/…` href is a widget
+  (rollout `pageWidgets`, qa `widgetLinks` and migrate `widgetsIn` took `/a/b.html` or `/nav` for one); spec-knowledge's
+  class labels for A and D now read as dynamics' do.
+- **Project copies:** a `stardust/scripts/stardust/` copied before this release has no `contracts.mjs`, and the scripts
+  that need it stop with the copy instruction: re-copy the master's scripts. `deploy/scripts/eds-path.mjs` and spec
+  `lib.mjs` `loadSibling` stay as re-exports for one release.
+- Tests: `lib.test.mjs`, `layout.test.mjs` (every skill copied the way the copy steps do, every script's `--help` run
+  from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
+  divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
 
-- **`capture-content` settles** after the lazy-load scroll: it polls the body text every 500 ms until it is unchanged
-  three times, re-scrolling on growth, capped by `CAPTURE_SETTLE_CAP_MS` (15000). `_provenance.settle` records it.
-- **`residue[]`**: every sibling of each scope's ancestor chain that holds no scope and has text, with `kind`
-  (`chrome | breadcrumb | aside | nav | other`), selector, text lines and rect, printed as `residue (…)` lines.
-- **Slot `tone`** (`dark | tinted | page`), `bg` and `toneEl`, measured from the painted background.
-- **`source-coverage.mjs`, gate (a′)**: S1 every non-chrome residue region ≥ 20 chars is carried (one target element,
-  ≤ 3× its text, ≥ 60% of its lines) or declared; S2 a model without a stable settle warns; S3 a dark source band whose
-  heading is not on a dark target band fails. Declared drops in `stardust/reskin/coverage/<slug>.json`, each with a
-  why. Run in Phase 5 against the local page and again on the aem.page preview; per sibling in `migrate`.
-- Docs: the "a sidebar may become a band" principle now says "never may vanish"; Scope discovery step 5 is
-  machine-checked; Phase 2 adds a third mandatory declaration. Tests: `test/source-coverage.test.mjs`.
+## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
 
-### Disclosures keep the source's rest state
+The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap
+for eight releases: every new script meant shortening someone else's row. 17 of its rows (about 1 KB) were pure
+libraries, marked "no CLI", which an agent never runs.
 
-A migration shipped every accordion open at rest (one 3,327 px tall where the source's was 128 px): the page ledger's
-"expand every accordion" entry, there so the capture reads the hidden panel text, was carried into the delivered block,
-and EW7 was read as "no text hidden at rest". The content gate could not tell: it read `innerText`, so a correctly
-collapsed panel would have failed as missing text, and an all-open one passed.
+- **`evals/lint/libraries.mjs`** is the one list of pure libraries (exported functions, no argv), moved from
+  `script-help.mjs`'s exemption list. `script-help.mjs` still skips them for `--help`; `scripts-index.mjs` now
+  requires no row for them and fails on a row that names one.
+- **`scripts-index.md`** drops the 17 library rows (12288 → 11282 bytes). The libraries an agent imports
+  (`browser.mjs`, `live-session.mjs`, `eds-path.mjs`, `measure-live.mjs`, `martech.mjs`) are documented in the skills
+  that use them, unchanged.
+- **AGENTS.md:** a new library goes in `libraries.mjs`, not the index.
 
-- **`dom-equality` disclosure rest state (gating).** Collapsed and open disclosures (`aria-expanded`, `<details>`,
-  `hidden="until-found"`) are counted on both sides before the ledger runs; a source with any collapsed against a render
-  with none collapsed fails, named in the report and on stderr. Waived per page by the deltas file's
-  `"disclosures": { "restState": "open", "why": "…" }` (a waiver without a why is exit 2).
-- **Rendered-side reveal.** `source-normalize.mjs` exports `DISCLOSURE_STATE` and `REVEAL_DISCLOSURES`; `dom-equality`,
-  `slot-coverage` and `figma-text-gate` open `<details>` and `hidden="until-found"` regions before reading the render's
-  text, so a block that starts closed is still measured. A panel hidden by `display:none` stays unread and fails.
-- **Docs.** content-model § Normalization ledger: a normalization is capture-only. deploy EW7: collapsed at rest is
-  allowed and expected when the source is; close panels with `hidden="until-found"` (open on `beforematch`) or `<details>`.
-- **Test.** `test/dom-equality-disclosures.test.mjs`: until-found and `<details>` pass, all-open fails, the waiver
-  passes, a waiver without a why is exit 2, `display:none` fails the text check.
+## 0.38.5 — martech tags load from the boilerplate's consent phase
 
-## 0.38.0 — reskin holds the chrome to a bar (deployed A6)
+aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,
+whose placeholder `hasConsent()` declines by default and loads `consented.js` only on consent. The EDS
+`building-blocks` and `code-review` skills now state the rule (martech in `consented.js`). On such a
+project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside that phase.
 
-A migration whose every page gate passed still shipped a header that stacked its nav inline and covered the page,
-a footer that lost its social links, and card lists rendered as bullets. The gates before this read `main` only and
-compared against the prototype, so chrome and card-list regressions passed them, and an agent could waive what was left.
+- **`deploy/scripts/martech-scaffold.mjs`:** when `scripts/consented.js` and `scripts/consent-check.js`
+  exist, `loadTags()` hooks into `consented.js`, and the boilerplate's placeholder `hasConsent()` (with its
+  JSDoc) is replaced by one that returns `martech.js` `hasConsent()`: true on the production hosts; off
+  them `?consent=accept|decline` decides as in the boilerplate, else `?martech=on`. Each route keeps its
+  own CMP category gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged.
+  Only the placeholder, matched token for token, is replaced. Any other `hasConsent()` (an owner's CMP
+  wiring, an `async` or arrow one, a placeholder reworded upstream) is a conflict that `--force` does not
+  override, until it calls `martechConsent()`; then it is kept as is. A `loadTags()` hook an older run left
+  in `loadDelayed()` or `delayed.js` is removed, so an upgraded site loads its tags once. Older projects
+  keep the `delayed.js` / `loadDelayed()` hooks.
+- Docs: `dynamics/reference/martech.md` (runtime step, `?consent=` switches).
+- Tests: `martech-scaffold.test.mjs` 24/24 — the consented.js hooks and re-run, the upgrade from an older
+  run's hook, every non-placeholder `hasConsent()` as a conflict, an owner-wired one kept, the JSDoc, the
+  `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
 
-- **`deployed-gate.mjs chrome` (A6), in `all` before figma.** At 1440 and 360 the `<header>` and `<footer>` against
-  `mapping.json` `chrome` and its content model: present and decorated, a logo when mapped, header ≤ 240px with the
-  menu closed, covering `main` by ≤ 4px with a band ≤ 48px, every mapped link rendered and visible (at 360 a toggle that
-  shows the hidden ones, `aria-expanded` "true" after), no icon-font ligature word as text, every mapped footer text.
-  Hard like `sanity`: the fragment is `chrome: { verdict, hard: true }`; with no chrome in the mapping its contract rows
-  are `n/a`. A mapped chrome slot that is absent or empty in the model (captured before it rendered) is exit 2, not a
-  vacuous pass.
-- **`reskin-ledger.mjs`.** `deployed.chrome` joins `deployed.sanity` as never accepted; a header, footer or nav residual
-  is accepted only with `--by <owner>` naming a person, never an agent; `eyeball --verdict pass` is refused while
-  `deployed.chrome` fails. `reskin-preflight` applies the same rule, and a deployed fragment without `chrome` is NOT-RUN.
-- **`capture-content.mjs` `iconLinks`.** Visible links with no text (social icons, logo links), named by aria-label,
-  title, `img` alt, svg title or host. `ctas` dropped them, so a footer's social links never reached the model.
-- **`stream-render.mjs` card lists.** A run of 2+ structured list items (an image or link beside other content) is a
-  repeat of period 1, so a list of cards renders as the cards layout. It needed a repeat of 2+ nodes before: three cards
-  fell back to a bulleted list and six became three two-card panels. The footer emits `iconLinks` as `ul.icon-links`.
+## 0.38.3 — spec: classic AEM components inside responsive grids
 
-## 0.37.0 — reskin takes content from Figma (Figma-only sites)
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
 
-A site with no live origin, whose pages exist only as Figma frames, can now be reskinned: content comes
-from the page frames, the design system from the same file, and content fidelity is gated against the
-Figma tree. Every rule is generic; per-file choices live in `reskin/content-rules.json` and flags.
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
 
-- **`figma-donor.mjs init | content | blocklist | ack`.** `init` writes a Figma-only `state.json`
-  (`flowSource: "figma-only"`, no origin) and refuses a live-site state. `content` builds
-  `content-model/<slug>/content-model.json` (`source.kind: "figma"`, the live model's shape) from one
-  page frame (`figma/content.mjs`, pure): effective visibility, auto-layout or geometric reading order,
-  segmentation with chrome to a shared `_chrome` model, rendered-case text with `characters`/`textCase`
-  kept for CSS, truncation kept whole, headings from the donor type roles, allowlisted links (NODE links
-  resolve via `--pages`), drawn fields as form controls, image bytes sniffed (unsafe SVG refused).
-  Nothing is invented: missing alt, link targets and SEO are flags. `text-ops.json` declares what the
-  Figma text gate must not expect; the page's `reskin/deltas/<slug>.json` (the deployed leg's delta file,
-  version 1) is seeded with `metadata.absent` unless one exists; `flags.json` is the deploy blocklist
-  (`blocklist` lists it, `ack --why` records
-  an acknowledgement). Placeholder-only pages exit 1. `--confidential` redacts the file key (the
-  overwrite guard compares its hash).
-- **`figma-text-gate.mjs`**, the content gate where `dom-equality` has no source DOM: every visible TEXT
-  node of the frame body, re-read from the cached tree, appears once and in order in `<main>`; findings
-  missing / order / case / duplicate / extra, and drawn placeholders as attributes.
-- **On M2's delta file and deployed leg.** M4 no longer has a delta schema of its own: `slot-coverage --deltas`
-  is M2's (`deployed/deltas.mjs`, version 1) unchanged, except that a Figma-sourced model's CTA also matches the
-  raw href (`#` or page-relative). `stream-render` leaves out a meta tag the model declares absent (no empty
-  description). `deployed-gate content` runs `figma-text-gate` in place of `dom-equality` for a Figma-sourced
-  model (`content.json` records `figmaText`); the text gate reads an aem.page preview with `--wait-eds`.
-- **`stream-render`** renders Figma models: CSS casing on the raw characters, a line-clamp span for
-  truncated text, and model-relative assets copied beside the page.
-- Docs: `reference/content-model.md` § Figma-sourced models, `reference/gates.md` § figma-text-gate.mjs,
-  SKILL.md Phase 2′; a routing note in figma-to-content; evals `reskin-figma-only` and
-  `figma-to-content-vs-reskin-routing`.
-- Prose delta (`prose-delta.mjs` vs 0.36.0): +91 lines, +835 words across skill docs, almost all the new
-  § Figma-sourced models and Phase 2′; the rules live once in content-model.md and SKILL.md points there.
-### Renderer fidelity fixes measured on a 52-page school site
+## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
 
-Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a
-multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 with later table padding); all are generic.
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
 
-- **The reskin page's mobile menu opens, and its footer keeps its links.** The header's menu toggle (below 900px) carries `aria-expanded` / `aria-controls="site-nav"`, and the page script opens and closes the folded nav (`.site-header.nav-open`); a zoned footer renders a top-level link (a lone Privacy or Terms link) as a link, not its bare text. A browser test drives the toggle at 390px.
-- **Reskin uses the optional curated tokens and the code stamp.** `stream-render` styles cards (`--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`), the button height and the mobile section padding and gutter from the `:root` contract tokens when the donor curates them (the output is unchanged without them); `reskin-preflight` fails an archetype whose deployed evidence's `codeStamp` no longer matches the project's code.
-- **Card listings survive uneven items.** `findRepeat` needed byte-identical item shapes, so an event with one extra
-  paragraph broke the run part-way: two cards, then stacked full-width images. It now falls back to an anchored
-  run (each item starts at the same anchor — image or heading — and may carry a different number of paragraphs) and
-  returns per-item `bounds`, which the card grid and `captureSmells` ("N items") use. Events/home +1.1.
-- **Header brand zone + menu toggle.** The branded row groups logos with the header's text items (school name,
-  motto) in `.brand` / `.brand-text`, and always emits `.nav-actions` with a menu toggle. At ≤900px the nav hides,
-  the toggle shows and the row stays one 64px line, as the EDS header does — the target no longer wraps the nav to
-  ~230px at 390. +3.0, mostly at 390.
-- **Desktop header sizing from tokens.** At ≥901px the row height is `--header-row-height` (80px fallback) and the
-  nav takes `--type-nav-font-family` / `--type-nav-font-size` (inherit fallback) with a 24px gap.
-- **Mobile split image** stretches to the column width (`justify-self: stretch`) at ≤900px instead of shrinking to
-  its intrinsic width. +0.3.
-- **Footer zones.** A footer stream with headings and list items renders as a Figma footer does: brand (logo,
-  top-level heading, prose), one column per titled list run, and a social row (a list-less heading beside the
-  icon links — `iconLinks` when captured, else the stream's icon-only links). One centred column at ≤900px. Was
-  one long column of `<p>`. +0.4.
-- **Embed placeholder.** A runtime embed that normalize removed (ledger `why` "disposition: embed", `what` naming
-  the section heading "under …") keeps its space: a neutral placeholder after that section, as the live page
-  holds a map. Contact-style pages +5, overall +0.7.
-- **Header utility bar.** A header link whose label is only screen-reader text (`sr-only`, `visually-hidden`,
-  `screen-reader-text`; a parent-org link whose mark was not captured) shows as a small text link in a bar above
-  the row on desktop, hidden at ≤900px. +0.4 with the desktop sizing above.
-- **Icon-font glyphs.** A lone lowercase word in an icon-font span (`material-icons|symbols`, `icon`) renders as
-  a drawn glyph (word kept at font-size 0), so "east" no longer prints in a card. A card's trailing arrow is drawn
-  at 28px in the accent; a card whose first line is only a link takes the h4 heading style.
-- **`mapping.json` is a Phase 3 deliverable with a schema and a check.** `reskin/reference/mapping-json.md` lists
-  every key `stream-render` reads (types, values, defaults); `stream-render --check [<slug>…]` reports unknown keys,
-  bad values, slots the content model lacks and missing pages, one per line, and writes nothing. SKILL Phase 3
-  writes `mapping.json` beside `mapping.md`; later per-section fixes go back to it.
-- **Phase 4 registers what it renders.** `stream-render <slug> --register` (flow `reskin` only, exit 2 otherwise)
-  sets the page's `prototypePath` and advances it to `prototyped` through `state.mjs` (a sibling of an approved
-  type only to `directed`, migrate's sibling tier), so `reskin-ledger record`, the bridge and migrate find it.
-- **The deployed leg converts the gated reskin page.** `deployed-leg.md` § Recipe: deploy authors the content page
-  from `reskin/pages/<slug>.html`, one block per mapped module in page order; a design change found in review goes
-  back to `mapping.json` / donor tokens and is re-rendered, re-gated and re-deployed. `stream-render <slug>
-  --deploy-map` prints `block-roundtrip`'s `--map` arguments; block names come from `mapping.json` `blocks`, else
-  the module id lower-cased.
-- **The handoff marks siblings ready for migrate.** Under flow `reskin`, `canon-from-reskin` advances each approved
-  type's `extracted` pages to `directed` through `state.mjs` (`direct` refuses under reskin, and `migrate` renders
-  siblings only from `directed`); stale and `prototyped` siblings are named, not moved; re-runs are no-ops.
-- **Localized images bundle in migrate with default flags.** `stream-render --localize-images` wrote
-  `../../prototypes/assets/img/…`, which migrate resolves against `--proto-dir` and so left unbundled (a run passed
-  `--proto-dir stardust/reskin/pages --current stardust/prototypes`). It now writes `src="assets/img/…"`, keeps the
-  files in `stardust/prototypes/assets/img/` and mirrors them beside the page, so the page displays them and
-  migrate bundles them with its defaults.
-- **Preflight warns on thin deployed-leg coverage.** `reskin-preflight` warns `deployed-coverage` for a type whose
-  migrated pages with preview-deployed evidence in the ledger number fewer than max(2, ⌈10 %⌉) of them (all below
-  2), naming the counts and the pages to run `deployed-gate all` on. A warning only in this release.
-- **The handoff takes the full inventory.** Aligned with upstream: `handoff.md` § Bounded inventory, which read the
-  inventory as the pages the user named, is § Full inventory: the uncapped `extract --all` crawl, every page typed,
-  full-site handoff by default and archetypes-only only on a user request recorded in `ledger.json#delivery`. Phase 6
-  migrates every non-archetype inventory page at the sibling tier, never a skip.
+- **Rule** (`deploy/SKILL.md` #161, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+- Review follow-ups: one skip path after the bytes are known, so an over-limit mp4 fetched from a manifest `source`
+  is `SKIP video-too-large` too (a declared `content-length` skips it before the body is buffered); a 401 that
+  persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
+  segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
+  three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
 
-### Reskin → migrate hardened on two end-to-end runs
+## 0.38.1 — rollout publishes the site's own DA block library (#160)
 
-Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
-gaps below. Every fix is generic; per-site choices stay in config.
+Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
+unrelated block set inherited from elsewhere, and none of the site's blocks or templates. Nothing in deploy or
+rollout wrote a library, so every migrated site arrived with an inherited or empty one.
 
-- **Chrome never drops visible text.** `stream-render` built the header from the section's links only and the footer
-  from paragraphs and links, so link-less mega-menu parents, a Figma-only header's language codes and a footer's
-  contact heading and text runs vanished — unseen, as the content gates measure `<main>`. Header items now render in
-  source order (links, `.nav-menu` triggers for link-less list items, `.nav-text` otherwise); footer prose takes every
-  non-link text leaf. `chromeTextMissing` checks each chrome section after render and `render()` throws on a drop.
-- **Header zones.** A branded header row (logo + a menu list) renders brand | menu | actions (links outside the
-  list, e.g. Login) instead of one right-aligned link run. The menu's placement is measured from the Figma donor:
-  capture records each desktop screen's header row (`headerRows`, footers skipped) and curate writes the majority
-  as `layout.navAlign` (`start|center|end`) with its evidence. `chrome.navAlign` in the mapping overrides it; a
-  URL-only donor has no geometry and defaults to `end`.
+- **`rollout/scripts/da-library.mjs`:** from the delivered DA bodies (rollout coverage when present, else the content
+  tree) writes `library/blocks/<block>` (the first authored instance of every class variant, each followed by a
+  `library-metadata` description), `library/templates/<template>` (the template representative, its `metadata` as
+  `template-metadata` with page-specific values emptied), the `blocks` / `templates` sheets, and merges the `library`
+  tab of the site config: only the Blocks / Templates rows are replaced, other rows and tabs are kept. Previews the
+  documents, never publishes them. `--dry-run` writes the files only.
+- Rule home: `rollout/SKILL.md` § Phase D (DA library + D-site checklist row); pointer from deploy § When you finish.
+- Tests: `da-library.test.mjs` (block and variant lifting, the documents in the shape the DA library parses, the
+  config merge, the CLI dry run from coverage).
+- Review follow-up: a kept template metadata value with a `$` pattern is copied verbatim (function replacement); the
+  CLI runs through a symlinked path (realpath check, as in `da-media-upload.mjs`); a run without templates leaves the
+  Templates row and `templates.json` alone; zero authored blocks exits 1 with no DA write; a 401 is retried before
+  exit 3 and a network error is a FAIL (exit 1); a template whose representative is not delivered and a class with no
+  `blocks/<name>/` folder are named; content-tree chrome is the root nav / footer plus the documents pages name in
+  their nav / footer metadata; template names use the label or unique id, never the shared type; author, dates and
+  image-alt are emptied in templates; only template documents are previewed.
 
-- **Renders gated by figma-gate (0.38.0).** All three runs (two Figma donors, one URL donor) re-gated on M2b's checks:
-  join, geometry and ramp pass on every Figma-donor page, with one accepted `figma.ramp` residual (a hero intro style
-  the donor tokens have no role for). What it took, generic throughout:
-  - `stream-render` opens its style with the `render/root-tokens` contract `:root` block that the ramp asserts.
-    `.container` is content-box: `--max-width` is the content width and the padding sits outside it, as in a Figma
-    container. Grid-2, split and cards share `layout.columnGap` (default 40px). Card titles take the h3 role whatever
-    their tag. The accent label follows the h2 role, not the h2 tag.
-  - New `mapping.json` slot options: `heading` (display | h2 | h3 | h4), `inset` (a frame padded from the viewport
-    edge) and `split` (two column tracks). Invalid values warn and are ignored. See `reference/mapping-brief.md`
-    § Frame fit.
-  - `figma-gate` reads one page's rows from a multi-page `mapping.md` (a `Page` column with `--page <slug>`).
-    Composition variants (`M1b`) join through `curation-rules.json` `modules[]` with `variantOf` (§ Composition
-    variants); canon's mixed-composition finding points there.
-  - `donor-probe` spec entries take `exclude`: the container check skips `.inset` bands and SKIPs when every band is
-    inset, since figma-gate geometry measures them instead.
-- **Renderer layouts.** `stream-render` renders card grids, split media, tone bands, logo rows, label pills, a footer
-  tone and true heading levels, and emits `img.icon` inside links. Ctas render as `.btn` when capture flags them
-  `inButton` (text inside a `<button>`) or `buttonLike` (a link painted as a button with utility CSS: background or
-  visible border plus padding).
-- **Localized image collisions.** `--localize-images` keeps the query as an 8-hex hash in the file name, so image
-  proxies (`/_image?href=…`) no longer collapse onto one file. `localize` also refuses to give two URLs one path.
-- **Multi-archetype canon.** `canon-from-reskin` merges modules from every approved archetype, not just the named one,
-  and the split layout's skeleton blanks its media. `reskin-preflight` adds a `canon-modules` FAIL when a mapping uses
-  a module missing from the canon, or composes layout/width/tone inconsistently.
-- **donor-probe `--model`.** Probe entries marked `needs: 'button'` SKIP when the content has no button, so a page
-  with no buttons passes.
-- **Required marker weight.** A label's `*` keeps the label's weight unless the donor's curation rules give it a
-  `type.required` role (a donor whose asterisk is regular after bold labels); figma-gate's coverage floor asks for it.
-- **Confidential hint.** Under `--confidential`, capture warns which `.gitignore` lines curate will need too, instead
-  of letting curate refuse later.
-- **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is
-  a repeating card grid is reported as a note, not a wrapper-scope warning (`captureSmells`).
-- **Gates re-pass on migrated pages.** `migrate` keeps `data-source-href` (the absolute source URL) on every link it
-  rewrites and marks the JSON-LD block it inserts with `data-migrate-default`. `slot-coverage` matches links by the
-  former and does not count the latter, so a migrated page passes the same content gates as its prototype.
-- **Reskin handoff predicate.** New `reskin-ledger` (`record`, `eyeball`, `residual`, `show`) writes
-  `stardust/reskin/ledger.json` from gate reports, the static and runtime mobile-adapt checks and the two human
-  judgments; `handoff.<type>` names the archetype, its prototype sha, the claimed/passed/waived tier and the PASS-only
-  gates migrate merges into sidecars. `reskin-preflight` is now the predicate: `approval` (an agent approval FAILs unless
-  hands-off), `archetype-gates` (gates PASS or residual accepted, eyeball pass, prototype unchanged) and a
-  `sibling-gates` WARN for migrated pages without migrated-stage gates. Contract in `reskin/reference/handoff.md`.
-- **Flow guards.** `replica` and `direct` refuse under `flow: reskin`; master routing recognises donor phrases and
-  `reskin --switch-flow`; `state-machine.md` names the writers of `approved`/`designSource`, stales reskin-registered
-  approvals on a switch and adds a reskin State-report branch; `migrate`/`rollout` require `reskin-preflight` exit 0.
-  `ledger.mjs` knows the reskin phases. The eval `standard_handoff_no_core_changes` is rescoped.
-- **M2 gates in the predicate.** `reskin-ledger record` ingests 0.38.0's `figma-gate all` and M2a's `deployed-gate all`
-  `summary.json` fragments into `gates.figma` / `gates.deployed`; `reskin-preflight` requires figma join/geometry/ramp
-  and the deployed families (plus its figma re-run) to pass; a `deployed.sanity` residual is never accepted.
-- **Contrast-aware accent.** `stream-render` keeps an accent that fails 4.5:1 on the page or light band as an underline
-  colour only (links and required markers take body ink); compact tone-band padding and fixed-size checkboxes at 640px.
-- **Canon across archetypes.** `canon-from-reskin` takes another type's archetype from the ledger's handoff (else the
-  type's first approved page with a prototype, instead of dropping the type) and compares a re-approval's capture
-  only with the same archetype's previous capture, so two archetypes no longer diff against each other.
-- **Third run, URL donor.** A bounded URL donor (sampled live site) reskinned the forms-only site end to end: prototype
-  and migrated gates PASS, preflight ready, no donor-specific code.
+## 0.38.0 — every script takes its browser from one place (#159)
 
-### Generic renderer, canon bridge and preflight
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
 
-Reskin produced gated pages but none of the inputs `migrate` reads. Three scripts close that gap for any donor (URL or
-Figma) and any content site; every per-site choice stays in `mapping.json` and the content models.
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction. Where exit 1 means a failed check (`render-harness`,
+  `ai-readability`, `qa-gate`, `dynamics-check`), both are exit 2.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
 
-- **`reskin/stream-render.mjs`** renders a page from its content model's ordered stream and the donor tokens. It replaces
-  the per-archetype renderer as the default. `--localize-images` downloads images into `prototypes/assets/img/` with
-  browser headers and keeps `data-source-src`, which `dom-equality` and `slot-coverage` now prefer, so the content gate
-  still compares source URLs.
-- **`reskin/canon-from-reskin.mjs`** derives `canon/` (header, footer, `canon.css` with `:root` first, module skeletons),
-  donor-sourced `DESIGN.{md,json}`, `direction.md` and `dynamic-features.md` from the approved archetype. A `--force`
-  re-run with identical content leaves every file untouched; a changed canon flags approved pages, and migrated pages
-  whose sidecar hashes no longer match, as stale. Each changed canon is captured with replica's `stitch-shot` and
-  pixel-compared with the previous approval; the % lands in the canon history and warns above `--visual-threshold`.
-- **`reskin/reskin-preflight.mjs`** is the read-only readiness check before `migrate` (exit 0 ready).
-  `prepare-migration` now refuses under `flow: reskin`, because its cascade rewrites the donor-sourced `DESIGN.*`.
-- **Fixes found on the way.** Migrate merges the reskin gate reports into its handoff gates and tags sections by
-  `data-slot`. The donor-probe heading probes cover h1–h3 (weight) and h1–h6 (colour), not h1 only. Crawl and the
-  default normalize remove cookie, consent and GDPR overlays by id or class inside a fixed, sticky or high-z ancestor,
-  outside `main article`. The Figma curation derives `type.display.textAlign` from the display role's text alignment,
-  weighted by characters, and the renderer aligns headings with it (left when absent).
+## 0.37.2 — a named page count starts from the entered page and its links (#158)
 
-## 0.38.0 — reskin checks a page against its Figma donor and on its aem.page preview
+User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered
+URL links to were often cut.
 
-A Figma-donor reskin stopped at the token probe: nothing compared the page with its frames. The new `reskin/figma-gate.mjs`
-does, offline, from the capture `figma-donor.mjs` made. B0 joins the page's top-level `section[data-slot]`s to `mapping.md`,
-B1 measures geometry, B3 the generated `:root` block and each text style, B2 compares frame pixels (advisory, only where
-the frame's copy is the section's copy) and B4 writes a divergence register. The agent authors
-`reskin/figma-checks/<slug>.json` from `boxes` outlines; the coverage floor comes from Figma, so a file cannot cover only
-what the page got right (every text style of each checked root, a mobile root at the variant's own width; only a `waive`
-or `skip` with a `why` lowers it, a miss is exit 2). B0, B1 and B3 block. Phase 5 gains **(d)**; Phase 4 renders each `mapped`
-or `new-module` slot as a top-level `section[data-slot]` (`data-module` on `mapped` only) and emits
-`render/root-tokens.mjs`'s `:root` block first.
+- **`extract/scripts/crawl.mjs --link-first`:** orders the pages entry first, then the entry page's same-origin
+  links in document order, then the other discovered pages, up to `--max`. Only a user-named N sets it; `--max`
+  alone (default or roster caps), `--max 0` and `--pages` are unchanged. In link-first mode both lists keep
+  same-origin non-asset pages only (`ASSET_EXT`). An unparsable href is skipped with a WARN instead of aborting
+  discovery, in both modes. Rule home: `ia-extraction.md` § Priority for the cap; pointers from extract Phase 1,
+  `--prep` (a user-named N keeps `--cap N` instead of `--all`) and the hands-off volume caps (a user-named N
+  replaces 100/20).
+- Tests: `crawl.test.mjs` `parseArgs` (`--max` alone never turns link-first on), `selectPages` (order, BFS
+  re-entry, unparsable hrefs), `discover` on a stub page (sitemap + malformed anchor, BFS fallback).
 
-Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the reskin
-page and the donor on its `aem.page` preview, any donor, in an aem-boilerplate project: `preview` (isolation: `--namespace
-<ns>` in a shared repo, `--sandbox` in one's own), `content` (through a declared delta file, `reskin/deltas/<slug>.json`),
-`tokens`, `parity`, `sanity` (hard), `inherited` (`.plain.html`, `ai-readability`, `qa-gate`; a missing `qa-gate` input is a
-FAIL, never `n/a`) and `figma-gate --target preview`. It replaces only `deploy` Step 10's automated reconcile: the
-deployed eyeball, the delayed-font/nav CLS probe and the header-behavior checks stay mandatory before handoff, recorded in
-the ledger. Phase 5 gains **(e)**; recipe, delta file and fix budget are in `reference/deployed-leg.md`, the bars in
-`gates.md`.
+## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
 
-The preview must be reachable without auth: a protected preview is out of scope, and `preview` stops on its 401 or 403
-with exit 2. This release adds no site auth: the gates send no Authorization header, and no token flag is added to the
-`deploy`, `diff` or `replica` instruments.
+Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube
+iframe in `decorate()`, so the player's JS started while the section was still loading. Lab tests count that toward
+FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
+symptom, nothing named the cause.
 
-- **Instruments.** `stitch-shot --hide`; `donor-probe` `match: "all"` and `--wait-eds`; `dom-equality` and
-  `slot-coverage` `--deltas`; `capture-content` skips script, style, noscript and template children; `qa-gate` finds a
-  repeat group's block by order, not name; `build-harness` creates its output directory. Setup installs `pixelmatch` and
-  `pngjs` and copies more scripts (`reference/gates.md` § Project copies). `--hide` checks for late denial content
-  without capture-only hiding and requires a current `diff/live-session.mjs` copy.
-- **Honest coverage.** `parity` compares main to main and says what it left out; an unserved font is recorded, never a
-  failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
-  assessed" (`register.unassessable`), neither a class nor a PASS.
-- **Optional tokens.** `render/root-tokens.mjs` emits `--card-bg`, `--card-radius`, `--card-padding`,
-  `--card-title-color`, `--button-height`, `--section-padding-mobile` and `--gutter-mobile` when the sheet carries
-  `cards.primary.*`, `buttons.primary.height` or `layout.mobile.*`; `tokens` asserts them. Without them the block is unchanged.
-- **Section heights.** `parity` adds a `section-height` row per width: the reskin page's slots paired in order with the
-  preview's non-empty sections, the worst |Δh| ≤ 10% (naming the slot), n/a when the counts differ.
-- **Stale evidence.** `deployed-gate all` records a `codeStamp` (the project's `blocks/`, `styles/`, `scripts/`,
-  `head.html`) in `summary.json` and the ledger fragment; `deployed-gate stamp` says `current` or `stale` (exit 1).
-- **Waiver budget.** `figma-gate` refuses a checks file whose waivers and skips excuse over 25% of the floor, or
-  every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
-- **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
-  checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
-- **Whole file, whole site.** Aligned with 0.37.0: Phase 1's Figma bullet and `donor-sources.md` § 3 no longer hand-pick
-  kit frames with `--list` and `--frames`, and the content crawl is `extract --all`. `figma-gate`'s no-capture and
-  frame-not-captured errors ask for a whole-file `capture` (`--refresh` over a narrowed one), not `--frames <ids>`.
-- **Image crop.** `dom-equality` gains a gating check: each visible image's shown region of its own pixels
-  (object-fit, object-position and clipping ancestors, `source-normalize.mjs` `visibleRegion` / `IMG_CROP`) on the source
-  and the render, paired by order. A render fails when over `--crop-tolerance` (default 10%) of what it shows lies
-  outside the source's region, or when it drops an off-centre anchor the source sets; each failure names the
-  `object-position` that fixes it. How much shows is informational: a donor frame may be tighter. It runs on the local
-  render and on the preview. Found on a school site reskinned to a Figma kit: the donor frames cropped from the centre
-  where the source frames its social post cards at `50% 30%` and media cards at `50% 0%`. `gates.md` § Image crop and
-  Phase 4: keep the donor frame, carry the source's position (an authorable block option in EDS), the upper third where
-  the source shows an image whole. On that site: 40 images on 5 pages showed the wrong area with centred crops, 0 of 192
-  with the source's positions as block options, frames unchanged. `--crops-out` writes each side's framing. (A first
-  version gated on how much shows and had images keep their own shape; that broke the donor's proportions and was
-  replaced.)
-- **Full donor vocabulary (#133).** Deploy builds every module the donor records, not only those the migrated pages
-  use, so an author can place any of them on a later page. `donor-modules.md` gains a Disposition column: `block`,
-  `variant` (an authored block option, preferred), `chrome`, `section-style (<name>)`, `style`, `convention`,
-  `feature` or `default-content`, a why after the colon (required for every blockless kind). A Figma donor's
-  `curation-rules.json` names a blockless kind in `eds.as` (`eds.name` for a section style) and the reason in
-  `edsWhy`; `curate` validates both. The new `reskin/vocabulary-check.mjs` reads the table and the project: every
-  block and variant exists and is handled by its block code, listed in `metadata.json` `variants` and sampled in
-  the block library, every section style styled, no invented block an existing block hosts (variant-first).
-  `deploy` Step 2c is the procedure; reskin Phase 6 hands the whole vocabulary off. Seeds corrected from the
-  field: a kit's Links is a links block; a card whose anatomy is a full-bleed image with copy over it is a hero;
-  chips and pagination are variants of a project links block. Found on a school site reskinned to a component kit:
-  its 34 modules became 8 blocks, 12 variants, 2 chrome blocks and 12 blockless entries (styles, features, a
-  section style), with the existing 52 pages unchanged by the content gate and the render check.
-- **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
-  first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
-  floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
-  0.05% at 1440 and 0.19% at 360, sanity PASS.
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
+  Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
+- **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
+  dot-bounded host match, no longer interpolated into `innerHTML`.
 
-## 0.37.0 — reskin takes a Figma donor: headless capture and deterministic curation
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
 
-`reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over
-the Figma REST API with a personal access token (`FIGMA_TOKEN`); no browser, no MCP server. `capture` pins one file
-version, caches the raw responses and writes `canon-source/` foundation, role and module candidates and frame screenshots,
-every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
-`donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
-`state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
-refuses to write anything git would track and redacts the stamped URL. `capture` takes the whole file by default: every
-visible top-level frame, section, component and component set of every page. A shared link names whichever page the
-designer had open (a kit's cover), so the URL's node-id is recorded as `linked` and never narrows; `--frames` narrows,
-`--max-frames` only caps when passed, and a frame Figma cannot render is recorded as not renderable. Four review fixes: a failed `--refresh` no longer overwrites the last
-complete capture of the same file version (a capture is staged and swapped in whole); `--confidential` checks every
-output and cache path, not one per directory; an API error reason is redacted before it is truncated; `curate` no
-longer emits radii or shadows the rules mark absent.
+Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
+was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of
+them extra captures left beside a page's own) and extract screenshots (0.76 GiB). A harness that commits all of
+`stardust/` so a restart finds the same files pays each byte twice (worktree and `.git`); it could not follow the
+ignore file instead, because that dropped whole folders a resumed run reads. Design note:
+`notes/disk-lifecycle/README.md`.
 
-- **Field learnings.** Instance children carry the resolved overrides and `overrides[]` was empty on every instance sampled,
-  so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the
-  layer that paints it. One MCP export capped renders at 1024px and rate limits follow the file's plan: REST with a cached
-  file version is the primary path. The capture recipes and curation method come from #315, kept open as the reference.
-- **Optional card, button-height and mobile layout roles.** Curation accepts a `cards` group and seven recommended paths
-  (`cards.primary.background|borderRadius|padding|titleColor`, `buttons.primary.height`,
-  `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
-  narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
-  `coverage.recommended`.
-- **A reskin migrates the whole site.** Phase 1 ran `extract <content-url>`, extract's capped discovery mode, so a 60-page
-  school site came back with 25 pages. Every content crawl is now `--all` (not `--prep`: reskin never runs the
-  prepare-migration cascade), reskin types every inventory page itself, and Setup step 5 treats a capped crawl
-  (`site.pageCap` set, a `below cap` row in `_crawl-log.json#discovery.cut`) as a setup error to re-crawl. `--pages`
-  restricts the archetype capture, never the inventory. Phase 6 migrates and ships every page by default;
-  archetypes-only delivery is an opt-out the user asks for, recorded in `ledger.json#delivery`.
+- **`stardust/reference/stardust.gitignore`:** ignores gate images, not gate folders — `**/gates/**/*.png` (a frozen
+  `baseline.png` stays; `first-page/gates/` is covered too) — and tracks `current/assets/` except its screenshots.
+  On that run: 0.5 GiB tracked instead of 5.3 GiB. Existing projects keep their copy (Setup step 6 never edits it):
+  replace its `current/assets/` and `replica/gates/` lines with the two gate lines to adopt it.
+- **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
+  deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
+  `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
+  override-delivered page keeps its captures for the fix round. Pages go through in batches of 25, so a passed
+  batch's PNGs are gone before the next batch is captured (peak disk). A page captured again loses its recorded pass
+  first, and a missing capture is written to `pixel.json`: a failed or interrupted re-capture never leaves the old
+  pass to be reused.
+- **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
+  text and JSON evidence stay.
+- **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
+  `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
+  delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and runs with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures; a failed or
+  interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
+  — a round keeps only its own diff image and vdiff dir.
+
+## 0.36.7 — the site secret: exact-origin match, never context-wide
+
+The site secret (`--auth-header` / `--token-env`, default `SITE_TOKEN`) is matched against the exact site origin
+(parsed origin, not a string prefix) and never set context-wide: the AI-readability gate
+(`deploy/scripts/ai-readability.mjs` and the `qa` check) attaches it through the origin-scoped route filter instead of
+`extraHTTPHeaders`, and its raw page and fragment requests drop it once a redirect leaves the origin. The `qa`
+AI-readability check and `scorePage` skip paths that resolve off the origin, and `dynamics-plan.mjs --target-origin`
+probes only API paths on the target origin.
+
+Anyone who ran `qa` or `ai-readability.mjs` with a site secret on 0.20.0–0.36.6, or an earlier source snapshot
+containing site auth, should rotate it. Tests: `deploy/scripts/test/ai-readability.test.mjs`,
+`ai-readability-redirect.test.mjs`, `qa/scripts/test/origin-auth.test.mjs`, `ai-readability-auth.test.mjs`,
+`dynamics/scripts/test/dynamics-plan.test.mjs`.
+
+## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
+
+Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly
+origins did not; every instrument opened a fresh browser context, so each capture looked like a new visitor that had
+never cleared a challenge or accepted consent; and parallel workers each ran their own instruments against the same
+host. Fixed pacing was either too slow or not cautious enough.
+
+- **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
+  `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
+  A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
+  15000 ms. Signals are an edge challenge, a denial page, any 429 (`Retry-After` honoured up to 120 s), a 503 with
+  `Retry-After`, or a timeout or connection error after that host has answered. Every 50 clean navigations halves the
+  pace down to the configured floor, then one more such window restores
+  the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
+  Repository-scoped OS-temp state,
+  fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits, even during a hold, without clearing it.
+  `0` disables either throttle limit, not holds. Bookkeeping lock waits cap at 10 s; failures warn once per host,
+  then navigation proceeds unthrottled; transport response marks prevent duplicate challenge accounting.
+- **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
+  every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
+  (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
+  instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
+- **Every live instrument takes part:** the crawler (its entry probe and a challenged page report the signal once each — the reloads that stay challenged are the same wall; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
+  sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
+  inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
+  fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).
+
+## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
+
+Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a
+second full live pass at two widths — was started with `--concurrency 2`, although the option's default is 1 and its
+help text warned to raise it only on an origin known to have no bot manager. The origin stopped accepting connections
+and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
+
+- **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost` and `*.localhost`, `127.0.0.1`, `[::1]`,
+  `0.0.0.0`); otherwise one stderr line
+  (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
+- **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
+  launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation
+  tier; a copy without the module keeps the plain headless launch. Tests: `extract/style-census` (+ guard, local
+  exemption, help text, launcher fallback).
+
+## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
+
+Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
+probe went through; the header exploration then reloaded the page after every control (routing disables the browser
+cache, so each reload refetched the whole page) and typed the probe term keystroke by keystroke into the site's
+typeahead — the edge blocked the address mid-run.
+
+- **`diff/scripts/chrome-explore.mjs`:** `--pace-ms 400` after each control open / close and `--reload-pause-ms 1500`
+  before each reload (0 disables either). `--max-requests 600` per width counts every request leaving for the site's
+  host — documents and subresources alike, the first load included; 204-answered navigations not — and ends the width
+  with `truncated: 'request-budget'` and `n/max requests` on the summary line (a lower budget was spent by an
+  image-heavy page's first load alone while recording the same contract). `--max-typeahead 2` inputs per width; the
+  term enters as one fill plus one typed letter and a single settle, inputs past the cap are listed with `search: null`.
+- **Closing in place:** between controls the header is closed the way it was opened — Escape and the parked pointer,
+  each opened trigger re-acted innermost first, a click outside — and the page reloads only when atoms are not back as
+  loaded (visibility and aria state, so a left-behind selected tab still reloads). A GET search submit is answered 204
+  like every navigation and its URL is the record; a POST is followed with the results page's assets aborted, then the
+  page restored. The probe word is read from the explored page on first use (no extra load). Fixture headers, same
+  recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
+- **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
+  flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
+- Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
+  with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
+  the budget stop and the typeahead cap.
+
+## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
+
+Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
+interstitial that reloaded itself every few seconds; the crawler captured it as content and waited out its whole cap
+on it. A CloudFront block on inner pages read as a plain HTTP error, and the headed escalation opened a window where no
+display exists.
+
+- **`extract/scripts/crawl.mjs`:** `launchWithFallback` launches real Chrome headless first — its own identity, no
+  stealth flags; bundled Chromium when Chrome is missing (technique `chrome` | `chromium-fallback`) — through
+  live-session's `launchLiveBrowser` when the module beside the script has it, inline otherwise. `probeEntry`
+  classifies the entry page in seconds: a network reject (`fingerprint`), an edge challenge (`challengeMarker`:
+  Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
+  the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
+  under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
+  recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
+  `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
+- **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
+  its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
+- **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
+  flag.
+- Tests: `crawl.test.mjs` — the classifiers, the inline wall rule, `pageTimeoutMs`, `probeEntry` and `capturePage` on
+  stub pages (clean / interstitial / challenge / CloudFront / bare 403 / hung navigation / an unreadable wall probe).
+
+## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
+
+Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
+agent on a Linux headless engine and were denied; the agents patched the identity by hand at run time, and spacing
+live navigations a few seconds apart turned the denials into 200s. The escalation to real Chrome opened a window and
+could not start where no display exists. The policy now has one home: every context presents the browser's user agent
+without the headless token and matching client hints; automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+`STARDUST_HEADED_WINDOW=1` opens a window.
+
+- **`diff/scripts/live-session.mjs`:** `launchLiveBrowser` is the default tier of every live instrument — the installed
+  Chrome headless (`channel: chrome`), no stealth args, no `ignoreDefaultArgs`; bundled Chromium only when Chrome is
+  missing (tier `chromium-fallback`, one stderr line). Every context presents the user agent read from the running
+  browser with the headless token removed (`HeadlessChrome/156.0.0.0` → `Chrome/156.0.0.0`), or the caller's `--ua`.
+  Headless Chrome's header says `HeadlessChrome` while its client hints say `Google Chrome`, and managed challenges
+  key on that token.
+  The `sec-ch-ua*` client hints derive from `browser.version()` and the running OS on Chrome tiers, from the UA string
+  under `--ua`, and stay untouched on the bundled tier. The existing `navigator.webdriver` spoof reaches every context.
+  `launchStealthHeaded` (`--headed`) stays window-free real Chrome plus the challenge-solve window and the
+  two existing launch options. `STARDUST_STEALTH=0` disables the spoof and options with one stderr line; a window stays
+  behind `STARDUST_HEADED_WINDOW=1`. `gotoLive` paces live navigations per host
+  `STARDUST_LIVE_PACE_MS` apart (default 2000; 0 disables; slots reserved synchronously so concurrent callers queue; one
+  stderr line per host on its first wait — an Akamai-fronted origin answered 403 to back-to-back navigations, 200 once
+  spaced). Classifiers: a 403 with `server: CloudFront` or `x-cache: Error from cloudfront`, or any `x-amzn-waf-action`
+  header, is the CloudFront / AWS WAF edge signature; F5's `BigIP` header matches; denial pages "The request could not
+  be satisfied" + "Request blocked", "One moment, please…", "Please wait while your request is being verified".
+- **Wired instruments:** `replica/scripts/stitch-shot.mjs`, `diff/scripts/content-diff.mjs`, `visual-diff.mjs`,
+  `measure-live.mjs` (`openBrowser` default tier `chrome`; `stealth` stays an alias of the `--headed` tier),
+  `replica/scripts/chrome-parity.mjs` and `motion-observe.mjs` launch the default tier and default `--ua` to the
+  browser's own; each `--help` says so. `extract/scripts/style-census.mjs`, `replica/scripts/measure.mjs` and `cap-probe.mjs` drop
+  their hard-coded desktop user agent the same way — a container run showed them still presenting it beside real
+  Chrome's own client hints.
+- **Docs:** `source-fidelity-gate.md` § Hardening rule 1 owns identity, retained automation-signal handling and pacing;
+  rule 12's ladder, `diff/SKILL.md` (`--ua`, `--headed`) and `replica/SKILL.md` point to the explicit opt-out.
+- Tests: `live-session.test.mjs` (50 checks — automation defaults and opt-out, pacing, user-agent and identity derivation,
+  client hints and denial classification) and `stitch-shot.test.mjs` (`--ua` defaults to the browser's own).
+
+## 0.36.1 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#150)
+
+Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a
+`local()` source naming a platform font the gate's Linux browser does not have. The build rendered a different face
+than the live site, the first archetype gate failed on type metrics, and the agent spent the better part of an hour
+finding the cause — the capture's font-load assertion reported only a face whose file failed to fetch, so an
+unresolved `local()` looked like a clean capture, and a check that threw was recorded as "every face loaded". In a
+later run the capture named the failed families and the fix took seconds: locally available metric-compatible faces
+(Liberation Sans / Arimo, Liberation Serif / Tinos) as the local fallbacks.
+
+- **`stitch-shot.mjs`:** after `document.fonts.ready` every declared face with status `error` and no loaded face of the
+  same family, weight and style is a dead face — a file that failed to fetch or a `local()` source this browser cannot
+  resolve; a failed declaration beside a loaded twin is not, an unloaded face was never needed. The WARNING names the
+  families and both causes; the capture record (`<stem>.capture.json`, 0.34.4) carries `fontsFailed` (`[]` = every face
+  loaded; `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). A
+  `--freeze-baseline` capture whose check could not run is refused like one with dead faces.
+- **`gate.sh` / `gate-all.mjs`:** both read the capture records (`<side>.capture.json`; the live one lives and dies with
+  `live.png`; under `--gate-against-baseline` the live side reads the frozen baseline's check). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
+  after the overflow line — the dead faces, every face loaded, or NOT CHECKED — as information for the loop (exit codes
+  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live.capture.json`
+  beside the reused archetype `live.png`, or the baseline's record after a flagged round; none is unchecked) and fails the row: `font-not-loaded:<family>`,
+  `font-check-skipped:<origin|build>` (`fontsNotLoaded`, `fontChecksSkipped`; totals, the calibration line, `FAIL
+  (fonts)`). A meta from before the check (no key, `--skip-existing`) is not flagged — recapture to check.
+- **Fonts policy** (`recreation-procedure.md`): self-host the source's own faces; brand family first, a metric-matched
+  substitute only as the fallback entry after it; a `local()` source only for a face the gate's browser has, the
+  Linux-available metric fallbacks named; proprietary faces raise deploy's licensing alert (#80). Gate rule 14 names
+  `fontsFailed` and `font-check-skipped`. Tests: `replica/stitch-shot` (new), `replica/gate`, `replica/gate-all`.
+- **Merged with 0.34.5.** The branch's `--json <file>` record was folded into the capture record every stitch already
+  writes since 0.34.4, so a capture has one record; one `stitch-shot` test file carries all four contracts.
+- **Merged with 0.36.0.** The capture record carries `fontsFailed` beside 0.34.12's `fixedLayers`; gate-all reads a reused
+  capture's font check from the record it carries — the archetype round's `live.capture.json`, or the frozen baseline's
+  after a flagged round — and a capture `staleCapture` retakes is checked afresh.
 
 ## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
 

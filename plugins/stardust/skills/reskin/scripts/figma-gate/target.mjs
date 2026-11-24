@@ -21,9 +21,12 @@ export async function loadMeasureLive() {
   return import(pathToFileURL(path).href);
 }
 
-export async function loadChromium() {
-  try { return (await import('playwright')).chromium; } catch {
-    throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright pixelmatch pngjs in stardust/, its own package root, not the project (reskin SKILL.md § Setup step 2)');
+// A plain Chromium from the front door; a missing playwright is a setup error (exit 2), not a crash.
+export async function openPlain() {
+  const { openBrowser } = await loadMeasureLive();
+  try { return await openBrowser({ mode: 'plain' }); } catch (e) {
+    if (/playwright is not importable/.test(e?.message ?? '')) throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright pixelmatch pngjs in stardust/, its own package root, not the project (reskin SKILL.md § Setup step 2)');
+    throw e;
   }
 }
 
@@ -53,11 +56,11 @@ export function localTarget(input) {
     regime: 'local',
     join: localAttributes,
     async open(browser, width) {
-      const { openPage, settle, visit } = await loadMeasureLive();
+      const [{ openPage, settle, visit }, { goto }] = await Promise.all([loadMeasureLive(), import('../deployed/eds.mjs').then((m) => m.loadLiveSession())]);
       const { ctx, page } = await openPage(browser, { width, height: 900 });
       try {
         if (isLocal(url)) {
-          await page.goto(url, { waitUntil: 'networkidle' });
+          await goto(page, url, { waitUntil: 'networkidle' });
           await settle(page, { passes: 2, quietMs: 300 });
         } else {
           await visit(page, url);

@@ -1,0 +1,62 @@
+# stardust:deploy: the checklist per page
+
+The text of this part of `skills/deploy/SKILL.md`, which keeps the heading and points here. "Above" and "below" refer to the order of the sections in that file.
+
+## Checklist (per page)
+
+- [ ] Each section in the prototype `<main>` has a corresponding section in the content page — a block for pattern sections, default content for prose sections, a lone `/widgets/<path>/<name>.html` link for code-driven UI with no authored content (D1, Step 2 triage recorded in the conversion log).
+- [ ] **`davids-model-lint` clean** — `node skills/deploy/scripts/davids-model-lint.mjs content/` exits 0 (0 🔴; 🟡 advisories reviewed and either fixed or justified in the conversion log).
+- [ ] **Content page is a body fragment** for the Source-API deploy: starts at `<body>`, **no `<!DOCTYPE>`/`<html>`/`<head>`** — EDS injects the project `head.html` at delivery. (Only the mount deploy tolerates a full doc.)
+- [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
+- [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.
+- [ ] **Token-completeness clean (#91)** — every `var(--x)` referenced in `blocks/**/*.css` is defined in `styles.css` `:root` (the `comm -23` grep prints nothing); no undefined-var-dropped background/color.
+- [ ] **`content-diff` summary reviewed (advisory)** for the first page of each template — per-role/img count deltas checked; per-node 🔴 confirmed on the deployed page (§ Reading `content-diff`).
+- [ ] **Section schema emitted + used (#93)** — `stardust/eds-schema/<page>.json` exists; authored rows follow its order/units; each block's JSDoc cites its section's schema; deliberate drops recorded in the conversion log.
+- [ ] **Every block passed `block-roundtrip` BEFORE deploy (#94)** — exit 0 (0 structural 🔴) per block against its prototype section, plus one whole-page run (no `--blocks`) clean before the DA push.
+- [ ] **EW gate exits 0 for every block (EW1–EW10)** — `block-roundtrip --ew` (default) / `ew-editability-probe.mjs`: dead = 0 outside declared `@ew-exempt` tags, duplicated = 0; every exemption is one of the three declared categories (metadata / derived / index-driven) and is written in the block JSDoc, never implied.
+- [ ] **Edit-mode simulation clean** — `ew-editability-probe.mjs --simulate-editor`: no font/colour/line-height drift on any text, block height Δ ≤ 2 px; the foundation ships the edit-mode CTA repaint, the card-as-link inner-anchor rule and `:where()` wrapper variants for every styled-text-link utility (Step 3).
+- [ ] **Block JS/CSS static review (EW1/EW2/EW4)** — no `textContent =`/`innerHTML =`/`${…}` interpolation producing displayed text from an authored element; no `cloneNode` of an indexed element without `stripInstrumentation()`; no `>`/`:first-child`/`:nth-child` between a wrapper class and an authored element; no class added to an authored `h*/p/ul/a` (wrappers carry classes); no `<button>`/`<summary>` hosting authored text (EW7).
+- [ ] **AI readability (#100)** — `ai-readability.mjs` code score ≥ 98 on the published page; no block generates visible text; carousel clones carry no text; index-backed listings ship authored rows (`reference/ai-readability.md`).
+- [ ] **Pixel parity before/after an editability conversion** (Step 8) — `pixelmatch` = 0 per block instance.
+- [ ] **Decode tier chosen per section (#95)** — bespoke fixed-composition sections are template-slotted (verbatim prototype DOM + role slots); only repeat/authorable sections are reconstructive; tiers recorded in the conversion log.
+- [ ] `<header></header>` and `<footer></footer>` are EMPTY (the `header`/`footer` blocks load `/nav` and `/footer` automatically); `content/nav.html` + `content/footer.html` exist, follow the section contract (brand / links / tools), and are on the publish roster.
+- [ ] **Page begins with a `metadata` block** (#34): real Title (≤60 chars, from the `<h1>`, never a block name) + Description (~155 chars). `nav` / `footer` path overrides / `Robots` rows go in the same block when needed.
+- [ ] **Exactly one `<h1>` per page** (#35): the hero/lead headline is `<h1>`; section titles are `<h2>`/`<h3>`; no headline left as a bare `<div>` (interactive blocks included — the lead title is `<h1>` in server-visible markup).
+- [ ] **Editorial images are authorable content** — uploaded to DA `/media`, authored as `content.da.live` `<img>` with `alt` (NOT repo-relative `/img/`, NOT baked into block JS by index). Hero/feature/CTA-band backgrounds count as editorial. Decorative image-less treatments (gradients/scrims/washes) and fixed brand assets stay CSS background. **Verify: the delivered `.plain.html` carries the expected `<img>`+alt count** (CSS-background images are absent from it). `<image-slot>` placeholders → empty cells with a CSS background fallback.
+- [ ] **ENCODE shapes (see The ENCODE contract):** grouped bands = one row per item; FAQ/accordion = head cell + Q/A rows; sub-fields carried by a leading `<strong>`/`<code>` tag, **not** an invented `::`/`|` delimiter; accents `<em>` not `<span class="em">`; no `<sup>`/layout-`<br>` in content; no `<hr>` ever (#119 — it is the section delimiter and fractures the section).
+- [ ] **Section heads are DEFAULT CONTENT, not block rows (D1)** — the eyebrow/heading/lede above a repeating block is authored as section default content; styled in place via `.<name>-container .default-content-wrapper`, or (only when it must live inside the block's layout) reabsorbed via `block.parentElement.previousElementSibling` matching `.default-content-wrapper` — decorated DOM byte-identical when reabsorbing (verify: 0 wrappers left, decorated outerHTML unchanged).
+- [ ] **Same-pattern sections share ONE block + variant classes** (`cards`/`text`/…); only genuinely-unique sections are bespoke (see "The one rule").
+- [ ] Heading outline has no level jumps (`h2 → h3`, never `h2 → h4`).
+- [ ] Each block reproduces the prototype's max-width container — **including plain-background sections** (#37) — and the **content-cap row passed (#124)**: `cap-probe.mjs <live> --against <deployed> --design DESIGN.json` prints PASS.
+- [ ] **Chrome crop gate passed (#115)** — header and footer bands each ≤2% diff (`crop-compare.mjs`) against live on the deployed URL, at least once per template.
+- [ ] Global `img` reset is `display: block; max-width: 100%; height: auto;` (#36) — EDS adds width/height attrs; without `height: auto` images stretch vertically.
+- [ ] **`npm run lint` runs `lint:breakpoints` and passes (#162)** — no desktop-first `@media` in `styles/` or `blocks/`.
+- [ ] Header in flow above the first section → `--nav-height` matches the real chrome height per breakpoint (#81); deployed-preview CLS < 0.1.
+- [ ] Hero LCP image eager + `fetchpriority="high"`, media slot CSS-reserved (#100); CLS probe on the DEPLOYED preview only (#101).
+- [ ] Player iframes mount after first paint into an `aspect-ratio` box, from an allow-listed `https:` URL (#157); qa `player-before-paint` empty.
+- [ ] **`qa-gate.mjs` run against the harness (advisory smoke test)** — stock script + the page's eds-schema, no hand-rolled probe (#101). Its unique pre-deploy value is the schema unit-counts + one-`<h1>`; decoration/broken-img/grid checks are superseded by the DEPLOYED computed-style guard (chrome-empty / auth-gated DA image failures are harness limitations — see its `--help`). The advisory `content-diff` was run against the DEPLOYED URL only.
+- [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
+- [ ] Every block CLASSIFIES plain-text fields by CELL (`cell.textContent` for the decision, #79) but DISPLAYS them by MOVING the cell's element (EW1) — `wrapTextNodes` (#104) and the workspace both deliver a `<p>`, so the element to move exists in both worlds; a `p`-only *read* still drops content on older runtimes. Verify against the decorated live/preview render, and assert each text field is present AND editable (counts alone don't catch it).
+- [ ] No `<style>` or `<script>` tags in the content page, and no code visible as text in any cell (D15).
+- [ ] **No CSS as content (#134)** — lint 🔴 on any cell/paragraph that is CSS; per-instance looks are `@variants` words (ENCODE contract). Code side: `grep -rnE "\.style\.[a-zA-Z]+\s*=|setProperty\(|style\.cssText|setAttribute\('style'" blocks/` lists only lines that do NOT take their value from authored text (image `src`/`href`-derived values are fine; `cell.textContent` is not).
+- [ ] Section-metadata blocks appear ONLY on default-content sections, `style` values from the Step-3 closed set (never on block sections — anti-pattern 2).
+- [ ] Closing CTA reuses the shared `closing` block.
+- [ ] **Internal links localized** — `localize-links.mjs --source-host <live-host> --check` exits 0 over the content tree: no source-host `<a href>` whose path exists locally, no `.html`/trailing-slash internal hrefs (the one sanctioned `.html` href is a `/widgets/` link — no content page sits at that path, so the pass leaves it alone); the listed KEPT absolutes are genuinely external or not-yet-migrated. Re-run the plain pass after every wave.
+- [ ] CTA links are paragraph-wrapped and emphasis-wrapped: `<strong>` (primary), `<em>` (secondary), `<em><strong>` (accent, sparingly — D6). Text links and tile-card anchors are plain `<a>`.
+- [ ] Block JS exports `default async function decorate(block)` with JSDoc describing rows and noting any button conventions.
+- [ ] Block CSS is scoped under `.block-name`.
+- [ ] Block CSS does NOT redefine global tokens.
+- [ ] Block CSS does NOT redefine global button classes (only legitimate overrides like size or hover variant).
+- [ ] SVG markup is inline in the block JS (no shared waves utility).
+- [ ] Block JS does NOT manufacture button anchors with custom classes.
+- [ ] `prefers-reduced-motion: reduce` honored on any animation.
+- [ ] No JS-toggled `opacity:0` reveal lifted from the prototype — content renders visible (prototype scroll-reveal script doesn't run in EDS).
+- [ ] No block — or widget file stem — named after a reserved EDS class (`section`, `block`, `wrap`, `button`, `widget`, or a name ending `-wrapper`/`-container`).
+- [ ] `head.html` is untouched **except** the single favicon `<link rel="icon">` line (Step 3 § Favicon; anti-pattern 10 lists what never goes there). Brand woff2(s) live in `fonts/`.
+- [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one; when none was captured, the deploy log records a loud WARN (likely a bounded extract — recover the icon rather than shipping the default silently).
+- [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".
+- [ ] Condensed/narrow display faces fall back to a **condensed** face, not plain Arial (#80): `"<Brand>", "Arial Narrow", arial, …` (or a self-hosted free condensed analog). Width-class is part of classification.
+- [ ] Every brand family's stack names its metric-matched `-fallback` face second (`"<Brand>", "<brand>-fallback", sans-serif`) — first paint renders the fallback until `loadFonts()` lands `fonts.css`.
+- [ ] Each `<brand>-fallback` `@font-face` declares `size-adjust` / `ascent-override` / `descent-override` (calibration per anti-pattern 11) — zero CLS on font swap.
+- [ ] No per-block `font-family: var(--body-font-family)` declarations. Brand font flows from `body` via inheritance. Only display/mono/serif families are explicitly set per-block via their `:root` tokens.
+- [ ] The `body { display: none }` / `body.appear` gate and the `header { height: var(--nav-height) }` reservation from the stock `styles.css` are INTACT (never removed by the foundation rebrand).

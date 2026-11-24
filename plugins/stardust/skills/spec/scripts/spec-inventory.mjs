@@ -16,7 +16,7 @@
  * live-session.mjs): ask the user, then re-run with --headed (live-session's stealth real-Chrome tier) or --archive
  * <date> (Internet Archive captures since <date>), the same choice S2 then makes.
  */
-import { arg, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, writeJSON, writeText, pool } from './lib.mjs';
+import { arg, flag, helpAndExit, loadBrowser, loadConfig, log, writeJSON, writeText, pool } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -38,9 +38,9 @@ async function get(url) {
     const ts = cdx.length > 1 ? cdx[cdx.length - 1][0] : null;
     return ts ? fetch(`https://web.archive.org/web/${ts}id_/${url}`, { headers: { 'user-agent': UA } }).then((r) => (r.ok ? r.text() : '')).catch(() => '') : '';
   }
-  if (!MODE.ls) MODE.ls = await loadLiveSession();
+  if (!MODE.ls) MODE.ls = await loadBrowser();
   if (MODE.headed) {
-    if (!MODE.ctx) { const { chromium } = await loadPlaywright(); MODE.ctx = await MODE.ls.newLiveContext(await MODE.ls.launchStealthHeaded(chromium)); }
+    if (!MODE.ctx) { const { openBrowser, newLiveContext } = MODE.ls; MODE.ctx = await newLiveContext(await openBrowser({ mode: 'headed' })); }
     const p = await MODE.ctx.newPage();
     try { const r = await MODE.ls.gotoLive(p, url, { solveWindow: true, httpError: 'measure', settleMs: 300 }); return r.ok() ? await r.text().catch(() => '') : ''; } catch (e) { if (e.name === 'BotChallengeError') MODE.blocked += 1; return ''; } finally { await p.close(); }
   }

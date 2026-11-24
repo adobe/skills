@@ -1,0 +1,17 @@
+{
+  "event": "pzn:notified",
+  "personalization": {
+    "id": "plan-offer",
+    "decisionId": "plan-offer#1",
+    "variant": "free-trial",
+    "assigned": "free-trial",
+    "source": "target",
+    "where": "browser",
+    "outcome": "variant",
+    "notification": {
+      "product": "target",
+      "type": "display",
+      "ok": true
+    }
+  }
+}

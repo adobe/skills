@@ -26,7 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
+import { loadMeasureLive } from '../figma-gate/target.mjs';
 import { callTool, childEnv, coded, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
@@ -148,10 +148,9 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeou
 
 // { [width]: the four rows }, in one browser: the bundled Chromium, the preview is not bot-managed.
 async function browserRows({ widths, url, edsTimeoutMs }) {
-  const chromium = await loadChromium();
   const { openBrowser, openPage } = await loadMeasureLive();
   const { gotoLive } = await loadLiveSession();
-  const browser = await openBrowser(chromium, { tier: 'plain' });
+  const browser = await openBrowser({ mode: 'plain' });
   const rows = {};
   try {
     for (const width of widths) rows[width] = await measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs });

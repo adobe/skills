@@ -1,0 +1,21 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "hero-message",
+    "decisionId": "hero-message#1",
+    "variant": "team",
+    "assigned": "team",
+    "source": "split",
+    "where": "browser",
+    "outcome": "variant",
+    "trigger": "initial",
+    "ms": 3,
+    "test": {
+      "type": "split",
+      "weights": [
+        40,
+        30
+      ]
+    }
+  }
+}

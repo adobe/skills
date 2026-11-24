@@ -1,3 +1,45 @@
+## [2.4.4](https://github.com/adobe/skills/compare/web-cli-v2.4.3...web-cli-v2.4.4) (2026-11-20)
+
+
+### Bug Fixes
+
+* **web:** page reduce drops sections without content and falls back to main or body ([#763](https://github.com/adobe/skills/issues/763)) ([bd82e7f](https://github.com/adobe/skills/commit/bd82e7fb99ec2c4e38c3f3f506b0077e088a6e98)), closes [#761](https://github.com/adobe/skills/issues/761) [#764](https://github.com/adobe/skills/issues/764) [#761](https://github.com/adobe/skills/issues/761)
+
+## [2.4.3](https://github.com/adobe/skills/compare/web-cli-v2.4.2...web-cli-v2.4.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **web:** header check menus waits for a panel that closes with a transition ([#770](https://github.com/adobe/skills/issues/770)) ([20766bc](https://github.com/adobe/skills/commit/20766bce7f223417ec007f7017844de4b0027ad7))
+
+## [2.4.2](https://github.com/adobe/skills/compare/web-cli-v2.4.1...web-cli-v2.4.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update dependency commander to v15.1.0 ([#613](https://github.com/adobe/skills/issues/613)) ([d4eb6ca](https://github.com/adobe/skills/commit/d4eb6caaef803e52b8ff6642c7f395fd7c9e72bb))
+
+## [2.4.1](https://github.com/adobe/skills/compare/web-cli-v2.4.0...web-cli-v2.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **web-cli:** page reduce measures the live page ([#565](https://github.com/adobe/skills/issues/565)) ([d9ae052](https://github.com/adobe/skills/commit/d9ae0528e55eb897651983c373133272f91411f7)), closes [#563](https://github.com/adobe/skills/issues/563)
+
+# [2.4.0](https://github.com/adobe/skills/compare/web-cli-v2.3.0...web-cli-v2.4.0) (2026-11-05)
+
+
+### Features
+
+* **web-cli:** fill the cache through a remote browser past bot protection ([#555](https://github.com/adobe/skills/issues/555)) ([6f654d7](https://github.com/adobe/skills/commit/6f654d73acad548fab05604c3af6bf533c250530))
+
+# [2.3.0](https://github.com/adobe/skills/compare/web-cli-v2.2.0...web-cli-v2.3.0) (2026-11-05)
+
+
+### Features
+
+* web header capture|check commands and the migrate-header skill ([#550](https://github.com/adobe/skills/issues/550)) ([fd07a39](https://github.com/adobe/skills/commit/fd07a393f64cb0fcda604eb59a330d7846a96b5d)), closes [adobe/skills#533](https://github.com/adobe/skills/issues/533) [adobe/skills#533](https://github.com/adobe/skills/issues/533) [adobe/skills#533](https://github.com/adobe/skills/issues/533)
+
 # [2.2.0](https://github.com/adobe/skills/compare/web-cli-v2.1.0...web-cli-v2.2.0) (2026-10-30)
 
 

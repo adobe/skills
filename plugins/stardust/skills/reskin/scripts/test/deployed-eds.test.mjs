@@ -36,7 +36,7 @@ await check('isEdsHost: the four EDS suffixes, the DEPLOY_VERIFY_ORIGIN host rea
   } finally { if (saved === undefined) delete process.env.DEPLOY_VERIFY_ORIGIN; else process.env.DEPLOY_VERIFY_ORIGIN = saved; }
 });
 
-await check('eds.mjs resolves live-session in the project-copy layout and loads it only when asked', async () => {
+await check('eds.mjs resolves browser.mjs in the project-copy layout and loads it only when asked', async () => {
   const dir = join(scratch, 'copy');
   const reskin = join(dir, 'stardust', 'scripts', 'reskin');
   mkdirSync(join(reskin, 'deployed'), { recursive: true });
@@ -44,9 +44,9 @@ await check('eds.mjs resolves live-session in the project-copy layout and loads 
   cpSync(join(SCRIPTS, 'deployed', 'eds.mjs'), join(reskin, 'deployed', 'eds.mjs'));
   cpSync(join(SCRIPTS, 'figma', 'errors.mjs'), join(reskin, 'figma', 'errors.mjs'));
   const bare = await import(`${join(reskin, 'deployed', 'eds.mjs')}?bare`);
-  await assert.rejects(bare.loadLiveSession(), /live-session\.mjs not found/);
-  mkdirSync(join(dir, 'stardust', 'scripts', 'diff'), { recursive: true });
-  cpSync(join(SCRIPTS, '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(dir, 'stardust', 'scripts', 'diff', 'live-session.mjs'));
+  await assert.rejects(bare.loadLiveSession(), /browser\.mjs not found/);
+  const master = join(SCRIPTS, '..', '..', 'stardust', 'scripts');
+  cpSync(master, join(dir, 'stardust', 'scripts', 'stardust'), { recursive: true, filter: (src) => src !== join(master, 'test') });
   const copy = await import(`${join(reskin, 'deployed', 'eds.mjs')}?copy`);
   const live = await copy.loadLiveSession();
   assert.equal(typeof live.newLiveContext, 'function');

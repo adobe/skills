@@ -38,7 +38,7 @@ appbuilder-action-scaffolder/
 ## Prerequisites
 
 1. **Adobe I/O CLI** — `aio --version` must return a version
-2. **Node.js 18+** — Required by aio CLI and App Builder SDKs
+2. **Node.js 20.17+** — Required by the aio CLI (`@adobe/aio-cli` 11 declares `engines.node >=20.17.0`)
 3. **Python 3** — Required for manifest validation and the accelerator script
 4. **Authenticated session** — `aio auth login` must have been completed
 5. **Existing App Builder project** — Use `appbuilder-project-init` to create one first
@@ -108,7 +108,7 @@ aio rt action invoke <action-name> --param key value   # Invoke an action direct
 | IMS token not available | Set annotations.require-adobe-auth: true in manifest, confirm aio auth login, verify workspace API access |
 | State/Files SDK fails with aio app dev | These SDKs require Runtime. Switch to aio app run for local testing |
 | Sequence returns 404 locally | Known limitation of aio app dev. Use aio app run or test with inline orchestration fallback |
-| npm install errors | Verify Node.js version (18+), delete node_modules and package-lock.json, retry |
+| npm install errors | Verify Node.js version (20.17+), delete node_modules and package-lock.json, retry |
 
 ## Skill Chaining
 

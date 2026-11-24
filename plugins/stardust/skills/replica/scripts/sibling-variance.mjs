@@ -46,19 +46,15 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import { existsSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('sibling-variance error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('sibling-variance: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(BROWSER.href);
 
 const HELP = `sibling-variance — diff template-defining computed values of live siblings against the archetype
 
@@ -220,7 +216,7 @@ function compare(arch, sib, tol) {
 // ---------------------------------------------------------------------- main
 
 async function probeUrl(browser, url, opts) {
-  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
+  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, stateUrl: url });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
   await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
@@ -238,7 +234,7 @@ async function probeUrl(browser, url, opts) {
 
 async function main() {
   const { archetype, siblings, opts } = parseArgs(process.argv);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'plain' });
   let varying = 0;
   try {
     const A = await probeUrl(browser, archetype, opts);

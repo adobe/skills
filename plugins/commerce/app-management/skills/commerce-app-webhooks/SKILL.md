@@ -120,7 +120,7 @@ runtimeManifest:
         validate-product:
           function: actions/validate-product/index.js # relative to src/commerce-extensibility-1/
           web: "yes"
-          runtime: nodejs:24
+          runtime: nodejs:26
           annotations:
             require-adobe-auth: true
 ```

@@ -1,0 +1,46 @@
+{
+  "context": "Tests whether the agent understands that the AEM Forms Form block commits model.value on the native change event (blur), and implements a custom component that commits on every keystroke when the requirement demands it \u2014 handling the input event, keeping display formatting separate from the stored value, avoiding redundant or looping updates, and documenting the commit contract for rule authors.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Files, viewType and registration",
+      "max_score": 10,
+      "description": "Files exist under `blocks/form/components/live-amount-input/` with matching names, `_live-amount-input.json` sets `\"fd:viewType\": \"live-amount-input\"` with `\"fieldType\": \"text-input\"`, and `'live-amount-input'` is in `customComponents` in `mappings.js`"
+    },
+    {
+      "name": "Commits on input",
+      "max_score": 20,
+      "description": "The component listens to the `input` event and commits on each keystroke, by setting `fieldModel.value` (or dispatching a bubbling `change` event) so the field's change rule runs while typing, not only on blur"
+    },
+    {
+      "name": "Recognises OOTB blur commit",
+      "max_score": 8,
+      "description": "The solution (code comments, README or summary) reflects that, without the component, the model value is only committed on the native `change`/blur event"
+    },
+    {
+      "name": "Formatted display, raw value",
+      "max_score": 14,
+      "description": "The input shows digits grouped with thousands separators while typing, while the committed model value is the digits only (no separators); non-digit characters are stripped"
+    },
+    {
+      "name": "No redundant commits",
+      "max_score": 10,
+      "description": "The component only commits when the raw value actually changed (e.g. compares with `fieldModel.value` before assigning), so formatting-only updates and the native `change` on blur do not trigger extra or duplicate commits"
+    },
+    {
+      "name": "Loop guard and external sync",
+      "max_score": 10,
+      "description": "Model `value` changes received via `subscribe(..., { listenChanges: true })` (from rules or prefill) are rendered formatted in the input without re-committing or causing an update loop, and the caret is kept usable while typing"
+    },
+    {
+      "name": "README Model Properties Set",
+      "max_score": 18,
+      "description": "`README.md` has a \"Model Properties Set\" (or equivalent) section stating that `model.value` is committed on every keystroke (unlike the OOTB blur commit), that the stored value is unformatted digits, and that change rules on the field fire per keystroke"
+    },
+    {
+      "name": "Default export and subscribe import",
+      "max_score": 10,
+      "description": "`live-amount-input.js` has a default-export `decorate` and imports `subscribe` from `'../../rules/index.js'` using `{ listenChanges: true }`"
+    }
+  ]
+}

@@ -171,6 +171,8 @@ await check('deltas.mjs resolves eds-path.mjs in both layouts and names where it
   assert.equal(bare.normalizeHref('https://example.test/a', { sourceHost: 'src.test', renderedOrigin: 'http://x' }), 'https://example.test/a', 'a link that is not localized never needs it');
   mkdirSync(join(dir, 'stardust', 'scripts', 'deploy'), { recursive: true });
   copyFileSync(deploy, join(dir, 'stardust', 'scripts', 'deploy', 'eds-path.mjs'));
+  const master = join(SCRIPTS, '..', '..', 'stardust', 'scripts');
+  cpSync(master, join(dir, 'stardust', 'scripts', 'stardust'), { recursive: true, filter: (src) => src !== join(master, 'test') });
   const copy = await import(`${join(reskin, 'deployed', 'deltas.mjs')}?copy`);
   assert.equal(copy.normalizeHref('https://src.test/a/', { sourceHost: 'src.test', renderedOrigin: 'http://x' }), 'http://x/a/');
 });

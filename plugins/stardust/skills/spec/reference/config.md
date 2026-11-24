@@ -15,7 +15,7 @@ are ignored.
 | `maxPages` | no | cap on the URLs every stage covers; above it S1 keeps an even sample per section and the spec says so |
 | `workers` | no | parallel requests for fetch, default 4 (be polite: the source is production); `--headed` runs one page at a time, `--archive` two |
 | `template` | yes | how a page names its template: `{ "bodyAttr": "data-template" }`, `{ "bodyClass": "^editable-(.+)$" }` (one capture group), or `{ "meta": "<name>" }`; `"pathSegments": N` appends the first N path segments under scopePath (alone, it is the whole template name) |
-| `parser` | yes | `{ "profile": "aem-classic" \| "aem-core" \| "generic", "main": "<selector>", "chrome": { "header": "<selector>", "footer": "<selector>" }, "nameAttrs": [], "stripPrefix": "<regex>" }`; the last two only for generic |
+| `parser` | yes | `{ "profile": "aem-classic" \| "aem-core" \| "generic", "main": "<selector>", "chrome": { "header": "<selector>", "footer": "<selector>" }, "nameAttrs": [], "stripPrefix": "<regex>", "extraRoots": [] }`; nameAttrs and stripPrefix only for generic, extraRoots only for aem-classic |
 | `rum` | no | `{ "keyEnv": "RUM_DOMAIN_KEY", "domain": "<host>", "days": 90 }`; omit or null when no key exists |
 | `referenceBlocks` | no | `{ "name": "<library>", "count": <n>, "source": "<where the blocks live>" }` — what reuse verdicts compare against |
 
@@ -25,7 +25,8 @@ sites carry the template in a body class; other CMSs expose a meta tag or a body
 template, use `{ "pathSegments": 1 }` and let S8 variants do the grouping.
 
 ## Choosing the parser profile and main selector
-- `aem-classic`: custom components with a `c-` class prefix inside `div.main.content`, column controls (`colctrl`).
+- `aem-classic`: custom components with a `c-` class prefix inside `div.main.content`, column controls (`colctrl`);
+  responsive-grid members are named by the component they wrap; `extraRoots` lists component classes without the prefix.
 - `aem-core`: Core Components / editable templates — components are responsive-grid members (`aem-GridColumn`);
   main is usually the page's main container (`#mainContent`, `main`, `.root > .aem-Grid`).
 - `generic`: any other site. Below main, single-child wrappers are skipped and the children are the components,

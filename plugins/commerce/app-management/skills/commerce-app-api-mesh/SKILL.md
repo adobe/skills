@@ -128,6 +128,10 @@ Always pair `sourceSelectionSet` with `result` when extracting a scalar from an 
 
 If you already know a browser-based app will call this mesh, decide `responseConfig.CORS` now, before your first deploy — the browser-verification tier below exists to catch a missed CORS config, but deciding upfront avoids a second deploy cycle.
 
+`responseConfig.CORS` has (at least) two independent dimensions that both need to be right — `origin` and `allowedHeaders` — and a correct `origin` entry says nothing about whether `allowedHeaders` is complete. Don't decide `allowedHeaders` by guessing or by copying `["Content-Type", "Authorization"]` from an example: **read the consuming storefront's own config first** and allowlist every custom header sent by whichever GraphQL client(s) actually point at this endpoint, not just the ones a first failed request happens to reveal. In an AEM/EDS storefront built on aem-boilerplate-commerce, header sets are scoped per fetch client in `config.json`'s `headers` block (e.g. `headers.all` for the core commerce client, `headers.cs` for a separate Catalog Service client) — check the scope(s) that correspond to whichever client(s) you're repointing at this mesh, not every scope in the file regardless of relevance. Adding one rejected header at a time from live CORS errors is a multi-round-trip trap — each fix only surfaces the _next_ missing header, and it reads as repeated basic failures to whoever is watching, especially mid-demo.
+
+Before widening `allowedHeaders` for a header like `Store`, check whether it's redundant: if the `graphql` source already hardcodes an equivalent value via `operationHeaders` (e.g. `"Store": "default"`), the mesh doesn't need the client to send it at all, and the leaner fix is dropping that header from the storefront's outgoing request config instead of exposing it through CORS. Omitting `allowedHeaders` entirely is also a valid option in some CORS middleware (headers get reflected from the request instead of allowlisted) — worth checking against the current handler's docs rather than assuming an explicit list is required.
+
 The first `aio api-mesh:*` call in a session opens an interactive browser login (`Waiting for browser login...`). An agent without browser access can't complete this itself — hand the printed login URI to the human and wait.
 
 ```sh
@@ -151,6 +155,7 @@ If the consuming app will call this mesh directly from a browser (not just serve
 
 - **`"not authorized"` on an authenticated query, even with a valid token** — the source's `graphql` handler is missing `operationHeaders`. Check `mesh.json`, not the token.
 - **`"No type was found for field node ... __typename"` on a nested/list field, but the source works fine at root** — the resolver uses `result` without `sourceSelectionSet`. Add it.
+- **Browser console shows `Request header field <X> is not allowed by Access-Control-Allow-Headers in preflight response`, but a server-side curl/CLI call to the same mesh works fine** — this is a CORS `allowedHeaders` gap, not a schema/resolver bug; curl and `aio api-mesh:status` skip the browser preflight entirely, so they can't catch it. Read the storefront's own config for the full header set sent by whichever client is calling this endpoint (see Step 4), fix `allowedHeaders` for all of them at once, and check first whether the header is redundant before just appending it to the list.
 
 ## Quality Bar
 

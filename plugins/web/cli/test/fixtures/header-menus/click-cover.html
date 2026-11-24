@@ -1,0 +1,8 @@
+<!doctype html><html><head><style>
+header nav > ul { display: flex; gap: 40px; list-style: none; margin: 0; padding: 20px; }
+.panel { display: none; position: fixed; inset: 0; background: #eee; padding: 80px 20px; z-index: 10; }
+.open .panel { display: block; }
+</style></head><body><header><nav><ul>
+<li><button type="button" onclick="this.parentElement.classList.toggle('open')">Tools</button>
+<div class="panel"><a href="/t1">T1</a> <a href="/t2">T2</a></div></li>
+</ul></nav></header><main style="height:1200px"></main></body></html>

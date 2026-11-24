@@ -1,17 +1,54 @@
 /**
  * rollout/lib.mjs — shared IO + roll-up helpers so every script derives the same
  * counts from the same per-unit truth (counts are always recomputed, never
- * incremented).
+ * incremented). The EDS rules (names, kinds, paths) come from the master skill's
+ * contracts.mjs (skills/stardust/scripts/lib/README.md), resolved here once and
+ * re-exported, so the rollout scripts keep importing them from ./lib.mjs.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// deploy Step 2 as reskin applies it (reskin/scripts/figma/eds-map.mjs): the plugin tree, else the project copy
-// (stardust/scripts/<skill>/). Absent (a partial copy) → the plain kebab name below.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const EDS_MAP = [join(HERE, '..', '..', 'reskin', 'scripts', 'figma', 'eds-map.mjs'), join(HERE, '..', 'reskin', 'figma', 'eds-map.mjs')].find((p) => existsSync(p));
-const edsMap = EDS_MAP ? await import(pathToFileURL(EDS_MAP).href) : null;
+// The shared rules live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) throw Object.assign(new Error('rollout/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
+const C = await import(CONTRACTS.href);
+export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;
+export const { pathKey, safePath, sidecarName, treePath, rosterPath, pathSlug, sitemapKey, servedPath, isFolderIndexFile } = C;
+export const { daTokenSource, readDaToken, jwtExpiry } = C;
+
+/**
+ * The block library's proof of publication (#160): da-library.mjs writes it once every DA write of a run succeeded and
+ * removes it at the start of every run that is not a dry run; done-check's library_missing gap reads it. One path for
+ * both: `<rollout dir>/library/published.json` (da-library's rollout dir is dirname(--coverage), done-check's --out).
+ */
+export const libraryMarkerPath = (rolloutDir = join('stardust', 'rollout')) => join(rolloutDir, 'library', 'published.json');
+
+/**
+ * done-check's library gap, or null. `marker` is published.json (null when absent); `da` is rollout.json site.da;
+ * `delivered` the delivered coverage rows as `{ path, deployedAt }` (a bare path string has no deployedAt). Missing →
+ * `library_missing`; published to another DA site → `library_missing:published to <org>/<site>, site.da is …`;
+ * otherwise `library_missing:stale: …` naming delivered pages it never read (siblings delivered after it ran,
+ * archetypes-only mode) and pages re-delivered after it ran (`deployedAt` later than the marker's `at`: a fix round
+ * may have added a block or variant). Pure.
+ */
+export function libraryGap(marker, { da = {}, delivered = [] } = {}) {
+  if (!marker || typeof marker !== 'object') return 'library_missing';
+  const want = `${da.org || ''}/${da.site || ''}`;
+  if (da.org && da.site && `${marker.org}/${marker.site}` !== want) return `library_missing:published to ${marker.org}/${marker.site}, site.da is ${want} — re-run da-library.mjs`;
+  const read = new Set((Array.isArray(marker.pages) ? marker.pages : []).map(pathKey));
+  const ranAt = Date.parse(marker.at);
+  const rows = delivered.map((d) => (typeof d === 'string' ? { path: d } : d));
+  const unread = rows.filter((d) => !read.has(pathKey(d.path))).map((d) => d.path);
+  const newer = rows.filter((d) => read.has(pathKey(d.path)) && Date.parse(d.deployedAt) > ranAt).map((d) => d.path);
+  if (!unread.length && !newer.length) return null;
+  const list = (ps) => (ps.length > 20 ? `${ps.slice(0, 20).join(', ')}, … (+${ps.length - 20})` : ps.join(', '));
+  const why = [
+    unread.length && `${unread.length} delivered page(s) not in the library: ${list(unread)}`,
+    newer.length && `${newer.length} page(s) re-delivered after it ran: ${list(newer)}`,
+  ].filter(Boolean).join('; ');
+  return `library_missing:stale: ${why} — re-run da-library.mjs`;
+}
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
@@ -84,10 +121,10 @@ export function pageCounts(pages) {
 /**
  * The `edsBlockName` that records a module mapped to EDS default content (title, text, image,
  * button, separator — deploy's D1): the mapping is the resolved decision and there is no block to
- * build, so such a row is never pending whatever its status. A widget with that literal id still
- * needs its own code. A recorded hands-off run left four default-content modules pending.
+ * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
+ * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
+ * A widget whose file stem is literally `default-content` is still a widget to build, not such a mapping.
  */
-export const DEFAULT_CONTENT = 'default-content';
 export const isDefaultContent = (b) => !!(b && b.kind !== 'widget' && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
 
 /** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
@@ -127,57 +164,13 @@ export function rollupConfig(config, pages, blocks, now) {
 }
 
 /**
- * The EDS block a block id becomes, by deploy Step 2 (../../deploy/SKILL.md § 2): a boilerplate or Block
- * Collection pattern keeps that block's name (faq → accordion, teaser → cards with variant teaser), body
- * copy and buttons are default content (block null), anything else its own kebab name. → { block, variant }.
- */
-export function edsBlock(id) {
-  if (edsMap) {
-    const e = edsMap.edsEquivalent(String(id));
-    return { block: e.block === null ? null : kebabName(e.block), variant: e.variant ?? null };
-  }
-  return { block: kebabName(id), variant: null };
-}
-
-/** EDS block name from a block id (edsBlock): DEFAULT_CONTENT when deploy Step 2 makes it default content. */
-export function edsName(id) {
-  const { block } = edsBlock(id);
-  return block === null ? DEFAULT_CONTENT : block;
-}
-
-/** Kebab + guard against reserved EDS classes (#15); a chrome fragment keeps its own name (nav → fragments/nav.html). */
-export const RESERVED = new Set(['section', 'block', 'wrap', 'button', 'widget']);
-export function kebabName(id) {
-  let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (!n) n = 'block';
-  if (RESERVED.has(n)) n = `blk-${n}`;
-  // decorateBlock derives .<name>-wrapper/.<name>-container classes, so a block
-  // NAMED with one of those suffixes collides with another block's derived class.
-  if (/-(wrapper|container)$/.test(n)) n = `${n}-block`;
-  return n;
-}
-
-/** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
-/**
  * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
- * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key (lib/paths.mjs servedPath). Pure.
  */
 export function publicUrl(page) {
   const p = page.path || `/${page.slug}`;
-  const src = (page.source && page.source.migratedHtml) || '';
-  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+  return servedPath(p, { folderIndex: isFolderIndexFile((page.source && page.source.migratedHtml) || '') });
 }
-
-export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
-export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
-/** A widget's file stem becomes its block class verbatim, so a reserved or -wrapper/-container stem collides (#15); the lint rejects it, nothing renames it. Pure. */
-export const reservedStem = (n) => RESERVED.has(String(n)) || /-(wrapper|container)$/.test(String(n));
-/** Code path of a widget from its authored link: /widgets/<path>/<name>.html?<params> → widgets/<path>/<name>.html. Pure. */
-export const widgetCodePath = (href) => String(href).replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*/, '').replace(/^\//, '');
-/** Widget rows of a page: `{ id, href }` pairs from the sidecar's widgets[]; id defaults to the href's file stem. Pure. */
-export const pageWidgets = (meta) => (Array.isArray(meta && meta.widgets) ? meta.widgets : [])
-  .filter((w) => w && typeof w.href === 'string')
-  .map((w) => ({ id: String(w.id || widgetCodePath(w.href).replace(/^.*\//, '').replace(/\.html$/, '')), href: w.href }));
 
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {
@@ -205,6 +198,7 @@ export async function loadPageHTML(page, { root, base }) {
 export const ALL_LAYERS = ['brand-tensions', 'design-ux', 'accessibility', 'seo', 'content-conversion', 'ai-search', 'cross-page'];
 export const ASSESSED_BY_BASELINE = ['accessibility', 'seo', 'ai-search', 'cross-page'];
 export const SEV_WEIGHT = { P1: 25, P2: 10, P3: 4 };
+
 
 /**
  * AEM autofix registry: maps a finding's `check` to the EDS fixer that resolves it.
@@ -244,6 +238,36 @@ export function autofixFor(check) {
  */
 export const SOURCE_PARITY_PREFIX = 'source parity: ';
 export const isSourceParity = (f) => !!(f && f.fixability === 'out-of-scope' && typeof f.evidence === 'string' && f.evidence.startsWith(SOURCE_PARITY_PREFIX));
+
+/**
+ * An open finding that keeps a page from "optimised": open or in progress and not source parity — exactly the
+ * findings optimize scores and gates on (isSourceParity: `out-of-scope` with the `source parity: ` evidence). Pure.
+ */
+export const blocksOptimised = (f) => !!f && (f.status === 'open' || f.status === 'in-progress') && !isSourceParity(f);
+
+/**
+ * The verdict a gate-all row carries for update-coverage --gate: true / false, or null for NO verdict — a row
+ * whose pixel step errored (`error`, no percentage: a capture that never happened, an unstable reference) and
+ * whose other criteria (clip, content, units — probed independently of the capture) measured no failure. A
+ * measured failure beside a capture error is still false; an override still decides. Pure.
+ */
+export function gateRowVerdict(r) {
+  if (!r) return null;
+  if (r.pass || ('passWithOverride' in r ? r.passWithOverride : r.override)) return true;
+  if (r.error && (r.pct === null || r.pct === undefined)) {
+    const measured = Array.isArray(r.failing) ? r.failing.some((c) => c !== 'capture') : [r.clipPass, r.contentPass, r.unitPass].includes(false);
+    return measured ? false : null;
+  }
+  return false;
+}
+
+/** True when a page's `gate: …` failure text names only capture errors (no measured criterion). Pure. */
+export const gateFailureIsCaptureErrorOnly = (error) => {
+  const m = /^gate: (.*)$/s.exec(error || '');
+  if (!m) return false;
+  const parts = m[1].split(/;\s*/).filter(Boolean);
+  return parts.length > 0 && parts.every((p) => /pixel error|missing capture|reference-unstable/i.test(p));
+};
 
 /** Tag a detected finding as mirroring the source (`why` names the shared condition). */
 export function markSourceParity(finding, why) {

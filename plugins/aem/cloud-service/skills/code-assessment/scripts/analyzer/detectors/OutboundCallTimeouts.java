@@ -43,8 +43,10 @@ public final class OutboundCallTimeouts implements Detector {
         "\\b(HttpClientBuilder|HttpClients|OkHttpClient|HttpClient)\\b");
 
     // A candidate must look like client *creation*, not just any mention of the type.
+    // `.createSystem` / `.createMinimal` are the other HttpClients factories (4.x and 5.x); neither
+    // sets a timeout, and createSystem() is the usual choice for AEM CS egress (system proxy).
     private static final String[] CREATION_MARKERS = {
-        ".createDefault", ".newBuilder", ".newHttpClient", ".build(",
+        ".createDefault", ".createSystem", ".createMinimal", ".newBuilder", ".newHttpClient", ".build(",
         "new HttpClientBuilder", "new OkHttpClient"
     };
 

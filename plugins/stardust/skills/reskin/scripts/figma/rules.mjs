@@ -253,7 +253,7 @@ export function deletePath(o, path) {
   if (isObj(parent)) delete parent[keys.at(-1)];
 }
 
-// A module's disposition fields (deploy Step 2c): eds.as names a blockless kind and needs block null; a
+// A module's disposition fields (reference/vocabulary.md): eds.as names a blockless kind and needs block null; a
 // section-style names its class in eds.name; section-style, style and feature say why in edsWhy.
 export function edsProblems(label, m) {
   const out = [];

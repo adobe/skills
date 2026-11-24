@@ -147,11 +147,9 @@ HTML mechanically rather than re-deriving structure.
   target slug is not in the migrated inventory. Surfaced in
   `migrate`'s run summary; user resolves by extracting the
   missing page and re-migrating, or accepts the broken link.
-- **`data-source-href`** — on every `<a href>` / `<area href>` that
-  `migrate` rewrote to a migrated path, the original absolute
-  source URL. Content gates (`slot-coverage`) match links by it, as
-  they match localized images by `data-source-src`, so a migrated
-  page re-passes the gates its prototype passed.
+- **`data-source-href`** — `flow: reskin` only: on a link `migrate`
+  rewrote, the original absolute source URL
+  (`skills/reskin/reference/handoff.md`).
 
 ### Mobile-collapse marker
 

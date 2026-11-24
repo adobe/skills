@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "description": "Deterministic integration signatures for the migration skill's integrationDiscovery (integration-scan). Scanner behaviour, scoring, and privacy rules: discovery.md.",
+  "categories": {
+    "adobe-product": "Adobe product integration",
+    "third-party": "Known third-party integration",
+    "customer-external": "Customer-specific / unknown external integration"
+  },
+  "considerations": {
+    "adobe-product-configuration": "Re-create the Adobe product integration as an IMS-based cloud configuration under /conf (legacy /etc/cloudservices configurations are not supported on AEM as a Cloud Service)",
+    "external-connectivity": "Outbound connectivity from AEM as a Cloud Service (advanced networking if the endpoint allowlists IPs)",
+    "private-connectivity": "Private / on-premise endpoint: needs advanced networking (VPN or dedicated egress)",
+    "non-standard-port": "Endpoint uses a port other than 80/443: needs advanced networking (flexible port egress) and port forwarding rules",
+    "credential-configuration": "Move credentials to Cloud Manager secret environment variables",
+    "environment-variable-configuration": "Endpoint configured per environment via Cloud Manager environment variables",
+    "frontend-integration": "Client-side integration: verify CSP, clientlibs and CDN caching",
+    "backend-verification": "Server-side verification call from AEM",
+    "binary-transfer": "Binary transfer through the JVM: review against Cloud Service binary handling guidance",
+    "cdn-configuration": "AEM as a Cloud Service ships an Adobe-managed CDN: a customer-managed CDN must be reviewed against Cloud Service CDN guidance",
+    "cache-invalidation": "CDN purge / invalidation logic must be reviewed against the Cloud Service CDN",
+    "customer-review": "Unknown external API: confirm owner, protocol and authentication with the customer"
+  },
+  "integrations": [
+    {
+      "id": "adobe-target",
+      "name": "Adobe Target",
+      "category": "adobe-product",
+      "migrationConsiderations": ["adobe-product-configuration", "frontend-integration", "external-connectivity"],
+      "signals": [
+        { "id": "target-java-sdk-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.adobe\\.target\\.", "indicator": "com.adobe.target.* (Target Java SDK)" },
+        { "id": "target-aem-integration", "type": "osgi-config", "strength": "strong", "kinds": ["*"], "pattern": "com\\.day\\.cq\\.analytics\\.testandtarget|/cq/analytics/(?:templates|components)/testandtarget", "indicator": "AEM Target integration (testandtarget)" },
+        { "id": "target-delivery-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.tt\\.omtrdc\\.net\\b", "flags": "i", "indicator": "*.tt.omtrdc.net (Target Delivery API host)" },
+        { "id": "target-admin-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "mc\\.adobe\\.io/[A-Za-z0-9_-]+/target\\b", "flags": "i", "indicator": "mc.adobe.io/<tenant>/target (Target Admin API)" },
+        { "id": "target-atjs-api", "type": "script-reference", "strength": "strong", "kinds": ["code", "markup"], "pattern": "\\badobe\\.target\\.(?:getOffers?|applyOffers?|trackEvent|triggerView|sendNotifications)\\b", "indicator": "adobe.target.* (at.js API)" },
+        { "id": "target-mbox-api", "type": "script-reference", "strength": "strong", "kinds": ["code", "markup"], "pattern": "\\bmbox(?:Create|Define|Update)\\s*\\(", "indicator": "mboxCreate/mboxDefine/mboxUpdate (mbox.js API)" },
+        { "id": "target-global-settings", "type": "script-reference", "strength": "strong", "kinds": ["code", "markup"], "pattern": "\\btargetGlobalSettings\\b", "indicator": "targetGlobalSettings (at.js configuration)" },
+        { "id": "target-atjs-file", "type": "script-reference", "strength": "supporting", "kinds": ["code", "markup", "config"], "pattern": "(?:^|[\\s\"'/=])at\\.js\\b", "indicator": "at.js library reference" },
+        { "id": "target-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.adobe\\.target$", "artifactId": "^target-java-sdk$", "indicator": "com.adobe.target:target-java-sdk" },
+        { "id": "target-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^@adobe/target-nodejs-sdk$", "indicator": "@adobe/target-nodejs-sdk" }
+      ]
+    },
+    {
+      "id": "adobe-commerce-cif",
+      "name": "Adobe Commerce / CIF",
+      "category": "adobe-product",
+      "migrationConsiderations": ["adobe-product-configuration", "environment-variable-configuration", "external-connectivity"],
+      "signals": [
+        { "id": "cif-java-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.adobe\\.cq\\.commerce\\.(?:core|magento\\.graphql|graphql\\.client)\\.", "indicator": "com.adobe.cq.commerce.{core,magento.graphql,graphql.client}.* (CIF)" },
+        { "id": "cif-graphql-client-config", "type": "osgi-config", "strength": "strong", "kinds": ["*"], "pattern": "com\\.adobe\\.cq\\.commerce\\.graphql\\.client\\.impl\\.GraphqlClientImpl", "pathPattern": "com\\.adobe\\.cq\\.commerce\\.graphql\\.client\\.impl\\.GraphqlClientImpl", "indicator": "CIF GraphqlClientImpl OSGi configuration" },
+        { "id": "cif-commerce-endpoint", "type": "env-var", "strength": "strong", "kinds": ["*"], "pattern": "\\bCOMMERCE_ENDPOINT\\b", "indicator": "COMMERCE_ENDPOINT (CIF environment variable)" },
+        { "id": "cif-resource-type", "type": "resource-type", "strength": "strong", "kinds": ["markup", "config", "code"], "pattern": "\\bcore/cif/components/", "indicator": "core/cif/components/* (CIF Core Components)" },
+        { "id": "cif-cloud-config", "type": "osgi-config", "strength": "supporting", "kinds": ["config"], "pattern": "cloudconfigs/commerce\\b", "indicator": "commerce cloud configuration" },
+        { "id": "cif-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.adobe\\.commerce\\.cif$", "artifactId": ".+", "indicator": "com.adobe.commerce.cif:*" },
+        { "id": "cif-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^@adobe/aem-core-cif-(?:react-components|experience-platform-connector)$", "indicator": "@adobe/aem-core-cif-*" }
+      ]
+    },
+    {
+      "id": "google-recaptcha",
+      "name": "Google reCAPTCHA",
+      "category": "third-party",
+      "migrationConsiderations": ["frontend-integration", "backend-verification", "external-connectivity", "credential-configuration"],
+      "signals": [
+        { "id": "recaptcha-js-api", "type": "script-reference", "strength": "strong", "kinds": ["code", "markup"], "pattern": "\\bgrecaptcha\\b", "indicator": "grecaptcha (reCAPTCHA JavaScript API)" },
+        { "id": "recaptcha-widget", "type": "markup-reference", "strength": "strong", "kinds": ["code", "markup"], "pattern": "\\bg-recaptcha\\b", "indicator": "g-recaptcha (reCAPTCHA widget)" },
+        { "id": "recaptcha-script", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "recaptcha/(?:api|enterprise)\\.js", "indicator": "recaptcha/api.js (reCAPTCHA script)" },
+        { "id": "recaptcha-siteverify", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "recaptcha/api/siteverify", "indicator": "recaptcha/api/siteverify (verification API)" },
+        { "id": "recaptcha-net-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\brecaptcha\\.net\\b", "flags": "i", "indicator": "recaptcha.net" },
+        { "id": "recaptcha-enterprise-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "recaptchaenterprise\\.googleapis\\.com", "flags": "i", "indicator": "recaptchaenterprise.googleapis.com" },
+        { "id": "recaptcha-enterprise-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.google\\.(?:cloud\\.)?recaptchaenterprise\\.", "indicator": "com.google.cloud.recaptchaenterprise.*" },
+        { "id": "recaptcha-cloud-config", "type": "osgi-config", "strength": "supporting", "kinds": ["config"], "pattern": "cloudconfigs/recaptcha\\b", "indicator": "reCAPTCHA cloud configuration" },
+        { "id": "recaptcha-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.google\\.cloud$", "artifactId": "^google-cloud-recaptchaenterprise$", "indicator": "com.google.cloud:google-cloud-recaptchaenterprise" },
+        { "id": "recaptcha-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^(?:react-google-recaptcha(?:-v3)?|vue-recaptcha(?:-v3)?|@google-cloud/recaptcha-enterprise)$", "indicator": "reCAPTCHA npm package" }
+      ]
+    },
+    {
+      "id": "aws-s3",
+      "name": "AWS S3",
+      "category": "third-party",
+      "migrationConsiderations": ["external-connectivity", "credential-configuration", "binary-transfer"],
+      "signals": [
+        { "id": "s3-sdk-v2-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?software\\.amazon\\.awssdk\\.services\\.s3\\b", "indicator": "software.amazon.awssdk.services.s3" },
+        { "id": "s3-sdk-v1-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.amazonaws\\.services\\.s3\\b", "indicator": "com.amazonaws.services.s3" },
+        { "id": "s3-endpoint", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "(?:^|[^A-Za-z0-9])s3[.-](?:[a-z0-9-]+\\.)?amazonaws\\.com", "flags": "i", "indicator": "*.s3.amazonaws.com (S3 endpoint)" },
+        { "id": "s3-js-sdk", "type": "script-reference", "strength": "strong", "kinds": ["code"], "pattern": "@aws-sdk/client-s3|\\bnew\\s+(?:AWS\\.)?S3(?:Client)?\\s*\\(", "indicator": "AWS S3 JavaScript SDK client" },
+        { "id": "s3-uri", "type": "endpoint", "strength": "supporting", "kinds": ["*"], "pattern": "\\bs3://[a-z0-9.-]+", "indicator": "s3:// bucket URI" },
+        { "id": "s3-v2-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^software\\.amazon\\.awssdk$", "artifactId": "^s3$", "indicator": "software.amazon.awssdk:s3" },
+        { "id": "s3-v1-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.amazonaws$", "artifactId": "^aws-java-sdk-s3$", "indicator": "com.amazonaws:aws-java-sdk-s3" },
+        { "id": "s3-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^@aws-sdk/client-s3$", "indicator": "@aws-sdk/client-s3" }
+      ]
+    },
+    {
+      "id": "jira-cloud",
+      "name": "Jira Cloud",
+      "category": "third-party",
+      "migrationConsiderations": ["external-connectivity", "credential-configuration"],
+      "signals": [
+        { "id": "jira-cloud-rest-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.atlassian\\.net/rest/(?:api/(?:2|3|latest)|agile/)", "flags": "i", "indicator": "*.atlassian.net/rest/api (Jira Cloud REST API)" },
+        { "id": "jira-cloud-platform-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "api\\.atlassian\\.com/ex/jira\\b", "flags": "i", "indicator": "api.atlassian.com/ex/jira (Jira Cloud platform API)" },
+        { "id": "jira-java-client-import", "type": "java-import", "strength": "supporting", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.atlassian\\.jira\\.rest\\.client\\.", "indicator": "com.atlassian.jira.rest.client.* (Jira REST Java client)" },
+        { "id": "atlassian-cloud-host", "type": "endpoint", "strength": "contextual", "kinds": ["*"], "pattern": "\\.atlassian\\.net\\b", "flags": "i", "indicator": "*.atlassian.net host" },
+        { "id": "jira-config-key", "type": "config-key", "strength": "contextual", "kinds": ["config"], "pattern": "^\\s*\"?[A-Za-z0-9_.-]*jira[A-Za-z0-9_.-]*\"?\\s*[:=]", "flags": "i", "indicator": "Jira-named configuration key" },
+        { "id": "jira-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.atlassian\\.jira$", "artifactId": "^jira-rest-java-client", "indicator": "com.atlassian.jira:jira-rest-java-client-*" },
+        { "id": "jira-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^(?:jira-client|jira\\.js)$", "indicator": "Jira npm client" }
+      ]
+    },
+    {
+      "id": "akamai-netstorage",
+      "name": "Akamai NetStorage",
+      "category": "third-party",
+      "migrationConsiderations": ["external-connectivity", "credential-configuration", "binary-transfer"],
+      "signals": [
+        { "id": "netstorage-auth-data-header", "type": "http-header", "strength": "strong", "kinds": ["*"], "pattern": "X-Akamai-ACS-Auth-Data", "flags": "i", "indicator": "X-Akamai-ACS-Auth-Data header" },
+        { "id": "netstorage-auth-sign-header", "type": "http-header", "strength": "strong", "kinds": ["*"], "pattern": "X-Akamai-ACS-Auth-Sign", "flags": "i", "indicator": "X-Akamai-ACS-Auth-Sign header" },
+        { "id": "netstorage-action-header", "type": "http-header", "strength": "strong", "kinds": ["*"], "pattern": "X-Akamai-ACS-Action", "flags": "i", "indicator": "X-Akamai-ACS-Action header" },
+        { "id": "netstorage-upload-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "-nsu\\.akamaihd\\.net\\b", "flags": "i", "indicator": "*-nsu.akamaihd.net (NetStorage upload host)" },
+        { "id": "netstorage-java-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.akamai\\.netstorage\\.", "indicator": "com.akamai.netstorage.*" },
+        { "id": "netstorage-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.akamai\\.netstorage$", "artifactId": ".+", "indicator": "com.akamai.netstorage:*" },
+        { "id": "netstorage-npm-dependency", "type": "npm-dependency", "strength": "dependency", "package": "^netstorageapi$", "indicator": "netstorageapi" }
+      ]
+    },
+    {
+      "id": "workday",
+      "name": "Workday",
+      "category": "third-party",
+      "migrationConsiderations": ["external-connectivity", "credential-configuration"],
+      "signals": [
+        { "id": "workday-ccx-service", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "/ccx/service/", "indicator": "/ccx/service/ (Workday web services)" },
+        { "id": "workday-ccx-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "/ccx/api/", "indicator": "/ccx/api/ (Workday REST API)" },
+        { "id": "workday-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.myworkday\\.com\\b|\\bwd\\d+-(?:impl-)?services\\d*\\.workday\\.com\\b", "flags": "i", "indicator": "Workday tenant / services host" },
+        { "id": "workday-soap-namespace", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "urn:com\\.workday/bsvc", "indicator": "urn:com.workday/bsvc (Workday SOAP namespace)" },
+        { "id": "workday-java-package", "type": "java-import", "strength": "supporting", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.workday\\.", "indicator": "com.workday.* (generated Workday client)" },
+        { "id": "workday-config-key", "type": "config-key", "strength": "contextual", "kinds": ["config"], "pattern": "^\\s*\"?[A-Za-z0-9_.-]*workday[A-Za-z0-9_.-]*\"?\\s*[:=]", "flags": "i", "indicator": "Workday-named configuration key" }
+      ]
+    },
+    {
+      "id": "cdn-akamai",
+      "name": "External CDN (Akamai)",
+      "group": "external-cdn",
+      "category": "third-party",
+      "migrationConsiderations": ["cdn-configuration", "cache-invalidation"],
+      "signals": [
+        { "id": "akamai-edge-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.(?:edgesuite|edgekey|akamaiedge|akamaized|akamaitechnologies)\\.net\\b", "flags": "i", "indicator": "Akamai edge hostname (edgesuite/edgekey/akamaiedge)" },
+        { "id": "akamai-fast-purge", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "/ccu/v[23]/|\\.purge\\.akamaiapis\\.net", "flags": "i", "indicator": "Akamai Fast Purge (CCU) API" },
+        { "id": "akamai-edgegrid-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?com\\.akamai\\.edgegrid\\.", "indicator": "com.akamai.edgegrid.* (Akamai EdgeGrid client)" },
+        { "id": "akamai-headers", "type": "http-header", "strength": "supporting", "kinds": ["*"], "pattern": "\\b(?:Akamai-Origin-Hop|X-Akamai-Edgescape|Akamai-Cache-Status|akamai-x-get-cache-key|X-Akamai-Staging|Edge-Control)\\b", "flags": "i", "indicator": "Akamai-specific HTTP header" },
+        { "id": "akamai-edgegrid-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.akamai\\.edgegrid$", "artifactId": ".+", "indicator": "com.akamai.edgegrid:*" }
+      ]
+    },
+    {
+      "id": "cdn-fastly",
+      "name": "External CDN (Fastly)",
+      "group": "external-cdn",
+      "category": "third-party",
+      "migrationConsiderations": ["cdn-configuration", "cache-invalidation"],
+      "signals": [
+        { "id": "fastly-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\bapi\\.fastly\\.com\\b", "flags": "i", "indicator": "api.fastly.com (Fastly API)" },
+        { "id": "fastly-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.fastly(?:lb)?\\.net\\b", "flags": "i", "indicator": "*.fastly.net host" },
+        { "id": "fastly-headers", "type": "http-header", "strength": "supporting", "kinds": ["*"], "pattern": "\\b(?:Fastly-Key|Fastly-Client-IP|Fastly-SSL|Fastly-Debug|Fastly-Soft-Purge|X-Fastly-[A-Za-z-]+)\\b", "flags": "i", "indicator": "Fastly-specific HTTP header" }
+      ]
+    },
+    {
+      "id": "cdn-cloudfront",
+      "name": "External CDN (Amazon CloudFront)",
+      "group": "external-cdn",
+      "category": "third-party",
+      "migrationConsiderations": ["cdn-configuration", "cache-invalidation"],
+      "signals": [
+        { "id": "cloudfront-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.cloudfront\\.net\\b", "flags": "i", "indicator": "*.cloudfront.net host" },
+        { "id": "cloudfront-sdk-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?(?:software\\.amazon\\.awssdk\\.services\\.cloudfront|com\\.amazonaws\\.services\\.cloudfront)\\b", "indicator": "AWS CloudFront SDK" },
+        { "id": "cloudfront-headers", "type": "http-header", "strength": "supporting", "kinds": ["*"], "pattern": "\\b(?:X-Amz-Cf-Id|X-Amz-Cf-Pop|CloudFront-Viewer-Country|CloudFront-Forwarded-Proto|CloudFront-Is-[A-Za-z]+-Viewer)\\b", "flags": "i", "indicator": "CloudFront-specific HTTP header" },
+        { "id": "cloudfront-v2-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^software\\.amazon\\.awssdk$", "artifactId": "^cloudfront$", "indicator": "software.amazon.awssdk:cloudfront" },
+        { "id": "cloudfront-v1-maven-dependency", "type": "maven-dependency", "strength": "dependency", "groupId": "^com\\.amazonaws$", "artifactId": "^aws-java-sdk-cloudfront$", "indicator": "com.amazonaws:aws-java-sdk-cloudfront" }
+      ]
+    },
+    {
+      "id": "cdn-cloudflare",
+      "name": "External CDN (Cloudflare)",
+      "group": "external-cdn",
+      "category": "third-party",
+      "migrationConsiderations": ["cdn-configuration", "cache-invalidation"],
+      "signals": [
+        { "id": "cloudflare-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\bapi\\.cloudflare\\.com\\b", "flags": "i", "indicator": "api.cloudflare.com (Cloudflare API)" },
+        { "id": "cloudflare-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.cdn\\.cloudflare\\.net\\b", "flags": "i", "indicator": "*.cdn.cloudflare.net host" },
+        { "id": "cloudflare-headers", "type": "http-header", "strength": "supporting", "kinds": ["*"], "pattern": "\\b(?:CF-Connecting-IP|CF-IPCountry|CF-Ray|CF-Visitor|Cf-Cache-Status)\\b", "flags": "i", "indicator": "Cloudflare-specific HTTP header" }
+      ]
+    },
+    {
+      "id": "pim",
+      "name": "PIM (Product Information Management)",
+      "category": "third-party",
+      "minDistinctSignals": 2,
+      "migrationConsiderations": ["external-connectivity", "credential-configuration"],
+      "signals": [
+        { "id": "salsify-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\b(?:app|api)\\.salsify\\.com\\b", "flags": "i", "indicator": "Salsify API host" },
+        { "id": "akeneo-cloud-host", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.cloud\\.akeneo\\.com\\b", "flags": "i", "indicator": "Akeneo cloud host" },
+        { "id": "akeneo-client-import", "type": "java-import", "strength": "strong", "kinds": ["java"], "pattern": "\\bimport\\s+(?:static\\s+)?(?:com\\.)?akeneo\\.", "indicator": "Akeneo Java client" },
+        { "id": "inriver-api", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "\\.productmarketingcloud\\.com\\b", "flags": "i", "indicator": "inRiver PIM API host" },
+        { "id": "pimcore-graphql", "type": "endpoint", "strength": "strong", "kinds": ["*"], "pattern": "/pimcore-graphql-webservices/", "indicator": "Pimcore GraphQL web services" },
+        { "id": "akeneo-rest-path", "type": "endpoint", "strength": "contextual", "kinds": ["*"], "pattern": "/api/rest/v1/(?:products|product-models|families)\\b", "indicator": "Akeneo-style REST path" },
+        { "id": "stibo-rest-path", "type": "endpoint", "strength": "contextual", "kinds": ["*"], "pattern": "/restapiv2/", "indicator": "Stibo STEP-style REST path" },
+        { "id": "pim-config-key", "type": "config-key", "strength": "contextual", "kinds": ["config"], "pattern": "^\\s*\"?(?:[A-Za-z0-9]+[._-])*pim(?:[._-]?(?:url|uri|endpoint|host|api|base|service|server)[A-Za-z0-9._-]*)?\"?\\s*[:=]", "flags": "i", "indicator": "PIM-named configuration key" }
+      ]
+    }
+  ],
+  "genericExternalApi": {
+    "name": "Custom External API",
+    "category": "customer-external",
+    "migrationConsiderations": ["external-connectivity", "customer-review"],
+    "javaHttpClientPattern": "\\bimport\\s+(?:static\\s+)?(?:org\\.apache\\.http\\.(?:client|impl\\.client|osgi\\.services)\\.|org\\.apache\\.hc\\.client5\\.|java\\.net\\.http\\.|java\\.net\\.HttpURLConnection\\b|javax\\.net\\.ssl\\.HttpsURLConnection\\b|okhttp3\\.|org\\.springframework\\.web\\.(?:client|reactive\\.function\\.client)\\.|javax\\.ws\\.rs\\.client\\.|jakarta\\.ws\\.rs\\.client\\.|org\\.glassfish\\.jersey\\.client\\.|com\\.sun\\.jersey\\.api\\.client\\.|feign\\.|retrofit2\\.|org\\.eclipse\\.jetty\\.client\\.)",
+    "javaSoapClientPattern": "\\bimport\\s+(?:static\\s+)?(?:javax\\.xml\\.ws\\.|jakarta\\.xml\\.ws\\.|javax\\.xml\\.soap\\.|jakarta\\.xml\\.soap\\.|org\\.apache\\.cxf\\.|org\\.apache\\.axis2?\\.|org\\.springframework\\.ws\\.client\\.)",
+    "jsHttpClientPattern": "\\bfetch\\s*\\(|\\bXMLHttpRequest\\b|\\baxios\\b|\\$\\.(?:ajax|get|post|getJSON)\\s*\\(",
+    "endpointKeyPattern": "(?:url|uri|endpoint|host|server|service|api|wsdl|base)",
+    "soapUrlPattern": "(?:\\?wsdl\\b|\\.wsdl\\b|\\.asmx\\b|\\.svc\\b)",
+    "ignoreHosts": [
+      "localhost", "example.com", "example.org", "example.net", "w3.org", "xmlns.jcp.org", "jcp.org", "java.sun.com",
+      "xml.org", "schemas.xmlsoap.org", "schemas.microsoft.com", "json-schema.org", "schema.org", "purl.org",
+      "apache.org", "ns.adobe.com", "www.adobe.com", "helpx.adobe.com", "experienceleague.adobe.com",
+      "developer.adobe.com", "opensource.org", "sitemaps.org", "ogp.me", "github.com"
+    ],
+    "ignoreHostSuffixes": [".example", ".test", ".invalid", ".localhost"],
+    "ignoreConfigPids": [
+      "com.day.cq.commons.impl.ExternalizerImpl",
+      "org.apache.sling.security.impl.ReferrerFilter",
+      "com.adobe.granite.cors.impl.CORSPolicyImpl",
+      "org.apache.sling.jcr.resource.internal.JcrResourceResolverFactoryImpl",
+      "org.apache.sling.resourceresolver.impl.ResourceResolverFactoryActivator",
+      "org.apache.sling.commons.log."
+    ]
+  }
+}

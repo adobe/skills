@@ -1,0 +1,109 @@
+{
+  "now": "2026-01-01T00:00:00.000Z",
+  "steps": [
+    {
+      "name": "migrate render",
+      "script": "migrate/migrate.mjs",
+      "args": [
+        "render",
+        "--all",
+        "--stardust-version",
+        "golden"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "rollout inventory",
+      "script": "rollout/inventory.mjs",
+      "args": [
+        "--migrated",
+        "stardust/migrated",
+        "--out",
+        "stardust/rollout",
+        "--site-url",
+        "https://www.example.com"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "rollout blocks",
+      "script": "rollout/blocks.mjs",
+      "args": [
+        "--out",
+        "stardust/rollout"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "rollout plan",
+      "script": "rollout/plan.mjs",
+      "args": [
+        "--out",
+        "stardust/rollout"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "delivery-lint /docs/getting-started",
+      "script": "rollout/delivery-lint.mjs",
+      "args": [
+        "--file",
+        "stardust/migrated/docs/getting-started.html",
+        "--path",
+        "/docs/getting-started",
+        "--content",
+        "stardust/migrated",
+        "--json"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "delivery-lint /docs/",
+      "script": "rollout/delivery-lint.mjs",
+      "args": [
+        "--file",
+        "stardust/migrated/docs/index.html",
+        "--path",
+        "/docs/",
+        "--content",
+        "stardust/migrated",
+        "--json"
+      ],
+      "exit": 1
+    },
+    {
+      "name": "delivery-lint /",
+      "script": "rollout/delivery-lint.mjs",
+      "args": [
+        "--file",
+        "stardust/migrated/index.html",
+        "--path",
+        "/",
+        "--content",
+        "stardust/migrated",
+        "--json"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "dynamics-plan",
+      "script": "dynamics/dynamics-plan.mjs",
+      "args": [
+        "--in",
+        "findings.json",
+        "--out",
+        "plan"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "spec-knowledge",
+      "script": "spec/spec-knowledge.mjs",
+      "args": [
+        "--config",
+        "stardust/spec/spec.config.json"
+      ],
+      "exit": 0
+    }
+  ]
+}

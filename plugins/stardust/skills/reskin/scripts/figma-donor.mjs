@@ -141,7 +141,7 @@ curation-rules.json:
   instead: section-style (its Style value in "name"), style (global CSS), convention (an authoring
   convention such as strong/em buttons), feature (scripts/ behaviour) or default-content (the default),
   each with an "edsWhy". donor-modules.md's Disposition column carries it for every included
-  module (deploy Step 2c builds each one; vocabulary-check.mjs checks the project).
+  module (reference/vocabulary.md: deploy builds each one; vocabulary-check.mjs checks the project).
 Figma as the CONTENT source (Figma-only sites, no live URL; reference/content-model.md
 § Figma-sourced models):
 init     writes <dir>/state.json when there is none: _provenance, site.contentSource {kind figma},
@@ -267,7 +267,7 @@ async function stateLib() {
     const p = join(HERE, ...rel);
     if (existsSync(p)) return import(pathToFileURL(p).href);
   }
-  const err = new Error('state.mjs not found beside the scripts: copy it with cp <plugin>/skills/stardust/scripts/state.mjs stardust/scripts/stardust/ (reskin Setup step 3)');
+  const err = new Error('state.mjs not found beside the scripts: copy the master skill scripts dir to stardust/scripts/stardust/ (reskin Setup step 3)');
   err.code = 2;
   throw err;
 }

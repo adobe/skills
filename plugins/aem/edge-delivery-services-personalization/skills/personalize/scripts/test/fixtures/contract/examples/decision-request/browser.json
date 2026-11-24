@@ -1,0 +1,35 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home",
+    "locale": "en-IN"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "festive",
+        "clearance",
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "geo": {
+      "country": "IN",
+      "region": "KA"
+    },
+    "device": "mobile",
+    "visitor": "returning",
+    "state": {
+      "quiz-persona": "cn"
+    },
+    "params": {
+      "utm_campaign": "diwali"
+    },
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

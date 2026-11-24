@@ -25,7 +25,7 @@ The spec answers the people planning a migration (what to build, reuse, fix or d
 
 `stardust/spec/spec.config.json` (reference/config.md): `origin`, `scopePath`, `template` rule, `parser` profile
 (`aem-classic`, `aem-core`, or `generic` for any other site) + main selector, optional `maxPages`, `rum`,
-`referenceBlocks`. Copy the spec, diff, dynamics and deploy scripts to `stardust/scripts/<skill>/` (the stages import them).
+`referenceBlocks`. Copy the stardust, spec, diff, dynamics and deploy scripts to `stardust/scripts/<skill>/` (the stages import them).
 
 ## Stages
 
@@ -62,8 +62,7 @@ captures and crops stay in `<work>`.
   (`spec-knowledge.mjs` warns otherwise).
 - S10 passes when `spec-knowledge.mjs` exits 0 (every rule computed) and every open question has a default.
 - A blocked origin (S1 or S2 exit 3: bot challenges or refusals on 10% or more) stops the build: ask the user to
-  allow-list the crawler, or to choose `--headed` (the plugin's stealth real-Chrome tier from the diff skill's
-  `live-session.mjs`, as replica uses) or `--archive <date>` (Internet Archive captures, which the provenance and a
+  allow-list the crawler, or to choose `--headed` (the plugin's real-Chrome challenge-solve tier of `browser.mjs`, as replica uses) or `--archive <date>` (Internet Archive captures, which the provenance and a
   finding must disclose). Never choose for them, and never work around a block another way.
 - Before sharing: no customer secret, internal evaluation or other migration's name in the project or the output.
 

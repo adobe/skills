@@ -1,0 +1,3 @@
+{"url":"https://www.example.com/en/home.html","links":{"https://www.example.com/en/about.html":"main","https://www.example.com/en/news.html":"chrome"}}
+{"url":"https://www.example.com/en/about.html","links":{"https://www.example.com/en/home.html":"chrome"}}
+{"url":"https://www.example.com/en/news.html","links":{"https://www.example.com/en/home.html":"chrome","https://www.example.com/en/about.html":"main"}}

@@ -2,7 +2,7 @@
 name: direct
 description: Set a redesign direction for an existing website. Analyzes the user's intent, picks a palette and visual direction, and writes the target spec (PRODUCT.md, DESIGN.md, DESIGN.json) plus a reasoning trace at stardust/direction.md. Use when the user asks to redesign a site, refresh the design, set a new design direction, define a redesign target, or invokes `$stardust direct` (`/stardust:direct` in Claude Code).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:direct
@@ -46,11 +46,7 @@ downstream sub-commands.
 
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup) — hard impeccable dep check,
-   context loader, state read. **Flow guard.** If `state.json.flow` is
-   `reskin`, refuse: the direction under reskin is the donor's, written by
-   `reskin/scripts/canon-from-reskin.mjs`; a `direct` run would overwrite
-   the donor-sourced DESIGN.* (`skills/reskin/reference/handoff.md`). Print
-   the switch command (`$stardust prepare-migration --switch-flow`) instead.
+   context loader, state read.
 2. Verify `stardust/state.json` exists and contains at least one
    `extracted` page. If not, stop and recommend
    `$stardust extract <url>` first.

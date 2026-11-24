@@ -121,7 +121,7 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     if (m.variants?.length) parts.push(`variants: ${m.variants.join(', ')}`);
     if (m.components?.length) parts.push(`components: ${m.components.join(', ')}`);
     if (m.hollow) parts.push(`hollow: ${HOLLOW_WHY}`);
-    // Every included module is handed to deploy with one disposition, used by a page or not (Step 2c).
+    // Every included module is handed to deploy with one disposition, used by a page or not (reference/vocabulary.md).
     const d = dispositionLabel(disposition(eds, m.edsWhy));
     return `| ${m.id} | ${cell(m.name)} | ${cell(edsLabel(eds))} | ${cell(d)} | ${where} | ${cell(parts.join('; '))} |`;
   });

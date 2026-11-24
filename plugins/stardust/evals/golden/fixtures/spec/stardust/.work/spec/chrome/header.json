@@ -1,0 +1,1 @@
+{ "url": "https://www.example.com/", "at": "2026-01-01T00:00:00Z", "widths": { "1440": { "controls": [{ "role": "toggle", "kind": "menu", "actions": { "hover": { "opened": true, "panel": { "links": [{ "text": "A", "href": "/a" }] } } } }] } } }

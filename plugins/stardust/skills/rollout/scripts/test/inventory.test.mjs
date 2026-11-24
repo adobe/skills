@@ -10,7 +10,7 @@
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -161,32 +161,21 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   const out2 = join(root, 'rollout-state'); const state = join(root, 'roster.json');
   writeFileSync(state, JSON.stringify({ pages: [{ slug: 'tours-bali', url: 'https://example.com/tours/bali/' }, { slug: 'tours-fiji', url: 'https://example.com/tours/fiji/', type: 'tours-bali' }] }));
   const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', out2, '--state', state], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
-  const rows = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages;
-  assert.equal(rows.filter((p) => p.path === '/tours/bali').length, 1, 'a trailing-slash roster URL does not duplicate its migrated archetype');
-  assert.ok(!rows.some((p) => p.slug === 'tours-bali-x'));
-  const fiji = rows.find((p) => p.slug === 'tours-fiji');
-  assert.equal(fiji.path, '/tours/fiji');
+  const fiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'tours-fiji');
   assert.equal(fiji.delivery.status, 'content-pending'); assert.deepEqual(fiji.blocks, ['hero', 'gallery']); assert.deepEqual(fiji.widgets, [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }]);
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
-
-  page('tours/fiji/index.html', { slug: 'tours-fiji', type: 'program', template: 'tours-bali', modules: ['hero'] });
-  const migratedFiji = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', out2, '--state', state], { encoding: 'utf8' });
-  assert.equal(migratedFiji.status, 0, migratedFiji.stderr);
-  const deliveredFiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'tours-fiji');
-  assert.equal(deliveredFiji.delivery.status, 'pending', 'a migrated roster page leaves content-pending');
 });
 
 check('archetypes-only mode resolves roster types through reskin ledger handoff archetypes', () => {
   const migratedHandoff = join(root, 'migrated-handoff');
   const outHandoff = join(root, 'rollout-handoff');
-  const stateHandoff = join(root, 'stardust', 'state-handoff.json');
+  const stateHandoff = join(root, 'roster-handoff.json');
   mkdirSync(migratedHandoff, { recursive: true });
-  mkdirSync(join(root, 'stardust'), { recursive: true });
   mkdirSync(join(root, 'stardust', 'reskin'), { recursive: true });
   writeFileSync(join(migratedHandoff, 'index.html'), '<html><body>landing archetype</body></html>');
   writeFileSync(join(migratedHandoff, '_meta.json'), JSON.stringify({ slug: 'index', type: 'landing', fidelityTier: 'archetype', renderBranch: 'A', modules: ['landing-hero'] }));
   writeFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), JSON.stringify({ handoff: { landing: { archetype: 'index' } } }));
-  writeFileSync(stateHandoff, JSON.stringify({ pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
+  writeFileSync(stateHandoff, JSON.stringify({ flow: 'reskin', pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
 
   const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migratedHandoff, '--out', outHandoff, '--state', stateHandoff], { encoding: 'utf8', cwd: root });
   assert.equal(r.status, 0, r.stderr);
@@ -194,92 +183,30 @@ check('archetypes-only mode resolves roster types through reskin ledger handoff 
   assert.equal(about.templateId, 'index');
   assert.equal(about.representative, 'index');
   assert.deepEqual(about.blocks, ['landing-hero']);
+
+  writeFileSync(stateHandoff, JSON.stringify({ flow: 'replica', pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
+  const other = spawnSync(process.execPath, [SCRIPT, '--migrated', migratedHandoff, '--out', join(root, 'rollout-handoff-replica'), '--state', stateHandoff], { encoding: 'utf8', cwd: root });
+  assert.equal(other.status, 0, other.stderr);
+  const plain = JSON.parse(readFileSync(join(root, 'rollout-handoff-replica', 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'about');
+  assert.notEqual(plain?.representative, 'index', 'another flow ignores the reskin ledger');
 });
 
-check('Figma-sourced roster pages use migrated site paths and retain frame URLs as provenance', () => {
-  const tree = join(root, 'figma-migrated'); const output = join(root, 'figma-rollout'); const state = join(root, 'stardust', 'figma-state.json');
-  mkdirSync(tree, { recursive: true });
-  writeFileSync(join(tree, 'index.html'), '<main>Home</main>');
-  writeFileSync(join(tree, '_meta.json'), JSON.stringify({ slug: 'index', fidelityTier: 'archetype', modules: ['hero'], widgets: [{ id: 'search', href: '/widgets/search.html' }] }));
-  const frames = [
-    'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-1',
-    'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-2',
-    'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-3',
-  ];
-  writeFileSync(state, JSON.stringify({
-    site: { totalDiscovered: 5, pageCap: 4 },
-    pages: [
-      { slug: 'index', source: 'figma', url: frames[0], type: 'landing' },
-      { slug: 'pricing', source: 'figma', url: frames[1], type: 'landing' },
-      { slug: 'about', source: 'figma', url: frames[2], path: '/company/about/', type: 'landing' },
-      { slug: 'privacy', source: 'figma', url: 'figma:redacted', path: '/legal/privacy', type: 'landing' },
-      { slug: 'blog', url: 'https://example.test/blog/', type: 'landing' },
-    ],
-  }));
-  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', tree, '--out', output, '--state', state], { encoding: 'utf8', cwd: root });
-  assert.equal(r.status, 0, r.stderr);
-  const pages = JSON.parse(readFileSync(join(output, 'coverage', 'pages.json'), 'utf8')).pages;
-  assert.deepEqual(pages.map((p) => p.path).sort(), ['/', '/blog', '/company/about', '/legal/privacy', '/pricing']);
-  const bySlug = Object.fromEntries(pages.map((p) => [p.slug, p]));
-  assert.equal(bySlug.pricing.source.sourceUrl, frames[1]);
-  assert.equal(bySlug.about.source.sourceUrl, frames[2]);
-  assert.equal(bySlug.privacy.source.sourceUrl, 'figma:redacted');
-  assert.equal(bySlug.pricing.representative, 'index');
-  assert.deepEqual(bySlug.pricing.blocks, ['hero']);
-  assert.deepEqual(bySlug.pricing.widgets, [{ id: 'search', href: '/widgets/search.html' }]);
-  assert.deepEqual(JSON.parse(readFileSync(join(output, 'rollout.json'), 'utf8')).scope, { pages: 5, discovered: 5, capped: false, pageCap: 4 });
+check('archetypes-only mode: a roster URL with a trailing slash is the migrated archetype, not a second sibling row; a sibling keeps its roster path', () => {
+  const pages = JSON.parse(readFileSync(join(root, 'rollout-state', 'coverage', 'pages.json'), 'utf8')).pages;
+  const slugs = pages.map((p) => p.slug);
+  assert.equal(slugs.filter((s) => s.startsWith('tours-bali')).length, 1, slugs.join(','));
+  // the folder-index slash survives on the sibling row, so publicUrl still serves /tours/fiji/
+  assert.equal(pages.find((p) => p.slug === 'tours-fiji').path, '/tours/fiji/');
 });
 
-check('an unmapped Figma sibling is refused instead of emitted without inherited blocks', () => {
-  const tree = join(root, 'figma-unmapped'); const output = join(root, 'figma-unmapped-rollout'); const state = join(root, 'stardust', 'figma-unmapped-state.json');
-  mkdirSync(tree, { recursive: true });
-  writeFileSync(join(tree, 'index.html'), '<main>Home</main>');
-  writeFileSync(join(tree, '_meta.json'), JSON.stringify({ slug: 'index', fidelityTier: 'archetype', modules: ['hero'] }));
-  writeFileSync(state, JSON.stringify({
-    pages: [
-      { slug: 'index', source: 'figma', url: 'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-1', type: 'landing' },
-      { slug: 'pricing', source: 'figma', url: 'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-2', type: null },
-    ],
-  }));
-  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', tree, '--out', output, '--state', state], { encoding: 'utf8', cwd: root });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /pricing.*(archetype|type|representative)/i);
-});
-
-check('project-copy inventory requires a current migrate helper only for Figma roster paths', () => {
-  const project = join(root, 'project-copy'); const scripts = join(project, 'stardust', 'scripts');
-  const rollout = join(scripts, 'rollout'); const tree = join(project, 'migrated'); const state = join(project, 'stardust', 'state.json');
-  mkdirSync(rollout, { recursive: true }); mkdirSync(tree, { recursive: true });
-  copyFileSync(SCRIPT, join(rollout, 'inventory.mjs')); copyFileSync(join(HERE, '..', 'lib.mjs'), join(rollout, 'lib.mjs'));
-  writeFileSync(join(tree, 'index.html'), '<main>Home</main>');
-  writeFileSync(join(tree, '_meta.json'), JSON.stringify({ slug: 'index', fidelityTier: 'archetype', modules: [] }));
-  mkdirSync(join(project, 'stardust', 'reskin'), { recursive: true });
-  writeFileSync(join(project, 'stardust', 'reskin', 'ledger.json'), JSON.stringify({ handoff: { landing: { archetype: 'index' } } }));
-  const invoke = (name) => spawnSync(process.execPath, [join(rollout, 'inventory.mjs'), '--migrated', tree, '--out', join(project, name), '--state', state], { cwd: project, encoding: 'utf8' });
-  writeFileSync(state, JSON.stringify({ pages: [{ slug: 'about', url: 'https://example.test/about/' }] }));
-  assert.equal(invoke('live').status, 0, 'a non-Figma partial copy must remain usable without migrate');
-  writeFileSync(state, JSON.stringify({ pages: [{ slug: 'index', source: 'figma', url: 'figma:redacted', type: 'landing' }, { slug: 'about', source: 'figma', url: 'figma:redacted', type: 'landing' }] }));
-  const missing = invoke('missing-migrate');
-  assert.notEqual(missing.status, 0, 'a Figma roster cannot silently use design URLs as site paths');
-  assert.match(missing.stderr, /migrate.*(copy|script|refresh)/i);
-  mkdirSync(join(scripts, 'migrate'), { recursive: true });
-  writeFileSync(join(scripts, 'migrate', 'migrate.mjs'), 'export const oldDriver = true;\n');
-  const stale = invoke('stale-migrate');
-  assert.notEqual(stale.status, 0); assert.match(stale.stderr, /migrate.*refresh/i);
-  copyFileSync(join(HERE, '..', '..', '..', 'migrate', 'scripts', 'migrate.mjs'), join(scripts, 'migrate', 'migrate.mjs'));
-  const copied = invoke('with-migrate'); assert.equal(copied.status, 0, copied.stderr);
-  const pages = JSON.parse(readFileSync(join(project, 'with-migrate', 'coverage', 'pages.json'), 'utf8')).pages;
-  assert.deepEqual(pages.map((p) => p.path).sort(), ['/', '/about']);
-});
-
-check('a Figma-sourced roster row without a slug or frame URL is refused', () => {
-  const tree = join(root, 'figma-migrated'); const output = join(root, 'figma-invalid'); const state = join(root, 'stardust', 'figma-invalid.json');
-  writeFileSync(state, JSON.stringify({ pages: [{ source: 'figma', url: 'figma:redacted' }] }));
-  const missingSlug = spawnSync(process.execPath, [SCRIPT, '--migrated', tree, '--out', output, '--state', state], { encoding: 'utf8', cwd: root });
-  assert.notEqual(missingSlug.status, 0); assert.match(missingSlug.stderr, /figma.*slug/i);
-  writeFileSync(state, JSON.stringify({ pages: [{ slug: 'about', source: 'figma' }] }));
-  const missingUrl = spawnSync(process.execPath, [SCRIPT, '--migrated', tree, '--out', output, '--state', state], { encoding: 'utf8', cwd: root });
-  assert.notEqual(missingUrl.status, 0); assert.match(missingUrl.stderr, /figma.*frame url/i);
+check('archetypes-only mode: a content-pending sibling that gains its own migrated document becomes pending on the next run', () => {
+  const out2 = join(root, 'rollout-state'); const state = join(root, 'roster.json');
+  page('tours/fiji/index.html', { slug: 'tours-fiji', type: 'program', fidelityTier: 'sibling', archetypeSource: 'tours-bali', template: 'tours-bali', modules: [] });
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', out2, '--state', state], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
+    const fiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.filter((p) => p.slug === 'tours-fiji');
+    assert.equal(fiji.length, 1); assert.equal(fiji[0].delivery.status, 'pending');
+  } finally { rmSync(join(migrated, 'tours', 'fiji'), { recursive: true, force: true }); }
 });
 
 check('scope: state.json site.totalDiscovered above the roster → rollout.json scope { capped: true } and a loud Scope line; equal → "the whole site"; no count → no line', () => {

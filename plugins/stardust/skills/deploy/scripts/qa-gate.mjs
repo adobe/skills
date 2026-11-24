@@ -19,6 +19,7 @@
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
+ * Exit 2: usage, or a setup error (browser.mjs or playwright missing).
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
  *   - exactly one <h1>, no heading nested inside it (#35/#55)
@@ -27,9 +28,9 @@
  *   - zero pageerror events; zero broken images (loaded but naturalWidth 0)
  *   - every block instance renders non-empty (height > 5px, has child elements)
  *   - schema unit counts: each schema section with repeats count N≥2 renders
- *     ≥N units (grid/flex children or unit-level headings — the 1-of-N / 0-of-N
- *     segmentation collapse, #48/#52/#62) in its page block, matched by ORDER among
- *     the non-chrome sections, never by name (a page's sections can share one class)
+ *     ≥N units in its matching page block, matched by ORDER among the non-chrome
+ *     sections, never by section name (grid/flex children or unit-level
+ *     headings — the 1-of-N / 0-of-N segmentation collapse, #48/#52/#62)
  *   - wide pass at the DERIVED width (#13 → #124): the viewport is DESIGN.json's probeWidth
  *     (max(2560, largest captured cap × 1.25) — never a fixed 1600/1920: a probe at a cap's
  *     own width cannot see the cap; 2560 without a DESIGN.json). It asserts the OUTER cap
@@ -59,11 +60,10 @@ import { fileURLToPath } from 'url';
 const CHROME = ['header', 'footer'];
 
 /**
- * The schema's repeat groups held to the rendered block instances (the block-bearing entries of
- * r.blocks, header/footer left out), pure: [{ kind: 'ok' | 'fail' | 'warn', text }] in schema order.
- * A section's position is its order among the schema's non-chrome sections, never its name:
- * section-schema names a section by its first class token, so a page whose sections all share one
- * class (a reskin page's `m`) has one name for every section.
+ * Schema unit counts, pure: each schema section with a repeat group of count ≥2 is held to the
+ * block instance at its own position among the non-chrome schema sections (ORDER, never section
+ * name — sections that share one name each keep their own instance). `instances` are the page's
+ * non-chrome block measurements in DOM order. Returns [{ kind: 'ok'|'warn'|'fail', text }].
  */
 export function checkUnits(schema, instances) {
   const out = [];
@@ -99,8 +99,14 @@ async function main() {
     process.exit(0);
   }
 
-  // playwright is imported only past the --help guard, so --help answers on a checkout without it.
-  const { chromium } = await import('playwright');
+  // the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+  const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+    .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+  if (!BROWSER) {
+    console.error('qa-gate: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(2);
+  }
+  const { openBrowser, newPage, goto } = await import(BROWSER.href);
 
   const args = process.argv.slice(2);
   const url = args.find((a) => !a.startsWith('--'));
@@ -123,11 +129,12 @@ async function main() {
   const ok = [];
   const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
 
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  // exit 1 is a failed assert: a browser that cannot start is a setup error, exit 2
+  const browser = await openBrowser({ mode: 'plain' }).catch((e) => { console.error(`qa-gate: ${e.message}`); process.exit(2); });
+  const page = await newPage(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+  await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 });
   // let lazy sections load
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 60); }); }
@@ -246,7 +253,6 @@ async function main() {
   process.exit(fails.length ? 1 : 0);
 }
 
-const isMain = (() => {
-  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
-})();
-if (isMain) await main();
+// run only as a CLI: an import (the test) gets checkUnits without a browser
+const isCli = (() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+if (isCli) await main();

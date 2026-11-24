@@ -4,7 +4,22 @@ A deterministic progress surface for a stardust run. Every stardust
 skill appends one JSON line to `stardust/status.jsonl` at each phase
 start and end, so any harness — a Claude Code session, the stardust
 app, CI — can tail the run without parsing model output. Progress is
-a file contract, not a model-emitted milestone.
+a file contract, not a model milestone.
+
+## Reading progress
+
+From the project root:
+
+```sh
+node stardust/scripts/stardust/ledger.mjs tail -n 10
+node stardust/scripts/stardust/ledger.mjs last replica
+node stardust/scripts/stardust/state.mjs summary
+```
+
+`tail` shows recent phase transitions; `last [<skill>]` returns the
+latest matching transition as JSON, not the status of every phase.
+`state.mjs summary` reports page states. Any other ledger verb exits 2
+naming these readers. An event records a start, end or blocker; it does not prove process liveness.
 
 ## Line shape
 
@@ -62,6 +77,9 @@ so a skill's final phase must appear exactly as listed.
   when `stardust/journal.md` (beside the ledger) has no `## ` heading
   naming the phase (case-insensitive) — a warning only, never an
   exit-code change; an absent journal is not checked.
+- **A script you write uses `browser.mjs`** (`../SKILL.md` § Setup,
+  step 7). `ledger.mjs … end` names those written in the phase that
+  import `playwright` themselves — a warning only.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cacheFor } from '../figma/cache.mjs';
 import { UsageError } from '../figma/errors.mjs';
-import { loadChromium, loadMeasureLive, localAttributes, localTarget } from './target.mjs';
+import { localAttributes, localTarget, openPlain } from './target.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Two layouts: the plugin tree (skills/reskin/scripts/figma-gate ↔ skills/replica/scripts) and the project
@@ -119,8 +119,7 @@ export async function runPixel({ target, join: joined, checks, boxes, dir, out, 
     const key = `${tgt.url}@${width}`;
     if (!pages.has(key)) {
       if (!browser) {
-        const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
-        browser = await openBrowser(chromium, { tier: 'plain' });
+        browser = await openPlain();
       }
       pages.set(key, await tgt.open(browser, width));
     }

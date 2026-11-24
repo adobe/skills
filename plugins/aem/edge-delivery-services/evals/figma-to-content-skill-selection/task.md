@@ -10,6 +10,8 @@ The repo is a standard `adobe/aem-boilerplate` clone with an existing `blocks/` 
 
 ## Output Specification
 
+Write your response to `ANSWER.md` in the project root.
+
 Respond as the agent would. Your response must:
 
 1. Identify which skill is the correct choice for this request.
@@ -18,4 +20,4 @@ Respond as the agent would. Your response must:
 4. Describe how the two kinds of sections are handled — those that map to **existing** blocks (content only) vs. the **custom module** that needs a new block — and name the sub-skill the new block will be built through.
 5. State what the user must provide before work can start.
 
-Do NOT execute the migration. Do NOT write any code or HTML. Do NOT modify any files or make tool calls beyond what is needed to plan. Produce a planning response only.
+Do NOT execute the migration. Do NOT write any code or HTML. Do NOT modify any file other than `ANSWER.md`. Produce a planning response only.

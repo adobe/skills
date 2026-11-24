@@ -162,13 +162,14 @@ assert_absent  "opaque DAO (API in another module) not flagged" "$OUT" 'OpaqueDa
 assert_absent  "clean file not flagged"                 "$OUT" 'Clean.java'
 assert_absent  "near-miss names not flagged"            "$OUT" 'Negatives.java'
 
-echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
+echo "[wiring] each registered detector has a pattern guide + ready/analyzer catalog row"
+# A pattern guide is <slug>/guide.md; patterns added before guide.md keep <slug>/SKILL.md.
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
 for slug in $(bash "$ANALYZE" --list-patterns); do
-  if [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then
-    echo "  PASS: $slug has expert skill dir"; PASS=$((PASS+1))
+  if [ -f "$SKILL_ROOT/$slug/guide.md" ] || [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then
+    echo "  PASS: $slug has a pattern guide"; PASS=$((PASS+1))
   else
-    echo "  FAIL: $slug missing $SKILL_ROOT/$slug/SKILL.md"; FAIL=$((FAIL+1))
+    echo "  FAIL: $slug missing $SKILL_ROOT/$slug/guide.md"; FAIL=$((FAIL+1))
   fi
   if grep -E "$slug" "$PATTERNS_MD" | grep -qE 'ready.*analyzer'; then
     echo "  PASS: $slug is ready+analyzer in catalog"; PASS=$((PASS+1))
@@ -212,21 +213,14 @@ bash "$ANALYZE" "$FIX/mixed" --pattern does-not-exist >/dev/null 2>&1; rc=$?
 if [ "$rc" -ne 0 ]; then echo "  PASS: unknown --pattern non-zero exit ($rc)"; PASS=$((PASS+1));
 else echo "  FAIL: unknown --pattern exited 0"; FAIL=$((FAIL+1)); fi
 
-echo "[dump] analyzer also writes <root>/.autofix/analyzer-output.json"
+echo "[no-write] analyzer writes nothing to the project"
 run "$FIX/inject" >/dev/null 2>&1
-if [ -f "$FIX/inject/.autofix/analyzer-output.json" ] && grep -q 'inject-in-sling-model' "$FIX/inject/.autofix/analyzer-output.json"; then
-  echo "  PASS: dump file written with findings"; PASS=$((PASS+1))
+if [ ! -e "$FIX/inject/.autofix" ]; then
+  echo "  PASS: no .autofix/ written"; PASS=$((PASS+1))
 else
-  echo "  FAIL: dump file missing or empty"; FAIL=$((FAIL+1))
+  echo "  FAIL: analyzer wrote $FIX/inject/.autofix"; FAIL=$((FAIL+1))
+  rm -rf "$FIX/inject/.autofix"
 fi
-if [ -f "$FIX/inject/.autofix/.gitignore" ] && grep -q '\*' "$FIX/inject/.autofix/.gitignore"; then
-  echo "  PASS: self-ignore (.autofix/.gitignore) written"; PASS=$((PASS+1))
-else
-  echo "  FAIL: .autofix/.gitignore missing"; FAIL=$((FAIL+1))
-fi
-
-# the analyzer writes <root>/.autofix when run; clean the copies left in fixtures by this run
-find "$FIX" -type d -name .autofix -prune -exec rm -rf {} + 2>/dev/null || true
 
 echo "[allowlist] only allowlisted deps by default; --all shows everything"
 OUT="$(run "$FIX/allowlist")"
@@ -239,9 +233,12 @@ echo "[outbound-call-timeouts] timeout-less clients + JDK requests flagged; conf
 OUT="$(run "$FIX/outbound-call-timeouts")"
 assert_contains "pattern present"                       "$OUT" '"pattern":"outbound-call-timeouts"'
 assert_contains "Apache no-timeout client flagged"      "$OUT" 'BadHttpService.java'
+assert_contains "HttpClients.createSystem() flagged"    "$OUT" 'SystemHttpService.java'
+assert_contains "HttpClients.createMinimal() flagged"   "$OUT" '"file":"MinimalHttpService.java"'
 assert_contains "JDK newHttpClient flagged"             "$OUT" 'JdkHttpService.java'
 assert_contains "JDK request without timeout flagged"   "$OUT" 'JdkRequestBad.java'
 assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpService.java'
+assert_absent  "createMinimal() + per-request RequestConfig not flagged" "$OUT" 'GoodMinimalHttpService.java'
 assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
 assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
 assert_absent  "Mockito .build() stub not flagged (CA-12)" "$OUT" 'MockitoStub.java'
@@ -280,6 +277,20 @@ assert_contains "warning for missing cache"        "$OUT" 'deprecated-api-rules-
 assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-deprecated-api"'
 rm -f "$RULES_TSV"
 
+
+echo "[request-controlled-security-bypass] test/debug/bypass names read in security code flagged; values never emitted"
+OUT="$(run "$FIX/request-controlled-security-bypass")"
+assert_contains "pattern present"                              "$OUT" '"pattern":"request-controlled-security-bypass"'
+assert_contains "cookie via same-file constant flagged"        "$OUT" 'LoginServlet.java'
+assert_contains "constant resolved to the cookie name"         "$OUT" 'cookie \\"qa-automation\\"'
+assert_contains "header in rate-limit filter flagged"          "$OUT" 'X-Skip-Rate-Limit'
+assert_contains "cookie-name comparison flagged"               "$OUT" 'e2e-bypass'
+assert_contains "parameter-map lookup flagged"                 "$OUT" 'debugAuth'
+assert_count   "one finding per site (4)"                      "$OUT" '"pattern":"request-controlled-security-bypass"' 4
+assert_absent  "compared value never emitted"                  "$OUT" 'opensesame'
+assert_absent  "ordinary names in login code not flagged"      "$OUT" 'CleanLoginServlet.java'
+assert_absent  "debug parameter outside security code not flagged" "$OUT" 'ProductListServlet.java'
+assert_absent  "src/test/ not flagged"                         "$OUT" 'LoginServletTest.java'
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

@@ -1,0 +1,10 @@
+rollout plan → stardust/rollout/plan.json
+================================================================
+Fragments (site-wide, deliver once): nav
+Delivery order (representative-first), 3 pages:
+
+◆ rep docs                         pending    convert: cards, site-search
+  sib docs-getting-started         pending    reuse: cards
+◆ rep home                         pending    convert: hero  |  reuse: cards
+
+Each of 3 distinct module blocks converts on exactly ONE page; the rest reuse.

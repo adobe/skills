@@ -29,8 +29,7 @@ if (playwrightOk && existsSync(ROOT_MODULES)) {
   cpSync(join(SKILLS, 'diff', 'scripts'), join(scripts, 'diff'), { recursive: true });
   mkdirSync(join(scripts, 'replica'), { recursive: true });
   for (const f of ['pixel-compare.mjs', 'run-capped.mjs', 'run-bg.mjs']) cpSync(join(SKILLS, 'replica', 'scripts', f), join(scripts, 'replica', f));
-  mkdirSync(join(scripts, 'stardust'), { recursive: true });
-  cpSync(join(SKILLS, 'stardust', 'scripts', 'state.mjs'), join(scripts, 'stardust', 'state.mjs'));
+  cpSync(join(SKILLS, 'stardust', 'scripts'), join(scripts, 'stardust'), { recursive: true, filter: (src) => src !== join(SKILLS, 'stardust', 'scripts', 'test') });
   symlinkSync(ROOT_MODULES, join(p.root, 'node_modules'));
 
   const gate = join(scripts, 'reskin', 'figma-gate.mjs');
@@ -38,7 +37,7 @@ if (playwrightOk && existsSync(ROOT_MODULES)) {
 
   await check('the copy has no test/ directory and every sibling the setup names', () => {
     assert.ok(!existsSync(join(scripts, 'reskin', 'test')));
-    for (const f of ['reskin/figma/errors.mjs', 'reskin/figma-gate/join.mjs', 'reskin/render/root-tokens.mjs', 'diff/live-session.mjs', 'diff/measure-live.mjs', 'replica/pixel-compare.mjs', 'stardust/state.mjs']) assert.ok(existsSync(join(scripts, f)), f);
+    for (const f of ['reskin/figma/errors.mjs', 'reskin/figma-gate/join.mjs', 'reskin/render/root-tokens.mjs', 'stardust/browser.mjs', 'stardust/live-session.mjs', 'diff/measure-live.mjs', 'replica/pixel-compare.mjs', 'stardust/state.mjs']) assert.ok(existsSync(join(scripts, f)), f);
   });
 
   await check('--help from the copy: exit 0 with the usage', () => {

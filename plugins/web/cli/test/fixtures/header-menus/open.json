@@ -1,0 +1,1 @@
+{ "states": [ { "label": "Produits", "trigger": "hover", "newLinks": 2, "file": "0.png" }, { "label": "Ressources", "trigger": "hover", "newLinks": 3, "file": "1.png" } ] }

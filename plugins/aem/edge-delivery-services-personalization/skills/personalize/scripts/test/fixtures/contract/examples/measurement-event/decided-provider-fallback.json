@@ -1,0 +1,17 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "default",
+    "source": "rules",
+    "where": "edge",
+    "outcome": "fallback",
+    "reason": "provider_error",
+    "trigger": "initial",
+    "tracking": {
+      "engine": "of1",
+      "requestId": "r-93"
+    }
+  }
+}

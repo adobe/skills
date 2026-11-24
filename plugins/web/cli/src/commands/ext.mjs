@@ -204,7 +204,7 @@ function verifyLoaded(driver, { session, extensionId, name }) {
 }
 
 function launch(ctx, distDir) {
-  const { opts, driver, print, recipe } = ctx;
+  const { opts, driver, print, recipe, env } = ctx;
   const abs = resolve(distDir);
   const manifest = readManifest(abs);
   const surfaces = availableSurfaces(manifest);
@@ -215,16 +215,20 @@ function launch(ctx, distDir) {
     url: 'about:blank',
     headed: Boolean(opts.headed),
     cdpPort,
-    ...resolveLaunch(recipe, {
-      persistent: true,
-      config: {
-        browserName: 'chromium',
-        launchOptions: {
-          channel: 'chromium',
-          args: [`--load-extension=${abs}`, `--disable-extensions-except=${abs}`],
+    ...resolveLaunch(
+      recipe,
+      {
+        persistent: true,
+        config: {
+          browserName: 'chromium',
+          launchOptions: {
+            channel: 'chromium',
+            args: [`--load-extension=${abs}`, `--disable-extensions-except=${abs}`],
+          },
         },
       },
-    }),
+      { env },
+    ),
   });
   const extensionId = extensionIdForPath(realpathSync(abs));
   verifyLoaded(driver, { session, extensionId, name: manifest.name });

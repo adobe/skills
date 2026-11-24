@@ -2361,12 +2361,88 @@
   function removeNoiseElements(root) {
     root.querySelectorAll(NOISE_TAGS.join(",")).forEach((el) => el.remove());
   }
-  function removeInvisibleElements(root, win) {
-    [...root.querySelectorAll("*")].forEach((el) => {
-      const s = win.getComputedStyle(el);
-      if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") {
-        el.remove();
+  var clips = (overflow) => overflow !== "visible";
+  function offPageAxes(rect, doc, win) {
+    const { scrollWidth, scrollHeight } = doc.documentElement;
+    const left = rect.left + win.scrollX;
+    const top = rect.top + win.scrollY;
+    return {
+      x: left + rect.width <= 0 || left >= scrollWidth,
+      y: top + rect.height <= 0 || top >= scrollHeight
+    };
+  }
+  function isStyleHidden(s) {
+    return s.display === "none" || s.opacity === "0" || s.contentVisibility === "hidden";
+  }
+  function clipsAxis(overflow, boxStart, boxSize, start, size) {
+    if (!clips(overflow)) return false;
+    if (boxSize === 0) return true;
+    if (overflow === "scroll" || overflow === "auto") return false;
+    return start + size <= boxStart || start >= boxStart + boxSize;
+  }
+  function clipsOut(s, box, rect) {
+    return clipsAxis(s.overflowX, box.left, box.width, rect.left, rect.width) || clipsAxis(s.overflowY, box.top, box.height, rect.top, rect.height);
+  }
+  function hasHiddenAncestor(el, win) {
+    const doc = el.ownerDocument;
+    const own = win.getComputedStyle(el);
+    const rect = own.display === "contents" ? null : el.getBoundingClientRect();
+    let { position } = own;
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      const s = win.getComputedStyle(a);
+      if (isStyleHidden(s)) return true;
+      const inChain = position === "absolute" ? s.position !== "static" : position !== "fixed";
+      if (inChain) {
+        position = s.position;
+        const pageScroller = a === doc.body || a === doc.documentElement;
+        if (rect && !pageScroller && clipsOut(s, a.getBoundingClientRect(), rect)) return true;
       }
+    }
+    return false;
+  }
+  function hasVisibleDescendant(el, win) {
+    return [...el.querySelectorAll("*")].some((c) => win.getComputedStyle(c).visibility === "visible");
+  }
+  function dropOwnText(el) {
+    [...el.childNodes].filter((n) => n.nodeType === 3).forEach((n) => n.remove());
+  }
+  function paintsOnPage(text, win) {
+    const range = text.ownerDocument.createRange();
+    range.selectNodeContents(text);
+    return [...range.getClientRects()].some((r) => {
+      const off = offPageAxes(r, text.ownerDocument, win);
+      return r.width > 0 && r.height > 0 && !off.x && !off.y;
+    });
+  }
+  function removeIfBoxHidden(el, liveEl, win, live) {
+    const s = win.getComputedStyle(liveEl);
+    if (s.display === "contents") return;
+    const rect = liveEl.getBoundingClientRect();
+    const off = offPageAxes(rect, liveEl.ownerDocument, win);
+    const goneX = rect.width === 0 || off.x;
+    const goneY = rect.height === 0 || off.y;
+    if (goneX && clips(s.overflowX) || goneY && clips(s.overflowY)) {
+      el.remove();
+      return;
+    }
+    if (!goneX && !goneY) return;
+    [...el.childNodes].filter((n) => n.nodeType === 3 && n.data.trim() && !paintsOnPage(live(n), win)).forEach((n) => n.remove());
+    if ((off.x || off.y) && el.children.length === 0 && !el.textContent.trim()) el.remove();
+  }
+  function removeInvisibleElements(root, win, live = (n) => n) {
+    [...root.querySelectorAll("*")].forEach((el) => {
+      if (!root.contains(el)) return;
+      const liveEl = live(el);
+      const s = win.getComputedStyle(liveEl);
+      if (isStyleHidden(s)) {
+        el.remove();
+      } else if (s.visibility === "hidden") {
+        if (hasVisibleDescendant(liveEl, win)) dropOwnText(el);
+        else el.remove();
+      }
+    });
+    [...root.querySelectorAll("*")].reverse().forEach((el) => {
+      if (root.contains(el)) removeIfBoxHidden(el, live(el), win, live);
     });
   }
   function stripStylingTags(root) {
@@ -2401,9 +2477,9 @@
       toRemove.forEach((attrName) => el.removeAttribute(attrName));
     });
   }
-  function cleanupAll(root, win) {
+  function cleanupAll(root, win, live = (n) => n) {
     removeNoiseElements(root);
-    removeInvisibleElements(root, win);
+    removeInvisibleElements(root, win, live);
     stripStylingTags(root);
     removeComments(root);
     stripAttributes(root);
@@ -2425,7 +2501,7 @@
   var VIDEO_EXTENSIONS = ["mp4", "webm", "ogg", "mov", "avi"];
   var HEADING_TAGS = /* @__PURE__ */ new Set(["H1", "H2", "H3", "H4", "H5", "H6"]);
   var ICON_THRESHOLD = 64;
-  var TOKEN_PATTERN = /^\{[A-Z]+[^}]*\}$/;
+  var CONTENT_TOKEN = /\{(?:TEXT|VIDEO|HEADING:[1-6]|IMAGE:\d+x\d+|SELECT:\d+|INPUT:[^{}]*|(?:LINK|CTA):[^{}]*)\}/;
   var SHOW_TEXT = 4;
   var PRESERVED_VOID_TAGS = /* @__PURE__ */ new Set([
     "BR",
@@ -2439,110 +2515,102 @@
     if (!src) return false;
     return VIDEO_DOMAINS.some((d) => src.includes(d)) || VIDEO_EXTENSIONS.some((ext) => src.endsWith(`.${ext}`));
   }
-  function isToken(text) {
-    return TOKEN_PATTERN.test(text.trim());
+  var TOKENS = /* @__PURE__ */ new WeakSet();
+  function token(doc, text) {
+    const node = doc.createTextNode(text);
+    TOKENS.add(node);
+    return node;
   }
-  function getVisibleText(el) {
-    return el.textContent.replace(/\s+/g, " ").trim();
+  function textNodes(root) {
+    const walker = root.ownerDocument.createTreeWalker(root, SHOW_TEXT, null);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+  }
+  function pageText(el) {
+    return textNodes(el).filter((n) => !TOKENS.has(n)).map((n) => n.data).join("");
+  }
+  function cleanLabel(text) {
+    return (text ?? "").replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
   }
   function tokenizeHeadings(root) {
     HEADING_TAGS.forEach((tag) => {
       root.querySelectorAll(tag).forEach((el) => {
-        const level = tag.charAt(1);
-        el.textContent = `{HEADING:${level}}`;
+        el.replaceChildren(token(el.ownerDocument, `{HEADING:${tag.charAt(1)}}`));
       });
     });
   }
   function tokenizeTextNodes(root) {
-    const doc = root.ownerDocument;
-    const walker = doc.createTreeWalker(root, SHOW_TEXT, null);
-    const nodes = [];
-    while (walker.nextNode()) {
-      nodes.push(walker.currentNode);
-    }
-    nodes.forEach((node) => {
-      const text = node.data.replace(/\s+/g, " ").trim();
-      if (text.length > 0 && !isToken(text)) {
+    textNodes(root).forEach((node) => {
+      if (!TOKENS.has(node) && node.data.trim().length > 0) {
         node.data = "{TEXT}";
+        TOKENS.add(node);
       }
     });
   }
-  function tokenizeImages(root) {
+  function tokenizeImages(root, live = (n) => n) {
     const doc = root.ownerDocument;
-    root.querySelectorAll("img").forEach((img) => {
-      const rect = img.getBoundingClientRect();
-      const w = Math.round(rect.width);
-      const h = Math.round(rect.height);
-      const token = w > ICON_THRESHOLD && h > ICON_THRESHOLD ? `{IMAGE:${w}x${h}}` : "{ICON}";
-      img.replaceWith(doc.createTextNode(token));
-    });
-    root.querySelectorAll("svg").forEach((svg) => {
-      const rect = svg.getBoundingClientRect();
-      if (rect.width <= ICON_THRESHOLD || rect.height <= ICON_THRESHOLD) {
-        svg.replaceWith(doc.createTextNode("{ICON}"));
-      }
-    });
     root.querySelectorAll("picture").forEach((picture) => {
       const img = picture.querySelector("img");
       if (img) {
         picture.replaceWith(img);
       } else {
-        picture.replaceWith(doc.createTextNode("{IMAGE:0x0}"));
+        picture.replaceWith(token(doc, "{IMAGE:0x0}"));
       }
+    });
+    root.querySelectorAll("img, svg").forEach((img) => {
+      const rect = live(img).getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      const tokenText = w > ICON_THRESHOLD && h > ICON_THRESHOLD ? `{IMAGE:${w}x${h}}` : "{ICON}";
+      img.replaceWith(token(doc, tokenText));
     });
   }
   function tokenizeVideos(root) {
     const doc = root.ownerDocument;
     root.querySelectorAll("video").forEach((video) => {
-      video.replaceWith(doc.createTextNode("{VIDEO}"));
+      video.replaceWith(token(doc, "{VIDEO}"));
     });
     root.querySelectorAll("iframe, embed, object").forEach((el) => {
       const src = el.src || el.getAttribute("data") || "";
       if (isVideoSource(src)) {
-        el.replaceWith(doc.createTextNode("{VIDEO}"));
+        el.replaceWith(token(doc, "{VIDEO}"));
       }
     });
   }
   function isCTALink(el, win) {
-    const doc = el.ownerDocument;
     const s = win.getComputedStyle(el);
-    const defaultA = doc.createElement("a");
-    doc.body.appendChild(defaultA);
-    const defaultS = win.getComputedStyle(defaultA);
-    const hasCustomBg = s.backgroundColor !== defaultS.backgroundColor || s.backgroundImage !== defaultS.backgroundImage;
-    let borderCount = 0;
-    ["left", "right", "top", "bottom"].forEach((side) => {
-      const prop = `border-${side}-style`;
-      if (s.getPropertyValue(prop) !== defaultS.getPropertyValue(prop)) {
-        borderCount += 1;
-      }
-    });
-    defaultA.remove();
+    const hasCustomBg = s.backgroundColor !== "rgba(0, 0, 0, 0)" || s.backgroundImage !== "none";
+    const borderCount = ["left", "right", "top", "bottom"].filter((side) => s.getPropertyValue(`border-${side}-style`) !== "none").length;
     return hasCustomBg || borderCount > 1;
   }
-  function tokenizeLinks(root, win) {
+  function isBlockLink(a) {
+    return a.querySelector("h1, h2, h3, h4, h5, h6") !== null || textNodes(a).some((n) => TOKENS.has(n) && /^\{(IMAGE:|VIDEO\})/.test(n.data));
+  }
+  function linkLabel(a) {
+    return cleanLabel(pageText(a)) || cleanLabel(a.getAttribute("aria-label"));
+  }
+  function tokenizeLinks(root, win, live = (n) => n) {
     const doc = root.ownerDocument;
     root.querySelectorAll("a[href]").forEach((a) => {
-      const label = getVisibleText(a);
-      if (isCTALink(a, win)) {
-        a.replaceWith(doc.createTextNode(`{CTA:${label}}`));
-      } else {
-        a.replaceWith(doc.createTextNode(`{LINK:${label}}`));
-      }
+      if (isBlockLink(a)) return;
+      const label = linkLabel(a);
+      const kind = isCTALink(live(a), win) ? "CTA" : "LINK";
+      a.replaceWith(token(doc, `{${kind}:${label}}`));
     });
   }
   function tokenizeFormElements(root) {
     const doc = root.ownerDocument;
     root.querySelectorAll("select").forEach((select) => {
       const count = select.options ? select.options.length : select.querySelectorAll("option").length;
-      select.replaceWith(doc.createTextNode(`{SELECT:${count}}`));
+      select.replaceWith(token(doc, `{SELECT:${count}}`));
     });
     root.querySelectorAll("input").forEach((input) => {
-      const type = input.getAttribute("type") || "text";
-      input.replaceWith(doc.createTextNode(`{INPUT:${type}}`));
+      const type = cleanLabel(input.getAttribute("type")) || "text";
+      input.replaceWith(token(doc, `{INPUT:${type}}`));
     });
     root.querySelectorAll("textarea").forEach((ta) => {
-      ta.replaceWith(doc.createTextNode("{INPUT:textarea}"));
+      ta.replaceWith(token(doc, "{INPUT:textarea}"));
     });
   }
   function collapseWhitespace(root) {
@@ -2573,11 +2641,11 @@
     while (removeEmptyOnce(root)) {
     }
   }
-  function tokenizeAll(root, win) {
+  function tokenizeAll(root, win, live = (n) => n) {
     tokenizeHeadings(root);
     tokenizeVideos(root);
-    tokenizeImages(root);
-    tokenizeLinks(root, win);
+    tokenizeImages(root, live);
+    tokenizeLinks(root, win, live);
     tokenizeFormElements(root);
     tokenizeTextNodes(root);
     collapseWhitespace(root);
@@ -2587,14 +2655,14 @@
   // src/utils/dom.js
   var DOM = class _DOM {
     static getXPath(el, document2, withDetails = false) {
-      const allNodes = document2.getElementsByTagName("*");
+      const allNodes2 = document2.getElementsByTagName("*");
       const segs = [];
       for (let elm = el; elm && elm.nodeType === 1; elm = elm.parentNode) {
         if (withDetails) {
           if (elm.hasAttribute("id")) {
             let uniqueIdCount = 0;
-            for (let n = 0; n < allNodes.length; n += 1) {
-              if (allNodes[n].hasAttribute("id") && allNodes[n].id === elm.id) {
+            for (let n = 0; n < allNodes2.length; n += 1) {
+              if (allNodes2[n].hasAttribute("id") && allNodes2[n].id === elm.id) {
                 uniqueIdCount += 1;
               }
               if (uniqueIdCount > 1) {
@@ -2918,22 +2986,37 @@
   }
 
   // src/reduce-for-skill.js
+  function allNodes(root) {
+    const walker = root.ownerDocument.createTreeWalker(root);
+    const nodes = [root];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+  }
+  function liveLookup(clone, el) {
+    const live = allNodes(el);
+    const pairs = new Map(allNodes(clone).map((c, i) => [c, live[i]]));
+    return (node) => pairs.get(node) ?? node;
+  }
   function processSectionBox(box, doc, win) {
     const el = box.div;
-    if (!el) return null;
+    if (!el || hasHiddenAncestor(el, win)) return null;
     const clone = el.cloneNode(true);
-    cleanupAll(clone, win);
-    const shadowRoots = findShadowRoots(clone);
+    const live = liveLookup(clone, el);
+    const wrapper = doc.createElement("div");
+    wrapper.append(clone);
+    cleanupAll(wrapper, win, live);
+    const shadowRoots = findShadowRoots(wrapper);
     for (const sroot of shadowRoots) {
       cleanupAll(sroot, win);
       tokenizeAll(sroot, win);
     }
-    tokenizeAll(clone, win);
+    tokenizeAll(wrapper, win, live);
+    if (!CONTENT_TOKEN.test(wrapper.textContent)) return null;
     return {
       sectionType: box.prediction?.sectionType || "unknown",
       xpath: box.xpath || DOM.getXPath(el, doc),
       xpathWithDetails: box.xpathWithDetails || XPath.getRelativeXPath(el, true),
-      tokenizedHtml: clone.outerHTML,
+      tokenizedHtml: wrapper.innerHTML,
       layout: box.layout || { numCols: 0, numRows: 0 },
       features: box.prediction?.sectionFeatures || [],
       section: box.section ? {
@@ -2945,16 +3028,21 @@
   function reduceForSkill(root, win) {
     const doc = win.document;
     const boxes = win.xp?.boxes;
-    if (!boxes || !boxes.predictedBoxes) {
+    if (!boxes) {
       return { url: win.location.href, sections: [] };
     }
-    const sections = [];
-    boxes.predictedBoxes.forEach((box, index) => {
-      const section = processSectionBox(box, doc, win);
-      if (section) {
-        section.index = index;
-        sections.push(section);
+    const sections = (boxes.predictedBoxes || []).map((box) => processSectionBox(box, doc, win)).filter(Boolean);
+    if (sections.length === 0) {
+      for (const div of [doc.querySelector("main"), doc.body]) {
+        const section = div && processSectionBox({ div }, doc, win);
+        if (section) {
+          sections.push({ ...section, fallback: true });
+          break;
+        }
       }
+    }
+    sections.forEach((section, index) => {
+      section.index = index;
     });
     const pageTpl = boxes.children?.map((child) => {
       const tpl = [DOM.getXPath(child.div, doc)];

@@ -1,3 +1,5 @@
+## [1.0.3](https://github.com/adobe/skills/compare/authoring-analysis-v1.0.2...authoring-analysis-v1.0.3) (2026-11-15)
+
 ## [1.0.2](https://github.com/adobe/skills/compare/authoring-analysis-v1.0.1...authoring-analysis-v1.0.2) (2026-10-29)
 
 

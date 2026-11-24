@@ -1,0 +1,161 @@
+.tabs .tabs-list {
+  display: flex;
+  gap: 0.5ch;
+  max-width: 100%;
+  font-size: var(--body-font-size-xs);
+  overflow-x: auto;
+}
+
+@media (width >= 600px) {
+  .tabs .tabs-list {
+    font-size: var(--body-font-size-s);
+  }
+}
+
+@media (width >= 900px) {
+  .tabs .tabs-list {
+    font-size: var(--body-font-size-m);
+  }
+}
+
+.tabs .tabs-list button {
+  flex: 0 0 max-content;
+  margin: 0;
+  border: 1px solid var(--dark-color);
+  border-radius: 0;
+  padding: 0.5em;
+  background-color: #949494;
+  color: initial;
+  font-weight: bold;
+  line-height: unset;
+  text-align: initial;
+  text-overflow: unset;
+  overflow: unset;
+  white-space: unset;
+  transition: background-color 0.2s;
+}
+
+.tabs .tabs-list button p {
+  margin: 0;
+}
+
+.tabs .tabs-list button[aria-selected='true'] {
+  border-bottom: 1px solid var(--background-color);
+  background-color: var(--background-color);
+  cursor: initial;
+}
+
+.tabs .tabs-panel {
+  margin-top: -1px;
+  padding: 24px;
+  border: 1px solid var(--dark-color);
+  overflow: auto;
+}
+
+.tabs .tabs-panel[aria-hidden='true'] {
+  display: none;
+}
+
+/* Variant `vertical` (added for header mega panels and two-pane layouts): the tab list is a
+   column beside the panel. Values are custom properties so a migration can fill them. */
+.tabs.vertical {
+  --tabs-list-width: 300px;
+  --tabs-gap: 48px;
+  --tabs-tab-padding: 16px;
+  --tabs-tab-bg: transparent;
+  --tabs-tab-bg-selected: #f5f5f5;
+  --tabs-tab-color: inherit;
+  --tabs-tab-radius: 0;
+  --tabs-tab-min-height: auto;
+  --tabs-tab-lh: inherit;
+  --tabs-tab-border: 0;
+  --tabs-tab-border-selected: var(--tabs-tab-border);
+  --tabs-tab-gap: 0;
+  --tabs-tab-font-size: inherit;
+  --tabs-tab-font-weight: inherit;
+  --tabs-panel-columns: 1;
+  --tabs-panel-gap-x: 24px;
+  --tabs-panel-gap-y: 0;
+  --tabs-link-size: inherit;
+  --tabs-link-weight: 700;
+  --tabs-link-lh: inherit;
+  --tabs-link-color: inherit;
+  --tabs-link-padding: 0;
+  --tabs-desc-size: inherit;
+  --tabs-desc-lh: inherit;
+  --tabs-desc-color: inherit;
+  --tabs-desc-padding: 0;
+
+  display: grid;
+  grid-template-columns: var(--tabs-list-width) 1fr;
+  gap: var(--tabs-gap);
+}
+
+.tabs.vertical .tabs-list {
+  flex-direction: column;
+  gap: var(--tabs-tab-gap);
+  overflow: visible;
+}
+
+.tabs.vertical .tabs-list button {
+  box-sizing: border-box;
+  min-height: var(--tabs-tab-min-height);
+  border: var(--tabs-tab-border);
+  border-radius: var(--tabs-tab-radius);
+  padding: var(--tabs-tab-padding);
+  background-color: var(--tabs-tab-bg);
+  color: var(--tabs-tab-color);
+  font-size: var(--tabs-tab-font-size);
+  font-weight: var(--tabs-tab-font-weight);
+  line-height: var(--tabs-tab-lh);
+}
+
+.tabs.vertical .tabs-list button[aria-selected='true'] {
+  border: var(--tabs-tab-border-selected);
+  background-color: var(--tabs-tab-bg-selected);
+}
+
+.tabs.vertical .tabs-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* a list of links in a panel: a grid of items, each a link title and an optional description */
+.tabs.vertical .tabs-panel ul {
+  display: grid;
+  grid-template-columns: repeat(var(--tabs-panel-columns), minmax(0, 1fr));
+  gap: var(--tabs-panel-gap-y) var(--tabs-panel-gap-x);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tabs.vertical .tabs-panel li > a {
+  display: block;
+  padding: var(--tabs-link-padding);
+  color: var(--tabs-link-color);
+  font-size: var(--tabs-link-size);
+  font-weight: var(--tabs-link-weight);
+  line-height: var(--tabs-link-lh);
+  text-decoration: none;
+}
+
+.tabs.vertical .tabs-panel li > p {
+  margin: 0;
+  padding: var(--tabs-desc-padding);
+  color: var(--tabs-desc-color);
+  font-size: var(--tabs-desc-size);
+  line-height: var(--tabs-desc-lh);
+}
+
+/* narrow screens: the tab list stacks above its panel */
+@media (width < 900px) {
+  .tabs.vertical {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs.vertical .tabs-panel ul {
+    grid-template-columns: 1fr;
+  }
+}

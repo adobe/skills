@@ -53,7 +53,6 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { parseMapping } from '../figma-gate/mapping.mjs';
-import { loadChromium } from '../figma-gate/target.mjs';
 import { callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
@@ -132,9 +131,8 @@ const SECTIONS = { reskin: 'main section[data-slot]', preview: 'main > .section:
 // reskin page after networkidle, the preview once its EDS decoration has settled (a stall is A4's finding, not this one's).
 // A 401 or 403 on the preview side measures nothing and is a setup error.
 async function measureChrome({ widths, urls }) {
-  const chromium = await loadChromium();
-  const { newLiveContext } = await loadLiveSession();
-  const browser = await chromium.launch();
+  const { goto, newLiveContext, openBrowser } = await loadLiveSession();
+  const browser = await openBrowser({ mode: 'plain' });
   const heights = {};
   try {
     for (const width of widths) {
@@ -143,7 +141,7 @@ async function measureChrome({ widths, urls }) {
         const ctx = await newLiveContext(browser, { viewport: { width, height: 900 } });
         try {
           const page = await ctx.newPage();
-          const response = await page.goto(urls[side], { waitUntil: side === 'preview' ? 'domcontentloaded' : 'networkidle', timeout: NAV_TIMEOUT_MS });
+          const response = await goto(page, urls[side], { waitUntil: side === 'preview' ? 'domcontentloaded' : 'networkidle', timeout: NAV_TIMEOUT_MS });
           if (side === 'preview' && [401, 403].includes(response?.status())) {
             throw new UsageError(`${urls.preview} answered HTTP ${response.status()}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
           }

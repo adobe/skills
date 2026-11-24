@@ -1,0 +1,1783 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# claim: a checkable fact. A recommendation is a fact only when Adobe documents it (aem.live
+# docs, Adobe's repos) and source points there; it is then phrased as attributed.
+# source: required for a fact that no skill states.
+# used_by: every fact has at least one entry.
+# used_by: paths relative to this plugin.
+
+- id: block-collection
+  claim: >-
+    The Block Collection (github.com/adobe/aem-block-collection, `blocks/`) is
+    Adobe's vetted reference set of common blocks. Each has a live example at
+    `main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
+    aem.live's Block Collection page recommends its blocks as blueprints for
+    blocks in a project.
+  question: >-
+    Where are Adobe's reference implementations of common EDS blocks, and
+    where can you see each one rendered?
+  source: >-
+    https://www.aem.live/developer/block-collection;
+    github.com/adobe/aem-block-collection blocks/
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+    - skills/identify-page-structure/SKILL.md
+
+- id: block-party
+  claim: >-
+    Block Party is the community catalog (blocks, sidekick and DA plugins,
+    build tooling, framework integrations, code snippets), indexed at
+    `www.aem.live/developer/block-party/block-party.json?sheet=curated-list-new`.
+    aem.live's Block Party page says Adobe does not maintain the showcased
+    code and to use it at your own discretion. It is the only catalog for
+    plugins, build tooling and integrations.
+  question: >-
+    Where do you look for existing community implementations for EDS (a
+    non-standard block, a sidekick or DA plugin, a Sass build setup), and what
+    does Adobe say about responsibility for the showcased code?
+  source: https://www.aem.live/developer/block-party/
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+
+- id: plain-html-content-model
+  claim: >-
+    Appending `.plain.html` to an EDS page URL returns its authored markup
+    before decoration (blocks as `<div class="{block}">` rows and cells). On a
+    Block Collection example page it shows the content model a block expects.
+  question: >-
+    How do you see the authored, pre-decoration markup that an existing EDS
+    block expects, e.g. from a live example page?
+  source: >-
+    https://www.aem.live/developer/markup-sections-blocks;
+    main--aem-block-collection--adobe.aem.live/block-collection/cards.plain.html
+  used_by:
+    - skills/figma-to-content/references/phase-5-deploy.md
+
+- id: project-blocks-folder
+  claim: >-
+    A project's blocks are the folders under `blocks/`.
+  question: >-
+    How do you find which blocks an EDS project has?
+  source: aem-boilerplate 5cea543, blocks/
+  used_by:
+    - skills/identify-page-structure/SKILL.md
+
+- id: block-collection-default-content
+  claim: >-
+    The Block Collection site also documents default content that has no block
+    (breadcrumbs, buttons, metadata, section metadata). Its "breadcrumbs" entry
+    is default-content documentation, not a standalone block to copy.
+  question: >-
+    We want breadcrumbs on an EDS site. Does Adobe's Block Collection have a
+    breadcrumb block, and what would you start from?
+  source: >-
+    main--aem-block-collection--adobe.aem.live nav; search-block-collection.js
+    breadcrumb output (2026-11-11)
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+
+- id: block-css-scoping
+  claim: >-
+    Block selectors start with `.{block}` or `main .{block}`; both are valid.
+    `main .{block}` excludes copies of the block in header/footer.
+  question: >-
+    How should selectors in an EDS block's CSS be written so they only affect
+    that block? Example for a block named `cards`.
+  source: aem-boilerplate 5cea543, blocks/*/*.css use `.{block}`
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: block-css-location
+  claim: >-
+    aem.js loads a block's styles from `blocks/{block}/{block}.css` when the
+    block is on the page.
+  question: Where does the CSS for an EDS block named `cards` live, and what loads it?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: platform-wrapper-classes
+  claim: >-
+    aem.js adds `{block}-wrapper` to the block's parent and `{block}-container`
+    to its section.
+  question: >-
+    What classes does EDS add automatically to the elements around a block, and
+    on which elements?
+  source: aem-boilerplate 5cea543, scripts/aem.js decorateBlock()
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+
+- id: css-targets-decorated-dom
+  claim: >-
+    Block CSS styles the DOM after decorate() runs, not the authored row/cell divs.
+  question: Does an EDS block's CSS target the authored markup or something else?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js loadBlock() runs CSS load and
+    decorate() together and marks the block loaded after both
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: root-custom-properties
+  claim: >-
+    Colors, font families and font sizes are custom properties declared on
+    `:root` in styles/styles.css (`:root, :host` in projects embedded with
+    aem-embed, which loads styles.css into a shadow root where `:root` matches
+    nothing).
+  question: >-
+    Our EDS site is embedded on a partner page with aem-embed, and the block
+    colors and fonts fall back to browser defaults there. Why, and what's the
+    fix?
+  source: >-
+    aem-boilerplate 5cea543, styles/styles.css :root; adobe/aem-embed
+    scripts/aem-embed.js
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/SKILL.md
+
+- id: block-layout-scope
+  claim: >-
+    Global styles define the page grid (`main > .section > div` sets max-width,
+    centering and inline padding).
+  question: >-
+    In an aem-boilerplate project, what limits the width of a section's content
+    and centers it, and where is that defined?
+  source: aem-boilerplate 5cea543, styles/styles.css
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: mobile-first-breakpoints
+  claim: >-
+    CSS is mobile-first: defaults are mobile, wider layouts in min-width queries.
+    600/900/1200px is the common convention;
+    current boilerplate uses only 900px.
+  question: What responsive approach and breakpoints does EDS block CSS use?
+  source: >-
+    aem-boilerplate 5cea543, every @media is `(width >= 900px)`; 600px removed
+    in 4a3d34f (2024-05-29)
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - evals/code-review-eds-pr
+
+- id: block-variant-classes
+  claim: >-
+    Block options are extra classes on the block element (`Columns (dark, wide)`
+    → `class="columns dark wide"`), styled as `.{block}.{option}`. An option
+    that only changes looks needs no JS.
+  question: How do authors create a variant of an EDS block, and how is it styled?
+  source: https://www.aem.live/developer/markup-sections-blocks (block options)
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - evals/javascript-block-decoration-patterns
+
+- id: block-js-contract
+  claim: >-
+    aem.js imports `blocks/{block}/{block}.js` and awaits its default export,
+    called with the block element. It may be async.
+  question: >-
+    What does the JavaScript file of an EDS block named `cards` look like, and
+    how does the platform call it?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: decorate-gates-section
+  claim: >-
+    A section stays hidden until every block in it has been decorated, and the
+    first section is loaded before anything else (LCP), so slow work awaited
+    in decorate() (fetches, big imports, third-party embeds) delays the
+    section.
+  question: >-
+    What happens to the page if an EDS block's decorate() awaits a slow fetch or
+    library load?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js loadSection(), scripts/scripts.js
+    loadEager()
+  used_by:
+    - evals/block-file-structure-and-performance-pat
+    - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: reuse-authored-dom
+  claim: >-
+    New elements that decorate() builds from the text or src of delivered
+    elements (pictures, headings, paragraphs, links) lose the originals'
+    attributes, such as heading ids, image dimensions and Universal Editor
+    instrumentation (`data-aue-*`).
+  question: >-
+    In an EDS block's decorate(), you build new elements from the text and src
+    of the authored heading and image. What do the new elements lack compared
+    with the delivered ones?
+  source: >-
+    adobe-rnd/aem-boilerplate-xwalk scripts/scripts.js moveInstrumentation()
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - evals/code-review-eds-pr
+
+- id: delivered-pictures
+  claim: >-
+    Authored images arrive as `<picture>` with webp and fallback sources at
+    2000/750px widths. `createOptimizedPicture()` from aem.js builds one at
+    another size.
+  question: >-
+    In what form do authored images reach an EDS block, and how do you render
+    one at a smaller size?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js createOptimizedPicture(),
+    blocks/cards/cards.js
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - evals/code-review-eds-pr
+
+- id: authored-cells-vary
+  claim: >-
+    aem-boilerplate's AGENTS.md says authors omit and add cells and to
+    decorate defensively, so decorate() can't assume a fixed row/cell shape.
+  question: >-
+    An EDS block's content model says each row has an image cell and a text
+    cell. What should decorate() assume about the rows it gets?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - evals/code-review-eds-pr
+
+- id: aem-js-vendored
+  claim: >-
+    aem-boilerplate's AGENTS.md says `scripts/aem.js` is vendored and never to
+    edit it, and that apart from `fragment/fragment.js` shared code goes under
+    `/scripts/`. Blocks import aem.js helpers (`createOptimizedPicture`,
+    `readBlockConfig`, `toClassName`, `getMetadata`, `loadCSS`, `loadScript`)
+    as `../../scripts/aem.js`.
+  question: >-
+    What is `scripts/aem.js` in an EDS project, can you change it, and how do
+    blocks use it?
+  source: aem-boilerplate 5cea543, AGENTS.md, scripts/aem.js exports
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - evals/code-review-eds-pr
+
+- id: no-build-step
+  claim: >-
+    Code is served as-is as browser ES modules: no bundler, no transpiling, no
+    npm runtime dependencies (aem-boilerplate's AGENTS.md: "No build step;
+    devDependencies only"). Imports use relative paths with `.js`.
+  question: >-
+    Does an EDS project have a build step or bundler, and how are imports in
+    block JavaScript written?
+  source: aem-boilerplate 5cea543, AGENTS.md, .eslintrc.js import/extensions
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: project-lint
+  claim: >-
+    Boilerplate projects lint JS with ESLint airbnb-base (`.js` import
+    extensions required, property reassignment on parameters allowed) and CSS
+    with stylelint-config-standard, via `npm run lint`.
+  question: What lint setup does an EDS boilerplate project use, and how do you run it?
+  source: aem-boilerplate 5cea543, package.json, .eslintrc.js, .stylelintrc.json
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: no-innerhtml
+  claim: >-
+    Block markup built as an `innerHTML` string drops the authored nodes and
+    their attributes, and risks XSS.
+  question: >-
+    In an EDS block's decorate(), is it fine to build the new markup as an HTML
+    string and assign it with innerHTML?
+  used_by:
+    - evals/javascript-block-decoration-patterns
+    - skills/building-blocks/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: martech-after-consent
+  claim: >-
+    aem.live's Keeping it 100 guide puts martech and analytics in the delayed
+    phase: `loadDelayed()` imports `consent-check.js`, which loads
+    `consented.js` once the user consents.
+  question: >-
+    Where do you add a third-party analytics or marketing tag in an EDS
+    project?
+  source: >-
+    https://www.aem.live/developer/keeping-it-100 (Phase D: Delayed);
+    aem-boilerplate 5cea543, scripts/scripts.js loadDelayed(),
+    scripts/consent-check.js
+  used_by:
+    - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: psi-on-preview
+  claim: >-
+    aem.live's Keeping it 100 guide says a pull request's test URLs (the branch
+    preview, `{branch}--{repo}--{owner}.aem.page`) are run through PageSpeed
+    Insights and the AEM GitHub bot fails the PR if the score is below 100
+    (with a small buffer).
+  question: >-
+    How do you check that an EDS code change doesn't hurt performance, and what
+    score is expected?
+  source: https://www.aem.live/developer/keeping-it-100
+  used_by:
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: committed-files-served
+  claim: >-
+    Every file committed to an EDS repo is publicly served from the code bus;
+    aem-boilerplate's AGENTS.md says to use `.hlxignore` for files that must
+    not be served.
+  question: >-
+    Can you commit images, docs or other non-code files to an EDS project
+    repo? What happens to them?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - skills/content-driven-development/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: authored-content-compat
+  claim: >-
+    aem-boilerplate's AGENTS.md says merging `main` ships code while content
+    publishes separately, so a block change that needs authors to restructure
+    their tables breaks live pages authored with the old structure.
+  question: >-
+    You change an EDS block's content model. What about pages already
+    authored with the old structure?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - evals/code-review-eds-pr
+
+- id: strings-from-content
+  claim: >-
+    aem.live's placeholders doc says strings used throughout a site (labels,
+    button text) should not be hard-coded, especially on multilingual sites,
+    but managed centrally as placeholders in a spreadsheet.
+  question: >-
+    An EDS block needs a "Read more" button label. Where should that text come
+    from?
+  source: https://www.aem.live/docs/placeholders
+  used_by:
+    - evals/code-review-eds-pr
+
+- id: use-project-test-tooling
+  claim: >-
+    aem-boilerplate ships no test runner.
+  question: >-
+    Does a project created from aem-boilerplate come with a test runner or any
+    test setup?
+  source: aem-boilerplate 5cea543, package.json has no test script or test dependencies
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: block-status-loaded
+  claim: >-
+    aem.js sets `data-block-status="loaded"` on the block once its CSS and
+    decorate() are done, so a test can wait on
+    `.{block}[data-block-status="loaded"]`.
+  question: In a browser test, how do you wait until an EDS block has finished decorating?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: find-test-content-query-index
+  claim: >-
+    EDS sites that configure a query index expose indexed pages at
+    `/query-index.json` (`{ total, offset, limit, data: [{ path, ... }] }`;
+    `?limit=` and `?offset=` paginate). The server HTML of a page keeps the
+    authored block classes before client-side decoration
+    (`<div class="cards alternate">`), so block variants can be read from a
+    plain `curl` of the page, without a browser. An index lists only the pages
+    its index config includes, and a site can have other index files besides
+    `/query-index.json`.
+  question: >-
+    On a live EDS site you need every page that uses the `cards` block and the
+    variants those pages use, without opening each page in a browser. Where do
+    you get the list of pages, and what in the fetched markup tells you the
+    variant?
+  source: "live check 2026-11 of main--helix-website--adobe.aem.live (query-index.json 189 rows, a second index file with 141 rows, server HTML div classes)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+
+- id: find-test-content-no-index-sitemap
+  claim: >-
+    Sites without a query index (the aem-boilerplate and Block Collection
+    `.aem.live` hosts return 404 for `/query-index.json`) still serve
+    `/sitemap.xml` when a sitemap is configured; its `<loc>` entries are a page
+    list, and each page's HTML can then be searched for the block class.
+  question: >-
+    You want existing pages that use the `quote` block on
+    `main--aem-block-collection--adobe.aem.live`, and `/query-index.json`
+    returns 404. How else can you get a list of the site's pages?
+  source: "live check 2026-11 (main--aem-boilerplate--adobe and main--aem-block-collection--adobe: query-index.json 404, sitemap.xml 200)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+
+- id: find-test-content-local-vs-proxied-index
+  claim: >-
+    `aem up` serves local files from `./content/` before proxying to the remote
+    origin, but does not auto-generate `/query-index.json` from `./content/*.html`:
+    unless `content/query-index.json` exists locally, `/query-index.json` on
+    `localhost` is proxied from the remote origin. Conversely, any stale local
+    file left in `./content/<path>.html` shadows newer content published or
+    previewed at `<path>` on `.aem.page`/`.aem.live` when viewing through
+    `aem up`. Therefore, an index-based search only discovers remotely
+    indexed pages (or a local `content/query-index.json`), unindexed local
+    test pages in `./content/` are found on disk, and stale `./content/` files
+    must be moved or deleted (`aem content merge` does not refresh unchanged files) to see remote changes
+    locally.
+  question: >-
+    You want to find all test pages for an existing `accordion` block on a
+    running local dev server (`aem up`), and you also just previewed an updated
+    page at `/about` on `.aem.page` to test it locally, but `localhost/about`
+    still shows the old content. What might a search based on `/query-index.json` miss
+    locally, and why is `/about` stale on `localhost`?
+  source: "@adobe/aem-cli@16.22.16 src/server/HelixServer.js (handleProxyModeRequest checks CONTENT_DIR first, then proxies missing paths including /query-index.json)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-hlx-conflict
+  claim: >-
+    `npm install -g @adobe/aem-cli` fails with `EEXIST ... File exists: .../hlx`
+    while the old `@adobe/helix-cli` package is installed, because both ship
+    the `hlx` binary. The aem-cli README's fix is
+    `npm uninstall -g @adobe/helix-cli`, then install again.
+  question: >-
+    Installing `@adobe/aem-cli` globally fails with `File exists: .../hlx`.
+    Why, and how do you fix it?
+  source: "@adobe/aem-cli 16.22.16 README.md, 'npm install fails with File exists'"
+  used_by:
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-env-file
+  claim: >-
+    `aem` loads the project's `.env` and reads options from `AEM_`-prefixed
+    variables named after the flag (`AEM_PORT`, `AEM_TLS_CERT`, `AEM_TLS_KEY`,
+    `AEM_PAGES_URL`, `AEM_NO_OPEN`).
+  question: >-
+    How do you persist `aem up` options (port, TLS cert/key, pages URL, no
+    browser) so they apply on every start without passing flags?
+  source: "@adobe/aem-cli 16.22.16 src/cli.js (dotenv, yargs .env('AEM_')); README.md"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-extra-ca-not-dotenv
+  claim: >-
+    Behind a TLS-intercepting proxy, `unable to get local issuer certificate`
+    is fixed with `NODE_EXTRA_CA_CERTS=<corporate CA>` set in the shell or CI
+    before `aem` starts. Node reads it only at process start, so putting it in
+    `.env` has no effect.
+  question: >-
+    `aem up` fails with `unable to get local issuer certificate` on a corporate
+    network. How do you fix it, and can the fix go in the project's `.env`?
+  source: "Node.js docs, NODE_EXTRA_CA_CERTS; @adobe/aem-cli 16.22.16 src/cli.js loads .env after start"
+  used_by:
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-content-dir
+  claim: >-
+    `aem up` serves files from the project's `./content/` folder first and
+    proxies only missing paths: `content/drafts/x.html` is served at
+    `/drafts/x` (and `/drafts/x.plain.html`) with no flag. `--html-folder` is
+    only needed for HTML outside `./content/`.
+  question: >-
+    With the AEM CLI, how do you serve a local HTML test page (not yet in any
+    content source) through `aem up` so it renders with the project's blocks?
+  source: "@adobe/aem-cli 16.22.16 src/server/HelixServer.js (CONTENT_DIR lookup), src/server/BaseServer.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-content-clone
+  claim: >-
+    `aem content clone --path <folder>` (or `--all`) clones da.live content
+    into `./content/` after a browser sign-in; `--path` is required otherwise.
+    Changes go back with `aem content add`, `aem content commit -m`, and
+    `aem content push`.
+  question: >-
+    How do you get a DA (da.live) project's pages onto your machine with the
+    AEM CLI, edit them, and send the edits back?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.js (--path required unless --all), src/content/*.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-push-no-preview
+  claim: >-
+    `aem content push` only writes the DA source; it does not preview or
+    publish. Pages need a preview (Sidekick or the admin API) before
+    `.aem.page` URLs show the change.
+  question: >-
+    After `aem content push`, is the change visible on the site's `.aem.page`
+    URL? If not, what else is needed?
+  source: "@adobe/aem-cli 16.22.16 src/content/push.cmd.js (putSource only, no preview call)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-da-token-file
+  claim: >-
+    `aem content` caches the DA sign-in token in `.hlx/.da-token.json` in the
+    project (git-ignored); other DA environments use `.da-token-<label>.json`.
+  question: >-
+    Where does the AEM CLI store the DA (da.live) token after `aem content`
+    signs you in?
+  source: "@adobe/aem-cli 16.22.16 src/content/da-auth.js resolveDaTokenFile()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-worktree-port
+  claim: >-
+    `aem up` defaults to port 3000, except in a git worktree: there, with no
+    explicit port, it picks 3000 + hash(branch) % 1000 and logs
+    `Git worktree detected. Using port N`.
+  question: >-
+    Which port does `aem up` listen on when run without `--port`, and does
+    that change when the project is a git worktree?
+  source: "@adobe/aem-cli 16.22.16 src/up.cmd.js, src/git-utils.js hashBranchToPort()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-stop-other
+  claim: >-
+    `aem up` has `--stop-other` on by default: starting it on a port where
+    another AEM CLI runs stops that other server (even one from another
+    checkout). Starting it on another port (`--port`/`AEM_PORT`) keeps both
+    running.
+  question: >-
+    Another project's `aem up` is already running on port 3000. What happens
+    if you run `aem up` with default settings in a second checkout?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other, default true)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-min-versions
+  claim: >-
+    `aem content` and `./content/` serving need @adobe/aem-cli 16.18 or newer
+    (`.plain.html` from `./content/` 16.19.12, explicit port honoured in
+    worktrees 16.22.12). Check with `aem --version`; upgrade with
+    `npm install -g @adobe/aem-cli@latest`. Node 18+ is required.
+  question: >-
+    Which @adobe/aem-cli version do you need for `aem content` and serving
+    `./content/`, and how do you check and upgrade it?
+  source: "@adobe/aem-cli 16.22.16 CHANGELOG.md, package.json engines"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-import-port
+  claim: >-
+    `aem import` starts the importer server and UI on port 3001 by default.
+  question: Which port does `aem import` use by default?
+  source: "@adobe/aem-cli 16.22.16 src/import.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-clone-existing-content
+  claim: >-
+    `aem content clone` refuses to run when `./content/` already exists
+    (`'content' already exists. Use --force to overwrite.`); `--force` deletes
+    the folder first, including any local pages in it.
+  question: >-
+    You already have local test pages in `./content/` and now run
+    `aem content clone --path /drafts`. What happens to them?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-no-stop-other
+  claim: >-
+    `aem up --no-stop-other` leaves a server already on the port running and
+    exits with `Port N already in use by another process.` instead of
+    stopping it.
+  question: >-
+    How do you start `aem up` so it can never stop a dev server another
+    checkout already runs on the same port, and what happens if the port is
+    taken?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other), src/server/BaseServer.js; checked live"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: da-auth-helper-cache
+  claim: >-
+    adobe-rnd/da-auth-helper stores access_token and expires_at in
+    ~/.aem/da-token.json. This is a user-level helper cache, distinct from
+    the AEM CLI's project-level .hlx/.da-token.json cache. The helper's
+    token command returns a valid cached token or starts browser login.
+  question: >-
+    Where does adobe-rnd/da-auth-helper cache its DA token, what fields does
+    it store, and what happens when you run its token command again?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (TOKEN_FILE, storeToken, getValidToken); src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cache-expiry
+  claim: >-
+    The helper and AEM CLI caches use expires_at as an epoch timestamp in
+    milliseconds, computed from the IMS response's expires_in in seconds.
+    Both treat the cache as expired 60 seconds early, and a missing
+    expires_at as expired. A fresh timestamp is a local reuse check, not
+    proof of server acceptance.
+  question: >-
+    How should a script decide whether a cached DA IMS token from the helper
+    or AEM CLI is reusable? Include timestamp units, buffer, missing expiry,
+    and whether you can assume all tokens last one hour.
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (isTokenExpired, login); @adobe/aem-cli@16.22.16 src/content/da-auth.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-login-reuses-cache
+  claim: >-
+    da-auth-helper login and da-auth-helper token both call getValidToken;
+    neither forces refresh of a locally unexpired token. After a server
+    rejects such a token, repeating login can return the same rejected
+    credential. The helper's logout clears its own cache; it does not clear
+    the AEM CLI cache or the browser's IMS session.
+  question: >-
+    DA rejected a token with 401, but ~/.aem/da-token.json has a future
+    expires_at. Does da-auth-helper login force a fresh token? What does
+    logout clear, and what other state is independent?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/cli.js (login/token/logout cases); src/auth.js (getValidToken, clearStoredToken)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-http-status
+  claim: >-
+    DA admin returns 401 for an anonymous identity: absent, invalid or
+    expired token, or failure to resolve the IMS user can cause it. A 403
+    is permission denial for the authenticated request's current identity
+    and context, not proof that the token expired.
+  question: >-
+    A direct admin.da.live request returns 401 or 403. What distinction
+    should guide recovery, and is an expired token the only cause of 401?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/index.js (anonymous/authorized gates); src/utils/auth.js (getUsers, setUser)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-list-not-write
+  claim: >-
+    HTTP 200 from admin.da.live/list proves that listing request succeeded,
+    not that the token can write every path in the repository. DA checks
+    read/write permissions by path/action; a source write can return 403
+    after a successful list.
+  question: >-
+    Listing a DA repository succeeds with 200, but uploading a page under
+    /drafts returns 403 using the same token. Does the successful list establish
+    write permission?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/routes/list.js; src/routes/source.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cli-owned
+  claim: >-
+    @adobe/aem-cli@16.22.16 content commands manage their own DA login:
+    supplied --token override, then valid project cache, then browser login.
+    They cache in .hlx/.da-token.json for the default DA environment and
+    .hlx/.da-token-<label>.json for others. A separate da-auth-helper login
+    or manual token extraction is unnecessary for a normal CLI clone/push
+    workflow.
+  question: >-
+    You want to clone DA pages and later push local edits with the AEM CLI.
+    Must you obtain a DA token separately first? Where does the CLI store
+    its login, including non-default DA environments?
+  source: "@adobe/aem-cli@16.22.16 src/content/da-auth.js (resolveDaTokenFile, getValidToken); src/content/clone.cmd.js, push.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: da-auth-mcp-specific
+  claim: >-
+    Not every DA MCP server exposes an authentication tool or requires
+    returning a raw token to the assistant. adobe-rnd/da-mcp at
+    bd5a2ed5 registers content tools, accepts caller Bearer auth or
+    DA_ADMIN_API_TOKEN, and documents router-managed IMS for its public
+    AEM API router deployment. An authenticated content tool needs no
+    separate login.
+  question: >-
+    A DA MCP server is available. Can you assume it has a login tool that
+    returns an IMS token? How should you decide whether separate DA auth
+    is needed, and does adobe-rnd/da-mcp always require a manually passed token?
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/mcp/server.ts; src/index.ts; README.md (Authentication)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-ims-org-context
+  claim: >-
+    A fresh IMS token can authenticate the same Adobe-email account yet
+    return DA 403 when issued under an IMS org other than the one supplying
+    the user's DA group permissions. In the verified case the intended org
+    and group were absent from the wrong-org token's IMS organizations
+    response; selecting the intended org restored DA access. The IMS org
+    is distinct from the DA URL's org/repo path. Not
+    every 403 is an org mismatch, and a missing chooser is not required for
+    this failure.
+  question: >-
+    A fresh IMS token successfully authenticates an Adobe-email account,
+    but DA returns 403 even though that account has a group-based DA grant.
+    What org/context issue should you investigate before requesting new
+    permissions, and is the IMS org the same thing as the DA URL's org?
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: same account/target, authorized org 200 -> other org 403 -> authorized org 200; IMS profile 200 throughout, target org/group absent in denied context"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-org-recovery
+  claim: >-
+    da-auth-helper login and token both reuse a valid cached token, even if
+    DA rejects it; helper logout invalidates ~/.aem/da-token.json. For a
+    helper token issued under the wrong IMS org, two procedures restored
+    access in live tests: completing the helper's
+    authorize URL in a private browser with the intended org; or switching
+    to that org in da.live, then clearing the helper cache and retrying
+    authentication. Switching da.live alone did not refresh the helper
+    credential and left DA returning 403. The private-browser procedure
+    worked with the helper callback listener running and its automatically
+    opened normal-browser flow left unfinished; there is no helper incognito
+    flag.
+    These procedures worked in this setup, not proof either is necessary
+    or always forces a chooser. Helper recovery does not clear CLI caches.
+  question: >-
+    How do you recover from a locally unexpired da-auth-helper token issued
+    under the wrong IMS org? Explain the cache steps, private-browser and
+    da.live org-switch alternatives, whether switching da.live alone
+    refreshes the helper credential, and whether either browser procedure
+    is always necessary to show an org chooser.
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: each procedure restored the same target from 403 to 200; da.live-switch-only control stayed 403. https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js; src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-token-verification
+  claim: >-
+    A non-empty string or eyJ prefix alone does not prove a usable DA access
+    token. DA admin verifies the JWT signature, access_token type, expiry
+    and resolved user, then checks permissions. A read-only request can
+    establish acceptance for that operation without exposing the credential.
+  question: >-
+    A helper returns a token beginning eyJ. Is that sufficient to declare
+    DA authentication and permissions verified? What does DA actually check?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/utils/auth.js (getUsers); src/index.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-bearer
+  claim: >-
+    A direct authenticated DA request carries Authorization: Bearer
+    <IMS access token>. The value is a secret.
+  question: >-
+    How does a direct HTTP request send an IMS access token to the DA
+    admin API? Show the header shape with a placeholder, not a real token.
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/da-admin/client.ts"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-interactive
+  claim: >-
+    The helper's interactive IMS OAuth flow opens a browser and waits for
+    the user to complete login, then captures the callback token. The
+    assistant cannot complete the user's sign-in on their behalf. A
+    supplied-token override is not an
+    implementation of service-account token issuance.
+  question: >-
+    An IMS browser OAuth login opens while you automate a DA task. Who
+    completes sign-in, when can you claim success, and does accepting an
+    existing token make this a CI service-account token issuer?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (login, getValidToken)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-ims
+  claim: >-
+    da-auth-helper obtains an IMS access token, not a credential restricted
+    to DA. The api.aem.live implementation accepts IMS Bearer access tokens,
+    verifies signature/type/expiry, and requires aem.frontend.all or
+    aem.backend.all (with a cm-repo-service special case). The helper
+    requests aem.frontend.all. A cached token can therefore be reused for
+    eligible Source Bus / Experience Workspace API requests, subject to
+    server acceptance and org/site/action authorization; DA success does
+    not prove Source Bus access.
+    PR505/issue504 report that reuse succeeded on one site; not repeated
+    in this loop.
+  question: >-
+    An Experience Workspace site uses api.aem.live's Source Bus. You already
+    have an IMS access token from da-auth-helper. Is that necessarily a
+    DA-only token, or can it authenticate these API calls? What conditions
+    still need checking, and must you obtain a separate API key?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/src/auth/support.js (decodeImsToken, getAuthInfo); helper src/auth.js at 1333f443d925a0240909424224aafd75c260e9d2 (SCOPE); https://github.com/adobe/skills/issues/504 (prior single-site report)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-verification
+  claim: >-
+    Acceptance by DA admin and by api.aem.live are separate: one does not
+    prove the other. A 200 from
+    GET https://api.aem.live/<org>/sites/<site>/status/ alone does not prove
+    authentication: the OpenAPI status operation allows unauthenticated
+    access. Source routes are under
+    /<org>/sites/<site>/source/. In this implementation an auth_token
+    cookie takes precedence over Authorization, so a Bearer-token check
+    can succeed under a different cookie identity.
+  question: >-
+    A request to api.aem.live/<org>/sites/<site>/status/ returns 200 with an IMS
+    Bearer header. Does this prove that token can access Source Bus content, and
+    what else can make a Bearer-token check there misleading?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/status-api.yaml (security); docs/openapi/source-api.yaml; docs/openapi/api-service.yaml (paths); src/auth/support.js (getAuthInfo)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-store-selection
+  claim: >-
+    Source Bus content is addressed through
+    api.aem.live/<org>/sites/<site>/source/; DA content through
+    admin.da.live/source/<org>/<repo>/ and admin.da.live/list/<org>/<repo>/.
+    A non-empty DA listing alone does not establish the site's active
+    authoring source: issue504 reports onboarding index/nav/footer in DA
+    while the authored content lived in Source Bus. Writing to an unused
+    store need not update the served page.
+  question: >-
+    A site is authored in Experience Workspace, but a DA listing contains index,
+    nav and footer. Does that prove DA is the content store to write to, which
+    API families address each store, and does writing to the unused store change
+    the served page?
+  source: "https://github.com/adobe/skills/issues/504 (prior mixed-store observation); https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/api-service.yaml (source paths); DA admin route API"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-content-icon-colon
+  claim: >-
+    In DA HTML an icon is written as :name: text. The preview pipeline
+    converts any :[a-z0-9-]+: into <span class="icon icon-name"></span> in
+    default content and block cells and eats the whitespace around it
+    (":rocket: text" becomes "<span></span>text"). ":+1:" is not matched.
+    An authored <span class="icon icon-name"></span> sent by direct PUT also
+    previews as an icon, but a stored page that went through the DA editor
+    lost the empty span (observed on a page the user opened and previewed
+    from the editor), so only :name: is reliable for content authors edit.
+  question: >-
+    You generate HTML for DA. How should you write an icon so it survives
+    preview and later editing in the DA editor, and what does the pipeline
+    do with it?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-icon-a (:rocket: works), dc-ic (span via direct PUT previews as :name:), dc-icon-b (stored source had no span after editor open; cause unconfirmed)"
+  used_by:
+    - skills/da-content/SKILL.md
+
+- id: da-content-section-metadata-class
+  claim: >-
+    Section Metadata in div form needs class="section-metadata" (one
+    kebab-case token) inside the section it styles. class="Section Metadata"
+    (two tokens) produces a "Section (Metadata)" block and the delivered page
+    silently drops the block and its content. Table form with header text
+    "Section Metadata" works. Keys are delivered as typed.
+  question: >-
+    How do you write a Section Metadata block in DA HTML (div form), and what
+    happens if you write the class as "Section Metadata"?
+  source: "Live check 2026-11-06, /drafts/dc-sm (.md and .plain.html)"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+
+- id: da-content-sections-required
+  claim: >-
+    Every piece of page content must be inside a section div that is a direct
+    child of main. Elements placed directly in main (h1, p, ...) are dropped
+    silently, with no error. A div placed directly in main is itself taken
+    as a section, so a block div there is not a block: its rows become
+    default content (a div.metadata outside a section yields no Metadata
+    block and no <meta> tags). Blocks, metadata and default content all
+    belong inside the section div.
+  question: >-
+    You emit <main><h1>Title</h1><p>Intro</p><div class="metadata">…</div></main>
+    with nothing wrapping them in section divs. What survives preview, and
+    what is the correct structure?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-nosec (direct children dropped), dc-pm (metadata as a section), dc-pmb (works inside a section)"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+    - evals/da-content-block-html-generation
+
+- id: da-content-metadata-head-output
+  claim: >-
+    Page metadata rows become head tags: title -> <title>; description ->
+    meta description + og:description + twitter:description; og:title also
+    sets twitter:title; image -> og:image, twitter:image (absolute site URL
+    with ?width=1200); tags -> one article:tag per comma value; other keys
+    -> <meta name> with the key lowercased and spaces replaced by hyphens
+    ("my custom" -> my-custom); a link value delivers as its text; canonical,
+    og:url and twitter:card are added automatically.
+  question: >-
+    Which head tags does the EDS pipeline generate from a page metadata block
+    with title, description, image, tags and a custom key "my custom"? Do you
+    need to author og:* or twitter:* rows yourself?
+  source: "Live check 2026-11-06, /drafts/dc-pmb full page head"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+
+- id: da-content-picture-generated
+  claim: >-
+    Every absolute <img> in DA HTML is sideloaded and delivered as a
+    <picture> with two webp and one jpeg <source> (width 750 and 2000,
+    media (min-width: 600px), format and optimize query params) and an <img>
+    with width, height and loading="lazy". Hand-authored <picture>/<source>
+    markup is replaced by the pipeline's. A relative or document-relative
+    src delivers <img src="about:error"> with the alt kept. Missing alt
+    becomes alt="". Inline <svg> is dropped.
+  question: >-
+    What does the pipeline deliver for <img src="https://…/a.jpg" alt="x"> in
+    DA HTML? What if you hand-author <picture> with <source> elements, and
+    what if src is "/img/a.png"?
+  source: "Live check 2026-11-06, /drafts/dc-img .plain.html"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+    - evals/da-content-block-html-generation
+
+- id: da-content-link-rewrite
+  claim: >-
+    Links to the same site's aem.page or aem.live URLs are rewritten to
+    relative paths; other hosts stay absolute. class and target attributes on
+    <a> are dropped, title is kept. Button promotion is not done by the
+    pipeline (decoration does it, per project).
+  question: >-
+    You write <a href="https://main--site--org.aem.page/foo" class="button"
+    target="_blank">. What does the delivered HTML contain?
+  source: "Live check 2026-11-06, /drafts/dc-links .plain.html"
+  used_by:
+    - skills/da-content/SKILL.md
+
+- id: da-content-attrs-stripped
+  claim: >-
+    The pipeline drops id, class, style and data-* attributes on default
+    content (headings get auto-generated ids from their text, also inside
+    cells), drops empty <p> and <p><br></p>, turns <hr> into a section
+    break, unwraps <span> and <ins>, rewrites <b>/<i>/<mark>/<s>/<kbd> to
+    strong/em/em/del/code, and keeps <u>, <sup>, <sub>. This is the same in
+    default content and block cells.
+  question: >-
+    Which inline tags and attributes does the pipeline keep, rewrite or strip
+    in DA HTML, and does that differ between default content and block
+    cells?
+  source: "Live check 2026-11-06, /drafts/dc-def, dc-cell, dc-misc"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+    - evals/da-content-block-html-generation
+
+- id: da-content-table-becomes-block
+  claim: >-
+    A <table> in default content (not in a block) is converted to a block:
+    the first cell of the first row becomes the block name and is consumed.
+    <table><tr><th>h</th></tr><tr><td>d</td></tr></table> is delivered as
+    <div class="h">…d…</div>. A block nested inside a block cell is
+    flattened to its text.
+  question: >-
+    What happens to a plain <table> with a header row in DA HTML that you
+    meant as a data table? And to a block placed inside another block's cell?
+  source: "Live check 2026-11-06, /drafts/dc-def, dc-blk"
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+
+- id: da-content-block-name-normalize
+  claim: >-
+    The pipeline normalizes block class tokens: "Feature_Block" becomes
+    class="feature-block", "columns (v)" becomes "columns v", table header
+    "Hero (dark, wide)" becomes "hero dark wide".
+  question: >-
+    How are block names and variants in div and table form turned into CSS
+    classes by the pipeline (case, underscores, parentheses)?
+  source: "Live check 2026-11-06, /drafts/dc-blk .plain.html"
+  used_by:
+    - skills/da-content/SKILL.md
+
+- id: da-content-source-wrong-field
+  claim: >-
+    PUT to admin.da.live/source with a multipart field not named "data"
+    (e.g. file) returns 200 with a JSON body that looks successful but
+    writes nothing: a following GET returns 404. A missing or invalid token
+    returns 401 with an empty JSON body (content-length 0).
+  question: >-
+    You PUT a file to admin.da.live/source/... using curl -F "file=@x.html"
+    and get 200. Is the file in DA? What does a bad or missing token return?
+  source: "Live check 2026-11-06, /drafts/dc-wrongfield, dc-notoken, dc-badtoken"
+  used_by:
+    - skills/da-content/SKILL.md
+
+- id: da-content-cli-binary-noop
+  claim: >-
+    aem content push (@adobe/aem-cli 16.22.16) uploads with a raw request
+    body and Content-Type, not multipart "data". It reports "✓ pushed" for
+    PNG and SVG files but nothing is written to DA (list and GET show
+    neither file). HTML pages pushed by the CLI do arrive.
+  question: >-
+    Can you upload a PNG with aem content push? If the CLI reports success,
+    is the image in DA?
+  source: "Live check 2026-11-06, /drafts/dc-pix.png, dc-push.svg; @adobe/aem-cli@16.22.16 src/content/da-api.js putSource"
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/aem-cli/SKILL.md
+
+- id: da-content-svg-cap
+  claim: >-
+    A standalone SVG over 40 KB fails preview with 409
+    AEM_BACKEND_SVG_TOO_BIG ("SVG is larger than 40KB"). Under 40 KB it
+    previews (200). The DA source PUT itself accepts the large file (201).
+  question: >-
+    What happens when you preview a 44 KB SVG that is already in DA? What
+    size limit applies?
+  source: "Live check 2026-11-06, /drafts/dc-big.svg, dc-small.svg"
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/da-content/references/media.md
+
+- id: da-content-md-preview-check
+  claim: >-
+    After POST admin.hlx.page/preview/{org}/{site}/{ref}/{path} with
+    Authorization Bearer, a GET of the same URL with ".md" appended and
+    header x-auth-token returns the markdown the content bus built, without
+    the site's authentication. The aem.page URL itself needs the site token
+    if the site is protected.
+  question: >-
+    You need to see how the pipeline interpreted a DA page that you just
+    previewed, but aem.page returns 401. How do you inspect the result?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-* via admin.hlx.page"
+  used_by:
+    - skills/da-content/SKILL.md
+
+- id: da-content-main-required
+  claim: >-
+    DA HTML needs <main> around the section divs. <main> alone or
+    <body><main> previews fine; section divs without <main> preview empty.
+    <body>, <header> and <footer> are optional, and text inside header or
+    footer is dropped. A full HTML document is accepted: its <title> becomes
+    the title metadata and <style> is dropped.
+  question: >-
+    You generate DA page HTML as bare <div> sections with no <main>, or with
+    content in <header> and <footer>. What reaches the preview? Which
+    wrappers are required?
+  source: "Live check 2026-11-06, /drafts/dc-hf1..hf5 (preview .md); @adobe/helix-html2md as run by aem-cli 16.22.16: <main> alone, <body><main> and a full body all convert, no <main> returns empty ('contains no <main>'). aem up serves ./content/ through the same html2md, so local pages behave the same."
+  used_by:
+    - skills/da-content/SKILL.md
+    - evals/da-content-page-html-traps
+
+- id: cm-no-nested-blocks
+  claim: >-
+    aem.live's markup guide says blocks should never be nested (a table
+    inside a block's cell) because it makes them very hard to use for
+    authors; David's Model (Rule 2) suggests fragments or links with auto
+    blocking instead.
+  question: >-
+    In an AEM Edge Delivery Services (EDS) site, a tabs block needs a cards grid
+    inside each tab. How do authors create that in Word or Google Docs?
+  source: >-
+    https://www.aem.live/docs/davidsmodel (Rule 2);
+    https://www.aem.live/developer/markup-sections-blocks ("Blocks should never be nested")
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-default-content-first
+  claim: >-
+    aem.live's markup guide says to leave as much content as possible as
+    default content (headings, paragraphs, images, lists, links). David's
+    Model (Rule 1) calls a `Text`, `Heading` or `Image` block an anti-pattern
+    and says variants or blocks that can be inferred from the content should
+    be.
+  question: >-
+    On an EDS site, a design shows an intro section: a small label, an H2, two paragraphs and
+    one centered image below them. What do authors create on the page?
+  source: >-
+    https://www.aem.live/docs/davidsmodel (Rule 1);
+    https://www.aem.live/developer/markup-sections-blocks (Default Content)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-key-value-config-only
+  claim: >-
+    David's Model (Rule 14) says name/value rows are for configuration that is
+    not displayed (like section metadata, which becomes `data-` attributes),
+    and does not recommend name/value pairs for displayed content such as a
+    heading, image or text.
+  question: >-
+    On an EDS site, a pricing block shows, per tier, a name, a price, a feature list and a
+    button. A developer proposes a two-column table with a label in the left
+    cell and the value in the right. Do you accept that model?
+  source: https://www.aem.live/docs/davidsmodel (Rule 14)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-tabular-data-spreadsheet
+  claim: >-
+    David's Model (Rule 10) says many columns usually mean content is split
+    into small values instead of default-content semantics, and that real
+    tabular data is often better provided via a spreadsheet. The Block
+    Collection has a `table` block.
+  question: >-
+    On an EDS site, a comparison block shows 8 features across 5 plans (a 9 by 6 grid of
+    ticks and short values). How do authors provide that data?
+  source: https://www.aem.live/docs/davidsmodel (Rule 10); Block Collection `table` block
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-semantic-cells
+  claim: >-
+    A block cell holds default content (heading, paragraphs, links, picture).
+    David's Model (Rule 10) says many columns are usually a symptom of content
+    split into small values that do not use default-content semantics.
+  question: >-
+    In an EDS block's authored table, what can a single cell hold, and what does
+    a block table with many columns usually indicate?
+  source: https://www.aem.live/docs/davidsmodel (Rule 10); https://www.aem.live/developer/markup-sections-blocks
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-block-options
+  claim: >-
+    Authors choose a variant in the block's header cell in parentheses:
+    `Columns (dark, wide)` adds classes `columns dark wide`; a multi-word
+    option is hyphenated (`super wide` becomes `super-wide`).
+  question: >-
+    One EDS quote block must come in a dark look and a wide look, chosen per
+    instance by the author. How does the author choose, and what does the
+    block element carry?
+  source: https://www.aem.live/developer/markup-sections-blocks (Block Options)
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/aem-block-library/SKILL.md
+
+- id: cm-simple-link-lists
+  claim: >-
+    David's Model (Rule 5) says a simple list of links may be easiest as all
+    the links in one cell, with code pulling every link from the block, and
+    that complex list items are easier as one row each.
+  question: >-
+    An EDS related-articles block shows 6 links to other pages. How do authors
+    enter them, and what must the block accept?
+  source: https://www.aem.live/docs/davidsmodel (Rule 5)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-fragments-cost
+  claim: >-
+    David's Model (Rule 12) says fragments suit identical content reused on
+    many pages (header, footer, sign-up form, legal text), that authors then
+    see only a reference (worse with nested fragments), and that
+    SEO-relevant content should stay on the page.
+  question: >-
+    An EDS product page repeats a legal disclaimer used on 200 pages and also has a
+    long intro text that matters for search. Where would you use fragments?
+  source: https://www.aem.live/docs/davidsmodel (Rule 12)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-no-alt-text-config
+  claim: >-
+    David's Model (Rule 13) recommends extra information in image alt text
+    only in exceptional cases: authors cannot easily see it, and copy/paste
+    can drop it silently.
+  question: >-
+    Each image in an EDS gallery block needs an optional "featured" flag. Where in
+    the content model does the author set it?
+  source: https://www.aem.live/docs/davidsmodel (Rule 13)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-auto-block-links
+  claim: >-
+    A link alone in its paragraph can be auto-blocked into a block (e.g.
+    YouTube `embed`, fragment, modal) in `buildAutoBlocks()` of `scripts.js`,
+    so authors paste a URL and create no table.
+  question: >-
+    On an EDS site, authors should add a YouTube video to a page without building a table.
+    What makes that work?
+  source: https://www.aem.live/developer/markup-sections-blocks (Auto Blocking)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-widgets-not-blocks
+  claim: >-
+    aem.live's widgets guide treats application-like parts (forms, search,
+    filters, calculators, dealer locators) as widgets, not blocks: a
+    `/widgets/<name>/` folder with .html,
+    .css and .js, and authors paste the widget's .html URL alone in a
+    paragraph, which renders a `widget` block. Query-string parameters become
+    `data-` attributes. No table to author.
+  question: >-
+    An EDS site needs a contact form and a mortgage calculator, each on one or two
+    pages. What do authors put in the document, and where does the code live?
+  source: https://www.aem.live/docs/widgets; aem-boilerplate 5cea543 blocks/widget
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+# ue-component-model facts, checked against aem.live docs and aem-boilerplate-xwalk 6210531 (2026-11-12).
+
+# ue-component-model facts, checked against aem.live docs and aem-boilerplate-xwalk 6210531 (2026-11-12).
+
+- id: ue-block-table-mapping
+  claim: >-
+    In AEM authoring with the Universal Editor, a simple block renders each
+    model property (or group) as one row with a single column, in model order.
+    A container block renders its own properties as single-column rows first,
+    then each child item as a row with one column per property.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a hero
+    block's model lists image, imageAlt and text, in that order. What block
+    markup reaches the browser?
+  source: https://www.aem.live/developer/component-model-definitions (Block structure)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-field-collapse
+  claim: >-
+    Properties ending in the case-sensitive suffixes `Title`, `Type`,
+    `MimeType`, `Alt` or `Text` are not values but attributes of the property
+    they follow: `image` + `imageAlt` becomes one `<picture><img alt>`, `link` +
+    `linkText` + `linkTitle` + `linkType` one `<a>` (type primary or secondary
+    wraps it in strong or em), `heading` + `headingType` one heading.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block model has fields `cta`, `ctaText` and `ctaType` (value
+    `primary`). What does the block's cell contain after rendering?
+  source: https://www.aem.live/developer/component-model-definitions (Field collapse)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-element-grouping
+  claim: >-
+    Fields named `<group>_<field>` (underscore) are concatenated into a single
+    cell, so an author gets separate fields (subtitle, title, description,
+    buttons) while the block gets one cell of semantic elements.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a teaser model needs a subtitle, title, description and two buttons that
+    must end up as one text cell of semantic markup. How do you name the
+    fields?
+  source: https://www.aem.live/developer/component-model-definitions (Element grouping)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-classes-block-options
+  claim: >-
+    A `classes` property becomes the block options in the table header (class
+    names on the block). `classes_<name>` fields extend it; a boolean `classes_`
+    field adds its name as an option when true.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, how do you let authors pick a background color and toggle a
+    full-width option so both end up as classes on the block element?
+  source: https://www.aem.live/developer/component-model-definitions (Type inference; Element Grouping for Block Options)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-nesting-sections
+  claim: >-
+    The content model allows one level of nesting: a section contains default
+    content or blocks. A component that contains other components (tabs,
+    accordion) is modelled as sections (resource type
+    `core/franklin/components/section/v1/section`, e.g. a `tab` definition)
+    that client-side auto-blocking combines.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, tabs must each hold a cards block. How do you define this
+    in the component definitions?
+  source: https://www.aem.live/developer/component-model-definitions (end of Blocks section)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+    - evals/ue-component-model-tabs-cards
+
+- id: ue-multifield-flag
+  claim: >-
+    Multi-field rendering (`multi: true` fields) is off by default. Enable it
+    with `public.xwalk.multi-field.enabled: true` in the Admin Configuration
+    API site config or in `xwalk.json` at the repo root. Otherwise multi values
+    render as one comma-separated list.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block model has a `reference` field with `multi: true` for images, but
+    the block receives one comma-separated string. Why, and how do you fix it?
+  source: https://www.aem.live/developer/component-model-definitions (Multi-Fields)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+    - evals/ue-component-model-promo-banner
+
+- id: ue-block-resource-type
+  claim: >-
+    Every block uses resource type `core/franklin/components/block/v1/block`
+    and a template `name`; if either is missing the block does not render.
+    aem.live's component model guide says custom AEM components are not
+    necessary or recommended: the markup is a fixed contract.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block was added to component-definition.json and shows in the UE palette,
+    but renders nothing on the page. What do you check first?
+  source: https://www.aem.live/developer/component-model-definitions (Block model definition)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-columns-no-model
+  claim: >-
+    The columns block has no content modeling in UE: it only has `rows`,
+    `columns` and `classes` properties, and authors add only default content to
+    its cells.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, can a model give a columns block a dedicated field for each column's
+    content?
+  source: https://www.aem.live/developer/component-model-definitions (Columns Block)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-key-value-use
+  claim: >-
+    `"key-value": true` renders the block's properties as `name | value` rows.
+    aem.live's component model guide uses it for blocks read as configuration
+    (section metadata, spreadsheet-driven lists) and recommends decorating
+    the rendered semantic markup in most other cases.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, when would you set `key-value` to true in a block's
+    template, and when not?
+  source: https://www.aem.live/developer/component-model-definitions (Key-value block)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-aggregate-json-generated
+  claim: >-
+    In aem-boilerplate-xwalk a block's component definitions, models and
+    filters live in `blocks/<name>/_<name>.json` (and `models/_*.json`). The
+    root component-definition.json, component-models.json and
+    component-filters.json are generated from them with `npm run build:json`
+    (the pre-commit hook runs it when a partial is staged).
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor (the
+    aem-boilerplate-xwalk setup), you edit component-models.json at the root
+    for a block that has `blocks/hero/_hero.json`, and the edit disappears
+    after a commit. Why, and where do you make the change?
+  source: aem-boilerplate-xwalk 6210531 package.json (build:json) and .husky/pre-commit.mjs
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: content-source-config
+  claim: >-
+    A site's content store is `content.source` in its site config, read with
+    `GET https://admin.hlx.page/config/{org}/sites/{site}.json` or
+    `GET https://api.aem.live/{org}/sites/{site}/config.json` (IMS token).
+    `type: markup` with `url: https://content.da.live/{org}/{site}/` is DA;
+    `type: sourcebus` (optional `url: https://api.aem.live/{org}/sites/{site}/source`)
+    is Source Bus. `fstab.yaml` is deprecated.
+  question: >-
+    A user asks you to add a page to their existing Edge Delivery site. How do
+    you find out which system stores the site's authored content?
+  source: >-
+    https://www.aem.live/docs/api.html (schemas content, content-source-sourcebus);
+    https://www.aem.live/docs/config-service-setup
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-source-api
+  claim: >-
+    On Source Bus the content API is
+    `https://api.aem.live/{org}/sites/{site}/source/{path}`. `PUT` creates or
+    replaces a document and takes the raw body with a `Content-Type` header
+    (`text/html`), not DA's multipart form. It rejects external images with
+    400; `POST` interns the images. A trailing slash lists a folder.
+  question: >-
+    You have a valid IMS token and want to create `/nav.html` for a site whose
+    content is stored in Source Bus. What request do you send, and what changes
+    when the page contains images hosted elsewhere?
+  source: >-
+    https://www.aem.live/docs/api.html (putSourceDocument, createSourceDocument)
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-preview-publish
+  claim: >-
+    On Source Bus, preview and publish are
+    `POST https://api.aem.live/{org}/sites/{site}/preview/{path}` and
+    `.../live/{path}`, with no `main` ref segment (the legacy call is
+    `POST admin.hlx.page/preview/{org}/{repo}/main/{path}`). Status:
+    `GET https://api.aem.live/{org}/sites/{site}/status/{path}`. The legacy
+    `POST admin.hlx.page/preview/{org}/{site}/main/{path}` returns 404 (`No
+    handler found for document`) on a Source Bus site.
+  question: >-
+    Content for a new site is stored in Source Bus and you need it on the
+    .aem.page preview. Which API call previews /nav, and how does it differ from
+    the call for a site on the legacy admin API?
+  source: >-
+    https://www.aem.live/docs/api.html; https://www.aem.live/docs/ew/developing/structured-content-api
+    ("admin.hlx.page for DA, or api.aem.live for helix6")
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: ping-site-exists
+  claim: >-
+    `GET https://admin.hlx.page/ping/{org}/{site}` needs no credentials: 200
+    (empty body) when the site config exists, 404 (`config for site not found`)
+    when it does not. `/status/...` returns 401 without credentials.
+  question: >-
+    A user installed the AEM Code Sync GitHub app on a new repo. How can a script
+    confirm, without any credentials, that Edge Delivery now knows the site?
+  source: live probe 2026-11-14 (adobe/aem-boilerplate 200, nosuchorg/x 404, status 401)
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: content-source-change-resets
+  claim: >-
+    Changing `content` of an existing site gives a new Content Bus ID: all
+    previously previewed and published content must be previewed and published
+    again, and index and sitemap config recreated. aem.live's config service
+    guide recommends, for production, creating a new site with the new
+    content config and switching the CDN origin.
+  question: >-
+    A site's content was previewed and published from one content store. You
+    update the site config to point at a different store. What happens to the
+    live pages, and what must you redo?
+  source: https://www.aem.live/docs/config-service-setup (Update Content Location)
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-site-setup
+  claim: >-
+    A new site can use Source Bus by choosing it in the AEM Code Sync setup
+    wizard on tools.aem.live, or by changing `content.source` in the site config
+    to `type: sourcebus` with the config API or the site admin tool.
+  question: >-
+    You created a repo from aem-boilerplate and installed the Code Sync app. How
+    does the site get connected to a content store, and how would you make it use
+    Source Bus instead of DA?
+  source: user (AEM Edge Delivery maintainer), 2026-11-14; https://www.aem.live/docs/config-service-setup
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: aem-content-da-only
+  claim: >-
+    `aem content clone` and `aem content push` (aem-cli 16.22.18) talk to
+    `admin.da.live` only (`AEM_DA_ADMIN` overrides the host). They do not read or
+    write Source Bus.
+  question: >-
+    A site's content is stored in Source Bus (api.aem.live). Can you use
+    `aem content clone` to edit it locally?
+  source: aem-cli 16.22.18 src/content/da-api.js
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: boilerplate-nav-footer-fragments
+  claim: >-
+    In aem-boilerplate the header block loads the `/nav` document and gives its
+    first three sections the classes `nav-brand`, `nav-sections` and `nav-tools`
+    (brand link, a list of links, tools); the footer block loads `/footer` and
+    uses all of it. Both are plain pages (no blocks needed) that must be
+    previewed before they render.
+  question: >-
+    You start a site from aem-boilerplate and author a nav document. What
+    structure must it have for the default header to render it, and where does
+    the footer come from?
+  source: aem-boilerplate 5cea543, blocks/header/header.js and blocks/footer/footer.js
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: site-name-limits
+  claim: >-
+    The host `<branch>--<site>--<org>` must not exceed 63 characters, and
+    branch, repo (site) and org cannot contain `--`.
+  question: >-
+    What limits apply to the org, repository and branch names of an Edge
+    Delivery site because of the preview URL?
+  source: https://www.aem.live/developer/anatomy-of-a-project
+  used_by:
+    - skills/create-site/SKILL.md
+- id: lv-bootstrap-requirements
+  claim: >-
+    Experience Workspace layout view renders the page with the site's own
+    code and injects a bootstrap into the first `<script src="/scripts/scripts.js">`
+    in `head.html`; `scripts.js` must define a top-level `loadPage` function
+    (as the boilerplate does). A site that loads its entry script under another
+    name or path, or wraps loadPage, gets no layout view.
+  question: >-
+    A site's head.html loads its entry script as `/scripts/main.js` and
+    Experience Workspace layout view never shows the page. What does layout
+    view need from the site's entry script and head.html?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+
+- id: lv-cors-origin
+  claim: >-
+    Layout view renders on `https://{BRANCH}--{SITE}--{ORG}.preview.da.live`.
+    Off-origin requests the site makes (APIs, fragments from other sites, fonts)
+    must allow that origin in their CORS settings, or they fail in layout view
+    while working on aem.page.
+  question: >-
+    A block fetches JSON from a separate API host and loads a font from another
+    domain. Both work on the .aem.page preview but fail when authors open the
+    page in Experience Workspace layout view. What do you check on those hosts?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-keep-block-element
+  claim: >-
+    In layout view the block's outer element carries `data-block-index` and its
+    first class is the block name; selection, the block label, the outline and
+    moving or deleting blocks depend on both. aem.live's layout-view guide says
+    decorate() may change the block's children and add classes, but must not
+    replace the block element (`replaceWith`, a new wrapper) or overwrite its
+    classes.
+  question: >-
+    An EDS block's decorate() builds a `<section class="cards">` wrapper and
+    calls `block.replaceWith(wrapper)`. The published page looks right, but in
+    Experience Workspace layout view authors can't select, move or delete the
+    block. Why, and what is the fix?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-move-dont-copy-text
+  claim: >-
+    Text is editable in layout view only while the original element, with its
+    `data-prose-index`, is still in the page. Copying text into a new element
+    (`textContent`) or unwrapping it from its `<p>` or heading looks the same to
+    readers but can't be edited. aem.live's layout-view guide says to move the
+    authored elements and style them with classes on a wrapper, and, if an
+    element must be replaced, to copy `data-prose-index` onto the replacement.
+  question: >-
+    A cards block's decorate() reads each cell's `h2` text and creates a new
+    `h3` with that text. It renders correctly, yet authors can't edit the card
+    titles inline in Experience Workspace. Why, and how do you keep the titles
+    editable?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-no-decoration-in-text
+  claim: >-
+    When an author clicks a text element in layout view, the inline editor
+    rebuilds it from the document, so icons, spans or classes that code added
+    inside or on it (list items included) disappear. aem.live's layout-view
+    guide says to decorate a wrapper outside the text element, or use CSS
+    (`::before` on an ancestor's list items).
+  question: >-
+    A block prepends an icon `<span>` into each `h3` and adds a `check` class
+    to every `li`. In Experience Workspace layout view, the icons and classes
+    vanish as soon as an author clicks into the text. Why, and what should the
+    block do instead?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-no-combinators-on-text
+  claim: >-
+    While an author edits a text element in layout view, it is wrapped in extra
+    `div` elements, so selectors that depend on its parent or siblings (`>`,
+    `+`, `~`, `:first-child` on text) stop matching and the layout shifts while
+    typing. aem.live's layout-view guide says to use descendant selectors
+    (`.hero p`) and mark specific cells with a class from JavaScript.
+  question: >-
+    Block CSS uses `.hero > div > p { font-size: ... }` and `.cards h3 + p {
+    margin-top: 0 }`. In Experience Workspace layout view, the spacing and font
+    size jump while an author types in these paragraphs. What causes it, and
+    how should the selectors be written?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-image-attributes
+  claim: >-
+    Layout view selects images by click and replaces them by drag and drop using
+    the `data-image-index` and `data-image-version` attributes on the `img`;
+    replacing works only for an `img` inside a `picture`. aem.live's
+    layout-view guide says a block that rebuilds pictures
+    (`createOptimizedPicture`) must copy the `data-image-*` attributes to the
+    new `img`, not to turn authored images into CSS backgrounds, and that
+    images must be in the page when `loadPage()` finishes (not added later
+    from a timer or IntersectionObserver).
+  question: >-
+    A hero block replaces each authored picture with
+    `createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }])` and
+    another block sets the authored image as a CSS background. In Experience
+    Workspace layout view, authors can't click or drag-replace those images.
+    What does the block need to preserve?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-safe-rerun
+  claim: >-
+    After structural edits (adding or moving a block) layout view replaces the
+    page body and runs `loadPage()` again, so block code and `scripts.js` run
+    again on fresh DOM while global listeners, timers and module-level state
+    from the previous run remain. aem.live's layout-view guide says to scope
+    state to the block, tie listeners to an AbortController and clean up when
+    `block.isConnected` is false, and guard anything in loadEager/loadLazy
+    that adds listeners or elements to `document`, `window` or `head`.
+  question: >-
+    A carousel block starts `setInterval` and a `window` resize listener in
+    decorate() and keeps an `initialized` flag at module level. After authors
+    add or move blocks in Experience Workspace layout view, the page shows
+    duplicate slide advances and stale handlers. Why, and how should the block
+    be written?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-idempotent-autoblocking
+  claim: >-
+    Auto-blocking (`buildAutoBlocks` or similar in `scripts.js`) runs again on
+    every layout-view re-render, and authors can add the same block by hand;
+    without a check for an existing block (`main.querySelector('.my-block')`)
+    the page ends up with duplicates. aem.live's layout-view guide says to
+    check before adding one.
+  question: >-
+    `buildAutoBlocks` prepends a `lifecycle-badge` block to every page. In
+    Experience Workspace layout view, the page shows two badges after an
+    author edits the page. Why, and what is the fix?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: lv-test-from-branch
+  claim: >-
+    Layout view loads code from the site's `main` branch. aem.live's
+    layout-view guide says to try a block from another branch before merging
+    with the developer plugin
+    (https://www.aem.live/docs/ew/developing/developer-plugin), then type into
+    each text field, click and replace each image, and move the block.
+  question: >-
+    You changed a block on a feature branch and want to check it in Experience
+    Workspace layout view before merging. Layout view still shows the old
+    block. Why, and how do you test the branch?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/aem-layout-view-broken-block
+
+- id: ew-formerly-da
+  claim: >-
+    Experience Workspace (EW) is the new name of Document Authoring (DA):
+    the same product (da.live), authoring EDS content as documents. The old
+    name remains in hosts, APIs and tooling (`da.live`, `admin.da.live`,
+    `content.da.live`, `DA_TOKEN`), so the two names are interchangeable.
+  question: >-
+    A site's authors use "Experience Workspace" and the repo's docs mention
+    "DA" and `da.live`. Are these two different authoring products, and how
+    do they relate?
+  source: https://www.aem.live/docs/ew/about
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+- id: da-library-setup
+  claim: >-
+    A DA / Experience Workspace block library is: one document per block under
+    `library/blocks/` (a table whose first row is the block name), a `blocks`
+    sheet in `library/` with columns `name` and `path`
+    (`https://content.da.live/{org}/{site}/library/blocks/{block}`), and a
+    `library` tab in the site config (`https://da.live/config#/{org}/{site}/`)
+    with rows `title` and `path` (the sheet's `.json` URL), e.g. title `Blocks`.
+    Without the config row the blocks don't show in the editor's Blocks panel.
+    Folder names and the library root (`/docs/library` is common, `/library`
+    is the docs' example) vary by project.
+  question: >-
+    You built a new EDS block for a project authored in Experience Workspace
+    (DA). What do you create so authors can find and insert it from the
+    editor's Blocks panel, and where does each piece live?
+  source: https://www.aem.live/docs/ew/administering/set-up-library
+  used_by:
+    - skills/aem-block-library/SKILL.md
+    - evals/aem-block-library-da-new-block
+
+- id: da-library-variants
+  claim: >-
+    In a DA block library document, a visual variant is written in the block's
+    heading row in parentheses (`cards (grid)`); the variant name is appended
+    as a CSS class. A content variant (same markup, different content) has no
+    class and is told apart by a heading above the block table. A
+    `library-metadata` block after the block, with a `description` row, adds
+    the description shown in the Blocks dialog.
+  question: >-
+    A block has a default look and a `dark` option class. How do you show both
+    in its DA library document so authors can pick either, and how do you add
+    a hint explaining when to use it?
+  source: https://www.aem.live/docs/ew/administering/set-up-library
+  used_by:
+    - skills/aem-block-library/SKILL.md
+    - evals/aem-block-library-da-new-block
+
+- id: sidekick-library-sheet
+  claim: >-
+    The Sidekick Library (Word / Google Docs projects) is listed in a `library`
+    workbook, e.g. `/tools/sidekick/library`, one sheet per plugin and each
+    sheet name prefixed `helix-`. The blocks plugin reads the sheet
+    `helix-blocks` with columns `name` and `path`. The docs say not to use an
+    absolute URL in `path` (e.g. `/tools/sidekick/blocks/columns`), so it
+    works on page, live and prod. The workbook must be previewed and published.
+  question: >-
+    A project is authored in Word or Google Docs and uses the AEM Sidekick. A
+    new block needs an entry in the project's block library. In which file and
+    sheet do you register it, and how do you write the block's location?
+  source: https://www.aem.live/docs/sidekick-library
+  used_by:
+    - skills/aem-block-library/SKILL.md
+    - evals/aem-block-library-sidekick-new-block
+
+- id: sidekick-library-block-docs
+  claim: >-
+    For the Sidekick Library blocks plugin each block has its own document
+    (e.g. `/tools/sidekick/blocks/columns`) with every variant, each followed
+    by a section break. The document must be previewed and published. The
+    plugin renders each item from the document's `.plain.html`, stripping the
+    other blocks. Because the examples are published, the docs say to exclude
+    `/tools/**` from indexing with bulk metadata.
+  question: >-
+    You are adding a `columns` block with three variants to a Sidekick Library.
+    How do you author the block's document so each variant shows up as its own
+    item, and what do you do so the example pages don't leak into search?
+  source: https://www.aem.live/docs/sidekick-library
+  used_by:
+    - skills/aem-block-library/SKILL.md
+    - evals/aem-block-library-sidekick-new-block
+
+- id: sidekick-library-page
+  claim: >-
+    The Sidekick Library needs a static `tools/sidekick/library.html` in the
+    repo. It loads `https://tools.aem.live/tools/sidekick/library/index.js`,
+    creates a `sidekick-library` element and sets its `config.base` to the
+    library sheet's JSON (`/tools/sidekick/library.json`). Plugin options such
+    as `encodeImages` or `viewPorts` go in `config.plugins`.
+  question: >-
+    The workbook and block documents for a Sidekick Library exist and are
+    published, but opening the library shows nothing. What code file does the
+    project need, and what does it load and configure?
+  source: https://www.aem.live/docs/sidekick-library
+  used_by:
+    - skills/aem-block-library/SKILL.md
+    - evals/aem-block-library-sidekick-new-block
+
+- id: sidekick-library-metadata
+  claim: >-
+    In the Sidekick Library blocks plugin, `library metadata` (a block in the
+    variant's section) sets the item's `name`, `description` and `searchtags`;
+    a `library metadata` block alone in its own section applies to every item
+    in the document. Default content and auto-blocks need their own section
+    with `library metadata` that has a `name`, else the item shows as
+    "Unnamed Item". Each variant is its own section: the plugin renders it by
+    stripping other blocks from the `.plain.html` of the document.
+  question: >-
+    In the Sidekick Library, how do you give a block variant a friendly name
+    and description, and what do you do for an auto-block that has no table?
+  source: https://www.aem.live/docs/sidekick-library
+  used_by:
+    - skills/aem-block-library/SKILL.md

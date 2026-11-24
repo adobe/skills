@@ -1,7 +1,7 @@
 # Order View Buttons (`commerce/backend-ui/2`)
 
 Adds a button to the order view (detail) page in Commerce Admin.
-Declared under `adminUi.order.viewButtons` (an array). **Only the `order` entity supports view buttons.** Two variants, discriminated by `type`:
+Declared under `adminUi.order.viewButtons` (an array). Invoice buttons use [`adminUi.invoice.viewButtons`](invoice-view-buttons.md), credit memo buttons use [`adminUi.creditMemo.viewButtons`](credit-memo-view-buttons.md), and return buttons use [`adminUi.rma.viewButtons`](rma-view-buttons.md). Two variants, discriminated by `type`:
 
 - **`worker`** — Commerce POSTs to a runtime action when the button is clicked (no UI).
 - **`view`** — Commerce opens an iframe into the app's `web-src` at `path`, with `orderId` as a query parameter.
@@ -62,7 +62,7 @@ adminUi: {
 
 Import from `@adobe/aio-commerce-sdk/admin-ui/order-view-buttons`.
 
-Commerce POSTs `{ requestId, id, orderId }` — `id` identifies which button was clicked (useful when one handler serves several). The HTTP status code conveys success vs. failure.
+Commerce POSTs `{ orderId, buttonId }` with the request ID in the `X-Request-ID` header; `parseOrderViewButtonRequest(params)` normalizes this to `{ requestId, id, orderId }` — `id` identifies which button was clicked (useful when one handler serves several). The HTTP status code conveys success vs. failure.
 
 - `parseOrderViewButtonRequest(params)` → `{ requestId, id, orderId }`; throws `CommerceSdkValidationError` on malformed input.
 - `okOrderViewButtonResponse()` → success; empty `{}` body.

@@ -1,8 +1,8 @@
 # The deployed leg — a reskin page on its aem.page preview
 
 Phase 5 (e), any donor: what `deploy` made of the page, held to the local reskin page and the donor on
-`https://<branch>--<repo>--<org>.aem.page`. It never publishes to aem.live. Bars: `gates.md` § (e). Command lines:
-SKILL.md Phase 5 (e). Flags, evidence and exit codes: `deployed-gate.mjs --help`.
+`https://<branch>--<repo>--<org>.aem.page`. It never publishes to aem.live. Bars and command lines: `gates.md` § (e).
+Flags, evidence and exit codes: `deployed-gate.mjs --help`.
 
 ## When it runs
 

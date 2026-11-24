@@ -123,6 +123,18 @@ so the gates run uniformly:
   the environment by every driver, and a persistent 401 halts that cluster's batch
   (exit 3) instead of failing pages — a recorded 36-page run delivered 36/36 this
   way. Outside that contract, author-only + central deploy stays the rule.
+- **Waves.** Template clusters run concurrently (non-overlapping pages),
+  representative-first so blocks exist to be reused; each author-only agent curls
+  its source pages and writes files only. A wave waits only on a real dependency
+  (a recorded second wave idled 14 min behind an unrelated first). The foundation
+  is committed before the first agent spawns (SKILL.md Phase C): a recorded
+  rename under three running agents cost seven coordination messages.
+- **The central deploy is the bundled, resumable driver, never a serial loop:**
+  `deploy-batch.mjs` (SKILL.md Phase C has the command) — a concurrency pool, a
+  persistent ledger that skips already-live pages, retry/backoff, an append-only
+  log, the delivered-`.plain.html` check. Its log and ledger are the progress
+  file; after a transient blip the same command re-drives only the FAILs. Then
+  reconcile the ledger into coverage with `update-coverage.mjs`.
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.
@@ -139,7 +151,9 @@ so the gates run uniformly:
   only thing that catches it after the fact. Fix = rename to the lowercase path,
   redeploy, `DELETE` the stale uppercase DA source, add a redirect.
 - **Long batches run in the background** (a 130-page `PUT`+preview loop exceeds a
-  2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs.
+  2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs, and
+  check the log per the master's wait discipline (`skills/stardust/SKILL.md`
+  § Hands-off mode).
   Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case (Gate 3);
   `200 + about:error` → an image case (Gate 2).
 - **zsh gotcha:** `node`/`curl` inside a multi-line `while`/`for` can lose PATH

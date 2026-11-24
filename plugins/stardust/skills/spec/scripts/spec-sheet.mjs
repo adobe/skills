@@ -11,7 +11,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { arg, helpAndExit, loadConfig, loadPlaywright, log, readJSONL, urlKey } from './lib.mjs';
+import { arg, helpAndExit, loadBrowser, loadConfig, log, readJSONL, urlKey } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -43,9 +43,9 @@ async function main() {
   const file = join(cfg.w('sheets'), `${want.replace(/[^\w.-]+/g, '_')}.html`);
   await import('node:fs').then((fs) => fs.mkdirSync(cfg.w('sheets'), { recursive: true }));
   writeFileSync(file, html);
-  const { chromium } = await loadPlaywright();
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 900, height: 800 } });
-  await p.goto(pathToFileURL(file).href); await p.waitForLoadState('load');
+  const { openBrowser, newPage, goto } = await loadBrowser();
+  const b = await openBrowser({ mode: 'plain' }); const p = await newPage(b, { viewport: { width: 900, height: 800 } });
+  await goto(p, pathToFileURL(file).href); await p.waitForLoadState('load');
   const out = arg('out', file.replace(/\.html$/, '.jpg'));
   await p.screenshot({ path: out, fullPage: true, type: 'jpeg', quality: 70 });
   await b.close();

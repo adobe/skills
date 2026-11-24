@@ -33,6 +33,7 @@ export async function runPageCommand(command, deps, { url, fn, records }) {
       recipePath: recording && !existsSync(ctx.recipe ?? '') ? undefined : ctx.recipe,
       recipeSkip: recording ? [records] : [],
       recipeExplicit: ctx.recipeExplicit && !recording,
+      env: ctx.env,
     },
     async (name) => {
       health = ctx.driver.pageHealth(name);

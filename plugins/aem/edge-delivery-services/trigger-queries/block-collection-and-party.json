@@ -1,0 +1,116 @@
+{
+  "name": "block-collection-and-party trigger queries",
+  "description": "Should trigger when the user wants an existing implementation to start from: a Block Collection block, a Block Party block, plugin, build tooling or integration, or the authored markup of a reference block. Near misses: writing a block from a given model, content modeling, finding pages, import, dev server, review.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
+    "remote": "https://github.com/adobe/aem-boilerplate.git"
+  },
+  "queries": [
+    {
+      "id": "y-carousel-reference",
+      "query": "We need a carousel for product images. Before writing one from scratch, check whether there is an existing implementation we can adapt for this repo.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "y-sass",
+      "query": "Our designers want Sass for the block CSS during local development. Is there an existing EDS setup for that we can copy instead of building our own?",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "y-breadcrumbs",
+      "query": "We want breadcrumbs on every page below /products. Is there something existing in the Adobe or community collections to start from?",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "y-sidekick-plugin",
+      "query": "Is there a community Sidekick plugin that shows all pages of a section so reviewers can open them quickly? Find one we could add to the repo.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "y-faq-synonym",
+      "query": "Authors want an FAQ section with click-to-expand questions. Find an existing block we can start from and tell me where it lives.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "y-accordion-markup",
+      "query": "Show me the authored table structure and variants of the standard `accordion` block from Adobe's reference, so my test content matches what the block expects.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "y-integration",
+      "query": "Is there a ready-made EDS integration for a cookie consent banner that other teams already use? I want something to adapt, not to design.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "y-tabs-start",
+      "query": "Start a new `tabs` block in this repo from the standard reference implementation, then I'll adjust the labels.",
+      "should_trigger": true,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "n-scratch-block",
+      "query": "Authors will write a new `stats` block as a table: a number column and a label column, one row per stat. Write the decorate function and CSS for that block so it works with exactly that markup.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "n-content-model",
+      "query": "We need a testimonials block. Propose the content model: what an author types into the table, which cells are optional, and how it behaves with one or five quotes.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "n-find-pages",
+      "query": "Which existing pages on our site already use the `cards` block, and with which variants? I want to test a change against them.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "train"
+    },
+    {
+      "id": "n-import-page",
+      "query": "Import https://www.example.com/pricing into our EDS site as a new page.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "n-aem-up",
+      "query": "`aem up` dies immediately with EADDRINUSE and I have no idea what is on the port. How do I get the dev server running?",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "n-review-pr",
+      "query": "Please review PR #214 on our EDS repo. Someone added a tabs block and I want to make sure it follows our conventions. Just leave comments, don't push changes.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    },
+    {
+      "id": "n-js-question",
+      "query": "In vanilla JS, what's the cleanest way to debounce a resize handler? No need to look at any repo.",
+      "should_trigger": false,
+      "skill": "block-collection-and-party",
+      "split": "test"
+    }
+  ]
+}

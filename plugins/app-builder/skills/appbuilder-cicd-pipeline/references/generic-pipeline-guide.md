@@ -15,7 +15,7 @@ For any CI/CD platform that is not GitHub Actions:
 
 ### Prerequisites (all platforms)
 
-- Node.js 18+ installed in the CI environment
+- Node.js 20.17+ installed in the CI environment (required by `@adobe/aio-cli` 11)
 - `@adobe/aio-cli` installed globally (`npm install -g @adobe/aio-cli`)
 - "I/O Management API" added to the target workspace in Developer Console
 - OAuth S2S credential present in the workspace

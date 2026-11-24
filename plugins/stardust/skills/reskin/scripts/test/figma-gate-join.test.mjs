@@ -179,7 +179,6 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  runJoin and the join CLI against page.html (playwright not importable here; run this test in an environment that has it)'); }
 
 if (playwrightOk) {
-  const { chromium } = await import('playwright');
   const project = (n) => makeProject(join(scratch, n));
   const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
   const sections = (html) => [...html.matchAll(/ {2}<section[\s\S]*?<\/section>\n/g)].map((m) => m[0]);
@@ -189,7 +188,7 @@ if (playwrightOk) {
     const target = localTarget(pathToFileURL(p.page).href);
     assert.equal(target.regime, 'local');
     const { openBrowser } = await import('../../../diff/scripts/measure-live.mjs');
-    const browser = await openBrowser(chromium, { tier: 'plain' });
+    const browser = await openBrowser({ mode: 'plain' });
     try {
       const page = await target.open(browser, 1440);
       assert.equal(await page.evaluate(() => innerWidth), 1440);

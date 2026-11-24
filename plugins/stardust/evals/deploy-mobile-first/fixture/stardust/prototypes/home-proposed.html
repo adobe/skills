@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bread from the corner — a neighbourhood bakery cooperative</title>
+<meta name="description" content="Seasonal bread baked every morning by a neighbourhood bakery cooperative: order ahead, join a baking class or become a member.">
+<style>
+:root {
+  --bg: #fbf6ee;
+  --ink: #2b211a;
+  --muted: #6b5d52;
+  --accent: #a4471f;
+  --accent-ink: #ffffff;
+  --rule: #e4d8c6;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Inter", system-ui, sans-serif;
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.5; }
+
+/* desktop is the base; the phone layout overrides it below 600px */
+main > section { padding: 72px 64px; }
+
+/* hero */
+.hero { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 56px; align-items: center; }
+.hero .eyebrow { font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+.hero h1 { font-family: var(--display); font-size: 3.6rem; line-height: 1.05; margin: 0 0 20px; }
+.hero p.lede { font-size: 1.15rem; color: var(--muted); max-width: 44ch; margin: 0 0 28px; }
+.hero .actions { display: flex; flex-direction: row; gap: 12px; }
+.hero .button { display: inline-block; padding: 12px 20px; border-radius: 999px; text-decoration: none; font-weight: 600; text-align: center; }
+.hero .button.primary { background: var(--accent); color: var(--accent-ink); }
+.hero .button.secondary { border: 1px solid var(--rule); color: var(--ink); }
+.hero img { width: 100%; border-radius: var(--radius); aspect-ratio: 4 / 5; object-fit: cover; }
+
+/* cards */
+.cards h2 { font-family: var(--display); font-size: 2.2rem; margin: 0 0 28px; }
+.cards ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.cards li { background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.cards li img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; }
+.cards li .body { padding: 20px; }
+.cards li h3 { margin: 0 0 8px; font-size: 1.15rem; }
+.cards li p { margin: 0 0 14px; color: var(--muted); }
+.cards li a { color: var(--accent); font-weight: 600; text-decoration: none; }
+
+@media (max-width: 599px) {
+  .hero { grid-template-columns: 1fr; gap: 32px; }
+  .hero h1 { font-size: 2.4rem; }
+  .hero .actions { flex-direction: column; }
+  .hero img { aspect-ratio: 4 / 3; }
+  .cards ul { grid-template-columns: 1fr; gap: 16px; }
+}
+
+@media (width < 600px) {
+  main > section { padding: 40px 20px; }
+  .cards h2 { font-size: 1.7rem; }
+}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/">A neighbourhood bakery cooperative</a>
+  <nav><a href="/order">Order</a><a href="/classes">Classes</a><a href="/join">Join</a></nav>
+</header>
+<main>
+  <section class="hero" data-screen-label="Hero — the seasonal loaf">
+    <div>
+      <p class="eyebrow">Baked this morning</p>
+      <h1>Bread from the corner, baked by the people who eat it</h1>
+      <p class="lede">Our members bake every loaf before seven. Order by nine and collect it warm, or pick one up at the counter.</p>
+      <div class="actions">
+        <a class="button primary" href="/order">Order for tomorrow</a>
+        <a class="button secondary" href="/join">Become a member</a>
+      </div>
+    </div>
+    <img src="assets/morning-bake.jpg" alt="Loaves cooling on a wooden rack by the oven" width="800" height="1000">
+  </section>
+
+  <section class="cards" data-screen-label="This season — three things to do">
+    <h2>This season at the bakery</h2>
+    <ul>
+      <li>
+        <img src="assets/rye.jpg" alt="A dark rye loaf cut open on a board" width="600" height="400">
+        <div class="body">
+          <h3>Autumn rye</h3>
+          <p>Whole rye with toasted seeds, baked on Fridays until the end of November.</p>
+          <a href="/order/rye">Reserve a loaf</a>
+        </div>
+      </li>
+      <li>
+        <img src="assets/class.jpg" alt="Hands shaping dough on a floured table" width="600" height="400">
+        <div class="body">
+          <h3>Sourdough class</h3>
+          <p>Two Saturday mornings, a starter to take home and a loaf you shaped yourself.</p>
+          <a href="/classes/sourdough">Book a place</a>
+        </div>
+      </li>
+      <li>
+        <img src="assets/counter.jpg" alt="The shop counter with baskets of rolls" width="600" height="400">
+        <div class="body">
+          <h3>Members' hour</h3>
+          <p>Every Tuesday evening members pick up the day's last bread at half price.</p>
+          <a href="/join">How membership works</a>
+        </div>
+      </li>
+    </ul>
+  </section>
+</main>
+<footer class="site-footer">
+  <p>A neighbourhood bakery cooperative · Open daily from seven</p>
+</footer>
+</body>
+</html>

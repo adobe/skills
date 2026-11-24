@@ -1,0 +1,46 @@
+{
+  "context": "aem-boilerplate with a finished testimonial block (default look, `dark` variant, handles a missing avatar and very long quotes). The project is authored in Experience Workspace (DA); its block library already has pages for cards and columns under content/docs/library/blocks/ (cards has a `library-metadata` description and a `featured` visual variant) and a `blocks` sheet at content/docs/library/blocks.json with `name` and `path` rows (`https://content.da.live/acme/acme-site/docs/library/blocks/<block>`). The `library` tab in the site config (da.live/config) that points at the sheet is outside the repo. Source: https://www.aem.live/docs/ew/administering/set-up-library. Backing facts: facts.yaml (da-library-setup, da-library-variants).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Library page in the project's library",
+      "max_score": 15,
+      "description": "A library page for the block exists at content/docs/library/blocks/testimonial.html, next to the cards and columns pages. No new library location (e.g. a second `library/` folder or a different root) is invented."
+    },
+    {
+      "name": "Each variant once, via the block class",
+      "max_score": 15,
+      "description": "The page shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">` (the variant is a class after the block name, as in the cards page). Content is realistic sample text with a short quote and an avatar image. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points). Each example includes an avatar image, as `<img>` or `<picture>` (a placeholder source is fine); omitting it loses points here."
+    },
+    {
+      "name": "Happy path only",
+      "max_score": 15,
+      "description": "The library page has no edge cases: no missing-avatar example, no very long quote, no malformed rows. Edge-case content, if any is added, lives outside content/docs/library (e.g. content/drafts/) or only in unit tests."
+    },
+    {
+      "name": "Authors told when to use it",
+      "max_score": 8,
+      "description": "The page has a `library-metadata` block with a `description` row (as the cards page does) that explains when to use the block."
+    },
+    {
+      "name": "Added to the blocks sheet",
+      "max_score": 15,
+      "description": "content/docs/library/blocks.json has a new row `name` Testimonial with `path` `https://content.da.live/acme/acme-site/docs/library/blocks/testimonial`, the same org/site and format as the existing rows, and the existing rows are intact. The JSON is valid."
+    },
+    {
+      "name": "Existing library content untouched",
+      "max_score": 10,
+      "description": "content/docs/library/blocks/cards.html, columns.html and the existing sheet rows are unchanged, and no block code (blocks/testimonial/*) is modified."
+    },
+    {
+      "name": "Outside-repo steps in NOTES.md",
+      "max_score": 12,
+      "description": "NOTES.md lists what has to happen outside the repo: the new content must be pushed to the content source (Experience Workspace) and the blocks sheet is the one the site config's `library` tab already points to (check that a `Blocks` row exists in the `library` tab of the site config at da.live/config, don't duplicate it). It doesn't claim the block is already visible to authors."
+    },
+    {
+      "name": "Scoped and lean",
+      "max_score": 10,
+      "description": "Only the new library page, the sheet row and NOTES.md (and optional drafts/unit tests) changed; no tooling, dependencies or config files added; NOTES.md is short."
+    }
+  ]
+}

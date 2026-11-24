@@ -1,0 +1,41 @@
+{
+  "context": "deploy triage with a search section. Task and setup in task.md; each item is judged pass/fail by inspecting the workspace artifacts (stardust/eds-conversion-log.md, content/home.html, the code tree) and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 10,
+      "description": "The stardust `deploy` skill was invoked for the prototype (the session loaded the deploy skill / read its SKILL.md or Step 2 reference and worked from `stardust/prototypes/home-proposed.html`)."
+    },
+    {
+      "name": "hero_is_block",
+      "max_score": 10,
+      "description": "ARTIFACT: `stardust/eds-conversion-log.md` triages the hero section as a block (Block Collection match `hero`), and `content/home.html` contains a block table `<div class=\"hero\">` (or `hero <variant>`) whose cells carry the authored h1, lede and the two CTAs — not default content and not a widget link."
+    },
+    {
+      "name": "cards_is_block",
+      "max_score": 10,
+      "description": "ARTIFACT: the conversion log triages the programme cards as a block (Block Collection match `cards`) and `content/home.html` contains a `<div class=\"cards\">` block table with exactly three rows, one per card, each carrying that card's heading, text and link (image cell may be empty or a placeholder)."
+    },
+    {
+      "name": "search_is_widget_link",
+      "max_score": 30,
+      "description": "ARTIFACT: in `content/home.html` the search section is authored as ONE paragraph (`<p>`) whose only content is a single `<a>` whose href contains `/widgets/` and whose path ends in `.html` (a query string is allowed), e.g. `<p><a href=\"/widgets/search/site-search.html\">…</a></p>`; AND no block table with class `search`, `site-search`, `catalogue-search` or `widget` exists anywhere under `content/` (grep for `class=\"search`, `class=\"site-search`, `class=\"widget`). A search authored as a block table, as prose, or as a form fails."
+    },
+    {
+      "name": "decision_rule_cited",
+      "max_score": 15,
+      "description": "ARTIFACT: `stardust/eds-conversion-log.md` records, for every section (hero, cards, site-search), both Step 2 triage answers — (1) default content / block / widget and (2) Block Collection match or none — and states the rule that made the search a widget in the skill's terms (no authored content / configuration only / everything arrives from code, index, API or user input → widget; authors fill rows → block), attributing it to the deploy skill's Step 2 (D1) rather than inventing a different reason. The search row must also cite the dynamics inventory (`client-only` / `search-index-backed`)."
+    },
+    {
+      "name": "no_project_widget_code",
+      "max_score": 20,
+      "description": "ARTIFACT: no code was written — no `blocks/` directory (in particular no `blocks/widget/`, `blocks/search/` or `blocks/site-search/`), no `widgets/` directory, and `scripts/scripts.js` is unchanged (still exactly 144 lines, still containing the stock `buildWidgetAutoBlocks` and ending with `loadPage();`, no added lines). The widget file stem named in the content page / log is not a reserved EDS class (`widget`, `section`, `block`, `wrap`, `button`, or ending `-wrapper` / `-container`)."
+    },
+    {
+      "name": "no_site_names",
+      "max_score": 5,
+      "description": "ARTIFACT: `stardust/eds-conversion-log.md` and `content/home.html` name no real-world site, brand or hostname — only the fixture's role names (\"a regional public-library network\"), `example.com` placeholders and, if at all, the `aem.live` documentation host."
+    }
+  ]
+}

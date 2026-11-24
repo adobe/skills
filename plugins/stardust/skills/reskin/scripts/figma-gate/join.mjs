@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { edsModules, includedModules } from './io.mjs';
 import { anchors, imageAnchors, norm, parseMapping } from './mapping.mjs';
-import { loadChromium, loadMeasureLive, localAttributes } from './target.mjs';
+import { localAttributes, openPlain } from './target.mjs';
 
 // Statuses that put a section on the page; chrome and carried-invisible slots live outside the join.
 const RENDERED = new Set(['mapped', 'new-module']);
@@ -97,8 +97,7 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
 // whose sections are not found in its own DOM (a preview) names its matcher: join.match, over what join.collect read.
 // page selects that page's rows of a multi-page mapping.md.
 export async function runJoin({ target, inputs, out, page }) {
-  const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
-  const browser = await openBrowser(chromium, { tier: 'plain' });
+  const browser = await openPlain();
   let dom;
   let found;
   try {

@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent reads scrape-webpage's progress output and handles the two failure modes its launch and TLS behaviour produce: a bot-blocked scrape that ran on the bundled Chromium because Google Chrome could not be launched, and a source host whose certificate does not validate. Without the skill, agents tend to reach for stealth plugins and User-Agent spoofing for the first failure and to disable certificate validation, or set NODE_EXTRA_CA_CERTS, for the second.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Identifies from the log that the run used bundled Chromium",
+      "max_score": 15,
+      "description": "Agent points to the 'Google Chrome could not be launched' warning and the 'Browser: bundled Chromium' line, and concludes that Google Chrome is not installed on the runner, so the scrape ran on the bundled Chromium that bot detection rejects."
+    },
+    {
+      "name": "Recommends installing Google Chrome to fix the blocked scrape",
+      "max_score": 20,
+      "description": "Agent tells the developer to install Google Chrome on the runner (for example with the OS package manager or `npx playwright install chrome`) and run the scrape again, noting that the script picks Chrome up automatically with no code or configuration change."
+    },
+    {
+      "name": "Does not add stealth plugins or random User-Agents",
+      "max_score": 15,
+      "description": "Agent does not add puppeteer-extra or stealth plugins, or randomized User-Agent strings, to analyze-webpage.js. It recognises that the script already sends a User-Agent and sec-ch-ua client hints that match the browser that launched, and that a random or mismatched identity is itself a detection signal."
+    },
+    {
+      "name": "Verifies the fix through the Browser line",
+      "max_score": 10,
+      "description": "Agent says to confirm after the re-run that stderr shows 'Browser: Google Chrome <version>' rather than the fallback warning, and that cleaned.html now holds the real page content instead of the access-denied page."
+    },
+    {
+      "name": "Refuses to disable certificate validation",
+      "max_score": 20,
+      "description": "Agent does not set ignoreHTTPSErrors, pass --ignore-certificate-errors, or otherwise turn off TLS validation in the script, and explains why: scraped HTML and images become migration source, so content served over an untrusted certificate could have been swapped in transit."
+    },
+    {
+      "name": "Explains that NODE_EXTRA_CA_CERTS does not apply",
+      "max_score": 10,
+      "description": "Agent notes that the page and its images are fetched by the browser, not by Node, so NODE_EXTRA_CA_CERTS has no effect on the ERR_CERT_AUTHORITY_INVALID error."
+    },
+    {
+      "name": "Offers a remedy that keeps validation on",
+      "max_score": 10,
+      "description": "Agent proposes a fix that keeps certificate validation enabled, such as getting the staging host a certificate the browser trusts, having the internal CA trusted by the browser on the runner, or scraping the About page from a host that presents a valid certificate."
+    }
+  ]
+}

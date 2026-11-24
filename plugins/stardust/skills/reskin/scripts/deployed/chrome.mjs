@@ -35,7 +35,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
+import { loadMeasureLive, openPlain } from '../figma-gate/target.mjs';
 import { coded, firstLine } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
@@ -347,10 +347,9 @@ export async function runChrome({ dir, slug, preview, widths = [1440, NARROW], e
   const expect = readChromeContract(dir);
   const origins = { sourceOrigin: originOf(expect.sourceUrl), previewOrigin: originOf(preview.url) };
 
-  const chromium = await loadChromium();
-  const { openBrowser, openPage } = await loadMeasureLive();
+  const { openPage } = await loadMeasureLive();
   const { gotoLive } = await loadLiveSession();
-  const browser = await openBrowser(chromium, { tier: 'plain' });
+  const browser = await openPlain();
   const rows = [];
   try {
     for (const width of widths) rows.push(...await measureWidth({ browser, openPage, gotoLive, width, url: preview.url, edsTimeoutMs, expect, origins, namespace: preview.sandbox ? null : preview.namespace ?? null }));

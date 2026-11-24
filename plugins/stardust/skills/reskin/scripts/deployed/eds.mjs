@@ -4,26 +4,26 @@
 //                                   to read "loaded"; a stall is reported, never thrown
 //   isEdsHost(url)                  an aem.page / aem.live / hlx.page / hlx.live host, or the host of the
 //                                   DEPLOY_VERIFY_ORIGIN test hook (read at call time)
-// live-session.mjs comes from the diff skill and is loaded when first needed (loadLiveSession), never at import.
+// browser.mjs (live-session.mjs re-exported) comes from the master skill and is loaded when first needed (loadLiveSession), never at import.
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// Two layouts: the plugin tree (skills/reskin/scripts/deployed ↔ skills/diff/scripts) and the project copy
-// (stardust/scripts/reskin/deployed ↔ stardust/scripts/diff).
-const LIVE_SESSION = ['../../../diff/scripts/live-session.mjs', '../../diff/live-session.mjs'];
+// Two layouts: the plugin tree (skills/reskin/scripts/deployed ↔ skills/stardust/scripts) and the project copy
+// (stardust/scripts/reskin/deployed ↔ stardust/scripts/stardust).
+const LIVE_SESSION = ['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'];
 const EDS_HOST = /(^|\.)(aem|hlx)\.(page|live)$/i;
 const POLL_MS = 50;
 
 let liveSession = null;
 
-// live-session.mjs, imported once.
+// browser.mjs (openBrowser, loadPlaywright and every live-session export), imported once.
 export async function loadLiveSession() {
   if (liveSession) return liveSession;
   const path = LIVE_SESSION.map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-  if (!path) throw new UsageError('live-session.mjs not found (looked in ../../../diff/scripts/ and ../../diff/): copy the diff skill\'s scripts beside the reskin scripts (stardust/scripts/diff/)');
+  if (!path) throw new UsageError('browser.mjs not found (looked in ../../../stardust/scripts/ and ../../stardust/): copy the master skill\'s scripts beside the reskin scripts (stardust/scripts/stardust/)');
   liveSession = await import(pathToFileURL(path).href);
   return liveSession;
 }

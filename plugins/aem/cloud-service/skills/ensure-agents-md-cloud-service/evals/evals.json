@@ -1,0 +1,45 @@
+{
+  "skill_name": "ensure-agents-md-cloud-service",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up this AEM project so AI coding agents understand it.",
+      "expected_output": "The agent finds no AGENTS.md at the project root and creates AGENTS.md and CLAUDE.md there. AGENTS.md is titled with a readable project name, lists only the modules that exist (core and dispatcher), not ui.apps, ui.frontend or other archetype modules, includes the dispatcher validate command but no frontend npm commands, and links Cloud Service documentation on experienceleague.adobe.com. CLAUDE.md contains exactly @AGENTS.md.",
+      "assertions": [
+        "AGENTS.md and CLAUDE.md are created at the project root",
+        "AGENTS.md lists the core and dispatcher modules and no module that does not exist",
+        "AGENTS.md has no frontend npm commands",
+        "CLAUDE.md contains exactly @AGENTS.md"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review TeaserModel for problems. Don't change any files.",
+      "expected_output": "The agent reviews TeaserModel and reports what it finds without changing the project. It does not create AGENTS.md or CLAUDE.md, because the user asked for a review and said not to change files; it may offer to create them.",
+      "assertions": [
+        "AGENTS.md is not created",
+        "CLAUDE.md is not created",
+        "No file in the project is created or edited"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Calls from PriceService to our pricing API sometimes hang and take the publish tier down. Fix it.",
+      "expected_output": "The agent plans a fix for the missing timeouts in PriceService and asks the user to confirm the plan before it changes anything. It does not create AGENTS.md or CLAUDE.md before the user has said yes; it may list them in the plan or offer them.",
+      "assertions": [
+        "AGENTS.md and CLAUDE.md are not created before the user confirms",
+        "PriceService.java is not edited before the user confirms",
+        "The agent shows a plan and asks for confirmation"
+      ],
+      "files": [
+        "files/site-project"
+      ]
+    }
+  ]
+}

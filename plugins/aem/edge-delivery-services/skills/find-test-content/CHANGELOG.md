@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/adobe/skills/compare/find-test-content-v1.2.2...find-test-content-v1.2.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update dependency jsdom to v31 ([#610](https://github.com/adobe/skills/issues/610)) ([2ccca0e](https://github.com/adobe/skills/commit/2ccca0e12ddc67153d602e845f221530b3a982d7))
+
 ## [1.2.2](https://github.com/adobe/skills/compare/find-test-content-v1.2.1...find-test-content-v1.2.2) (2026-10-29)
 
 

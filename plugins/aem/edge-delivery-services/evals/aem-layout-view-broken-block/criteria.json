@@ -1,0 +1,56 @@
+{
+  "context": "aem-boilerplate with a feature-list block that breaks Experience Workspace layout view: decorate() replaces the block element with a new section, copies the h3/p text into new elements (h4 with textContent, a div with textContent), prepends a marker span into the new heading, rebuilds the picture with createOptimizedPicture without the original attributes, keeps module-level `initialized` state with setInterval and a window resize listener, and fetches from another host; CSS uses `> div > p:first-child` and `h4 + .feature-description`; scripts.js buildAutoBlocks adds a lifecycle-badge block unconditionally (added by setup.sh). Layout view (https://www.aem.live/docs/ew/developing/layout-view) renders the page with the site's code and the inline editor depends on `data-block-index` + the block class on the block element, `data-prose-index` on the original text elements, `data-image-index`/`data-image-version` on img in picture, and re-runs the code after structural edits. Backing facts: facts.yaml (lv-*).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Block element kept",
+      "max_score": 12,
+      "description": "decorate() no longer replaces or discards the block element (no `block.replaceWith(...)`, no `block.outerHTML =`, no new wrapper standing in for it) and doesn't overwrite its classes. It changes the block's children and may add classes. Fail if the block is still replaced, unless `data-block-index` and the block name as first class are copied onto the replacement (partial credit)."
+    },
+    {
+      "name": "Authored text elements kept",
+      "max_score": 18,
+      "description": "The original `h3` and `p` elements from the authored cell are moved into the new structure (or the cell/ wrapper is restyled with classes). Text is not copied via `textContent`, and the `p` is not unwrapped into a bare text node. If an element is replaced (e.g. h3 to h4), `data-prose-index` is copied to the replacement (partial credit). Fail if the title or description is still rebuilt from `textContent`."
+    },
+    {
+      "name": "No decoration inside text elements",
+      "max_score": 8,
+      "description": "No span, icon or class is injected inside or onto the authored heading or paragraph (the `feature-marker` span is not prepended into the heading). The marker is drawn with CSS on an ancestor or wrapper (e.g. `::before` on the list item) or added to a wrapper outside the text element."
+    },
+    {
+      "name": "No child or sibling combinators on text",
+      "max_score": 8,
+      "description": "feature-list.css has no child (`>`) or sibling (`+`, `~`) combinator, and no `:first-child`/`:nth-child` on text elements (h1-h6, p, ul, ol). Descendant selectors or classes on cells/wrappers are used instead. A `>` between non-text wrappers (ul > li) is fine."
+    },
+    {
+      "name": "Image attributes preserved",
+      "max_score": 14,
+      "description": "The authored `picture` is kept, or the rebuilt picture's `img` gets every `data-image-*` attribute (`data-image-index`, `data-image-version`) from the original img. Authored images are not turned into CSS backgrounds, and images are in the DOM when decorate() finishes (not added later by a timer or observer)."
+    },
+    {
+      "name": "Safe to run again",
+      "max_score": 10,
+      "description": "decorate() holds no module-level one-time state (the `initialized` flag is gone) and its timer and window listener are tied to the block: they stop and are removed once `block.isConnected` is false (AbortController, or clearInterval plus removeEventListener in a check on `isConnected`), or the listener is dropped if not needed. Re-running decorate on fresh DOM must not stack timers or listeners."
+    },
+    {
+      "name": "Auto-block is idempotent",
+      "max_score": 8,
+      "description": "buildLifecycleBadge (or the code that adds the lifecycle-badge block) checks whether a lifecycle-badge block already exists in `main` before adding another one."
+    },
+    {
+      "name": "Cross-origin requirement noted",
+      "max_score": 10,
+      "description": "NOTES.md says the host `stats.example-cdn.com` (the off-origin fetch) must allow the layout view origin `https://{branch}--{site}--{org}.preview.da.live` in its CORS settings, as something outside this repo that someone has to change. Credit if it names the preview.da.live origin pattern; no credit for only saying 'CORS'."
+    },
+    {
+      "name": "Readers see the same page",
+      "max_score": 6,
+      "description": "The feature list still renders: one `li` per authored row with the image, title, description, the 'Used by N teams' count and the rotating highlight. `npm run lint` (or equivalent) would pass on the changed files."
+    },
+    {
+      "name": "Scoped change",
+      "max_score": 6,
+      "description": "Only blocks/feature-list, scripts/scripts.js (auto-block) and NOTES.md changed (plus content/ test files if needed). No changes to aem.js, no new dependencies or build step. NOTES.md lists what changed."
+    }
+  ]
+}

@@ -32,6 +32,8 @@ const ALLOW = [
   // source hosting, packages, CDNs, specs
   'github.com', 'githubusercontent.com', 'github.io', 'npmjs.org', 'npmjs.com', 'jsdelivr.net', 'unpkg.com',
   'schema.org', 'json-schema.org', 'sitemaps.org', 'w3.org', 'googleapis.com', 'gstatic.com', 'fontsource.org',
+  // the $schema of the plugin's root plugin.json (the Agent Plugins manifest format)
+  'agent-plugins.org',
   'opencollective.com', 'claude.com', 'anthropic.com', 'coolors.co', 'refero.design',
   // the plugin's own schema $id namespace, and a state.json field path (`site.da.org`) that reads like a host
   'stardust.dev', 'da.org',
@@ -41,6 +43,7 @@ const ALLOW = [
   'youtube.com', 'youtu.be', 'vimeo.com', 'x.com', 'twitter.com', 'linkedin.com', 'facebook.com', 'instagram.com',
   'google.com', 'shopify.com', 'linear.app', 'datawrapper.de', 'cloudflarestream.com', 'edgesuite.net',
   'akamaized.net', 'cloudfront.net', 'wp.com', 'hubspot.com', 'typeform.com', 'calendly.com',
+  'jwplayer.com', 'wistia.com', // player hosts qa's player-before-paint detects (posters live there too)
   // tag-manager and consent vendor hosts spec-martech reads public configuration from
   'adobedtm.com', 'cookielaw.org', 'cookiebot.com', 'googletagmanager.com', 'tiqcdn.com', 'ensighten.com',
   // Adobe Web SDK hosts: the vendors.json loader pattern and the aem-martech plugin's default edge

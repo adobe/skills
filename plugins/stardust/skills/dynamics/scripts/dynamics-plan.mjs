@@ -112,8 +112,12 @@ const hostBound = {};
 if (TARGET && TARGET !== true) {
   const auth = resolveAuthHeader();
   const apis = d.findings.filter((f) => f.api);
+  const targetOrigin = new URL(TARGET).origin;
   for (const f of apis) {
-    const r = await probe(`${TARGET.replace(/\/$/, '')}${f.api.path.replace(/\{[a-z]+\}/g, '1')}`, { headers: auth ? { authorization: auth } : {} });
+    const url = `${TARGET.replace(/\/$/, '')}${f.api.path.replace(/\{[a-z]+\}/g, '1')}`;
+    let onTarget = false; try { onTarget = new URL(url).origin === targetOrigin; } catch { /* malformed: not probed */ }
+    if (!onTarget) continue; // a path that leaves the target origin is never sent the site secret
+    const r = await probe(url, { headers: auth ? { authorization: auth } : {} });
     hostBound[f.id] = r.ok ? `served (${r.status})` : `dead on target (${r.status || r.error})`;
   }
 }

@@ -69,6 +69,13 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Shared rules (skills/stardust/scripts/lib/README.md): the sidecar name and URL form of an output path, the widget contract.
+// They live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) { console.error('migrate: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(1); }
+const { sidecarName, urlForm, widgetHref, widgetLinks } = await import(CONTRACTS.href);
+
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
 function help() {
@@ -119,10 +126,10 @@ export function outputPathFor(urlOrPath) {
   if (/\.[a-z0-9]+$/i.test(leaf)) return { outputPath: bare, outputPathDefault: null, passthrough: true };
   return { outputPath: `${bare}/index.html`, outputPathDefault: 'trailing-slash', passthrough: false };
 }
-export const sidecarFor = (outputPath) => { const d = posix.dirname(outputPath); const b = posix.basename(outputPath); const s = b === 'index.html' ? '_meta.json' : `${b.replace(/\.html?$/i, '')}._meta.json`; return d === '.' ? s : `${d}/${s}`; };
+export const sidecarFor = (outputPath) => sidecarName(outputPath, { loose: true });
 export const depthOf = (outputPath) => outputPath.split('/').length - 1;
 export const relPrefix = (depth) => (depth === 0 ? './' : '../'.repeat(depth));
-export const urlFormOf = (outputPath) => outputPath.replace(/(^|\/)index\.html$/, '$1');
+export const urlFormOf = urlForm;
 // The AEM-Edge-safe form of an output path, as delivery-lint's path-safety normalises a DA path: lowercase,
 // per segment `_`, spaces and anything outside [a-z0-9.] → `-`, runs of `-` collapsed, no leading/trailing `-`.
 // Two pages whose folded paths coincide would overwrite each other once delivered, whatever their literal case.
@@ -185,7 +192,7 @@ export function rewriteLinks(html, ctx) {
     if (reason) broken.push({ href, reason });
     let a = attrs.replace(hm[0], `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
     if (reason && !/(?<![\w-])data-broken-link=/.test(a)) a += ' data-broken-link="true"';
-    if (!/(?<![\w-])data-source-href=/.test(a)) a += ` data-source-href="${new URL(href, ctx.base).href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`;
+    if (ctx.reskin && !/(?<![\w-])data-source-href=/.test(a)) a += ` data-source-href="${new URL(href, ctx.base).href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`;
     return `<${tag}${a}>`;
   });
   return { html: out, links, broken };
@@ -194,7 +201,7 @@ export function rewriteLinks(html, ctx) {
 // ---- <main>: data-template + data-section (attributes only; markup is never reordered) --------------
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW = new Set(['script', 'style', 'template', 'textarea', 'title']); // never a section; contents skipped
-export function tagSections(main, template) {
+export function tagSections(main, template, { reskin = false } = {}) {
   const open = main.match(/^<main\b([^>]*)>/i);
   if (!open) return null;
   let attrs = open[1].replace(/\s+$/, '');
@@ -210,8 +217,8 @@ export function tagSections(main, template) {
     if (RAW.has(tag)) { if (!self) { const c = inner.toLowerCase().indexOf(`</${tag}>`, re.lastIndex); if (c >= 0) re.lastIndex = c + tag.length + 3; } continue; }
     if (depth === 0) {
       n += 1;
-      // an explicit data-slot (reskin renderer, module canon) names the slot; else the first class, else the tag
-      const ds = a.match(/(?<![\w-])data-slot\s*=\s*(["'])(.*?)\1/s);
+      // flow: reskin — an explicit data-slot (reskin renderer) names the slot; else the first class, else the tag
+      const ds = reskin && a.match(/(?<![\w-])data-slot\s*=\s*(["'])(.*?)\1/s);
       const cls = a.match(/(?<![\w-])class\s*=\s*(["'])(.*?)\1/s);
       slots.push(ds && ds[2].trim() ? ds[2].trim() : cls && cls[2].trim() ? cls[2].trim().split(/\s+/)[0] : tag);
       if (!/(?<![\w-])data-section=/.test(a)) { out += `${inner.slice(last, m.index)}<${tagRaw}${a.replace(/\s+$/, '')} data-section="${n}"${self}>`; last = m.index + full.length; }
@@ -221,9 +228,9 @@ export function tagSections(main, template) {
   return { html: `<main${attrs}>${out}${inner.slice(last)}</main>`, slots, sections: n };
 }
 export const modulesIn = (main) => [...new Set([...main.matchAll(/(?<![\w-])data-module\s*=\s*(["'])(.*?)\1/gs)].map((x) => x[2].trim()).filter(Boolean))];
-// widgets[]: one {id, href} per a[data-widget] mount; id = file stem of the href path (falls back to the data-widget value), deduped per page
-/** The mount href a `data-widget="<path>/<name>"` value implies: /widgets/<path>/<name>.html. Pure. */
-export const widgetHref = (dataWidget) => `/widgets/${String(dataWidget).trim().replace(/^\/?(?:widgets\/)?/, '').replace(/\.html?$/i, '')}.html`;
+// widgets[]: one {id, href} per a[data-widget] mount whose href is a widget link (`/widgets/<path>/<name>.html`, the stem
+// is the id — lib/names.mjs widgetLinks; a data-widget mount pointing at a page is not a widget), first mount per id kept
+export { widgetHref };
 /** A `data-widget` mount that forgot its href gets it (the live auto-block keys on the href, never on data-widget); `warn` is told. Pure. */
 export function fixWidgetMounts(html, warn = () => {}) {
   return html.replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
@@ -235,12 +242,7 @@ export function fixWidgetMounts(html, warn = () => {}) {
 }
 export function widgetsIn(main) {
   const out = new Map();
-  for (const [, attrs] of main.matchAll(/<a\b([^>]*)>/gi)) {
-    const w = attrs.match(/(?<![\w-])data-widget\s*=\s*(["'])(.*?)\1/s); if (!w) continue;
-    const h = attrs.match(/(?<![\w-])href\s*=\s*(["'])(.*?)\1/s); const href = h ? h[2].replace(/&amp;/g, '&').trim() : widgetHref(w[2]);
-    const stem = posix.basename((href || w[2].trim()).split(/[?#]/)[0]).replace(/\.html?$/i, '');
-    if (stem && !out.has(stem)) out.set(stem, { id: stem, href });
-  }
+  for (const { name, href, path } of widgetLinks(main, { mount: 'data-widget' })) if (path && !out.has(name)) out.set(name, { id: name, href });
   return [...out.values()];
 }
 
@@ -381,7 +383,7 @@ export function composeHead(html, h) {
   }
   const parts = [h.prov, `<style>\n${h.rootBlock}${h.inlineCss ? `\n${h.inlineCss}` : ''}\n</style>`];
   if (h.canonLink) parts.push(`<link rel="stylesheet" href="${h.canonLink}">`);
-  if (insertedLd) parts.push(`<script type="application/ld+json" data-migrate-default>${JSON.stringify(insertedLd)}</script>`);
+  if (insertedLd) parts.push(`<script type="application/ld+json"${h.reskin ? ' data-migrate-default' : ''}>${JSON.stringify(insertedLd)}</script>`);
   const at = headOpen.index + headOpen[0].length;
   return { html: `${html.slice(0, at)}\n${[...parts, ...inserts].join('\n')}${html.slice(at)}`, metadata: { title, description: description ?? null, canonical: canonical ?? null, lang }, jsonLd };
 }
@@ -457,7 +459,7 @@ export function renderPage(run, page, entry) {
   const mi = sourceHtml.search(/<main\b/i); const mj = sourceHtml.toLowerCase().lastIndexOf('</main>');
   if (mi < 0 || mj < mi) throw new Refusal(slug, 2, 'no <main> element', 'wrap the page content in <main>');
   const template = branch === 'A' ? slug : branch === "A'" ? archetype.slug : (page.type || 'unique');
-  const tagged = tagSections(sourceHtml.slice(mi, mj + 7), template);
+  const tagged = tagSections(sourceHtml.slice(mi, mj + 7), template, { reskin: run.reskin });
   tagged.html = fixWidgetMounts(tagged.html, (msg) => console.warn(`${slug}: ${msg}`));
   let html = sourceHtml.slice(0, mi) + tagged.html + sourceHtml.slice(mj + 7);
   const modules = modulesIn(tagged.html); const modulesOut = modules.length ? modules : (old?.modules?.length ? old.modules : []);
@@ -465,7 +467,7 @@ export function renderPage(run, page, entry) {
   // internal links via the page map
   let pageUrl; try { pageUrl = new URL(siteUrlOf(page), run.originUrl || 'https://origin.invalid').href; } catch { pageUrl = siteUrlOf(page); }
   const hosts = new Set(run.originHosts); try { hosts.add(normHost(new URL(pageUrl).host)); } catch { /* relative url — origin hosts only */ }
-  const linked = rewriteLinks(html, { base: pageUrl, originHosts: hosts, origin: run.origin, byPath: run.pageMap.byPath, depth, available: run.available });
+  const linked = rewriteLinks(html, { base: pageUrl, originHosts: hosts, origin: run.origin, byPath: run.pageMap.byPath, depth, available: run.available, reskin: run.reskin });
   html = linked.html;
   // assets (the canon CSS is bundled like any other asset unless --inline-canon)
   const report = { refs: new Set(), missing: [], traversal: [] }; run.bundler.begin(report);
@@ -475,7 +477,7 @@ export function renderPage(run, page, entry) {
   // <head>
   const at = nowIso();
   const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
-  const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type });
+  const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type, reskin: run.reskin });
   if (!head) throw new Refusal(slug, 3, 'no <head> element', 'add <head> to the source');
   html = head.html;
   // sidecar: spec keys first, then the tier/judgment fields; recorded judgments are carried over
@@ -552,7 +554,7 @@ export function renderRun(o) {
   if (state.site?.deployUrl) { try { deployHost = new URL(/^[a-z]+:\/\//i.test(state.site.deployUrl) ? state.site.deployUrl : `https://${state.site.deployUrl}`).host; } catch { deployHost = state.site.deployUrl; } }
   const bundler = new Bundler({ protoDir: o.protoDir, currentDir: o.current, outDir: o.out, seed: state.migrate?.bundledAssets || [] });
   const run = { stateFile: o.state, pages, bySlug, pageMap, bundler, canon, inlineCanon: o.inlineCanon, force: o.force, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), protoDir: o.protoDir, currentDir: o.current, outDir: o.out, originUrl, origin, originHosts, deployHost,
-    reskinGates: state.flow === 'reskin' ? reskinHandoffGates(o.state) : null,
+    reskin: state.flow === 'reskin', reskinGates: state.flow === 'reskin' ? reskinHandoffGates(o.state) : null,
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map();
@@ -629,7 +631,7 @@ export function modulesCmd(o, slug, ids) {
 export function summaryCmd(o) {
   const state = loadState(o.state); const rows = [];
   for (const p of state.pages) {
-    const { outputPath, passthrough } = outputPathFor(siteUrlOf(p));
+    const { outputPath, passthrough } = outputPathFor(p.url || p.path || `/${p.slug}/`);
     const file = passthrough ? null : join(o.out, sidecarFor(outputPath)); const s = file && isFile(file) ? readJson(file) : null;
     rows.push({ slug: p.slug, status: p.status, branch: s ? s.renderBranch : null, tier: s ? s.fidelityTier : null, gates: s ? (s.gatesPassed || []).length : null, variants: s ? (s.variants || []).length : null, deviations: s ? (s.contentDeviations || []).length : null, broken: s ? (s.brokenInternalLinks || []).length : null, outputPath: passthrough ? `${outputPath} (passthrough)` : outputPath, sidecar: !!s });
   }

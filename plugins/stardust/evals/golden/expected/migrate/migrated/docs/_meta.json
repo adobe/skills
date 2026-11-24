@@ -1,0 +1,57 @@
+{
+  "slug": "docs",
+  "type": "docs",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "cards"
+  ],
+  "widgets": [
+    {
+      "id": "site-search",
+      "href": "/widgets/search/site-search.html?q=docs"
+    }
+  ],
+  "slotsFilled": [
+    "intro",
+    "search",
+    "cards"
+  ],
+  "canonShas": {
+    "header": "1125b139fad3",
+    "footer": "53a9e1a10d87",
+    "css": "4b44d98880af"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Documentation",
+    "description": "The documentation index.",
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "Documentation"
+  },
+  "migratedAt": "2026-01-01T00:00:00Z",
+  "designMdSha": "17d4361babe8",
+  "designJsonSha": "237588f19883",
+  "sourceCurrentSha": "56d48c3f4643",
+  "sourceProposedSha": "f5205330bfa4",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [],
+  "gateEvidence": {},
+  "contentDeviations": [],
+  "assetsBundled": 1,
+  "missingAssets": [],
+  "brokenInternalLinks": [],
+  "outputPath": "docs/index.html",
+  "outputPathDefault": null,
+  "sidecar": "docs/_meta.json",
+  "driverVersion": "1"
+}

@@ -338,11 +338,10 @@ await check('plainUrl: the authored form of a page, of a folder and of a .html p
 });
 
 if (playwrightOk) {
-  const { chromium } = await import('playwright');
   const { openBrowser } = await import('../../../diff/scripts/measure-live.mjs');
   const project = (n) => makeProject(join(scratch, n));
   const withBrowser = async (fn) => {
-    const browser = await openBrowser(chromium, { tier: 'plain' });
+    const browser = await openBrowser({ mode: 'plain' });
     try { return await fn(browser); } finally { await browser.close(); }
   };
   const withPreview = async (opts, fn) => {
@@ -496,7 +495,7 @@ if (playwrightOk) {
       assert.deepEqual(j.sections.map((s) => [s.slot, s.selector, s.index]), [['s01', 'main > div:nth-child(3)', 2], ['s02', 'main > div:nth-child(4)', 3]]);
       assert.equal(j.notes.length, 2);
       // The recorded selector measures the section of the slot: the decorated div at that position holds the slot's heading.
-      const browser = await openBrowser(chromium, { tier: 'plain' });
+      const browser = await openBrowser({ mode: 'plain' });
       try {
         const page2 = await previewTarget(`${server.origin}/ns/home`, { reskin: p.page }).open(browser, 1440);
         assert.match(await page2.locator(j.sections[0].selector).innerText(), /^Welcome to the kit/);
@@ -685,7 +684,7 @@ if (playwrightOk) {
     const { cacheFor } = await import('../figma/cache.mjs');
     // The frame image: figma-frame.html drawn at 1440×1840, as M1 would cache it for frame 1:2.
     const frameImage = async (p) => {
-      const browser = await chromium.launch();
+      const browser = await openBrowser({ mode: 'plain' });
       try {
         const page = await browser.newPage({ viewport: { width: 1440, height: 1840 } });
         await page.goto(pathToFileURL(join(p.root, 'figma-frame.html')).href);
