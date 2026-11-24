@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.7](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.6...plugin/stardust/v0.46.7) (2026-11-24)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint reads not followed by extra whitespace correctly ([#728](https://github.com/adobe/skills/issues/728)) ([ebeca8c](https://github.com/adobe/skills/commit/ebeca8ce731c8d1cb9864af4eea922108118092e)), closes [#688](https://github.com/adobe/skills/issues/688)
+
 ## [0.46.6](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.5...plugin/stardust/v0.46.6) (2026-11-23)
 
 
