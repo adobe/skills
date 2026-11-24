@@ -99,3 +99,10 @@ export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), 
     ...(trackedPaths.length ? [`Already tracked, so .gitignore alone will not do: git rm --cached -- ${trackedPaths.join(' ')}`] : []),
   ].join('\n'));
 }
+
+// content (Figma-only, --confidential): the model holds the design's copy and the assets its images.
+export const contentOutputs = (slug) => [
+  [`reskin/content-model/${slug}/content-model.json`, 'reskin/content-model/'],
+  [`reskin/content-model/${slug}/assets/x.png`, 'reskin/content-model/'],
+  ['reskin/content-model/_chrome/content-model.json', 'reskin/content-model/'],
+];

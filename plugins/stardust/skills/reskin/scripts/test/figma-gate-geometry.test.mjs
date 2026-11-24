@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
-import { expected, judge, observed, runGeometry } from '../figma-gate/geometry.mjs';
+import { expected, inColumn, judge, observed, runGeometry } from '../figma-gate/geometry.mjs';
 import { prepare } from '../figma-gate/prepare.mjs';
 import { stampsOf } from '../figma-gate/stamp.mjs';
 import { makeProject } from './fixtures/figma-gate/setup.mjs';
@@ -244,6 +244,17 @@ await check('--help lists geometry and its flags', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: scratch });
   assert.equal(r.status, 0, r.stderr);
   for (const s of ['geometry', 'tolerancePx', 'unmeasurable', 'geometry.json', '":scope > .a .b"', 'branch by branch', 'sibling combinator']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+});
+
+await check('inColumn: a root width entry of a section in a rail page\'s grid column is UNASSERTED with the reason; inner entries and full-width sections are judged', () => {
+  const base = { node: '1:7', root: '1:7' };
+  const col = { w: 1040, of: 1440 };
+  const r = inColumn({ measure: 'width' }, base, 1440, col);
+  assert.equal(r.status, 'UNASSERTED');
+  assert.match(r.detail, /^rail column: the section is 1040px of 1440px beside a rail \(mapping "rail", gate \(a′\) S4\), not the module root's 1440$/);
+  assert.equal(inColumn({ measure: 'width' }, base, 1440, null), null, 'a section spanning main is measured');
+  assert.equal(inColumn({ measure: 'paddingLeft' }, base, 16, col), null, 'inner geometry is measured');
+  assert.equal(inColumn({ measure: 'width' }, { node: '1:9', root: '1:7' }, 300, col), null, 'a child node width is measured');
 });
 
 rmSync(scratch, { recursive: true, force: true });

@@ -1,0 +1,41 @@
+{
+  "context": "reskin on a Figma-only site: content from the Figma page frames, design system from the same file. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "figma_only_init",
+      "max_score": 10,
+      "description": "state.json is written by figma-donor.mjs init with flowSource figma-only and no originUrl; no live-site extract or capture-content is attempted."
+    },
+    {
+      "name": "content_from_frames",
+      "max_score": 20,
+      "description": "Each page's content-model.json is written by figma-donor.mjs content with _provenance.source.kind figma, the rules recorded (visibility, reading order, segmentation), rendered-case text, text-ops.json/flags.json/assets beside it and reskin/deltas/<slug>.json seeded (version 1, metadata.absent); chrome goes to _chrome once."
+    },
+    {
+      "name": "nothing_invented",
+      "max_score": 15,
+      "description": "Alt text, link targets and SEO metadata absent from the design are not invented: they appear as flags (image.alt, link.unresolved, metadata.title-derived) and stay empty or '#' in the model and render."
+    },
+    {
+      "name": "figma_text_gate",
+      "max_score": 20,
+      "description": "figma-text-gate.mjs runs on every rendered page and PASSes with zero findings (its reference re-read from the Figma tree, not the model); slot-coverage runs with --deltas and PASSes."
+    },
+    {
+      "name": "design_gates",
+      "max_score": 10,
+      "description": "donor-probe and figma-gate all run on each page with join, geometry and ramp passing or residuals logged."
+    },
+    {
+      "name": "blocklist_honoured",
+      "max_score": 15,
+      "description": "figma-donor.mjs blocklist is shown before any deploy; every open block/review item is fixed and re-run or acknowledged with ack --why (a reason, recorded); a placeholder-only page is not deployed."
+    },
+    {
+      "name": "no_migrate",
+      "max_score": 10,
+      "description": "The handoff targets an isolated preview and does not run migrate or overwrite an existing DA document."
+    }
+  ]
+}

@@ -6,8 +6,9 @@
 //     "blocking": false,                                  absent = true: a failed check fails the run
 //     "text":   { "allow": [ { "id", "from", "to", "why" } ] },   literal source text → rendered text; `to` may be ""
 //     "images": "count+alt+width",                        replaces the host+path image comparison
-//     "links":  { "localize": { "sourceHost": "<host>" } },       slot-coverage: CTA hrefs also match as localized
-//     "metadata": { "ignore": ["canonical", "og:url", …], "jsonLd": "count-only" | "ignore", "absent": [ … ] } }
+//     "links":  { "localize": { "sourceHost": "<host>", "prefix"?: "/<ns>" } },  slot-coverage: CTA hrefs also match as localized
+//     "metadata": { "ignore": ["canonical", "og:url", …], "jsonLd": "count-only" | "ignore", "absent": [ … ] },
+//     "disclosures": { "restState": "open", "why": "…" } }        dom-equality: waives the rest-state check
 //
 //   loadDeltas(path)                    read and validate; a UsageError (exit 2) lists every problem at once
 //   isBlocking(deltas)                  false only when the file says "blocking": false
@@ -62,7 +63,7 @@ export function loadDeltas(path) {
     if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || !s.trim())) { problems.push(`${where} must be a list of non-empty strings`); return []; }
     return v;
   };
-  for (const k of Object.keys(raw)) if (!['version', 'blocking', 'text', 'images', 'links', 'metadata'].includes(k)) problems.push(`unknown key "${k}"`);
+  for (const k of Object.keys(raw)) if (!['version', 'blocking', 'text', 'images', 'links', 'metadata', 'disclosures'].includes(k)) problems.push(`unknown key "${k}"`);
   if (raw.version !== 1) problems.push(`version must be 1, got ${raw.version === undefined ? 'nothing' : JSON.stringify(raw.version)}`);
   if (raw.blocking !== undefined && typeof raw.blocking !== 'boolean') problems.push('blocking must be true or false');
 
@@ -86,10 +87,12 @@ export function loadDeltas(path) {
 
   let localize = null;
   if (raw.links !== undefined && nested(raw.links, 'links', ['localize']) && raw.links.localize !== undefined
-    && nested(raw.links.localize, 'links.localize', ['sourceHost'])) {
+    && nested(raw.links.localize, 'links.localize', ['sourceHost', 'prefix'])) {
     const host = raw.links.localize.sourceHost;
+    const { prefix } = raw.links.localize;
     if (typeof host !== 'string' || !host.trim() || /[/\s]/.test(host)) problems.push('links.localize.sourceHost must be a bare host such as "src.test" (no scheme, no path)');
-    else localize = { sourceHost: host };
+    else if (prefix !== undefined && !(typeof prefix === 'string' && /^\/[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/i.test(prefix))) problems.push('links.localize.prefix must be a path such as "/ns" (leading slash, no trailing slash)');
+    else localize = { sourceHost: host, ...(prefix ? { prefix } : {}) };
   }
 
   let ignore = []; let absent = []; let jsonLd = null;
@@ -101,8 +104,14 @@ export function loadDeltas(path) {
       else problems.push(`metadata.jsonLd must be "count-only" or "ignore", got ${JSON.stringify(raw.metadata.jsonLd)}`);
     }
   }
+  let disclosures = null;
+  if (raw.disclosures !== undefined && nested(raw.disclosures, 'disclosures', ['restState', 'why'])) {
+    if (raw.disclosures.restState !== 'open') problems.push(`disclosures.restState must be "open" (the only waiver), got ${JSON.stringify(raw.disclosures.restState)}`);
+    else if (typeof raw.disclosures.why !== 'string' || !raw.disclosures.why.trim()) problems.push('disclosures.why must say why the delivered page starts every disclosure open');
+    else disclosures = { restState: 'open', why: raw.disclosures.why };
+  }
   if (problems.length) throw new UsageError(`deltas ${path}: ${problems.length} problem(s)\n  - ${problems.join('\n  - ')}`);
-  return { version: 1, blocking: raw.blocking !== false, text: { allow }, images: raw.images ?? null, links: { localize }, metadata: { ignore, jsonLd, absent } };
+  return { version: 1, blocking: raw.blocking !== false, text: { allow }, images: raw.images ?? null, links: { localize }, metadata: { ignore, jsonLd, absent }, disclosures };
 }
 
 export const isBlocking = (deltas) => deltas?.blocking !== false;
@@ -147,14 +156,15 @@ export function compareImages(sourceImgs, renderedImgs, mode) {
 
 // deploy's localize-links keeps ?query and #fragment and matches the host with or without www., any scheme.
 const bareHost = (h) => h.toLowerCase().replace(/^www\./, '');
-export function normalizeHref(href, { sourceHost, renderedOrigin }) {
+// prefix: a namespaced deploy (preview.json namespace) serves the source page /x at /<ns>/x.
+export function normalizeHref(href, { sourceHost, renderedOrigin, prefix = '' }) {
   let u;
   try { u = new URL(href, 'https://relative.invalid'); } catch { return href; }
   if (!/^https?:$/.test(u.protocol) || u.hostname === 'relative.invalid' || bareHost(u.host) !== bareHost(sourceHost)) return href;
   // URL percent-encodes the path ("/About Us/" → "%20"); deliveredUrl sanitises the source path as authored
   let path = u.pathname;
   try { path = decodeURIComponent(path); } catch { /* a malformed escape stays as it is */ }
-  return `${renderedOrigin.replace(/\/+$/, '')}${requireEdsPath().deliveredUrl(path)}${u.search}${u.hash}`;
+  return `${renderedOrigin.replace(/\/+$/, '')}${prefix}${requireEdsPath().deliveredUrl(path)}${u.search}${u.hash}`;
 }
 
 export function metadataPlan(deltas) {

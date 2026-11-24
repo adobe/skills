@@ -1,6 +1,6 @@
 ---
 name: reskin
-description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
+description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", "build my site from these Figma pages" (Figma-only, no live site), or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project's stardust/ scripts, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
@@ -22,7 +22,7 @@ The two halves have different contracts:
   explicitly declared, executable normalization ledger.
 - **Design is flexible.** Content is re-laid-out onto donor modules (a
   carousel may become a card grid); structure is informational, never
-  gating.
+  gating — but no source region silently vanishes (gate (a′)).
 
 The decisive rule: **the page is generated programmatically from the
 captured content model — content strings are never retyped.** Byte
@@ -31,6 +31,7 @@ fidelity then holds by construction.
 ## Inputs
 
 - `<content-url>` — required. The site whose content is preserved.
+  Figma-only (no live site): `figma-donor.mjs init <url>`, then Phase 2′.
 - Donor, exactly one of:
   - `--donor <url>` — a live site whose design system is adopted.
   - `--donor-dir <path>` — a directory of local static HTML
@@ -80,6 +81,7 @@ fidelity then holds by construction.
 5. **Full-inventory check** — on resume, and again after Phase 1's
    crawl: a capped crawl is a setup error; re-crawl with `--all`
    (`reference/full-site.md` § Full-inventory check).
+   Figma-only: the inventory is every page `figma-donor.mjs pages` finds.
 
 ## Procedure
 
@@ -165,6 +167,15 @@ experiment's top two failure modes:
    `scripts/source-normalize.mjs`). The **same file is passed to the
    capture and to every gate** (`--normalize`). Format:
    `reference/content-model.md` § Normalization ledger.
+3. **RESIDUE, BANDS, RAILS.** Each one the capture prints is carried
+   in Phase 3 (a rail via `mapping.json` `"rail"`) or declared dropped in
+   `stardust/reskin/coverage/<slug>.json` (`reference/content-model.md`
+   § Placement).
+
+### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
+
+Replaces Phase 2: read `reference/figma-only.md` in full. Clear the
+`blocklist` before deploy; isolated preview only; no `migrate`.
 
 ### Phase 3 — MAPPING BRIEF
 
@@ -213,7 +224,8 @@ donor and site (flags: `reference/render.md`); write a per-archetype
 renderer only where it falls short. The renderer interpolates every visible string, href and image URL from the model
 (HTML-escaped), emits the ordered stream in order and never rebuilds
 order or separators from `visibleText`, renders form controls as
-controls, carries the metadata block verbatim, crops images to the area the
+controls, keeps the structure the stream carries (`reference/content-model.md`
+§ Structure the stream keeps), carries the metadata block verbatim, crops images to the area the
 source shows, takes its surface only from `donor-tokens.json`
 (`render/root-tokens.mjs`) and the mapped modules, wraps each mapped
 slot in `<section data-slot data-module>`, and writes
@@ -222,14 +234,15 @@ reproduce its node throws. Rules: `reference/render.md`.
 
 ### Phase 5 — GATES
 
-Three gate families per page, plus (d) for a Figma donor and (e) for
-a deployed page. Commands, pass bars, tolerances and failure modes:
+Gates (a)–(c) per page; (d) Figma donor; (e) deployed; (f) Figma-only. Commands, pass bars, tolerances and failure modes:
 `reference/gates.md`.
 
 - **(a) Content gate** — `dom-equality.mjs` (visible-text byte
   equality, the ordered image set and image crop, with the page's
   normalize ledger) and `slot-coverage.mjs` (every slot, CTA pair, image and
-  metadata field). All must pass.
+  metadata field). All must pass. Figma-sourced: `figma-text-gate.mjs`
+  replaces `dom-equality`.
+- **(a′) Source coverage** — `source-coverage.mjs`, also on (e).
 - **(b) Design-adoption gate** — `donor-probe.mjs` asserts the
   donor tokens as computed styles, then the **side-by-side
   judgment** against the donor screenshots; record the verdict.
@@ -247,12 +260,14 @@ a deployed page. Commands, pass bars, tolerances and failure modes:
   replaces only `deploy` Step 10's automated reconcile: the eyeball,
   CLS and header checks stay mandatory. Recipe, delta file and budget:
   `reference/deployed-leg.md`.
+- **(f) Exact fidelity** (Figma-only, blocking) — `figma-gate.mjs
+  exact` and `library` (`reference/gates.md` § (f)).
 
 **One fix iteration per gate family** ((e) has its own budget), then
 re-run all gates. Failures left are `residuals[]`, never absorbed or
 looped on. **The ledger is written by script, never by hand:**
 `reskin-ledger.mjs record|eyeball|residual|step10`
-(`reference/gates.md` § Residual logging).
+(`reference/gates.md` § Residual logging); agents never waive chrome.
 
 ### Phase 6 — HANDOFF
 
@@ -342,21 +357,6 @@ the archetype and, through the bridge, moves siblings to `directed`.
 
 ## References
 
-- `reference/donor-sources.md` — donor capture recipes (URL, directory,
-  Figma), token and module contracts.
-- `reference/content-model.md` — capture contract, ordered stream,
-  scope discovery, normalization ledger.
-- `reference/full-site.md` — inventory, page typing, delivery scope.
-- `reference/mapping-brief.md` — entry schema, the ≥80% gate, casing.
-- `reference/mapping-json.md` — `mapping.json` keys and `--check`.
-- `reference/render.md` — `stream-render` and renderer rules.
-- `reference/handoff.md` — approval, bridge, preflight, sibling gate.
-- `reference/gates.md` — gate commands, pass bars, residuals; (d), (e).
-- `reference/deployed-leg.md` — the deployed leg.
-- `reference/vocabulary.md` — building the whole donor vocabulary.
-- `../extract/SKILL.md` § Cross-site brand sources — the
-  `--design-source` donor-capture path Phase 1 delegates to.
-- `../migrate/reference/content-preservation.md` — the content rules
-  reskin inherits (and tightens to byte level).
-- `../diff/SKILL.md` — the pixel + structural probes; reuse them as a
-  supplementary build-side check after Phase 6 deploy, `--profile eds`.
+Each `reference/` file is named where its phase uses it. After Phase 6
+deploy, `../diff/SKILL.md` (`--profile eds`) is a supplementary
+build-side check.
