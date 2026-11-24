@@ -1,8 +1,10 @@
 import { fail, graded, ok, readJson } from '../../lib/outputs.mjs';
 
 const BASE = 'http://localhost:8765';
-const paths = (r) => (readJson(r, 'urls.json')?.urls ?? []).map((u) => u.url.replace(BASE, '')).sort();
-const langs = (r) => new Set((readJson(r, 'urls.json')?.urls ?? []).map((u) => u.lang).filter(Boolean));
+const groups = (r) => readJson(r, 'urls.json')?.urls ?? [];
+const variants = (r) => groups(r).flatMap((g) => g.variants ?? []);
+const paths = (r) => variants(r).map((v) => v.url.replace(BASE, '')).sort();
+const langs = (r) => new Set(variants(r).flatMap((v) => v.lang));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const ALL = [
@@ -32,8 +34,9 @@ const CHECKS = {
     'home, pricing and prix, no fragment': same(paths(r), ['/site/en/pricing.html', '/site/fr-fr/prix.html', '/site/home.html']),
   }),
   'sitemap-valid': (r) => ({
-    'more than ten URLs on the origin': (readJson(r, 'urls.json')?.urls ?? []).length > 10,
-    'all on www.aem.live': (readJson(r, 'urls.json')?.urls ?? []).every((u) => u.url.startsWith('https://www.aem.live/')),
+    'more than ten URLs on the origin': readJson(r, 'urls.json')?.valid > 10,
+    'every group has a URL on www.aem.live': groups(r).every((g) =>
+      [g, ...(g.variants ?? [])].some((v) => v.url.startsWith('https://www.aem.live/'))),
   }),
 };
 
