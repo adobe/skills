@@ -43,7 +43,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check`
+- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check` (an `absent[]` path that appears is `added`)
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`

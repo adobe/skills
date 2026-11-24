@@ -176,7 +176,14 @@ check('--paths-if-present keeps the entries that exist, names each missing one o
   const r = run('freeze', '--paths-if-present', 'head.html,stardust/current/PRODUCT.md,blocks/hero/', '--out', out);
   assert.equal(r.code, 0, r.err); assert.equal(r.err, 'skipped missing stardust/current/PRODUCT.md\n');
   assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')).paths, ['head.html', 'blocks/hero/']);
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')).absent, ['stardust/current/PRODUCT.md'], 'the missing entry is recorded absent');
   assert.equal(run('check', '--manifest', out).code, 0);
+  write('stardust/current/PRODUCT.md', '# synthesized\n');
+  const created = run('check', '--manifest', out);
+  assert.equal(created.code, 1, 'a recorded-absent path that now exists is a change');
+  assert.match(created.out, /^added stardust\/current\/PRODUCT\.md$/m);
+  rmSync(join(root, 'stardust/current/PRODUCT.md'));
+  assert.equal(run('check', '--manifest', out).code, 0, 'removed again: unchanged');
   const none = run('freeze', '--paths-if-present', 'nope.md,also-nope/', '--out', join(root, 'never.json'));
   assert.equal(none.code, 2); assert.match(none.err, /--paths-if-present: none of the listed entries exists/);
   assert.equal(existsSync(join(root, 'never.json')), false);

@@ -26,7 +26,8 @@
  *            { "frozenAt": <ISO>, "root": <--root>, "paths": [...], "files": { <path>: <sha256> } }
  *            Prints `frozen N files → <out>`. --paths-if-present keeps the listed entries that
  *            exist (one `skipped missing <path>` line each on stderr; none existing is a usage
- *            error) — a set that differs by project, such as a design spec. --from re-hashes the
+ *            error) — a set that differs by project, such as a design spec — and records the
+ *            others as `absent[]`: one that exists at `check` time reads `added <path>`. --from re-hashes the
  *            `paths` of an earlier manifest (each must still exist), so a re-freeze keeps a
  *            project's own set instead of falling back to the defaults. The three are exclusive.
  *   check    recompute over the manifest's `paths`. Exit 0 and `foundation unchanged (N files)`
@@ -144,7 +145,7 @@ export function parseArgs(argv) {
 }
 
 // Root-relative frozen entries: strip a leading `./`; never absolute, never climbing out of root.
-function frozenEntries(root, spec, { ifPresent = false, flag = '--paths' } = {}) {
+function frozenEntries(root, spec, { ifPresent = false, flag = '--paths', absent = [] } = {}) {
   const list = (Array.isArray(spec) ? spec : spec.split(',')).map((p) => String(p).trim()).filter(Boolean);
   if (!list.length) usage(`${flag} lists no entry`);
   const kept = list.flatMap((p) => {
@@ -154,6 +155,7 @@ function frozenEntries(root, spec, { ifPresent = false, flag = '--paths' } = {})
     if (existsSync(join(root, rel))) return [rel];
     if (!ifPresent) usage(`${flag} entry not found under ${posix(root)}: ${p}`);
     console.error(`skipped missing ${rel}`);
+    absent.push(rel);
     return [];
   });
   if (!kept.length) usage(`${flag}: none of the listed entries exists under ${posix(root)}`);
@@ -168,13 +170,16 @@ const rootDir = (root) => {
 
 export function freeze({ root, out, paths, pathsIfPresent, from }) {
   const rootAbs = rootDir(root);
-  let list;
+  let list; let absent = [];
   if (paths) list = frozenEntries(rootAbs, paths);
-  else if (pathsIfPresent) list = frozenEntries(rootAbs, pathsIfPresent, { ifPresent: true, flag: '--paths-if-present' });
-  else if (from) list = frozenEntries(rootAbs, readManifest(from).paths, { flag: `--from ${from}` });
-  else list = DEFAULT_PATHS.filter((p) => existsSync(join(rootAbs, p)));
+  else if (pathsIfPresent) list = frozenEntries(rootAbs, pathsIfPresent, { ifPresent: true, flag: '--paths-if-present', absent });
+  else if (from) {
+    const earlier = readManifest(from);
+    list = frozenEntries(rootAbs, earlier.paths, { flag: `--from ${from}` });
+    absent = (earlier.absent || []).filter((p) => !existsSync(join(rootAbs, p)));
+  } else list = DEFAULT_PATHS.filter((p) => existsSync(join(rootAbs, p)));
   const files = snapshot(rootAbs, list);
-  const manifest = { frozenAt: new Date().toISOString(), root, paths: list, files };
+  const manifest = { frozenAt: new Date().toISOString(), root, paths: list, ...(absent.length ? { absent } : {}), files };
   mkdirSync(dirname(resolve(out)), { recursive: true });
   const tmp = `${out}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -199,7 +204,10 @@ export function readManifest(file) {
 
 export function check({ root, manifest: file }) {
   const manifest = readManifest(file);
-  const { changed, missing, added } = compare(manifest, snapshot(rootDir(root), manifest.paths));
+  const rootAbs = rootDir(root);
+  const { changed, missing, added } = compare(manifest, snapshot(rootAbs, manifest.paths));
+  // a path recorded absent at freeze time that exists now was created: `added`, like a new file under a frozen dir
+  for (const p of Array.isArray(manifest.absent) ? manifest.absent : []) if (existsSync(join(rootAbs, p)) && !added.includes(p)) added.push(p);
   if (!changed.length && !missing.length && !added.length) {
     console.log(`foundation unchanged (${Object.keys(manifest.files).length} files)`);
     return 0;

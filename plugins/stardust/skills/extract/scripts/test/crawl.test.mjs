@@ -13,7 +13,9 @@
 // the per-page deadline and the tab is closed. --skip-captured (an extend pass): captured pages leave discovery and
 // --pages before the cap, the entry included; relative state urls resolve against site.originUrl; their slugs stay
 // reserved; their urls are no capture gap; an unreadable or pages-less state file, or an off-origin --pages entry,
-// exits 2 and an all-captured --pages list exits 0, both before any browser; --select-only parses. Run: node <this file>.
+// exits 2 and an all-captured --pages list exits 0 in one line, both before any browser; records already under
+// <out>/pages count as captured; a `www.` prefix is one page; under --skip-captured --pages is exact (no entry);
+// assets and other hosts never take a slot in either order; --select-only parses. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -240,6 +242,12 @@ await checkAsync('discover --skip-captured: --pages drops listed pages already c
   assert.deepEqual(r.value, ['https://ex.test/blog/a']);
   r = await run(['--pages', '/about']);
   assert.deepEqual(r.value, [], 'nothing new');
+  // a pilot that delivered /intro, not the entry: a named extension never adds the uncaptured entry
+  const args = parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', '--skip-captured', 's.json', '--pages', '/visit']);
+  args.captured = crawl.capturedFromState({ pages: [{ slug: 'intro', url: 'https://ex.test/intro' }] });
+  assert.deepEqual(await discover(args, stub), ['https://ex.test/visit']);
+  const plain = parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', '--pages', '/visit']);
+  assert.deepEqual(await discover(plain, stub), ['https://ex.test/', 'https://ex.test/visit'], 'without --skip-captured the entry is still added');
 });
 check('captureGaps: a target an earlier pass captured (alsoCaptured) is not a gap', () => {
   const rec = { url: 'https://ex.test/fr/', slug: 'fr', links: ['/fr/a', '/fr/b'] };
@@ -267,12 +275,40 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     const none = spawnSync(process.execPath, [...base, '--pages', '/about'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(none.status, 0, none.stderr);
     assert.match(none.stderr, /0 new pages — every listed page is already captured/);
+    assert.equal(none.stderr.trim().split('\n').length, 1, `one line: ${none.stderr}`);
     assert.equal(none.stdout, '');
     assert.equal(existsSync(join(root, 'out')), false, 'nothing written');
     const off = spawnSync(process.execPath, [...base, '--pages', '/about,https://other.example.org/x'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(off.status, 2, off.stderr);
-    assert.match(off.stderr, /off the origin of --url: https:\/\/other\.example\.org\/x/);
+    assert.match(off.stderr, /off the site of --url: https:\/\/other\.example\.org\/x/);
+    // an interrupted run: a record under <out>/pages/ that state.json does not list yet is captured too
+    mkdirSync(join(root, 'out', 'pages'), { recursive: true });
+    writeFileSync(join(root, 'out', 'pages', 'visit.json'), JSON.stringify({ slug: 'visit', url: 'https://www.example.com/visit/' }));
+    const resumed = spawnSync(process.execPath, [...base, '--pages', '/visit'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.match(resumed.stderr, /0 new pages .*1 record\(s\) under .*pages not in it/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('captureKey / precheckPages: a `www.` prefix is one site and one page — a roster that followed the apex → www redirect replays against the apex entry', () => {
+  assert.equal(crawl.captureKey('https://www.ex.test/visit/'), crawl.captureKey('https://ex.test/visit'));
+  assert.notEqual(crawl.captureKey('http://ex.test/visit'), crawl.captureKey('https://ex.test/visit'));
+  const captured = crawl.capturedFromState({ pages: [{ slug: 'index', url: 'https://ex.test/' }] });
+  const r = crawl.precheckPages({ url: 'https://ex.test/', pages: ['https://www.ex.test/visit/', 'https://www.ex.test/'], captured });
+  assert.deepEqual(r.offOrigin, []);
+  assert.deepEqual(r.fresh, ['https://www.ex.test/visit/']);
+});
+check('addCapturedRecords: records on disk add their urls and slugs, count only the new ones', () => {
+  const c = crawl.capturedFromState(STATE);
+  assert.equal(crawl.addCapturedRecords(c, [{ slug: 'visit', url: 'https://ex.test/visit/' }, { slug: 'about', url: 'https://ex.test/about' }, { slug: 'broken' }]), 1);
+  assert.ok(c.keys.has(crawl.captureKey('https://ex.test/visit')));
+  assert.ok(c.slugs.has('broken') && c.slugs.has('visit'));
+});
+check('selectPages: assets and other hosts never take a slot in either order — the discovered list is filtered before the cap', () => {
+  const discovered = ['https://ex.test/report.pdf', 'https://ex.test.evil.test/x', 'https://ex.test/visit', 'https://ex.test/shop'];
+  const exclude = new Set([crawl.captureKey('https://ex.test/')]);
+  for (const linkFirst of [false, true]) {
+    assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 1, linkFirst, exclude }).urls, ['https://ex.test/visit'], String(linkFirst));
+  }
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);

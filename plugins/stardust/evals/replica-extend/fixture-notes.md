@@ -7,7 +7,8 @@
 http://localhost:8780/ --pages / --max 1 --dynamics`; the full-page screenshot
 the record names is not included (180 KB, not read by the scenario). Everything
 else — state, ledger, spec, progress files, the foundation and its manifest —
-is written by hand in the shapes the skills document; the first pass's
+is written by hand in the shapes the skills document; `setup.sh` makes the
+work directory a git repository of one commit, as a delivered project is; the first pass's
 `_crawl-log.json` records `discovery.capSource: "--cap"` (a user-named cap of
 1), so the next page is chosen link-first. No delivery target exists.
 
@@ -20,11 +21,11 @@ Playwright installed:
   stardust/replica/extend/x1/spec-freeze.json` → `frozen 6 files`;
   `freeze --from stardust/rollout/foundation-freeze.json` → `frozen 3 files`,
   paths `styles/`, `head.html`, `blocks/header/`.
-- `crawl.mjs --url http://localhost:8780 --max 1 --link-first --skip-captured
-  stardust/state.json --select-only` prints `http://localhost:8780/visit/` and
-  writes nothing.
-- `crawl.mjs --url http://localhost:8780 --pages http://localhost:8780/visit/
-  --dynamics --skip-captured stardust/state.json` captures `visit` only;
+- `stardust/scripts/extract/crawl.mjs --url http://localhost:8780 --max 1
+  --link-first --skip-captured stardust/state.json --select-only` prints
+  `http://localhost:8780/visit/` and writes nothing.
+- the same crawler with `--pages http://localhost:8780/visit/ --dynamics
+  --skip-captured stardust/state.json` captures `visit` only;
   `index.json` and `index.html` are unchanged and the spec check exits 0. The
   crawl rewrites `_crawl-log.json`'s `discovery` (no `capSource` afterwards):
   the order is read before it, into `stardust/replica/extend/order.txt`.

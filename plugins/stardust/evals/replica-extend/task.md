@@ -20,6 +20,7 @@ as any remote origin.
 - `stardust/scripts/<skill>/`: the plugin's scripts, copied as the replica
   skill's Setup has it. No `node_modules`: Playwright and Chromium are not
   installed.
+- A git repository with one commit, the delivered state.
 - No delivery target is reachable from this machine: no DA token, no AEM
   host.
 

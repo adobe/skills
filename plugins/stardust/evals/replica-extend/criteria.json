@@ -10,12 +10,12 @@
     {
       "name": "spec_frozen",
       "max_score": 20,
-      "description": "stardust/replica/extend/x1/ holds a copy of the spec files that exist (root and stardust/current/ PRODUCT.md, DESIGN.md, DESIGN.json) and a foundation-freeze manifest over them; stardust/rollout/foundation-freeze.json is re-frozen with the same paths as the fixture's (styles/, head.html, blocks/header/), not the script's defaults. At the end the six spec files and stardust/direction.md are byte-identical to the fixture: no re-promotion, no extract synthesis (Phases 3–5 of extract) over the new page, no module added to DESIGN.json."
+      "description": "stardust/replica/extend/x1/ holds a copy of the spec files that exist (root and stardust/current/ PRODUCT.md, DESIGN.md, DESIGN.json), a foundation-freeze manifest over them, request.txt and base.txt (the opening commit); stardust/rollout/foundation-freeze.json is re-frozen with the same paths as the fixture's (styles/, head.html, blocks/header/), not the script's defaults. At the end the six spec files and stardust/direction.md are byte-identical to the fixture: no re-promotion, no extract synthesis (Phases 3–5 of extract) over the new page, no module added to DESIGN.json."
     },
     {
       "name": "roster_before_capture",
       "max_score": 20,
-      "description": "The pass's roster is written before the page is captured: stardust/replica/extend/x1/urls.txt holds exactly http://localhost:8780/visit/, selected with `crawl.mjs … --skip-captured stardust/state.json --select-only` (with `--max 1`; `--link-first` because the first pass's cap was user-named — recorded in stardust/replica/extend/order.txt). A roster chosen by reading the site's links by hand, or written after the capture, fails."
+      "description": "The pass's roster is written before the page is captured: stardust/replica/extend/x1/urls.txt holds exactly http://localhost:8780/visit/, selected with `stardust/scripts/extract/crawl.mjs … --skip-captured stardust/state.json --select-only` (with `--max 1`; `--link-first` because the first pass's crawl log records a user-named cap, `capSource: --cap` — recorded in stardust/replica/extend/order.txt), its output renamed into urls.txt only after the command exited 0. A roster chosen by reading the site's links by hand, or written after the capture, fails."
     },
     {
       "name": "no_recapture",
