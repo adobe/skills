@@ -59,7 +59,9 @@
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
- *             restrict the run to a subset (re-drive only these).
+ *             restrict the run to a subset (re-drive only these); a `.html` entry —
+ *             a content file path as localize-links.mjs --json lists it — counts as
+ *             the same page without its extension.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
@@ -294,7 +296,7 @@ async function main() {
   let pages = await walkHtml(args.content);
   if (args.paths) {
     const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-      .map((p) => (p.startsWith('/') ? p : `/${p}`)));
+      .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '')));
     pages = pages.filter((p) => want.has(p.webPath));
   }
   const ledger = (!args.force && existsSync(args.ledger))

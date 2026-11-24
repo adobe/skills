@@ -11,8 +11,9 @@
 // record, a 2xx interstitial / an uncleared 403 challenge / a CloudFront 403 on an inner page are BotChallenge
 // failures naming the wall (a bare 403 stays HTTPError), a navigation that never settles is a TimeoutError under
 // the per-page deadline and the tab is closed. --skip-captured (an extend pass): captured pages leave discovery and
-// --pages before the cap, the entry included; their slugs stay reserved; their urls are no capture gap; an unreadable
-// state file exits 2 before any browser. Run: node <this file>.
+// --pages before the cap, the entry included; relative state urls resolve against site.originUrl; their slugs stay
+// reserved; their urls are no capture gap; an unreadable or pages-less state file, or an off-origin --pages entry,
+// exits 2 and an all-captured --pages list exits 0, both before any browser; --select-only parses. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -179,13 +180,29 @@ check('parseArgs: --skip-captured takes a path; a missing value is a usage error
   assert.equal(parse().skipCaptured, undefined);
   assert.throws(() => parse('--skip-captured'), /--skip-captured needs a state\.json path/);
   assert.throws(() => parse('--skip-captured', '--max', '3'), /--skip-captured needs a state\.json path/);
+  assert.equal(parse('--select-only').selectOnly, true);
+  assert.equal(parse().selectOnly, undefined);
 });
-check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too), an empty or odd state is empty', () => {
+check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too); a valid empty pages[] is empty; no pages[] array throws', () => {
   const c = crawl.capturedFromState(STATE);
   assert.deepEqual([...c.keys].sort(), ['https://ex.test', 'https://ex.test/about', 'https://ex.test/about-us']);
   assert.deepEqual([...c.slugs].sort(), ['about', 'blog-a', 'index']);
   assert.equal(c.urls.length, 3);
-  for (const s of [{}, null, { pages: 'x' }]) assert.equal(crawl.capturedFromState(s).keys.size, 0);
+  assert.equal(crawl.capturedFromState({ pages: [] }).keys.size, 0);
+  for (const s of [{}, null, { pages: 'x' }]) assert.throws(() => crawl.capturedFromState(s), /has no pages\[\] array/);
+});
+check('capturedFromState: relative urls (the golden migrate fixture\'s shape) resolve against site.originUrl', () => {
+  const c = crawl.capturedFromState({ site: { originUrl: 'https://ex.test' }, pages: [
+    { slug: 'index', url: '/' }, { slug: 'docs', url: '/docs/' }, { slug: 'start', url: '/docs/getting-started.html' }] });
+  assert.deepEqual([...c.keys].sort(), ['https://ex.test', 'https://ex.test/docs', 'https://ex.test/docs/getting-started.html']);
+  assert.equal(crawl.capturedFromState({ pages: [{ slug: 'x', url: '/x' }] }).keys.size, 0, 'no origin: unresolvable, slug still reserved');
+});
+check('precheckPages: off-origin listed urls are named; fresh is the uncaptured listed pages plus the entry when it is new', () => {
+  const args = { url: 'https://ex.test/', pages: ['/about', '/new', 'https://other.test/x'], captured: crawl.capturedFromState(STATE) };
+  const r = crawl.precheckPages(args);
+  assert.deepEqual(r.offOrigin, ['https://other.test/x']);
+  assert.deepEqual(r.fresh, ['https://ex.test/new']);
+  assert.deepEqual(crawl.precheckPages({ ...args, pages: ['/about/', '/about-us'] }).fresh, []);
 });
 check('selectPages: excluded pages (the entry included) are dropped BEFORE the cap — max n is the next n', () => {
   const exclude = crawl.capturedFromState(STATE).keys;
@@ -236,6 +253,25 @@ check('CLI: --skip-captured with an unreadable state file exits 2 naming the fil
     assert.equal(result.status, 2, result.stderr);
     assert.match(result.stderr, /\[crawl\] fatal: --skip-captured: cannot read .*missing\.json as JSON \(ENOENT\)/);
     assert.equal(existsSync(join(root, 'out')), false, 'nothing written');
+    writeFileSync(join(root, 'odd.json'), '{}');
+    const odd = spawnSync(process.execPath, [SCRIPT, '--url', 'https://www.example.com/', '--out', join(root, 'out'), '--skip-captured', join(root, 'odd.json')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(odd.status, 2, odd.stderr);
+    assert.match(odd.stderr, /odd\.json has no pages\[\] array/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('CLI: --skip-captured with a --pages list that is all captured exits 0 with one line before any browser starts; an off-origin entry exits 2', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-all-captured-'));
+  try {
+    writeFileSync(join(root, 'state.json'), JSON.stringify({ site: { originUrl: 'https://www.example.com' }, pages: [{ slug: 'index', url: '/' }, { slug: 'about', url: '/about/' }] }));
+    const base = [SCRIPT, '--url', 'https://www.example.com/', '--out', join(root, 'out'), '--skip-captured', join(root, 'state.json')];
+    const none = spawnSync(process.execPath, [...base, '--pages', '/about'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(none.status, 0, none.stderr);
+    assert.match(none.stderr, /0 new pages — every listed page is already captured/);
+    assert.equal(none.stdout, '');
+    assert.equal(existsSync(join(root, 'out')), false, 'nothing written');
+    const off = spawnSync(process.execPath, [...base, '--pages', '/about,https://other.example.org/x'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(off.status, 2, off.stderr);
+    assert.match(off.stderr, /off the origin of --url: https:\/\/other\.example\.org\/x/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {

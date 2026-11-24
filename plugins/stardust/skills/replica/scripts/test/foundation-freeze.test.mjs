@@ -171,6 +171,32 @@ check('--paths refuses a missing entry, an absolute path and a climb out of --ro
   }
   assert.equal(readdirSync(root).includes('never.json'), false, 'a refused freeze writes nothing');
 });
+check('--paths-if-present keeps the entries that exist, names each missing one on stderr; none existing is exit 2', () => {
+  const out = join(root, 'spec.json');
+  const r = run('freeze', '--paths-if-present', 'head.html,stardust/current/PRODUCT.md,blocks/hero/', '--out', out);
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, 'skipped missing stardust/current/PRODUCT.md\n');
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')).paths, ['head.html', 'blocks/hero/']);
+  assert.equal(run('check', '--manifest', out).code, 0);
+  const none = run('freeze', '--paths-if-present', 'nope.md,also-nope/', '--out', join(root, 'never.json'));
+  assert.equal(none.code, 2); assert.match(none.err, /--paths-if-present: none of the listed entries exists/);
+  assert.equal(existsSync(join(root, 'never.json')), false);
+});
+check('--from re-freezes an earlier manifest\'s own path set (never the defaults); a vanished entry is exit 2; the three set flags are exclusive', () => {
+  const first = join(root, 'own.json');
+  assert.equal(run('freeze', '--paths', 'blocks/hero/,head.html', '--out', first).code, 0);
+  write('blocks/hero/hero.css', '.hero { min-height: 55vh; }\n');
+  const again = join(root, 'again.json');
+  const r = run('freeze', '--from', first, '--out', again); assert.equal(r.code, 0, r.err);
+  const m = JSON.parse(readFileSync(again, 'utf8'));
+  assert.deepEqual(m.paths, ['blocks/hero/', 'head.html'], 'the earlier set, not DEFAULT_PATHS');
+  assert.equal(m.files['blocks/hero/hero.css'], sha('.hero { min-height: 55vh; }\n'), 're-hashed as the files stand now');
+  const self = run('freeze', '--from', first, '--out', first); assert.equal(self.code, 0, 'in place: read, then rewritten');
+  write('gone/x.css', 'x{}\n'); assert.equal(run('freeze', '--paths', 'gone/', '--out', join(root, 'gone.json')).code, 0);
+  rmSync(join(root, 'gone'), { recursive: true, force: true });
+  const lost = run('freeze', '--from', join(root, 'gone.json'), '--out', join(root, 'never.json'));
+  assert.equal(lost.code, 2); assert.match(lost.err, /--from .*gone\.json entry not found/);
+  const both = run('freeze', '--from', first, '--paths', 'head.html'); assert.equal(both.code, 2); assert.match(both.err, /exclusive/);
+});
 check('--help (and -h, in any position) exits 0 with the usage and touches nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'foundation-freeze-help-'));
   for (const args of [['--help'], ['-h'], ['freeze', '--help'], ['check', '--root', 'x', '-h']]) {

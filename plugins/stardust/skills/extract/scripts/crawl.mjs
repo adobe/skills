@@ -61,7 +61,8 @@
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json]
+ *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json] \
+ *     [--select-only]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
@@ -77,11 +78,17 @@
  *     --page-timeout <s>      per-page deadline (default 60; 0 = none): a page that never settles is
  *                             recorded as TimeoutError instead of eating the run's cap
  *     --skip-captured <file>  a later pass over a captured site (replica's extend pass): every page
- *                             whose url is a `pages[]` row of this state.json is dropped BEFORE the
- *                             cap — from discovery and from --pages, the entry included — so --max n
- *                             is the next n pages in the same order; a new page never takes a slug
- *                             that file already holds (it gets the -<hash4> suffix). Nothing new →
- *                             one line, exit 0, nothing written
+ *                             whose url is a `pages[]` row of this state.json (a relative url resolved
+ *                             against its site.originUrl) is dropped BEFORE the cap — from discovery
+ *                             and from --pages, the entry included — so --max n is the next n pages in
+ *                             the same order; a new page never takes a slug that file already holds (it
+ *                             gets the -<hash4> suffix). A file without a pages[] array, or a --pages
+ *                             entry off the --url origin, exits 2 before any browser starts. Nothing
+ *                             new → one line, exit 0, nothing written (a --pages list that is all
+ *                             captured is known before the browser starts)
+ *     --select-only           discover and select as above, print the selected urls on stdout, one
+ *                             per line, and stop: nothing captured, nothing written — the roster a
+ *                             caller records before the capture (replica's extend pass)
  *
  * Browser and bot walls: real Chrome headless (channel: chrome — the installed browser's own identity,
  * no launch flags) first, bundled Chromium only when Chrome is missing (technique chrome |
@@ -222,6 +229,7 @@ export function parseArgs(argv) {
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
+    else if (k === '--select-only') a.selectOnly = true;
     else if (k === '--skip-captured') {
       a.skipCaptured = argv[(i += 1)];
       if (!a.skipCaptured || a.skipCaptured.startsWith('--')) throw new Error('--skip-captured needs a state.json path');
@@ -267,19 +275,37 @@ export function assignSlugs(urls, taken = new Set()) {
 
 /**
  * What an earlier pass captured, from a state.json object (--skip-captured): `keys`, the dedupe keys of every
- * `pages[]` row's url (and finalUrl when recorded), `urls`, those urls as parsed (for the capture-gap post-pass),
- * and `slugs`, the slugs those rows hold. A row without a parsable url still reserves its slug. Pure.
+ * `pages[]` row's url (and finalUrl when recorded; a relative one resolved against `site.originUrl`), `urls`,
+ * those urls as parsed (for the capture-gap post-pass), and `slugs`, the slugs those rows hold. A row without a
+ * resolvable url still reserves its slug. Throws when `pages` is not an array: a wrong file must not turn the
+ * exclusion off. Pure.
  */
 export function capturedFromState(state) {
+  if (!Array.isArray(state?.pages)) throw new Error('has no pages[] array — not a stardust state.json');
   const keys = new Set(); const slugs = new Set(); const urls = [];
-  for (const p of Array.isArray(state?.pages) ? state.pages : []) {
+  const base = state.site?.originUrl || undefined;
+  for (const p of state.pages) {
     if (p?.slug) slugs.add(String(p.slug));
     for (const u of [p?.url, p?.finalUrl]) {
       if (!u) continue;
-      try { const n = normalizeUrl(u); keys.add(dedupeKey(n)); urls.push(n); } catch { /* unparsable: the slug still counts */ }
+      try { const n = normalizeUrl(u, base); keys.add(dedupeKey(n)); urls.push(n); } catch { /* unresolvable: the slug still counts */ }
     }
   }
   return { keys, slugs, urls };
+}
+
+/**
+ * The --pages check that needs no browser (--skip-captured): `offOrigin`, the listed urls outside the entry's
+ * origin, and `fresh`, the listed urls not captured plus the entry when it is not captured — empty means the run
+ * has nothing to capture. Pure.
+ */
+export function precheckPages(args) {
+  const origin = new URL(args.url).origin;
+  const listed = args.pages.map((p) => normalizeUrl(p, args.url));
+  const offOrigin = listed.filter((u) => new URL(u).origin !== origin);
+  const exclude = args.captured.keys;
+  const fresh = [normalizeUrl(args.url), ...listed].filter((u) => new URL(u).origin === origin && !exclude.has(dedupeKey(u)));
+  return { offOrigin, fresh };
 }
 
 // ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
@@ -1340,8 +1366,16 @@ async function main() {
     try { state = JSON.parse(await readFile(args.skipCaptured, 'utf8')); } catch (e) {
       throw new Error(`--skip-captured: cannot read ${args.skipCaptured} as JSON (${e.code || e.message})`);
     }
-    args.captured = capturedFromState(state);
+    try { args.captured = capturedFromState(state); } catch (e) { throw new Error(`--skip-captured: ${args.skipCaptured} ${e.message}`); }
     console.error(`[crawl] --skip-captured: ${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) from ${args.skipCaptured} are excluded`);
+    if (args.pages) {
+      const { offOrigin, fresh } = precheckPages(args);
+      if (offOrigin.length) throw new Error(`--skip-captured: --pages lists ${offOrigin.length} url(s) off the origin of --url: ${offOrigin.join(', ')}`);
+      if (!fresh.length) {
+        console.error('[crawl] done. 0 new pages — every listed page is already captured (--skip-captured); nothing written');
+        return;
+      }
+    }
   }
   let stealth = false;
   let { browser, technique } = await launchWithFallback();
@@ -1398,6 +1432,14 @@ async function main() {
   } catch { /* keep declared origin */ }
 
   const urls = await discover(args, probe);
+  if (args.selectOnly) {
+    await probe.close().catch(() => {});
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+    if (urls.length) console.log(urls.join('\n'));
+    console.error(`[crawl] --select-only: ${urls.length} page(s) selected; nothing captured, nothing written`);
+    return;
+  }
   if (args.captured && !urls.length) {
     await probe.close().catch(() => {});
     await context.close().catch(() => {});

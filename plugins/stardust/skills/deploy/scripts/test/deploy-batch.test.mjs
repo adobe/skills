@@ -169,6 +169,15 @@ await check('happy path: PUT (multipart `data`, text/html, Authorization) → pr
   const log = logOf('site-a');
   assert.equal(log.length, 2); assert.ok(log.every((e) => e.step === 'verify' && e.ok === true && e.t));
 });
+await check('--paths takes web paths and content file paths alike (`/x.html` is `/x`, as localize-links --json lists them); only the listed pages are driven', async () => {
+  site('site-p', ['p1', 'p2', 'deep/p3']);
+  writeFileSync(join(proj, 'site-p.paths'), '/p1.html\ndeep/p3\n');
+  const from = requests.length;
+  const r = await run(['--content', 'site-p', '--paths', 'site-p.paths']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[deploy-batch\] 2 pages, 0 already live, 2 to drive/m);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/deep/p3.html`, `${SRC}/p1.html`]);
+});
 await check('re-run skips pages already live (re-verified on the delivered origin, no admin call); --force re-drives them', async () => {
   const from = requests.length;
   const r = await run(['--content', 'site-a']);

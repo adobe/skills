@@ -1,0 +1,32 @@
+{"ts":"2026-11-21T09:00:00Z","skill":"stardust:replica","phase":"extract","event":"start"}
+{"ts":"2026-11-21T09:40:00Z","skill":"stardust:replica","phase":"extract","event":"end","detail":"done"}
+{"ts":"2026-11-21T10:00:00Z","skill":"stardust:replica","phase":"preserve-direction","event":"start"}
+{"ts":"2026-11-21T10:40:00Z","skill":"stardust:replica","phase":"preserve-direction","event":"end","detail":"done"}
+{"ts":"2026-11-21T11:00:00Z","skill":"stardust:replica","phase":"recreate","event":"start"}
+{"ts":"2026-11-21T11:40:00Z","skill":"stardust:replica","phase":"recreate","event":"end","detail":"done"}
+{"ts":"2026-11-21T12:00:00Z","skill":"stardust:replica","phase":"source-fidelity-gate","event":"start"}
+{"ts":"2026-11-21T12:40:00Z","skill":"stardust:replica","phase":"source-fidelity-gate","event":"end","detail":"done"}
+{"ts":"2026-11-21T13:45:00Z","skill":"stardust:replica","phase":"handoff","event":"start"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"A-inventory","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"A-inventory","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"B-block","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"B-block","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"B2-dynamic","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"B2-dynamic","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"C-deliver","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"C-deliver","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"D-site","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"D-site","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"E-full-site","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"E-full-site","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"E2-link-audit","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"E2-link-audit","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"F-optimize","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"F-optimize","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"G-aem","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"G-aem","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"H-report","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"H-report","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T14:00:00Z","skill":"stardust:rollout","phase":"I-dashboard","event":"start"}
+{"ts":"2026-11-21T16:30:00Z","skill":"stardust:rollout","phase":"I-dashboard","event":"end","detail":"1 page"}
+{"ts":"2026-11-21T16:40:00Z","skill":"stardust:replica","phase":"handoff","event":"end","detail":"1 pages delivered; published-origin gate 1/1 pass"}

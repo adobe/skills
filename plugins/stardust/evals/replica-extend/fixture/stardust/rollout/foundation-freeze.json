@@ -1,0 +1,14 @@
+{
+  "frozenAt": "2026-11-21T15:00:00Z",
+  "root": ".",
+  "paths": [
+    "styles/",
+    "head.html",
+    "blocks/header/"
+  ],
+  "files": {
+    "blocks/header/header.css": "336c0bc72ffaa05e40457e1f3d88240604d6aad0c7d9b56285bbb5f72c726da0",
+    "head.html": "38bb79ecc975a7919fd3174f377c518ba12d8705973f3871682efe56b8078991",
+    "styles/styles.css": "ff722f9fbe8775091d6e2e53e926b21fa5ebad19230d03cc703fa5fe0b548d48"
+  }
+}

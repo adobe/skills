@@ -1,0 +1,10 @@
+{
+  "description": "A delivered replica run of one page (home), extended by the next page of the site (fixture/), against the fixture site on localhost (setup.sh starts it and copies the plugin scripts)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixture",
+      "installPath": "."
+    }
+  }
+}

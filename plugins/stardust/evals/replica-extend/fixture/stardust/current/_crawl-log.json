@@ -1,0 +1,51 @@
+{
+  "discovery": {
+    "fetchTechnique": "chrome",
+    "count": 1,
+    "concurrency": 4,
+    "capSource": "--cap",
+    "cap": 1,
+    "cappedAt": 1,
+    "kept": [
+      {
+        "url": "http://localhost:8780/",
+        "slug": "index"
+      }
+    ],
+    "cut": [
+      {
+        "url": "http://localhost:8780/visit/",
+        "slug": "visit",
+        "reason": "below cap"
+      }
+    ]
+  },
+  "consent": {
+    "method": "auto"
+  },
+  "favicon": {
+    "url": "http://localhost:8780/img/icon.svg",
+    "file": "assets/favicon.svg"
+  },
+  "crawl": {
+    "failures": [],
+    "degraded": [],
+    "pageTimeoutMs": 60000
+  },
+  "captureGaps": {
+    "roots": [],
+    "detail": "uncaptured first-level targets: none (no locale root captured)"
+  },
+  "dynamicSurface": {
+    "pages": 1,
+    "pagesWithSameSiteData": 0,
+    "pagesWithSearchForm": 0,
+    "pagesHydrated": 0,
+    "truncatedPages": 0,
+    "endpoints": [],
+    "thirdPartyScriptHosts": [],
+    "frameworkHints": [],
+    "globalState": [],
+    "formTargets": []
+  }
+}

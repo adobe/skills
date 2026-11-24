@@ -13,51 +13,66 @@ A pass runs Phases 1 and 3–5 over its new pages only — never the whole proce
 
 ## Entry — when a pass opens
 
-`node stardust/scripts/stardust/ledger.mjs last replica` decides:
+Refuse before writing anything unless: exactly one of `--extend` / `--extend-next`; `--extend-next` a positive
+integer (`0` would lift the crawl cap); every `--extend` URL http(s) on the origin of `state.json.site.originUrl`;
+`state.json.flow` is `replica`. Then `node stardust/scripts/stardust/ledger.mjs last replica` decides:
 
 | Latest replica line | Without `--extend*` | With `--extend*` |
 |---|---|---|
 | `handoff end` (no track) or `extend end` (track `x<N>`) | delivered: the state report, then stop — the run is complete, nothing re-runs | open pass `x<N+1>` |
-| any other line of track `x<N>` | resume pass `x<N>` — its units not `done` | resume pass `x<N>` first; a new pass opens only after its `extend end` |
+| any other line of track `x<N>` | resume pass `x<N>` from its roster (§ 2) — its units not `done` | resume pass `x<N>` first; a new pass opens only after its `extend end` |
 | a first-pass line (no track) before `handoff end` | the first pass resumes (`../SKILL.md` § Procedure) | refuse: the first pass is not delivered |
-
-Also refuse when `state.json.flow` is not `replica`, or when `<URL>` resolves to another origin than
-`state.json.site.originUrl` (extract's origin collision).
 
 **Pass number** `N` = the count of `stardust/replica/extend/x*/` directories + 1. Every ledger line of the pass —
 replica, extract, migrate, rollout — carries `--track x<N>`, so its pairs never close or reopen another pass's
-(`done-check.mjs` reads the last `I-dashboard` line whatever its track). The pass opens, in order:
+(`done-check.mjs` reads the last `I-dashboard` line whatever its track). The pass opens with these commands, in
+order; any non-zero exit stops the pass before the extract:
 
 ```bash
 L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/foundation-freeze.mjs"
-$L replica extend start --track x1 --detail "--extend-next 300" --strict
-mkdir -p stardust/replica/extend/x1
-# the spec guard — the listed files that exist (a bounded-entry project has no current/PRODUCT.md)
-$F freeze --paths PRODUCT.md,DESIGN.md,DESIGN.json,stardust/current/PRODUCT.md,stardust/current/DESIGN.md,stardust/current/DESIGN.json --out stardust/replica/extend/x1/spec-freeze.json
-$F freeze    # re-freeze the delivered foundation: the manifest C0 wrote predates the requests C-final applied
+X=stardust/replica/extend/x1
+$L replica extend start --track x1 --detail "extend-next 300" --strict   # a --detail value never starts with --
+SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
+for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
+$F freeze --paths-if-present "$(echo $SPEC | tr ' ' ,)" --out $X/spec-freeze.json
+$F freeze --from stardust/rollout/foundation-freeze.json   # the project's own set, re-hashed as delivered by the last C-final
 ```
 
 ## 1. The spec is frozen
 
 A pass never writes `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` or the promoted root copies, and
 Phase 2's promotion and `direction.md` do not re-run: extract's synthesis over the new pages alone would replace the
-gated spec. `$F check --manifest stardust/replica/extend/x<N>/spec-freeze.json` runs after the extract and before
-`extend end`; exit 1 → `git checkout -- <path>`. The foundation is frozen from the pass's opening; a change a new
-page needs is one line in `stardust/rollout/foundation-requests.md` (`handoff-contract.md` § 3, Fan-out
-discipline). The register gains entries only for a new page type, appended.
+gated spec. `$F check --manifest $X/spec-freeze.json` runs after the extract and before `extend end`; on exit 1, copy
+the named files back from `$X/spec/` (never `git checkout`, which restores the index, not the opening bytes) and run
+the check again until it exits 0. A change a new page needs is one line in `stardust/rollout/foundation-requests.md`
+(`handoff-contract.md` § 3, Fan-out discipline). The register gains entries only for a new page type, appended.
 
-## 2. Extract — the new pages only
+## 2. The roster, then the extract
 
-`replica extract start --track x<N>`, then `$stardust extract <URL> --prep --dynamics` with `--pages <urls>`
-(`--extend`) or `--cap <n>` (`--extend-next`, plus `--link-first` when the first pass's cap was user-named —
-`_crawl-log.json` `discovery.capSource`), its crawl run with
-`crawl.mjs … --skip-captured stardust/state.json`: every page already in `state.json` is dropped before the cap, the
-entry included, and a new page never takes a slug an earlier pass holds. A re-captured delivered page would change
-its JSON, and `inventory.mjs` would flag it `stale`. The pass runs extract's Phases 1, 2, 2.5 and 6 and prep's
-page typing and typed slots (`../../extract/reference/prep-mode.md` § 2, § 4) — never Phases 3–5. Module detection
-matches the new pages against the frozen `DESIGN.json.extensions.modules[]`; a repeat outside it is a row in the
-pass's journal section, never a `DESIGN.json` edit. Capture gaps settle here as in a first pass. Write the new slugs,
-one per line, to `stardust/replica/extend/x<N>/slugs.txt` — every `--only` list of the pass comes from it.
+`replica extract start --track x<N>`. The roster is fixed BEFORE any capture, in `$X/urls.txt`, and a resumed pass
+reads it and never selects again (`<origin>` = `state.json.site.originUrl`):
+
+```bash
+C=stardust/scripts/crawl.mjs   # extract's project copy (extract § Setup)
+node $C --url <origin> --pages <url,url,...> --skip-captured stardust/state.json --select-only > $X/urls.txt          # --extend
+node $C --url <origin> --max <n> [--link-first] --skip-captured stardust/state.json --select-only > $X/urls.txt     # --extend-next
+```
+
+`--skip-captured` drops every page already in `state.json` before the cap, the entry included; `--link-first` only
+when `stardust/replica/extend/order.txt` reads `link-first`. Pass `x1` writes that file before its selection, from the
+first pass: `link-first` when its cap was user-named (`_crawl-log.json` `discovery.capSource` `--cap` or
+`prompt-intent`, or `state.json.site.pageCap` a positive number), else `discovered`; later crawls rewrite the crawl
+log, so later passes read the file. An empty `urls.txt` ends the pass (spec check, then `extend end`).
+
+Then `$stardust extract <origin> --prep --dynamics --pages <the urls.txt list>`, its crawl run with
+`--skip-captured stardust/state.json`: a roster page captured before an interruption is not captured again, and a
+new page never takes a slug an earlier pass holds. A re-captured delivered page would change its JSON, and
+`inventory.mjs` would flag it `stale`. The pass runs extract's Phases 1, 2, 2.5 and 6 and prep's page typing and typed
+slots (`../../extract/reference/prep-mode.md` § 2, § 4) — never Phases 3–5. Module detection matches the new pages
+against the frozen `DESIGN.json.extensions.modules[]`; a repeat outside it is a row in the pass's journal section,
+never a `DESIGN.json` edit. Capture gaps settle as in a first pass. `$X/slugs.txt` gets the `state.json` slug of
+each roster row, one per line — every `--only` list of the pass comes from it. A roster page that still fails after
+one re-run is named in the journal and the `extend end` detail, never dropped silently.
 
 ## 3. New page types only — Phases 3–4
 
@@ -71,8 +86,12 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
 script already skips what is delivered.
 
-- **Migrate:** `migrate.mjs render <new slugs> --archetype <slug>=<arch>` per cluster — never `--all` and never
-  `--force`, which re-render delivered pages. Units in `stardust/migrate/progress.json` carry the pass suffix.
+- **Migrate:** a new sibling is `extracted`, and `migrate.mjs` renders the sibling branch only for a `directed` page
+  with a source file. Per cluster: `state.mjs advance <slugs> --to directed --skill replica` (the frozen direction);
+  each sibling's slot-filled clone (`handoff-contract.md` § 1 row 2) at `stardust/prototypes/<slug>-proposed.html`
+  or `--source <slug>=<file>`; then `migrate.mjs render <slugs> --archetype <slug>=<arch>` — never `--all` and never
+  `--force`, which re-render delivered pages. Every new sidecar reads `fidelityTier: "sibling"` and names the
+  archetype; one that reads `archetype` stops the unit.
 - **Units:** every new unit in both `progress.json` files is named `<unit>-x<N>` (`archetype-<template>-x1`,
   `<cluster>-x1`, `gate-all-x1`); a `done` unit of an earlier pass is never reopened, and a new page of a known
   template joins a new cluster unit. No `foundation` unit: the foundation is delivered and frozen.
@@ -82,11 +101,14 @@ script already skips what is delivered.
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
   published gate re-run on every affected archetype, any pass's; unit `gate-all-x<N>` is `gate-all.mjs
-  --skip-existing` over the roster — the delivered pages' recorded verdicts are reused, only the new pages are
+  --skip-existing` over every delivered page — the earlier pages' recorded verdicts are reused, only the new pages are
   gated, and `summary.json` stays complete for `update-coverage.mjs --gate`.
+- **Relinked pages:** every `localize-links.mjs` run of the pass (the pre-PUT one of each cluster, E2's) runs with
+  `--json` and appends its `perFile` keys to `$X/relinked.paths` — a page this pass delivers can be a link target an
+  earlier pass repointed to the source. At E2 the delivered pages listed there (not in this pass's roster) are
+  re-driven with `deploy-batch.mjs --paths <that list> --force`, after `git diff -- content/<file>` shows only href
+  changes on each (a file with other edits is held and named). The list is a publish of pages the owner did not name:
+  ask first; hands-off, it goes in the journal and the `extend end` detail.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
-- **E2:** `localize-links.mjs` over the whole content tree — a page this pass delivers can be a target an earlier pass
-  repointed to the source. It prints a count only: the delivered pages it rewrote are `git diff --name-only --
-  content/` before the checkpoint, re-driven as a paths file with `deploy-batch.mjs --paths <file> --force`.
 - **F–I** as in a first pass. Then `done-check.mjs` exit 0, `replica handoff end --track x<N>`, `$F check` on the
   spec manifest, `replica extend end --track x<N> --detail "<n> pages delivered (x<N>), <total> live"`.
