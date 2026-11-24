@@ -1,3 +1,10 @@
+## [1.8.4](https://github.com/adobe/skills/compare/replica-v1.8.3...replica-v1.8.4) (2026-11-24)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint reads not followed by extra whitespace correctly ([#728](https://github.com/adobe/skills/issues/728)) ([ebeca8c](https://github.com/adobe/skills/commit/ebeca8ce731c8d1cb9864af4eea922108118092e)), closes [#688](https://github.com/adobe/skills/issues/688)
+
 ## [1.8.3](https://github.com/adobe/skills/compare/replica-v1.8.2...replica-v1.8.3) (2026-11-23)
 
 
