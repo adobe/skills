@@ -10,7 +10,9 @@
 // fingerprint block, a 2xx interstitial, the escalated probe's solve window; capturePage — a clean page is a
 // record, a 2xx interstitial / an uncleared 403 challenge / a CloudFront 403 on an inner page are BotChallenge
 // failures naming the wall (a bare 403 stays HTTPError), a navigation that never settles is a TimeoutError under
-// the per-page deadline and the tab is closed. Run: node <this file>.
+// the per-page deadline and the tab is closed. --skip-captured (an extend pass): captured pages leave discovery and
+// --pages before the cap, the entry included; their slugs stay reserved; their urls are no capture gap; an unreadable
+// state file exits 2 before any browser. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -164,6 +166,77 @@ await checkAsync('discover: a stub page with a sitemap and a malformed anchor �
   assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/about']);
   r = await run(['--link-first', '--max', '5'], {});
   assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+});
+// ---- --skip-captured: a later pass over a captured site (replica's extend pass) ----------------------------------
+const STATE = { pages: [
+  { slug: 'index', url: 'https://ex.test/' },
+  { slug: 'about', url: 'https://ex.test/about/', finalUrl: 'https://ex.test/about-us' },
+  { slug: 'blog-a', url: 'not a url' },
+] };
+check('parseArgs: --skip-captured takes a path; a missing value is a usage error', () => {
+  const parse = (...rest) => parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...rest]);
+  assert.equal(parse('--skip-captured', 'stardust/state.json').skipCaptured, 'stardust/state.json');
+  assert.equal(parse().skipCaptured, undefined);
+  assert.throws(() => parse('--skip-captured'), /--skip-captured needs a state\.json path/);
+  assert.throws(() => parse('--skip-captured', '--max', '3'), /--skip-captured needs a state\.json path/);
+});
+check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too), an empty or odd state is empty', () => {
+  const c = crawl.capturedFromState(STATE);
+  assert.deepEqual([...c.keys].sort(), ['https://ex.test', 'https://ex.test/about', 'https://ex.test/about-us']);
+  assert.deepEqual([...c.slugs].sort(), ['about', 'blog-a', 'index']);
+  assert.equal(c.urls.length, 3);
+  for (const s of [{}, null, { pages: 'x' }]) assert.equal(crawl.capturedFromState(s).keys.size, 0);
+});
+check('selectPages: excluded pages (the entry included) are dropped BEFORE the cap — max n is the next n', () => {
+  const exclude = crawl.capturedFromState(STATE).keys;
+  const discovered = ['https://ex.test/about', 'https://ex.test/blog/a', 'https://ex.test/about-us/', 'https://ex.test/blog/b', 'https://ex.test/blog/c'];
+  const pick = (max, linkFirst) => selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: ['/pricing', '/about'], discovered, max, linkFirst, exclude }).urls;
+  assert.deepEqual(pick(2, false), ['https://ex.test/blog/a', 'https://ex.test/blog/b']);
+  assert.deepEqual(pick(2, true), ['https://ex.test/pricing', 'https://ex.test/blog/a']);
+  assert.deepEqual(pick(Infinity, false), ['https://ex.test/blog/a', 'https://ex.test/blog/b', 'https://ex.test/blog/c']);
+});
+check('assignSlugs: a new page never takes a slug an earlier pass holds — the clean slug, then -<hash4>, then -<hash8>', () => {
+  const slugs = crawl.assignSlugs(['https://ex.test/about', 'https://ex.test/blog/a'], new Set(['about']));
+  assert.match(slugs[0], /^about-[0-9a-f]{4}$/);
+  assert.equal(slugs[1], 'blog-a');
+  const hash4 = slugs[0];
+  const again = crawl.assignSlugs(['https://ex.test/about'], new Set(['about', hash4]));
+  assert.match(again[0], /^about-[0-9a-f]{8}$/);
+  assert.ok(again[0].startsWith(hash4));
+  assert.deepEqual(crawl.assignSlugs(['https://ex.test/about']), ['about'], 'no taken set: unchanged');
+});
+await checkAsync('discover --skip-captured: --pages drops listed pages already captured (named) and adds the entry only when it is new; discovery skips them before --max', async () => {
+  const origin = 'https://ex.test';
+  const sitemap = '<urlset><url><loc>https://ex.test/about</loc></url><url><loc>https://ex.test/blog/a</loc></url><url><loc>https://ex.test/blog/b</loc></url></urlset>';
+  const stub = { evaluate: async (_fn, arg) => (arg === origin ? [] : ({ 'https://ex.test/sitemap.xml': sitemap })[arg] ?? '') };
+  const run = async (flags) => {
+    const args = parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', '--skip-captured', 's.json', ...flags]);
+    args.captured = crawl.capturedFromState(STATE);
+    let value;
+    const lines = await stderrOf(async () => { value = await discover(args, stub); });
+    return { value, lines };
+  };
+  let r = await run(['--pages', '/about,/new-page,/about-us']);
+  assert.deepEqual(r.value, ['https://ex.test/new-page']);
+  assert.ok(r.lines.some((l) => /2 listed page\(s\) already captured, skipped/.test(l)), r.lines.join('\n'));
+  r = await run(['--max', '1']);
+  assert.deepEqual(r.value, ['https://ex.test/blog/a']);
+  r = await run(['--pages', '/about']);
+  assert.deepEqual(r.value, [], 'nothing new');
+});
+check('captureGaps: a target an earlier pass captured (alsoCaptured) is not a gap', () => {
+  const rec = { url: 'https://ex.test/fr/', slug: 'fr', links: ['/fr/a', '/fr/b'] };
+  assert.deepEqual(captureGaps([rec]).roots[0].uncaptured, ['/fr/a', '/fr/b']);
+  assert.deepEqual(captureGaps([rec], ['https://ex.test/fr/a/']).roots[0].uncaptured, ['/fr/b']);
+});
+check('CLI: --skip-captured with an unreadable state file exits 2 naming the file, before any browser starts', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-skip-captured-'));
+  try {
+    const result = spawnSync(process.execPath, [SCRIPT, '--url', 'https://www.example.com/', '--out', join(root, 'out'), '--skip-captured', join(root, 'missing.json')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /\[crawl\] fatal: --skip-captured: cannot read .*missing\.json as JSON \(ENOENT\)/);
+    assert.equal(existsSync(join(root, 'out')), false, 'nothing written');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);

@@ -61,7 +61,7 @@
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4] [--dynamics] [--page-timeout 60]
+ *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
@@ -76,6 +76,12 @@
  *                             hydration hints) — set by the calling skill, off by default
  *     --page-timeout <s>      per-page deadline (default 60; 0 = none): a page that never settles is
  *                             recorded as TimeoutError instead of eating the run's cap
+ *     --skip-captured <file>  a later pass over a captured site (replica's extend pass): every page
+ *                             whose url is a `pages[]` row of this state.json is dropped BEFORE the
+ *                             cap — from discovery and from --pages, the entry included — so --max n
+ *                             is the next n pages in the same order; a new page never takes a slug
+ *                             that file already holds (it gets the -<hash4> suffix). Nothing new →
+ *                             one line, exit 0, nothing written
  *
  * Browser and bot walls: real Chrome headless (channel: chrome — the installed browser's own identity,
  * no launch flags) first, bundled Chromium only when Chrome is missing (technique chrome |
@@ -216,6 +222,10 @@ export function parseArgs(argv) {
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
+    else if (k === '--skip-captured') {
+      a.skipCaptured = argv[(i += 1)];
+      if (!a.skipCaptured || a.skipCaptured.startsWith('--')) throw new Error('--skip-captured needs a state.json path');
+    }
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
@@ -237,18 +247,39 @@ const slugify = (u) => {
 // duplicate post-pass can mark a page duplicateOf itself. Assign slugs once,
 // up front: first claimant keeps the clean slug, later distinct pages get a
 // deterministic -<hash4> suffix.
-function assignSlugs(urls) {
+// `taken` holds the slugs an earlier pass already wrote (--skip-captured): those files belong to other pages,
+// so a new page whose clean slug is taken gets the suffix too (8 hex when the 4-hex form is taken as well).
+export function assignSlugs(urls, taken = new Set()) {
   const bySlug = new Map(); // slug -> dedupeKey of first claimant
+  for (const s of taken) bySlug.set(s, null);
   return urls.map((u) => {
     const base = slugify(u);
     const key = dedupeKey(u);
     if (!bySlug.has(base)) { bySlug.set(base, key); return base; }
     if (bySlug.get(base) === key) return base; // same page (shouldn't recur post-dedupe)
-    const suffix = crypto.createHash('sha1').update(key).digest('hex').slice(0, 4);
-    const alt = `${base}-${suffix}`;
-    if (!bySlug.has(alt)) bySlug.set(alt, key);
+    const digest = crypto.createHash('sha1').update(key).digest('hex');
+    const alt = [`${base}-${digest.slice(0, 4)}`, `${base}-${digest.slice(0, 8)}`].find((s) => !bySlug.has(s) || bySlug.get(s) === key)
+      || `${base}-${digest}`;
+    bySlug.set(alt, key);
     return alt;
   });
+}
+
+/**
+ * What an earlier pass captured, from a state.json object (--skip-captured): `keys`, the dedupe keys of every
+ * `pages[]` row's url (and finalUrl when recorded), `urls`, those urls as parsed (for the capture-gap post-pass),
+ * and `slugs`, the slugs those rows hold. A row without a parsable url still reserves its slug. Pure.
+ */
+export function capturedFromState(state) {
+  const keys = new Set(); const slugs = new Set(); const urls = [];
+  for (const p of Array.isArray(state?.pages) ? state.pages : []) {
+    if (p?.slug) slugs.add(String(p.slug));
+    for (const u of [p?.url, p?.finalUrl]) {
+      if (!u) continue;
+      try { const n = normalizeUrl(u); keys.add(dedupeKey(n)); urls.push(n); } catch { /* unparsable: the slug still counts */ }
+    }
+  }
+  return { keys, slugs, urls };
 }
 
 // ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
@@ -524,9 +555,9 @@ const hostKey = (u) => u.host.toLowerCase().replace(/^www\./, '');
 const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
 // a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
 const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
-export function captureGaps(records) {
+export function captureGaps(records, alsoCaptured = []) {
   const captured = new Set();
-  for (const r of records) {
+  for (const r of [...records, ...alsoCaptured.map((url) => ({ url }))]) {
     for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
   }
   const roots = [];
@@ -556,10 +587,11 @@ export function captureGaps(records) {
 /**
  * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
  * page's links follow in document order, then the discovered list, both kept to same-origin non-asset pages;
- * without it, the discovered list follows the entry directly. Unparsable hrefs are skipped and returned in
- * `skipped`. Pure. Returns { urls, skipped }.
+ * without it, the discovered list follows the entry directly. A page whose dedupe key is in `exclude` (the
+ * captured set of --skip-captured; the entry included) is dropped before the cap. Unparsable hrefs are skipped
+ * and returned in `skipped`. Pure. Returns { urls, skipped }.
  */
-export function selectPages({ entry, origin, linked, discovered, max, linkFirst }) {
+export function selectPages({ entry, origin, linked, discovered, max, linkFirst, exclude = new Set() }) {
   const skipped = [];
   const parse = (list) => list.flatMap((h) => {
     try { return [normalizeUrl(h, origin)]; } catch { skipped.push(h); return []; }
@@ -569,7 +601,7 @@ export function selectPages({ entry, origin, linked, discovered, max, linkFirst 
   const seen = new Set(); const urls = [];
   for (const u of [entry, ...candidates]) {
     const k = dedupeKey(u);
-    if (!seen.has(k)) { seen.add(k); urls.push(u); }
+    if (!seen.has(k) && !exclude.has(k)) { seen.add(k); urls.push(u); }
   }
   return { urls: urls.slice(0, max), skipped };
 }
@@ -577,15 +609,21 @@ export function selectPages({ entry, origin, linked, discovered, max, linkFirst 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
 export async function discover(args, page) {
   const entry = normalizeUrl(args.url);
+  const exclude = args.captured?.keys || new Set();
   // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
   // (the effective cap grows by one when needed); if the total still exceeds
-  // --max, warn instead of silently evicting a requested page.
+  // --max, warn instead of silently evicting a requested page. Under
+  // --skip-captured a listed page already captured is dropped (named on stderr)
+  // and the entry is added only when it is not captured.
   if (args.pages) {
     const seen = new Set();
-    const listed = args.pages.map((p) => normalizeUrl(p, args.url))
+    const all = args.pages.map((p) => normalizeUrl(p, args.url))
       .filter((u) => { const k = dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
+    const listed = all.filter((u) => !exclude.has(dedupeKey(u)));
+    const already = all.filter((u) => exclude.has(dedupeKey(u)));
+    if (already.length) console.error(`[crawl] --skip-captured: ${already.length} listed page(s) already captured, skipped: ${already.join(', ')}`);
     const entryKey = dedupeKey(entry);
-    const urls = listed.some((u) => dedupeKey(u) === entryKey) ? listed : [entry, ...listed];
+    const urls = listed.some((u) => dedupeKey(u) === entryKey) || exclude.has(entryKey) ? listed : [entry, ...listed];
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
     }
@@ -597,7 +635,7 @@ export async function discover(args, page) {
   let linked = args.linkFirst ? await readLinks() : null;
   const withEntry = (discovered) => {
     const { urls, skipped } = selectPages({
-      entry, origin: args.origin, linked: linked || [], discovered, max: args.max, linkFirst: args.linkFirst,
+      entry, origin: args.origin, linked: linked || [], discovered, max: args.max, linkFirst: args.linkFirst, exclude,
     });
     if (skipped.length) console.error(`[crawl] WARN discovery skipped ${skipped.length} unparsable URL(s): ${skipped.join(', ')}`);
     return urls;
@@ -1296,9 +1334,15 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null, conte
 
 async function main() {
   const args = parseArgs(process.argv);
-  const outPages = path.join(args.out, 'pages');
-  await mkdir(outPages, { recursive: true });
-
+  // --skip-captured: read before any browser starts, so a missing or broken state file fails fast
+  if (args.skipCaptured) {
+    let state;
+    try { state = JSON.parse(await readFile(args.skipCaptured, 'utf8')); } catch (e) {
+      throw new Error(`--skip-captured: cannot read ${args.skipCaptured} as JSON (${e.code || e.message})`);
+    }
+    args.captured = capturedFromState(state);
+    console.error(`[crawl] --skip-captured: ${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) from ${args.skipCaptured} are excluded`);
+  }
   let stealth = false;
   let { browser, technique } = await launchWithFallback();
   let context = await newContext(browser, stealth, args.url);
@@ -1354,6 +1398,15 @@ async function main() {
   } catch { /* keep declared origin */ }
 
   const urls = await discover(args, probe);
+  if (args.captured && !urls.length) {
+    await probe.close().catch(() => {});
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+    console.error('[crawl] done. 0 new pages — every listed or discovered page is already captured (--skip-captured); nothing written');
+    return;
+  }
+  const outPages = path.join(args.out, 'pages');
+  await mkdir(outPages, { recursive: true });
   // favicon rides the probe page (already on the entry URL) — runs in every
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
@@ -1373,7 +1426,7 @@ async function main() {
   // duplicate attribution happens in a deterministic post-pass below.
   const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
   const dynamicRollup = newDynamicRollup();
-  const slugs = assignSlugs(urls);
+  const slugs = assignSlugs(urls, args.captured?.slugs);
   let nextIdx = 0;
   async function worker() {
     const ctx = await newContext(browser, stealth, args.url);
@@ -1443,7 +1496,7 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean));
+  log.captureGaps = captureGaps(results.filter(Boolean), args.captured?.urls); // an earlier pass's pages are not gaps
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
   }

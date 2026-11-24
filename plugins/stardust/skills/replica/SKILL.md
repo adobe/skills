@@ -36,6 +36,8 @@ source-fidelity gate** against the live site before anything ships.
   (Phase 2). Without it and without an audit the register is empty.
 - `--first-page <url|home>` — optional; hands-off `home`. The page a
   full-site run delivers first (`reference/first-page-first.md`).
+- `--extend <url,...>` / `--extend-next <n>` — optional, a delivered run
+  only. One more pass of named pages, or the next `n` (§ After handoff).
 
 ## Setup
 
@@ -271,6 +273,14 @@ sibling SKILL.md files whole.
   clipped text and missing or hidden content; a page without a row is
   ungated. C-final ends with `update-coverage.mjs --gate`.
 
+### After handoff — a delivered run takes more pages only through an extend pass
+
+Once `replica handoff end` is written, a resumed session renders the state
+report and stops: nothing re-runs from Phase 1 and the spec is never
+re-promoted. `--extend` / `--extend-next` opens pass `x<N>` — the new
+pages only, the spec and the foundation frozen, new units with the pass
+suffix, Phases 3–4 for new page types only: `reference/extend-pass.md`.
+
 ## What replica never does
 
 - **No redesign.** No new palette, type, spacing, composition, motion.
@@ -302,13 +312,9 @@ PRODUCT.md / DESIGN.md / DESIGN.json       ← promoted from current/ (Phase 2)
 
 ## References
 
-- `reference/preserve-direction.md` — promotion contract, register schema.
-- `reference/recreation-procedure.md` — authoring order, CSS lifting, fonts
-  policy, fixed and sticky chrome, interaction parity, the fallback.
-- `reference/source-fidelity-gate.md` — the gate: procedure, pass bar,
-  reading a round, iteration discipline, hardening, the published-origin
-  and all-pages gates, residual logging.
-- `reference/handoff-contract.md` — Phase 5 contract card.
-- `reference/reading-discipline.md`, `reference/first-page-first.md`.
+- `reference/`: `preserve-direction.md` (Phase 2), `recreation-procedure.md`
+  (Phase 3), `source-fidelity-gate.md` (Phase 4), `handoff-contract.md`
+  (Phase 5), `extend-pass.md`, `reading-discipline.md`,
+  `first-page-first.md`.
 - `../diff/SKILL.md` — the probes replica reuses, the header contract.
 - `../migrate/reference/fidelity-tiers.md` — the archetype / sibling model.

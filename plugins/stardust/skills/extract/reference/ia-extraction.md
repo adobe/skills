@@ -434,8 +434,10 @@ new top-level entry under `runs[]` rather than overwriting.
 The user may run `$stardust extract` again on the same site to add new
 pages or refresh existing ones.
 
-- Default behaviour: skip URLs whose slug is already in `state.json`
-  with status `extracted` or beyond. Crawl only newly discovered URLs.
+- Default behaviour, `--prep` included: skip URLs whose slug is already
+  in `state.json` with status `extracted` or beyond. Crawl only newly
+  discovered URLs — `crawl.mjs --skip-captured stardust/state.json`
+  drops them before the cap and keeps their slugs.
 - `--refresh <slug>` re-extracts a single named page even if already
   extracted. The new per-page JSON overwrites, but state.json
   preserves the page's full lifecycle history.
