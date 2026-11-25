@@ -45,6 +45,8 @@
  * `node_modules` and dot-entries (`.env`, `.DS_Store`, `.cache/`) are skipped, so `.env` is never
  * read. The manifest holds hashes only — never a file's contents — and is written through a temp
  * file + rename, so a crash mid-write leaves the previous manifest intact.
+ * A manifest read by --from or `check` must name only root-relative paths (paths[], absent[] and the files keys:
+ * no absolute path, no `..` segment); anything else is a usage error before the filesystem is touched.
  * Exit codes: 0 ok · 1 check found a change · 2 usage OR a filesystem error while hashing
  * (EACCES, ENOENT on a path that vanished mid-walk, ELOOP …; one line on stderr naming the path)
  * — exit 1 always means "changed", never a crash. --help / -h prints this usage and touches no file.
@@ -145,6 +147,12 @@ export function parseArgs(argv) {
   return opts;
 }
 
+/** A manifest path: a non-empty string, relative, no `..` segment, no backslash or NUL. Pure. */
+export function isRootRelative(p) {
+  if (typeof p !== 'string' || !p.trim() || /[\\\0]/.test(p) || isAbsolute(p)) return false;
+  return !posix(normalize(p)).split('/').includes('..');
+}
+
 // Root-relative frozen entries: strip a leading `./`; never absolute, never climbing out of root.
 function frozenEntries(root, spec, { ifPresent = false, flag = '--paths', absent = [] } = {}) {
   const list = (Array.isArray(spec) ? spec : spec.split(',')).map((p) => String(p).trim()).filter(Boolean);
@@ -204,6 +212,12 @@ export function readManifest(file) {
   const ok = manifest && Array.isArray(manifest.paths)
     && manifest.files && typeof manifest.files === 'object';
   if (!ok) usage(`not a foundation-freeze manifest (needs paths[] and files{}): ${file}`);
+  // every path the manifest names is root-relative and stays under --root, before anything touches the filesystem:
+  // a malformed manifest must neither hash a file outside the project nor name one as `added` (a restore deletes those)
+  if (manifest.absent !== undefined && !Array.isArray(manifest.absent)) usage(`absent is not a list: ${file}`);
+  for (const p of [...manifest.paths, ...(manifest.absent || []), ...Object.keys(manifest.files)]) {
+    if (!isRootRelative(p)) usage(`manifest path is not root-relative: ${JSON.stringify(p)} (${file})`);
+  }
   return manifest;
 }
 

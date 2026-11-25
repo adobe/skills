@@ -68,7 +68,8 @@ export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statu
  * track, only that track's lines are read — another pass's `end` never completes it.
  */
 export function rolloutEnded(ledgerLines, track = null) {
-  const dash = ledgerLines.filter((l) => l && l.skill === 'stardust:rollout' && l.phase === 'I-dashboard' && (track == null || l.track === track));
+  const want = track == null ? null : String(track).toLowerCase();
+  const dash = ledgerLines.filter((l) => l && l.skill === 'stardust:rollout' && l.phase === 'I-dashboard' && (want == null || String(l.track || '').toLowerCase() === want));
   return dash.length > 0 && dash[dash.length - 1].event === 'end';
 }
 
@@ -204,8 +205,9 @@ async function main() {
   let TRACK = null;
   const ti = argv.indexOf('--track');
   if (ti !== -1) {
-    TRACK = argv[ti + 1];
-    if (typeof TRACK !== 'string' || !/^[A-Za-z0-9][\w.-]*$/.test(TRACK)) { console.error('rollout done-check: --track needs a track name (e.g. x1) — missing, blank or flag-shaped value.'); process.exit(2); }
+    // the ledger writer's grammar (ledger.mjs buildLine): trimmed, lower-cased, one token of letters, digits, dashes
+    TRACK = typeof argv[ti + 1] === 'string' ? argv[ti + 1].trim().toLowerCase() : '';
+    if (!/^[a-z][a-z0-9-]*$/.test(TRACK)) { console.error('rollout done-check: --track needs a track name as the ledger writes it (e.g. x1: letters, digits, dashes) — missing, blank or flag-shaped value.'); process.exit(2); }
   }
 
   const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));

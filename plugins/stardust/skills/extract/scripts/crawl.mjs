@@ -65,7 +65,7 @@
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
  *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json] \
- *     [--delivered <coverage pages.json>] [--skip-failed] [--first-run-order] [--select-only]
+ *     [--reserve-slugs <file>] [--skip-failed] [--first-run-order] [--select-only]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
@@ -86,25 +86,17 @@
  *                             run interrupted before its state was written), is dropped BEFORE the cap
  *                             — from discovery and from --pages, the entry included; urls match with
  *                             or without `www.`, `/index.html` as its folder; a query string stays part
- *                             of the identity (some sites serve distinct pages at `?` values) — so
- *                             --max n is the next n pages in the same order, assets and other hosts
- *                             never taking a slot; a
+ *                             of the identity (some sites serve distinct pages at `?` values); two
+ *                             new urls of one source page take one slot — so --max n is the next n
+ *                             pages in the same order, assets and other hosts never taking a slot; a
  *                             new page never takes a slug either holds (it gets the -<hash4> suffix).
  *                             --pages is then the exact list: the entry is never added to it. A file
  *                             without a pages[] array, or a --pages entry off the --url site, exits 2
  *                             before any browser starts. Nothing new → one line, exit 0, nothing
  *                             written (a --pages list that is all captured is known before launch)
- *     --delivered <file>      with --skip-captured: a rollout coverage pages.json — DELIVERY-ROSTER
- *                             mode (replica's extend pass). Identity is the EDS destination
- *                             (contracts.mjs pathKey(deliveredUrl(path)): case, `.html`, `/index`,
- *                             trailing slash, query and `_` folded), so one destination takes one
- *                             slot and keeps the first source url that reached it; a destination a
- *                             captured page holds is captured. A discovered page whose destination a
- *                             coverage row's `path` holds is dropped before the cap (named); a --pages
- *                             entry that does, or that has a query string, exits 2 — captured or not.
- *                             Every coverage `slug` is reserved too, so a new capture never takes the
- *                             slug of a page built outside the capture (a search page). Pass it to the
- *                             capture run as well as to --select-only.
+ *     --reserve-slugs <file>  with --skip-captured: slugs, one per line, no new page may take (pages
+ *                             that exist outside state.json — a caller's delivered pages); a taken slug
+ *                             gets the -<hash> suffix as with a captured one
  *     --skip-failed           with --skip-captured: also drop every url a run recorded in
  *                             <out>/_crawl-log.json failed to capture (its runs[] and latest crawl)
  *     --first-run-order       with --skip-captured: take --link-first from the FIRST run that log
@@ -254,9 +246,9 @@ export function parseArgs(argv) {
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
     else if (k === '--select-only') a.selectOnly = true;
-    else if (k === '--delivered') {
-      a.delivered = argv[(i += 1)];
-      if (!a.delivered || a.delivered.startsWith('--')) throw new Error('--delivered needs a coverage pages.json');
+    else if (k === '--reserve-slugs') {
+      a.reserveSlugs = argv[(i += 1)];
+      if (!a.reserveSlugs || !a.reserveSlugs.trim() || a.reserveSlugs.startsWith('--')) throw new Error('--reserve-slugs needs a file of slugs');
     }
     else if (k === '--skip-failed') a.skipFailed = true;
     else if (k === '--first-run-order') a.firstRunOrder = true;
@@ -267,7 +259,7 @@ export function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
-  for (const [flag, on] of [['--delivered', a.delivered], ['--skip-failed', a.skipFailed], ['--first-run-order', a.firstRunOrder]]) {
+  for (const [flag, on] of [['--reserve-slugs', a.reserveSlugs], ['--skip-failed', a.skipFailed], ['--first-run-order', a.firstRunOrder]]) {
     if (on && !a.skipCaptured) throw new Error(`${flag} goes with --skip-captured`);
   }
   a.origin = new URL(a.url).origin;
@@ -356,31 +348,6 @@ export function captureKey(href) {
   return `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${p}${u.search}`;
 }
 
-// The EDS path contract (skills/stardust/scripts/lib/paths.mjs, behind contracts.mjs), found like browser.mjs.
-const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
-  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
-const { pathKey: edsPathKey, deliveredUrl } = CONTRACTS ? await import(CONTRACTS.href) : {};
-const needContracts = () => {
-  if (!edsPathKey) throw new Error('--delivered: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/) — copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup)');
-};
-
-/** The EDS destination a source url is delivered at, as a lookup key (`/A_b/index.html?x` → `/a-b`). Pure. */
-export function destinationOf(href) {
-  needContracts();
-  return edsPathKey(deliveredUrl(new URL(href).pathname));
-}
-
-/** What a rollout coverage pages.json holds: `paths`, every row's `path` as a lookup key, and `slugs`. Pure. */
-export function deliveredFrom(coverage) {
-  if (!Array.isArray(coverage?.pages)) throw new Error('has no pages[] array — not a rollout coverage pages.json');
-  needContracts();
-  const rows = coverage.pages.filter(Boolean);
-  return {
-    paths: new Set(rows.map((p) => p.path).filter((p) => typeof p === 'string').map((p) => edsPathKey(p))),
-    slugs: new Set(rows.map((p) => p.slug).filter((x) => typeof x === 'string')),
-  };
-}
-
 /** Every url a run of this crawl log failed to capture: runs[].crawl.failures and the latest crawl.failures. Pure. */
 export function failedUrls(log) {
   const runs = [...(Array.isArray(log?.runs) ? log.runs : []), log || {}];
@@ -414,24 +381,15 @@ const sameSite = (a, b) => { const x = new URL(a); const y = new URL(b); return 
 
 /**
  * The --pages check that needs no browser (--skip-captured): `offOrigin`, the listed urls outside the entry's
- * site (a `www.` prefix folded); `fresh`, the listed pages not captured — the exact list, never the entry; empty
- * means the run has nothing to capture. In delivery-roster mode (`args.roster`, --delivered) also `withQuery`, the
- * listed urls with a query string, and `collisions`, every listed url whose destination a coverage row holds —
- * captured or not, checked before anything is dropped — and `fresh` goes by destination. Pure.
+ * site (a `www.` prefix folded), and `fresh`, the listed urls not captured — the exact list, never the entry;
+ * empty means the run has nothing to capture. Pure.
  */
 export function precheckPages(args) {
   const listed = args.pages.map((p) => normalizeUrl(p, args.url));
   const offOrigin = listed.filter((u) => !sameSite(u, args.url));
-  const roster = args.roster;
-  const withQuery = roster ? listed.filter((u) => new URL(u).search) : [];
-  const collisions = roster ? listed.filter((u) => sameSite(u, args.url) && roster.delivered.has(destinationOf(u))) : [];
-  const fresh = listed.filter((u) => sameSite(u, args.url) && !isCaptured(u, args.captured.keys, roster));
-  return { offOrigin, withQuery, collisions, fresh };
-}
-
-/** Captured: its source identity is in `keys`, or — roster mode — its destination is one a captured page holds. Pure. */
-export function isCaptured(u, keys, roster) {
-  return keys.has(captureKey(u)) || Boolean(roster && roster.captured.has(destinationOf(u)));
+  const exclude = args.captured.keys;
+  const fresh = listed.filter((u) => sameSite(u, args.url) && !exclude.has(captureKey(u)));
+  return { offOrigin, fresh };
 }
 
 // ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
@@ -740,14 +698,12 @@ export function captureGaps(records, alsoCaptured = []) {
  * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
  * page's links follow in document order, then the discovered list, both kept to same-origin non-asset pages;
  * without it, the discovered list follows the entry directly. `strict` (--skip-captured) keeps it to same-origin
- * non-asset pages too. A captured page (`isCaptured`: its captureKey in `exclude`; the entry included) is dropped
- * before the cap. `roster` ({ delivered, captured } destination sets, --delivered) dedupes by destination — the
- * first source url that reaches one keeps it — and a page whose destination a coverage row holds is dropped and
- * returned in `collisions`. Unparsable hrefs are skipped and returned in `skipped`. Pure.
- * Returns { urls, skipped, collisions }.
+ * non-asset pages too and dedupes by captureKey (two urls of one source page take one slot; query values stay
+ * distinct). A page whose captureKey is in `exclude` (the captured set; the entry included) is dropped before the
+ * cap. Unparsable hrefs are skipped and returned in `skipped`. Pure. Returns { urls, skipped }.
  */
-export function selectPages({ entry, origin, linked, discovered, max, linkFirst, strict = false, exclude = new Set(), roster = null }) {
-  const skipped = []; const collisions = [];
+export function selectPages({ entry, origin, linked, discovered, max, linkFirst, strict = false, exclude = new Set() }) {
+  const skipped = [];
   const parse = (list) => list.flatMap((h) => {
     try { return [normalizeUrl(h, origin)]; } catch { skipped.push(h); return []; }
   });
@@ -758,13 +714,10 @@ export function selectPages({ entry, origin, linked, discovered, max, linkFirst,
   const candidates = linkFirst || strict ? listed.filter(page) : listed;
   const seen = new Set(); const urls = [];
   for (const u of [entry, ...candidates]) {
-    const k = roster ? destinationOf(u) : dedupeKey(u);
-    if (seen.has(k) || isCaptured(u, exclude, roster)) continue;
-    seen.add(k);
-    if (roster && roster.delivered.has(k)) { collisions.push(u); continue; }
-    urls.push(u);
+    const k = strict ? captureKey(u) : dedupeKey(u);
+    if (!seen.has(k) && !exclude.has(captureKey(u))) { seen.add(k); urls.push(u); }
   }
-  return { urls: urls.slice(0, max), skipped, collisions };
+  return { urls: urls.slice(0, max), skipped };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
@@ -777,12 +730,12 @@ export async function discover(args, page) {
   // --skip-captured a listed page already captured is dropped (named on stderr)
   // and the entry is never added: the list is exact.
   if (args.pages) {
-    // roster mode (--delivered): one destination, one page — `/visit/` and `/visit/index.html` are one
+    // under --skip-captured two urls of one source page (`/visit/`, `/visit/index.html`) are one listed page
     const seen = new Set();
     const all = args.pages.map((p) => normalizeUrl(p, args.url))
-      .filter((u) => { const k = args.roster ? destinationOf(u) : dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
-    const listed = all.filter((u) => !isCaptured(u, exclude, args.roster));
-    const already = all.filter((u) => isCaptured(u, exclude, args.roster));
+      .filter((u) => { const k = args.captured ? captureKey(u) : dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
+    const listed = all.filter((u) => !exclude.has(captureKey(u)));
+    const already = all.filter((u) => exclude.has(captureKey(u)));
     if (already.length) console.error(`[crawl] --skip-captured: ${already.length} listed page(s) already captured, skipped: ${already.join(', ')}`);
     const entryKey = dedupeKey(entry);
     // under --skip-captured the list is exact: the entry is a discovery start, never an unnamed deliverable
@@ -797,12 +750,11 @@ export async function discover(args, page) {
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
   let linked = args.linkFirst ? await readLinks() : null;
   const withEntry = (discovered) => {
-    const { urls, skipped, collisions } = selectPages({
+    const { urls, skipped } = selectPages({
       entry, origin: args.origin, linked: linked || [], discovered, max: args.max, linkFirst: args.linkFirst,
-      strict: Boolean(args.captured), exclude, roster: args.roster,
+      strict: Boolean(args.captured), exclude,
     });
     if (skipped.length) console.error(`[crawl] WARN discovery skipped ${skipped.length} unparsable URL(s): ${skipped.join(', ')}`);
-    if (collisions.length) console.error(`[crawl] --delivered: ${collisions.length} discovered page(s) map to a delivered path, not selected: ${collisions.join(', ')}`);
     return urls;
   };
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
@@ -1529,20 +1481,16 @@ async function main() {
       args.linkFirst = order === 'link-first';
       console.error(`[crawl] --first-run-order: ${order} (${evidence}, ${logFile})`);
     }
-    if (args.delivered) {
-      let cov;
-      try { cov = deliveredFrom(JSON.parse(await readFile(args.delivered, 'utf8'))); } catch (e) {
-        throw new Error(`--delivered: ${args.delivered} ${e.code === 'ENOENT' ? 'not found' : e.message}`);
-      }
-      args.roster = { delivered: cov.paths, captured: new Set(args.captured.urls.map((u) => { try { return destinationOf(u); } catch { return null; } }).filter(Boolean)) };
-      for (const sl of cov.slugs) args.captured.slugs.add(sl); // a page built outside the capture keeps its slug
+    let reserved = 0;
+    if (args.reserveSlugs) {
+      let text;
+      try { text = await readFile(args.reserveSlugs, 'utf8'); } catch (e) { throw new Error(`--reserve-slugs: cannot read ${args.reserveSlugs} (${e.code || e.message})`); }
+      for (const sl of text.split('\n').map((l) => l.trim()).filter(Boolean)) if (!args.captured.slugs.has(sl)) { args.captured.slugs.add(sl); reserved += 1; }
     }
-    const excluded = `${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) excluded (${args.skipCaptured}${onDisk ? `; ${onDisk} record(s) under ${dir} not in it` : ''}${failed ? `; ${failed} url(s) earlier runs failed` : ''}${args.roster ? `; ${args.roster.delivered.size} delivered path(s) reserved` : ''})`;
+    const excluded = `${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) excluded (${args.skipCaptured}${onDisk ? `; ${onDisk} record(s) under ${dir} not in it` : ''}${failed ? `; ${failed} url(s) earlier runs failed` : ''}${reserved ? `; ${reserved} slug(s) reserved from ${args.reserveSlugs}` : ''})`;
     if (args.pages) {
-      const { offOrigin, withQuery, collisions, fresh } = precheckPages(args);
+      const { offOrigin, fresh } = precheckPages(args);
       if (offOrigin.length) throw new Error(`--skip-captured: --pages lists ${offOrigin.length} url(s) off the site of --url: ${offOrigin.join(', ')}`);
-      if (withQuery.length) throw new Error(`--delivered: --pages lists ${withQuery.length} url(s) with a query string — name the page without it: ${withQuery.join(', ')}`);
-      if (collisions.length) throw new Error(`--delivered: --pages lists ${collisions.length} url(s) whose delivery path is already delivered: ${collisions.join(', ')}`);
       if (!fresh.length) {
         console.error(`[crawl] done. 0 new pages — every listed page is already captured; nothing written (--skip-captured: ${excluded})`);
         return;

@@ -185,7 +185,10 @@ check('CLI --track: an earlier untracked I-dashboard end and none for the open p
   const r = run(proj, ['--offline', '--track', 'x1']);
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /^rollout_incomplete$/m);
-  for (const tail of [['--track'], ['--track', ''], ['--track', '--offline'], ['--track', ' ']]) {
+  const done = project({ ledger: [...ENDED, { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'start', track: 'x1' }, { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'end', track: 'x1' }] });
+  assert.equal(run(done, ['--offline', '--track', 'X1']).status, 0, 'X1 is the ledger\'s x1 (lower-cased like the writer)');
+  rmSync(done, { recursive: true, force: true });
+  for (const tail of [['--track'], ['--track', ''], ['--track', '--offline'], ['--track', ' '], ['--track', 'x_1']]) {
     const bad = run(proj, ['--offline', ...tail]);
     assert.equal(bad.status, 2, `${JSON.stringify(tail)}: ${bad.stdout}${bad.stderr}`);
     assert.match(bad.stderr, /--track needs a track name/);

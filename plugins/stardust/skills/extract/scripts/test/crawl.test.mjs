@@ -183,10 +183,10 @@ check('parseArgs: --skip-captured takes a path; a missing value is a usage error
   assert.throws(() => parse('--skip-captured'), /--skip-captured needs a state\.json path/);
   assert.throws(() => parse('--skip-captured', '--max', '3'), /--skip-captured needs a state\.json path/);
   assert.equal(parse('--select-only').selectOnly, true);
-  const ext = parse('--skip-captured', 's.json', '--delivered', 'pages.json', '--skip-failed', '--first-run-order');
-  assert.deepEqual([ext.delivered, ext.skipFailed, ext.firstRunOrder], ['pages.json', true, true]);
-  for (const f of [['--delivered', 'x.json'], ['--skip-failed'], ['--first-run-order']]) assert.throws(() => parse(...f), new RegExp(`${f[0]} goes with --skip-captured`));
-  assert.throws(() => parse('--skip-captured', 's.json', '--delivered'), /--delivered needs a coverage pages\.json/);
+  const ext = parse('--skip-captured', 's.json', '--reserve-slugs', 'slugs.txt', '--skip-failed', '--first-run-order');
+  assert.deepEqual([ext.reserveSlugs, ext.skipFailed, ext.firstRunOrder], ['slugs.txt', true, true]);
+  for (const f of [['--reserve-slugs', 'x.txt'], ['--skip-failed'], ['--first-run-order']]) assert.throws(() => parse(...f), new RegExp(`${f[0]} goes with --skip-captured`));
+  for (const tail of [['--reserve-slugs'], ['--reserve-slugs', ' '], ['--reserve-slugs', '--skip-failed']]) assert.throws(() => parse('--skip-captured', 's.json', ...tail), /--reserve-slugs needs a file of slugs/);
   assert.equal(parse().selectOnly, undefined);
 });
 check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too); a valid empty pages[] is empty; no pages[] array throws', () => {
@@ -296,22 +296,14 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     const failedOnce = spawnSync(process.execPath, [...base, '--pages', '/broken', '--skip-failed'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(failedOnce.status, 0, failedOnce.stderr);
     assert.match(failedOnce.stderr, /0 new pages .*1 url\(s\) earlier runs failed/);
-    // roster mode (--delivered): a named page whose destination coverage holds exits 2 — case folded, and a page that
-    // is captured AND delivered too (checked before captured pages are dropped); a named query exits 2
-    writeFileSync(join(root, 'coverage.json'), JSON.stringify({ pages: [{ slug: 'search', path: '/search' }, { slug: 'about', path: '/about' }] }));
-    const cov = ['--delivered', join(root, 'coverage.json')];
-    for (const [named, hit] of [['/Search/', 'Search/'], ['/about/', 'about/']]) {
-      const taken = spawnSync(process.execPath, [...base, '--pages', named, ...cov], { cwd: root, encoding: 'utf8', timeout: 10000 });
-      assert.equal(taken.status, 2, taken.stderr);
-      assert.match(taken.stderr, new RegExp(`--delivered: --pages lists 1 url\\(s\\) whose delivery path is already delivered: https://www\\.example\\.com/${hit}`));
-    }
-    const query = spawnSync(process.execPath, [...base, '--pages', '/visit/?utm_source=news', ...cov], { cwd: root, encoding: 'utf8', timeout: 10000 });
-    assert.equal(query.status, 2, query.stderr);
-    assert.match(query.stderr, /--delivered: --pages lists 1 url\(s\) with a query string — name the page without it/);
-    // without --delivered (a plain incremental extract) a query page is its own source page: no refusal
-    // (it goes on to the browser; this checkout may have none, so only the precheck lines are read)
+    // --reserve-slugs: named in the precheck line (a caller's delivered pages keep their slugs)
+    writeFileSync(join(root, 'slugs.txt'), 'search-results\nindex\n');
+    const res = spawnSync(process.execPath, [...base, '--pages', '/about', '--reserve-slugs', join(root, 'slugs.txt')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stderr, /1 slug\(s\) reserved from .*slugs\.txt/);
+    // a query page is its own source page: no refusal, it goes on to the browser (only the precheck lines are read)
     const plainQuery = spawnSync(process.execPath, [...base, '--pages', '/about/?id=2', '--select-only'], { cwd: root, encoding: 'utf8', timeout: 10000 });
-    assert.doesNotMatch(plainQuery.stderr, /query string|0 new pages|already delivered/);
+    assert.doesNotMatch(plainQuery.stderr, /query string|0 new pages/);
     assert.match(plainQuery.stderr, /^\[crawl\] --skip-captured: /m);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -320,31 +312,22 @@ check('captureKey is the SOURCE page: a folder\'s index.html is the folder, `www
   assert.equal(crawl.captureKey('https://www.ex.test/'), crawl.captureKey('https://ex.test/index.html'));
   assert.notEqual(crawl.captureKey('https://ex.test/p?id=2'), crawl.captureKey('https://ex.test/p?id=1'));
 });
-check('destinationOf / deliveredFrom: the EDS destination from contracts.mjs (case, `.html`, `/index`, slash, query, `_` folded); coverage paths and slugs', () => {
-  for (const [a, b] of [['https://ex.test/Search', 'https://ex.test/search/'], ['https://ex.test/index.html', 'https://ex.test/'], ['https://ex.test/a/b.html', 'https://ex.test/a/b'], ['https://ex.test/a/index.html?x=1', 'https://ex.test/a/'], ['https://ex.test/Foo_Bar', 'https://ex.test/foo-bar']]) assert.equal(crawl.destinationOf(a), crawl.destinationOf(b), `${a} ${b}`);
-  const d = crawl.deliveredFrom({ pages: [{ slug: 'search-results', path: '/Search-Results/' }, { slug: 'index', path: '/' }, null] });
-  assert.deepEqual([...d.paths], ['/search-results', '/']); assert.deepEqual([...d.slugs], ['search-results', 'index']);
-  assert.throws(() => crawl.deliveredFrom({}), /no pages\[\] array/);
-});
-const QSITE = ['https://ex.test/p?id=2', 'https://ex.test/q?id=42', 'https://ex.test/visit/', 'https://ex.test/visit/index.html', 'https://ex.test/Search', 'https://ex.test/about'];
-check('selectPages, the same query-based site in both modes: plain --skip-captured keeps source pages (`/p?id=2` is new beside a captured `/p?id=1`, a query url kept as it is); roster mode takes one slot per destination', () => {
+const QSITE = ['https://ex.test/p?id=2', 'https://ex.test/q?id=42', 'https://ex.test/visit/index.html', 'https://ex.test/visit/', 'https://ex.test/about'];
+check('selectPages under --skip-captured: source identity — `/p?id=2` is new beside a captured `/p?id=1`, query urls kept as they are, `/visit/index.html` and `/visit/` one slot', () => {
   const exclude = new Set([crawl.captureKey('https://ex.test/'), crawl.captureKey('https://ex.test/p?id=1')]);
   const base = { entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered: QSITE, linkFirst: false, strict: true, exclude };
-  assert.deepEqual(selectPages({ ...base, max: 3 }).urls, ['https://ex.test/p?id=2', 'https://ex.test/q?id=42', 'https://ex.test/visit/'], 'source identity');
-  const roster = { delivered: new Set(['/', '/search']), captured: new Set(['/', '/p']) };
-  const r = selectPages({ ...base, max: 3, roster });
-  assert.deepEqual(r.urls, ['https://ex.test/q?id=42', 'https://ex.test/visit/', 'https://ex.test/about'], '/p is captured, /visit/ and /visit/index.html one slot, the source url kept');
-  assert.deepEqual(r.collisions, ['https://ex.test/Search']);
+  assert.deepEqual(selectPages({ ...base, max: 4 }).urls, ['https://ex.test/p?id=2', 'https://ex.test/q?id=42', 'https://ex.test/visit/index.html', 'https://ex.test/about']);
+  assert.deepEqual(selectPages({ ...base, max: crawl.maxPages('0') }).urls.length, 4, '--max 0: the whole ordered candidate list');
+  assert.deepEqual(selectPages({ ...base, strict: false, exclude: new Set(), max: Infinity }).urls.length, 6, 'a plain crawl: dedupeKey as on main');
 });
-await checkAsync('discover in roster mode: named aliases collapse to one page (`/visit/` + `/visit/index.html`); plain mode lists exactly what main lists', async () => {
+await checkAsync('discover --skip-captured --pages: two urls of one source page are one listed page; a query value is its own page', async () => {
   const stub = { evaluate: async () => [] };
-  const mk = (roster) => { const args = parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', '--skip-captured', 's.json', '--pages', '/visit/,/visit/index.html,/p?id=2']); args.captured = crawl.capturedFromState({ site: { originUrl: 'https://ex.test' }, pages: [{ slug: 'p', url: '/p?id=1' }] }); if (roster) args.roster = { delivered: new Set(), captured: new Set(['/p']) }; return args; };
-  let v; await stderrOf(async () => { v = await discover(mk(true), stub); });
-  assert.deepEqual(v, ['https://ex.test/visit/']);
-  await stderrOf(async () => { v = await discover(mk(false), stub); });
-  assert.deepEqual(v, ['https://ex.test/visit/', 'https://ex.test/visit/index.html', 'https://ex.test/p?id=2'], 'plain: dedupeKey as on main; ?id=2 is a new source page');
+  const args = parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', '--skip-captured', 's.json', '--pages', '/visit/,/visit/index.html,/p?id=2']);
+  args.captured = crawl.capturedFromState({ site: { originUrl: 'https://ex.test' }, pages: [{ slug: 'p', url: '/p?id=1' }] });
+  let v; await stderrOf(async () => { v = await discover(args, stub); });
+  assert.deepEqual(v, ['https://ex.test/visit/', 'https://ex.test/p?id=2']);
 });
-check('assignSlugs with coverage slugs reserved: a new `/search/results` never takes `search-results` from a page built outside the capture', () => {
+check('assignSlugs with --reserve-slugs: a new `/search/results` never takes `search-results` from a page built outside the capture', () => {
   const slugs = crawl.assignSlugs(['https://ex.test/search/results'], new Set(['search-results']));
   assert.notEqual(slugs[0], 'search-results'); assert.match(slugs[0], /^search-results-[0-9a-f]{4}$/);
 });

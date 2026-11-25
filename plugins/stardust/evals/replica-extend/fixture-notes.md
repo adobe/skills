@@ -22,11 +22,13 @@ Playwright installed:
   stardust/replica/extend/x1/spec-freeze.json` → `frozen 6 files`;
   `freeze --from stardust/rollout/foundation-freeze.json` → `frozen 3 files`,
   paths `styles/`, `head.html`, `blocks/header/`.
-- `stardust/scripts/extract/crawl.mjs --url http://localhost:8780 --max 1
+- `stardust/scripts/extract/crawl.mjs --url http://localhost:8780 --max 0
   --first-run-order --skip-failed --skip-captured stardust/state.json
-  --delivered stardust/rollout/coverage/pages.json --select-only` prints
-  `--first-run-order: link-first (capSource --cap, …)` on stderr and
-  `http://localhost:8780/visit/` on stdout, and writes nothing.
+  --select-only` prints `--first-run-order: link-first (capSource --cap, …)`
+  on stderr and `http://localhost:8780/visit/` on stdout, and writes
+  nothing; `stardust/scripts/replica/extend-roster.mjs select --candidates
+  <that list> --max 1 --out stardust/replica/extend/x1/urls.txt` keeps it
+  (home is captured and delivered, no content document holds `/visit`).
 - the same crawler with `--pages http://localhost:8780/visit/ --dynamics
   --skip-captured stardust/state.json` captures `visit` only;
   `index.json` and `index.html` are unchanged and the spec check exits 0. The

@@ -249,6 +249,20 @@ check('exported helpers: snapshot() is sorted, skips absent entries and records 
   assert.deepEqual(d, { changed: ['b'], missing: ['c'], added: ['d'] });
 });
 
+check('a manifest naming a path outside --root (absent[], paths[] or a files key) is refused, exit 2, before anything is hashed or reported `added`', () => {
+  write('outside-probe.txt', 'x');
+  for (const bad of [{ paths: [], absent: ['../outside.txt'], files: {} }, { paths: ['/etc/hosts'], files: {} }, { paths: [], files: { '../../x': 'h' } }, { paths: [], absent: 'x', files: {} }, { paths: ['a/../../b'], files: {} }]) {
+    writeFileSync(join(root, 'bad.json'), JSON.stringify(bad));
+    for (const args of [['check', '--manifest', 'bad.json'], ['freeze', '--from', 'bad.json', '--out', 'bad-out.json']]) {
+      const r = run(...args);
+      assert.equal(r.code, 2, `${JSON.stringify(bad)} ${args[0]}: ${r.out}${r.err}`);
+      assert.match(r.err, /not root-relative|absent is not a list/);
+      assert.doesNotMatch(r.out, /^added /m);
+    }
+  }
+  assert.equal(existsSync(join(root, 'bad-out.json')), false);
+});
+
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nfoundation-freeze: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);
