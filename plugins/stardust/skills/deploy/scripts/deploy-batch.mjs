@@ -78,6 +78,10 @@
  *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
+ * --adopt     send nothing: for each selected page the ledger reads `live` without a `sha256` (a row
+ *             written before ledgers kept one), GET its DA source and record `sha256` (+ `adoptedAt`)
+ *             only when DA holds exactly the local file's bytes; any other answer is named and the row
+ *             left as it is. Read-only on DA (GET admin.da.live/source); honours --paths / --allow.
  * A page the ledger reads `live` is skipped only while its file still holds the bytes last VERIFIED delivered (the
  * ledger's `sha256`, written only after live and verify succeed — `putSha256` is what the last PUT sent; a row
  * written before either existed is checked on the delivered origin alone): a page changed locally since — a later
@@ -98,7 +102,7 @@
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
-import { readFile, appendFile, readdir, stat } from 'node:fs/promises';
+import { readFile, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -112,7 +116,7 @@ if (!CONTRACTS) {
   console.error('deploy-batch: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { documentPath, daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
+const { contentDocuments, resolveEntry, daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -149,6 +153,7 @@ function parseArgs(argv) {
     else if (k === '--backoff-ms') a.backoffMs = Math.max(0, +next() || 500);
     else if (k === '--no-publish') a.publish = false;
     else if (k === '--force') a.force = true;
+    else if (k === '--adopt') a.adopt = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
@@ -176,19 +181,6 @@ const shellQuote = (s) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(s) ? s : `'${s.replac
 const rerunCommand = (a) => (a.tokenFile
   ? `node ${process.argv.slice(1).map(shellQuote).join(' ')}   (after writing the fresh token to ${a.tokenFile})`
   : `${a.tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`);
-
-async function walkHtml(dir, base = dir) {
-  const out = [];
-  for (const name of await readdir(dir)) {
-    const full = path.join(dir, name);
-    const s = await stat(full);
-    if (s.isDirectory()) out.push(...(await walkHtml(full, base)));
-    else if (name.endsWith('.html')) {
-      out.push({ file: full, webPath: documentPath(path.relative(base, full)) }); // lib/paths.mjs: a/index.html → /a/index
-    }
-  }
-  return out;
-}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
@@ -325,16 +317,16 @@ async function main() {
   }
   const pathList = async (file) => (await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
     .map((p) => (p.startsWith('/') ? p : `/${p}`));
-  // A list entry is resolved against the documents of --content, never by text alone: its literal form (a web path,
-  // `/changelog.html` for changelog.html.html), its content-file form (one `.html` dropped) and a folder (`/x/` →
-  // `/x/index`). One matching document is the entry; two (`/nav.html`: nav.html or nav.html.html) exit 2 before
-  // anything is sent; none is reported (`--paths` then exits 1 at the end — a named page was not deployed).
+  // A list entry is resolved against the documents of --content, never by text alone (lib/documents.mjs resolveEntry,
+  // the rule extend-roster's publish list is written to). One matching document is the entry; two (`/nav.html`:
+  // nav.html or nav.html.html) exit 2 before anything is sent; none is reported (`--paths` then exits 1 at the end —
+  // a named page was not deployed).
   const resolveList = (entries, flag, webPaths) => {
     const out = new Set(); const ambiguous = []; const unmatched = [];
     for (const e of entries) {
-      const forms = [...new Set([e, e.replace(/\.html$/i, ''), e.replace(/\/$/, '/index')])].filter((f) => webPaths.has(f));
-      if (forms.length > 1) ambiguous.push(`${e} is ${forms.join(' or ')}`);
-      else if (forms.length === 1) out.add(forms[0]);
+      const r = resolveEntry(e, webPaths);
+      if (r.ambiguous) ambiguous.push(`${e} is ${r.ambiguous.join(' or ')}`);
+      else if (r.match) out.add(r.match);
       else unmatched.push(e);
     }
     if (ambiguous.length) {
@@ -352,7 +344,8 @@ async function main() {
       process.exit(2);
     }
   }
-  let pages = await walkHtml(args.content);
+  // lib/documents.mjs: the documents of --content and the DA path each PUTs to (`a/index.html` → /a/index)
+  let pages = contentDocuments(args.content).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }));
   const webPaths = new Set(pages.map((p) => p.webPath));
   const allow = allowEntries && resolveList(allowEntries, '--allow', webPaths);
   let want = null;
@@ -370,6 +363,29 @@ async function main() {
   }
   const ledger = (!args.force && existsSync(args.ledger))
     ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
+  const persistNow = async () => { try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); } catch (e) { console.error(`[deploy-batch] ${e.message}`); } };
+
+  if (args.adopt) {
+    // a legacy live row says SOME version is live; DA's own source bytes say which — adopted only on an exact match
+    let adopted = 0; let kept = 0;
+    for (const p of pages) {
+      const rec = ledger[p.webPath];
+      if (!rec || rec.status !== 'live' || rec.sha256) continue;
+      const local = createHash('sha256').update(await readFile(p.file)).digest('hex');
+      let status = 0; let body = null;
+      try {
+        const res = await fetch(`${DA_SRC}/${args.org}/${args.repo}${encodeURI(p.webPath)}.html`, { headers: { Authorization: `Bearer ${args.token}` } });
+        status = res.status; if (status === 200) body = Buffer.from(await res.arrayBuffer());
+      } catch (e) { status = 0; }
+      if (status === 401) { console.error(`[deploy-batch] --adopt: 401 on ${p.webPath} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`); await persistNow(); process.exit(TOKEN_EXIT); }
+      if (body && createHash('sha256').update(body).digest('hex') === local) {
+        rec.sha256 = local; rec.adoptedAt = new Date().toISOString(); adopted += 1;
+      } else { kept += 1; console.error(`[deploy-batch] --adopt: ${p.webPath} not adopted — ${body ? 'DA holds other bytes than the local file' : `source GET ${status}`}`); }
+    }
+    await persistNow();
+    console.error(`[deploy-batch] --adopt: ${adopted} digest(s) recorded, ${kept} left without; nothing sent.`);
+    process.exit(0);
+  }
 
   // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
   const todo = [];

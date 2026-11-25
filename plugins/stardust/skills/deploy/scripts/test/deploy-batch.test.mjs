@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -42,6 +43,7 @@ const requests = [];
 const count = { put: {}, preview: {}, live: {}, verify: {} };
 const bump = (kind, p) => { count[kind][p] = (count[kind][p] || 0) + 1; return count[kind][p]; };
 const putOk = new Set(); // pages whose fragment landed: the delivered origin answers 200 for these only
+const stored = new Map(); // the bytes each PUT sent: the source GET answers with them
 function parseMultipart(body, contentType) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType || ''); if (!m) return [];
   const delim = Buffer.from(`--${m[1] || m[2]}`);
@@ -79,7 +81,7 @@ const server = createServer((req, res) => {
       if (/-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the transport fails, every attempt
       if (/recover$/.test(p) && n <= 2) return reply(503, 'unavailable');
       if (!valid) return reply(401, 'bad token');
-      const created = () => { putOk.add(p); reply(201, '{}', { 'content-type': 'application/json' }); };
+      const created = () => { putOk.add(p); stored.set(p, requests[requests.length - 1].parts[0]?.data); reply(201, '{}', { 'content-type': 'application/json' }); };
       if (/slow$/.test(p)) { setTimeout(created, 800); return undefined; }
       return created();
     }
@@ -97,6 +99,11 @@ const server = createServer((req, res) => {
       if (/burst-live$/.test(p) && n <= 2) return reply(401, '');
       if (!valid) return reply(401, 'bad token');
       return reply(200, '{}', { 'content-type': 'application/json' });
+    }
+    if (req.method === 'GET' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
+      if (!valid) return reply(401, '');
+      const p = url.slice(SRC.length, -'.html'.length);
+      return stored.has(p) ? reply(200, stored.get(p), { 'content-type': 'text/html' }) : reply(404, '');
     }
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
@@ -236,7 +243,7 @@ await check('a list entry that names two documents (`/nav.html`: nav.html or nav
   assert.equal(ok.code, 0, ok.out + ok.err);
   assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/nav.html.html`], 'the new document, never the old nav');
 });
-await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s documents are sent (its roster page, its declared fragment); never an opening document (nav.html, nav.htm.html), a `.htm` file or an owner\'s draft', async () => {
+await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s documents are sent (the output a unit recorded, its declared fragment); never an opening document (nav.html, nav.htm.html), a `.htm` file, an owner\'s draft, nor a draft at a roster page no unit rendered', async () => {
   const px = join(proj, 'pass-x'); mkdirSync(px, { recursive: true });
   const sh = (cmd, ...a) => spawnSync(cmd, a, { cwd: px, encoding: 'utf8' });
   site('pass-x/content', ['nav', 'nav.htm', 'about']);
@@ -244,14 +251,17 @@ await check('composition: the list `extend-roster.mjs publish` writes, fed to --
   mkdirSync(join(px, 'x1'), { recursive: true });
   writeFileSync(join(px, 'x1', 'base.txt'), sh('git', 'rev-parse', 'HEAD').stdout);
   assert.equal(spawnSync(process.execPath, [ROSTER, 'inventory', '--pass', 'x1'], { cwd: px, encoding: 'utf8' }).status, 0);
-  writeFileSync(join(px, 'x1', 'urls.txt'), 'https://src.test/visit/\n');
+  writeFileSync(join(px, 'x1', 'urls.txt'), 'https://src.test/visit/\nhttps://src.test/missing/\n');
   writeFileSync(join(px, 'x1', 'also.paths'), '/nav.html.html\n');
-  site('pass-x/content', ['visit/index', 'nav.html', 'draft']);
+  site('pass-x/content', ['visit/index', 'nav.html', 'draft', 'missing']);   // missing.html: a draft where a failed capture's page would go
   writeFileSync(join(px, 'content', 'nav.htm'), '<nav>no document</nav>');
   writeFileSync(join(px, 'content', 'nav.html'), '<nav>relinked locally</nav>');
+  const out = spawnSync(process.execPath, [ROSTER, 'output', '--pass', 'x1', '--files', 'visit/index.html'], { cwd: px, encoding: 'utf8' });
+  assert.equal(out.status, 0, out.stderr);
   const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
   assert.equal(pub.status, 0, pub.stderr);
   assert.match(pub.stderr, /held \/draft\.html/);
+  assert.match(pub.stderr, /held \/missing\.html — no unit recorded it as the output of roster page \/missing/);
   const from = requests.length;
   const r = await run(['--content', 'pass-x/content', '--allow', 'pass-x/x1/publish.paths', '--force']);
   assert.equal(r.code, 0, r.out + r.err);
@@ -297,6 +307,23 @@ await check('a token halt on live during a changed-page re-drive never marks the
   assert.match(retry.err, /1 to drive \(1 changed since their PUT\)/);
   assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
   assert.notEqual(ledgerOf('site-th')['/p-dead-live'].sha256, v1);
+});
+await check('--adopt: a live row without a sha256 gets one only when DA\'s source holds exactly the local bytes; nothing is PUT or published', async () => {
+  site('site-ad', ['p-a', 'p-b']);
+  assert.equal((await run(['--content', 'site-ad'])).code, 0);
+  const led = ledgerOf('site-ad');
+  for (const r of Object.values(led)) { delete r.sha256; delete r.putSha256; }   // rows written before ledgers kept a digest
+  writeFileSync(join(proj, 'site-ad', '.deploy-ledger.json'), JSON.stringify(led));
+  writeFileSync(join(proj, 'site-ad', 'p-b.html'), '<div><p>committed, never sent</p></div>\n');
+  const from = requests.length;
+  const r = await run(['--content', 'site-ad', '--adopt']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual([...new Set(since(from).map((q) => q.method))], ['GET'], 'read-only');
+  const after = ledgerOf('site-ad');
+  assert.equal(after['/p-a'].sha256, createHash('sha256').update(readFileSync(join(proj, 'site-ad', 'p-a.html'))).digest('hex'));
+  assert.ok(after['/p-a'].adoptedAt);
+  assert.equal(after['/p-b'].sha256, undefined, 'DA holds other bytes: not adopted');
+  assert.match(r.err, /\/p-b not adopted — DA holds other bytes/);
 });
 await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
   site('site-fold', ['visit/index', 'other']);

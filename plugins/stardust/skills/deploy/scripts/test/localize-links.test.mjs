@@ -62,15 +62,39 @@ check("--receipt: the sha256 of the bytes READ and WRITTEN for each file the run
   assert.equal(L("--check", "--receipt", join(root, "r2.json")).status, 1);
   rmSync(root, { recursive: true });
 });
-check("--exclude-targets: a held document is no link target — the source link to it stays; it is still read as a page", () => {
-  const root = mkdtempSync(join(tmpdir(), "localize-ex-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
+check("--targets: only the listed documents are link targets — a source link to any other (a held draft) stays; every document is still read as a page", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-tg-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
   writeFileSync(join(c, "index.html"), '<a href="https://example.com/draft">d</a> <a href="https://example.com/about">a</a>');
   writeFileSync(join(c, "draft.html"), '<a href="https://example.com/about">a</a>'); writeFileSync(join(c, "about.html"), "<p>about</p>");
-  writeFileSync(join(root, "held.paths"), "/draft.html\n");
-  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, "--exclude-targets", join(root, "held.paths")], { encoding: "utf8" });
+  writeFileSync(join(root, "targets.paths"), "/index.html\n/about.html\n");
+  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, "--targets", join(root, "targets.paths")], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="https://example.com/draft">d</a> <a href="/about">a</a>');
   assert.equal(readFileSync(join(c, "draft.html"), "utf8"), '<a href="/about">a</a>', "its own links are still localized");
+  rmSync(root, { recursive: true });
+});
+check("a file deploy never sends (`Draft.HTML`, `x.htm`) is no document: no link target, not rewritten — the deployer's rule (lib/documents.mjs)", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-case-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
+  writeFileSync(join(c, "index.html"), '<a href="https://example.com/Draft">d</a> <a href="https://example.com/old">o</a>');
+  writeFileSync(join(c, "Draft.HTML"), '<a href="https://example.com/">h</a>'); writeFileSync(join(c, "old.htm"), '<a href="https://example.com/">h</a>');
+  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="https://example.com/Draft">d</a> <a href="https://example.com/old">o</a>');
+  assert.equal(readFileSync(join(c, "Draft.HTML"), "utf8"), '<a href="https://example.com/">h</a>');
+  rmSync(root, { recursive: true });
+});
+check("--receipt is written before any page: its folder is created; a receipt that cannot be written leaves every page as it was (exit 1)", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-rf-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
+  const page = '<a href="https://example.com/about">a</a>';
+  writeFileSync(join(c, "index.html"), page); writeFileSync(join(c, "about.html"), "<p>about</p>");
+  writeFileSync(join(root, "not-a-dir"), "");
+  const L = (rc) => spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, "--receipt", rc], { encoding: "utf8" });
+  const bad = L(join(root, "not-a-dir", "r.json"));
+  assert.equal(bad.status, 1); assert.match(bad.stderr, /no page written/);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), page, "unchanged");
+  const ok = L(join(root, "pass", "receipts", "r.json"));
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(root, "pass", "receipts", "r.json"), "utf8")).files), ["/index.html"]);
   rmSync(root, { recursive: true });
 });
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });

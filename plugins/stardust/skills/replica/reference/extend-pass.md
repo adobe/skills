@@ -42,7 +42,10 @@ close or reopen another pass's.
 settle), so every tracked document's opening bytes are the opening commit's, recoverable from any clone that has
 it. The `extend start` line carries the request and that commit, so a session that ends mid-opening loses neither.
 Everything the pass keeps under `$X` is committed with the checkpoints; a shallow clone of the last checkpoint
-resumes it:
+resumes it. A site whose ledgers predate digests (live rows without `sha256`) first runs `deploy-batch.mjs --adopt
+--ledger <it>` once per ledger, with its usual flags: read-only on DA, it records a digest only where DA holds the
+local bytes exactly; a row it cannot match stays `live-unverified` — a link target, but held from approval and from
+the library tree.
 
 ```bash
 L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/foundation-freeze.mjs"
@@ -124,17 +127,17 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 ## 4. Phase 5 — units of the pass
 
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
-script already skips what is delivered. **The publish list** is `$R publish --pass $X`, run again before each
-deploy: `$X/publish.paths` lists the content file path (`/visit/index.html`) of every document absent from the
-opening inventory whose destination is a roster page, or that `$X/also.paths` lists (a fragment the pass's pages
-need, written there by the unit that creates it). A document that existed at opening — the nav, an older page —
-is never on it; a new document that is neither (an owner's draft) is held, and two new documents for one roster
-page stop the unit (exit 2: one page, one document). Every `deploy-batch.mjs` run of the pass — a cluster's, G's
-re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends nothing outside it. Every
-`localize-links.mjs` run of the pass carries `--exclude-targets $X/held.paths` (written by `publish`: drafts, and
-documents never published, are no link target — the source link stays) and `--receipt
-$X/receipts/<unit>-<UTC time>.json` (a new file per run). An older page is sent only as an approved revision,
-below; a finding on one is reported.
+script already skips what is delivered. **The publish list:** a unit whose pages rendered records the exact files it
+wrote, `$R output --pass $X --files <them>` (one file per roster page; an older document, a second file for one page
+or a non-roster file is refused). `$R publish --pass $X`, run again before each deploy, writes `$X/publish.paths`:
+those outputs plus `$X/also.paths` (a fragment the pages need, written there by the unit that creates it). Any other
+new document — an owner's draft, a file at a roster page whose capture or render failed — is held and named. It also
+writes `$X/targets.paths`: every opening document with a live row, plus the publish list. Every `deploy-batch.mjs`
+run of the pass — a cluster's, G's re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends
+nothing outside it. The localizer runs twice, as `handoff-contract.md` § 2 orders: `localize-links.mjs … --targets
+$X/targets.paths --receipt $X/receipts/<unit>-<UTC time>.json` (a new file per run), then `localize-links.mjs …
+--targets $X/targets.paths --check`, which writes nothing and takes no receipt. An older page is sent only as an
+approved revision, below; a finding on one is reported.
 
 - **Migrate,** one render unit at a time on the main agent (`state.mjs` and `migrate.mjs` each rewrite the whole
   `state.json` — never two at once), never `--all` and never `--force`, which re-render delivered pages. A new type's
@@ -156,26 +159,30 @@ below; a finding on one is reported.
   are the only evidence of what it changed — each names the bytes that run read and wrote, so concurrent clusters
   never share a record. `$R relink-status --pass $X` names each older document a receipt covers:
   - `candidate` — the localizer's own edit and nothing else, measured against the document's last published bytes
-    (the opening commit's blob when the deploy ledgers show those bytes live, or a landed approved revision). Show
+    (the opening commit's blob when a ledger digest shows those bytes live, or a landed approved revision). Show
     the owner the exact list and say that a re-PUT replaces the DA document, so an edit made in DA since delivery is
     lost.
   - `conflict` — an edit before or after the localizer's runs, or changes other than links (the owner's work):
     held, the file kept exactly as it is, named to the owner.
-  - `held` — no known published bytes: git-ignored, never published, another version published last (or left held
-    by an earlier pass), or a clone without the opening commit (the line names the `git fetch` that brings it).
+  - `held` — no known published bytes: git-ignored, never published, a live row without a digest, another version
+    published last (or left held by an earlier pass), or a clone without the opening commit (the line names the `git
+    fetch` that brings it).
 
-  Approved candidates: `$R relink-approve --pass $X --files <them>` freezes their bytes in `$X/approved/r<k>/`;
+  Approved candidates: `$R relink-approve --pass $X --files <them>` freezes the bytes it classified in
+  `$X/approved/r<k>/`;
   **commit that checkpoint before sending**, then `deploy-batch.mjs --content $X/approved/r<k> --allow
   $X/approved/r<k>.paths`, then commit its ledger. A resume that finds a revision without a live ledger runs that
-  same command again. Declined candidates: `$R relink-restore --pass $X --files <them>`. Unanswered (hands-off)
+  same command again. Declined candidates: `$R relink-restore --pass $X --files <them>` (a file saved since
+  it was classified is kept and refused as a conflict). Unanswered (hands-off)
   candidates are restored too, and counted. The script acts on candidates only. `replica extend blocked --track x<N>
   --detail "republish awaits the owner: <n> pages"` counts held documents, conflicts and unanswered candidates. The
   question is asked at C-final, before its final units, and again at E2 when its run rewrites more; `relink-status`
   runs once more last, so its `relink-status.json` tells the next pass what was left. After an approved revision
   lands, it is gated again in each final unit's own mode. A page document: `gate-all.mjs --width <w> --only <slugs>`
   then `--width <w> --compare-only` per delivery width, and `--wide --only` then `--wide --compare-only` for the
-  advisory report. A shared document (nav, footer: no coverage row, no slug): the three final units again over
-  every delivered page with `--skip-existing` (the nav and footer are in every page's reuse key). Then
+  advisory report. A shared document (nav, footer, any chrome a page's metadata names: no coverage row, no slug): the
+  three final units again over every delivered page WITHOUT `--skip-existing` (a reuse key names only files called
+  `nav.html`/`footer.html` at the content root or one level below — a fresh capture is the only proof). Then
   `update-coverage.mjs --gate` on the delivery tables only (`all-<w>`, never `wide-<w>`).
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
@@ -189,6 +196,10 @@ below; a finding on one is reported.
   `gate-all-360-x<N>`, `gate-all-wide-x<N>`, then `update-coverage.mjs --gate` per width. Over every delivered page
   with `--skip-existing`, the new pages are gated, and an earlier page too when an input of its reuse key changed
   (#793); the others' verdicts are reused, and each summary stays complete.
+- **The library refresh** (`done-check.mjs`'s `library_missing` remedy) reads delivered bytes, never working files: `LIB=$(mktemp
+  -d)/library-src; $R published --pass $X --out $LIB` writes each document at its verified digest, its landed
+  approved revision or its opening blob, and names the rest withheld; then `da-library.mjs --content $LIB`. It exits 1 while a delivered page is withheld (a conflict's published bytes missing, a pass page
+  not delivered as it is): close that first, or a `blocked` line names it.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
 - **F–I** as in a first pass, except G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level
   fix: the foundation is frozen), the re-deploy with `--allow`. Then `done-check.mjs --track x<N>` exit 0 — the

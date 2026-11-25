@@ -53,7 +53,9 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSyn
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
-import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath } from './lib.mjs'; // lib/da-token.mjs; the marker path
+import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath, LIBRARY_ROOT } from './lib.mjs'; // lib/da-token.mjs; the marker path
+// the DA folder this script writes: lib/documents.mjs owns it, so a page can never be published there
+const LIB = LIBRARY_ROOT.slice(1);
 
 // ---- pure part ------------------------------------------------------------------------------------------------
 
@@ -262,7 +264,7 @@ function sources(a) {
     const chrome = new Set(['nav', 'footer']);
     for (const { f } of files) for (const r of chromeRefs(readFileSync(f, 'utf8'))) chrome.add(r);
     for (const { f, rel } of files) {
-      if (rel.startsWith('library/') || chrome.has(rel)) continue;
+      if (rel.startsWith(`${LIB}/`) || chrome.has(rel)) continue;
       pages.push({ path: servedPath(treePath(`${rel}.html`), { folderIndex: isFolderIndexFile(`${rel}.html`) }), file: f }); // rollout publicUrl's rule
     }
   }
@@ -358,20 +360,20 @@ async function main() {
   const authored = collectBlocks(pages.map((p) => ({ path: p.path, html: readFileSync(p.file, 'utf8') })));
   const blocks = known ? authored.filter((b) => known.has(b.name)) : authored;
   for (const b of authored) if (known && !known.has(b.name)) console.error(`da-library: authored class "${b.name}" (on ${b.pages[0]}) has no ${a.blocksDir}/${b.name}/ folder — left out of the library`);
-  const base = `https://content.da.live/${a.org}/${a.site}/library`;
+  const base = `https://content.da.live/${a.org}/${a.site}/${LIB}`;
   const docs = [];
-  for (const b of blocks) docs.push({ path: `library/blocks/${docName(b.name)}`, html: blockDoc(b) });
+  for (const b of blocks) docs.push({ path: `${LIB}/blocks/${docName(b.name)}`, html: blockDoc(b) });
   const tplRows = [];
   for (const t of templates) {
     const f = contentFile(a.content, t.path);
     if (!f) { console.error(`da-library: template ${t.name}: no content file for ${t.path} — skipped`); continue; }
-    docs.push({ path: `library/templates/${docName(t.name)}`, html: templateDoc(readFileSync(f, 'utf8')) });
+    docs.push({ path: `${LIB}/templates/${docName(t.name)}`, html: templateDoc(readFileSync(f, 'utf8')) });
     tplRows.push({ key: t.name, value: `${base}/templates/${docName(t.name)}` });
   }
   const blockRows = blocks.map((b) => ({ name: b.name, path: `${base}/blocks/${docName(b.name)}` }));
   const rows = [{ title: 'Blocks', path: `${base}/blocks.json` }, ...(tplRows.length ? [{ title: 'Templates', path: `${base}/templates.json` }] : [])];
 
-  for (const d of docs) write(join(a.out, `${d.path.replace(/^library\//, '')}.html`), d.html);
+  for (const d of docs) write(join(a.out, `${d.path.slice(LIB.length + 1)}.html`), d.html);
   write(join(a.out, 'blocks.json'), `${JSON.stringify(sheet(blockRows), null, 2)}\n`);
   write(join(a.out, 'templates.json'), `${JSON.stringify(sheet(tplRows), null, 2)}\n`);
   write(join(a.out, 'library-rows.json'), `${JSON.stringify(rows, null, 2)}\n`);
@@ -414,7 +416,7 @@ async function main() {
     const r = await put(`${d.path}.html`, d.html, 'text/html');
     let pv = ''; let ok = r.ok;
     // only a template needs its preview (the panel's preview button); block documents are read from content.da.live
-    if (r.ok && a.preview && d.path.startsWith('library/templates/')) {
+    if (r.ok && a.preview && d.path.startsWith(`${LIB}/templates/`)) {
       const p = await call(`${ADMIN}/preview/${a.org}/${a.site}/${a.ref}/${d.path}`, { method: 'POST' });
       pv = ` · preview ${p.status}`; ok = p.ok;
     }
@@ -423,9 +425,9 @@ async function main() {
   }
   // templates.json only when this run has templates: a run without them must not wipe a published registration
   for (const [name, rowsOf] of [['blocks', blockRows], ...(tplRows.length ? [['templates', tplRows]] : [])]) {
-    const r = await put(`library/${name}.json`, JSON.stringify(sheet(rowsOf)), 'application/json');
+    const r = await put(`${LIB}/${name}.json`, JSON.stringify(sheet(rowsOf)), 'application/json');
     if (!r.ok) failed += 1;
-    console.log(`${r.ok ? 'OK  ' : 'FAIL'} library/${name}.json · put ${r.status}`);
+    console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${LIB}/${name}.json · put ${r.status}`);
   }
   const confUrl = `${CONF}/${a.org}/${a.site}/`;
   const got = await call(confUrl, { method: 'GET' });

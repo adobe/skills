@@ -98,8 +98,11 @@ const aiReadabilityIsChrome = (fp) => libKinds.isChromeName(fp, { menu: true });
 pin('spec/scripts/lib.mjs', "const { CHROME_IDS } = C;");
 pin('spec/scripts/lib.mjs', '!(top && CHROME_IDS.has(A.tag(k)))');
 const specChrome = libKinds.CHROME_IDS;
-// deploy/scripts/deploy-batch.mjs walkHtml (runs on import) — its webPath is lib/paths.mjs documentPath (pinned use)
-pin('deploy/scripts/deploy-batch.mjs', 'out.push({ file: full, webPath: documentPath(path.relative(base, full)) });');
+// lib/documents.mjs contentDocuments (deploy-batch, localize-links, extend-roster) — its webPath is lib/paths.mjs documentPath (pinned use)
+pin('stardust/scripts/lib/documents.mjs', 'out.push({ file, webPath: documentPath(file) });');
+pin('deploy/scripts/deploy-batch.mjs', 'contentDocuments(args.content).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }))');
+pin('deploy/scripts/localize-links.mjs', 'const docs = contentDocuments(opts.content);');
+pin('replica/scripts/extend-roster.mjs', 'export const documents = (dir) => contentDocuments(dir).map((d) => d.file);');
 const deployBatchWebPath = libPaths.documentPath;
 // qa/scripts/checks/routing.mjs — the trailing-slash sampling filter is the exported isFolderIndex (lib/paths.mjs listingKey/listingUrl)
 pin('qa/scripts/checks/routing.mjs', "import { fetchUrl, pMap, finding, pageUrl, plainUrl, listingKey, listingUrl } from '../lib.mjs';");
@@ -247,7 +250,7 @@ OBSERVED.tree = family('tree-path', PATHS, {
 // 1e. the DA document path of a file in the tree (`/a/` → `/a/index`) — reference: eds-path daPath of deliveredUrl
 OBSERVED.daDocument = family('da-document-path', PATHS, {
   edsDaPath: { label: 'deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>)', fn: (p) => edsPath.daPath(edsPath.deliveredUrl(`/${outputPath(p)}`)) },
-  deployBatchWebPath: { label: 'deploy/scripts/deploy-batch.mjs#walkHtml.webPath', fn: (p) => deployBatchWebPath(outputPath(p)) },
+  deployBatchWebPath: { label: 'stardust/scripts/lib/documents.mjs#contentDocuments.webPath', fn: (p) => deployBatchWebPath(outputPath(p)) },
 }, 'edsDaPath');
 OBSERVED.sidecar = family('sidecar', PATHS, {
   migrateSidecar: { label: 'migrate/scripts/migrate.mjs#sidecarFor', fn: (p) => migrate.sidecarFor(outputPath(p)) },
@@ -624,11 +627,11 @@ const KNOWN_DIVERGENCE = [
   {"concept": "tree-path", "input": "/A/B", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/A/B\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/a/b\""},
   {"concept": "tree-path", "input": "/widgets/search/site-search.html?q=docs", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/widgets/search/site-search.html?q=docs\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/widgets/search/site-search\""},
   {"concept": "tree-path", "input": "/widgets/search/site-search.htm", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/widgets/search/site-search.htm\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/widgets/search/site-search\""},
-  {"concept": "da-document-path", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/a?x=1/index\""},
-  {"concept": "da-document-path", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/a#f/index\""},
-  {"concept": "da-document-path", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a/b/index\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/A/B/index\""},
-  {"concept": "da-document-path", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.html?q=docs/index\""},
-  {"concept": "da-document-path", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.htm\""},
+  {"concept": "da-document-path", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a\"", "b": "stardust/scripts/lib/documents.mjs#contentDocuments.webPath → \"/a?x=1/index\""},
+  {"concept": "da-document-path", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a\"", "b": "stardust/scripts/lib/documents.mjs#contentDocuments.webPath → \"/a#f/index\""},
+  {"concept": "da-document-path", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/a/b/index\"", "b": "stardust/scripts/lib/documents.mjs#contentDocuments.webPath → \"/A/B/index\""},
+  {"concept": "da-document-path", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "stardust/scripts/lib/documents.mjs#contentDocuments.webPath → \"/widgets/search/site-search.html?q=docs/index\""},
+  {"concept": "da-document-path", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "stardust/scripts/lib/documents.mjs#contentDocuments.webPath → \"/widgets/search/site-search.htm\""},
   {"concept": "sidecar", "input": "/widgets/search/site-search.htm", "a": "migrate/scripts/migrate.mjs#sidecarFor → \"widgets/search/site-search._meta.json\"", "b": "rollout/scripts/inventory.mjs#sidecarFor → \"widgets/search/site-search.htm._meta.json\""},
   {"concept": "widget-stem", "input": "https://partner.example/widgets/map/finder.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"finder\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
   {"concept": "chrome-id", "input": "header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "qa/scripts/lib.mjs#buildInventory.fragments default (of /<id>) → false"},

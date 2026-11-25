@@ -5,10 +5,12 @@
 // for /widgets/…, any extension case, .htm included; reserved stems; pageWidgets drops a page link; widgetLinks' three
 // mount rules, origin filter and dedupe keys); kinds.mjs classifies documents and chrome; taxonomy.mjs labels every class;
 // resolve.mjs names the copy that fixes a missing sibling; da-token.mjs picks one token source and names it in every error;
+// documents.mjs lists a content tree's documents as deploy sends them, resolves a list entry to one, reserves /library;
 // contracts.mjs re-exports every lib export (no name lost to a clash).
 // The cross-implementation pins live in contracts-characterize.test.mjs; the project-copy layout in layout.test.mjs. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as paths from '../lib/paths.mjs';
@@ -17,6 +19,7 @@ import * as kinds from '../lib/kinds.mjs';
 import * as taxonomy from '../lib/taxonomy.mjs';
 import * as resolve from '../lib/resolve.mjs';
 import * as daToken from '../lib/da-token.mjs';
+import * as documents from '../lib/documents.mjs';
 import * as contracts from '../contracts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -24,14 +27,14 @@ const LIB = join(HERE, '..', 'lib');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
-check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs and da-token.mjs (read when called)', () => {
+check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs, da-token.mjs and documents.mjs (read when called)', () => {
   const files = readdirSync(LIB).filter((f) => f.endsWith('.mjs')).sort();
-  assert.deepEqual(files, ['da-token.mjs', 'kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
+  assert.deepEqual(files, ['da-token.mjs', 'documents.mjs', 'kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
   for (const f of files) {
     const src = readFileSync(join(LIB, f), 'utf8');
     assert.ok(src.startsWith('/**\n * skills/stardust/scripts/lib/'), `${f}: header`);
     assert.match(src.slice(0, 2500), /\bOwns?\b|\bowns\b|one copy/, `${f}: says what it owns`);
-    if (f !== 'resolve.mjs' && f !== 'da-token.mjs') assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
+    if (!['resolve.mjs', 'da-token.mjs', 'documents.mjs'].includes(f)) assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
   }
 });
 
@@ -163,12 +166,34 @@ check('da-token: jwtExpiry reads a numeric exp claim and nothing else', () => {
   assert.equal(daToken.jwtExpiry(jwt({ exp: 'soon' })), null); assert.equal(daToken.jwtExpiry('opaque'), null); assert.equal(daToken.jwtExpiry(undefined), null);
 });
 
+// ---- documents.mjs ---------------------------------------------------------------------------------------------------
+check('documents: a lowercase .html is a document (x.HTML, x.htm are not), its webPath documentPath; sorted; a missing root is empty', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lib-docs-'));
+  for (const f of ['b.html', 'a/index.html', 'nav.html.html', 'Draft.HTML', 'old.htm', 'a/notes.txt']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
+  assert.deepEqual(documents.contentDocuments(root), [{ file: 'a/index.html', webPath: '/a/index' }, { file: 'b.html', webPath: '/b' }, { file: 'nav.html.html', webPath: '/nav.html' }]);
+  assert.deepEqual(documents.contentDocuments(join(root, 'none')), []);
+  rmSync(root, { recursive: true });
+});
+check('documents: resolveEntry — literal, content-file form, folder; two forms ambiguous; none unmatched', () => {
+  const w = new Set(['/a/index', '/b', '/nav.html', '/nav']);
+  assert.deepEqual(documents.resolveEntry('/a/index.html', w), { match: '/a/index' });
+  assert.deepEqual(documents.resolveEntry('a/', w), { match: '/a/index' });
+  assert.deepEqual(documents.resolveEntry('/b', w), { match: '/b' });
+  assert.deepEqual(documents.resolveEntry('/nav.html', w), { ambiguous: ['/nav.html', '/nav'] });
+  assert.deepEqual(documents.resolveEntry('/c', w), { unmatched: true });
+});
+check('documents: /library and everything under it (any case, .html, trailing slash) is the authoring library\'s; /libraries is not', () => {
+  for (const p of ['/library', '/library/', '/Library/blocks/hero', '/library/templates/x.html']) assert.equal(documents.isLibraryPath(p), true, p);
+  for (const p of ['/libraries', '/a/library', '/']) assert.equal(documents.isLibraryPath(p), false, p);
+  assert.equal(documents.LIBRARY_ROOT, '/library');
+});
+
 // ---- contracts.mjs ---------------------------------------------------------------------------------------------------
 check('contracts.mjs re-exports every export of every lib file, the same binding (an `export *` name clash would drop one silently)', () => {
-  const all = [paths, names, kinds, taxonomy, resolve, daToken].flatMap((m) => Object.keys(m));
+  const all = [paths, names, kinds, taxonomy, resolve, daToken, documents].flatMap((m) => Object.keys(m));
   assert.equal(new Set(all).size, all.length, 'two lib files export the same name');
   assert.deepEqual(Object.keys(contracts).sort(), [...all].sort());
-  for (const m of [paths, names, kinds, taxonomy, resolve, daToken]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
+  for (const m of [paths, names, kinds, taxonomy, resolve, daToken, documents]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
 });
 
 console.log(`\n${failed ? `${failed} check(s) failed` : 'all checks passed'}`);
