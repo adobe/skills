@@ -3,7 +3,9 @@
 // converts each block on the first page that uses it in representative-first order and reuses it after; a
 // later pass whose new, larger template sorts first is told to REUSE a block a delivered page already runs
 // (deployed or verified), never to convert it again; --pending-only lists only the undelivered pages with those
-// reuse lines; a missing input is exit 1; --help writes nothing. Run: node <this file>.
+// reuse lines; a resumed rollout whose representative failed while a sibling was deployed gets reuse for the
+// sibling's blocks (and loses ◆ rep when nothing is left to convert); a missing input is exit 1; --help writes
+// nothing. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -63,6 +65,19 @@ check('a later pass: a new template that sorts first reuses the blocks delivered
   assert.deepEqual(pending.doc.steps.map((s) => s.slug), ['s1', 's2', 's3']);
   assert.ok(pending.doc.steps.every((s) => !ids(s.convert).includes('hero') && !ids(s.convert).includes('cards')), 'no pending page converts delivered code');
   assert.match(pending.stdout, /s1\s+pending\s+convert: quote {2}\| {2}reuse: hero/);
+});
+check('a resumed rollout whose representative failed while a sibling was deployed: the sibling\'s blocks are reuse on the representative, which loses ◆ rep; its own new block is still convert', () => {
+  const out = project('failed-rep', [pg('r1', 'article', ['hero', 'quote'], 'failed'), pg('r2', 'article', ['hero'], 'deployed'), pg('r3', 'article', ['quote'])]);
+  const { doc, stdout } = plan(out);
+  assert.deepEqual(step(doc, 'r1').reuse.map((b) => [b.id, b.convertedBy]), [['hero', 'r2']], 'hero is the deployed sibling\'s live code');
+  assert.deepEqual(ids(step(doc, 'r1').convert), ['quote']);
+  assert.equal(step(doc, 'r1').isRepresentative, true, 'still converts quote');
+  const onlyReuse = project('failed-rep-2', [pg('q1', 'article', ['hero'], 'failed'), pg('q2', 'article', ['hero'], 'verified')]);
+  const second = plan(onlyReuse);
+  assert.equal(step(second.doc, 'q1').isRepresentative, false, 'nothing left to convert: not a representative');
+  assert.deepEqual(ids(step(second.doc, 'q2').convert), ['hero']);
+  assert.match(second.stdout, /^ {2}sib q1 +failed +reuse: hero$/m);
+  assert.match(stdout, /◆ rep r1 +failed +convert: quote {2}\| {2}reuse: hero/);
 });
 check('a missing coverage input is exit 1 with the order to run inventory then blocks', () => {
   const out = join(root, 'empty'); mkdirSync(out);

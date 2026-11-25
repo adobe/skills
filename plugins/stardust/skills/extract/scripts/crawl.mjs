@@ -62,7 +62,7 @@
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
  *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json] \
- *     [--select-only]
+ *     [--skip-urls <file>] [--select-only]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
@@ -82,12 +82,15 @@
  *                             against its site.originUrl), or a record already under <out>/pages/ (a
  *                             run interrupted before its state was written), is dropped BEFORE the cap
  *                             — from discovery and from --pages, the entry included; urls match with
- *                             or without `www.` — so --max n is the next n pages in the same order; a
+ *                             or without `www.`, `/index.html` as its folder — so --max n is the next
+ *                             n pages in the same order, assets and other hosts never taking a slot; a
  *                             new page never takes a slug either holds (it gets the -<hash4> suffix).
  *                             --pages is then the exact list: the entry is never added to it. A file
  *                             without a pages[] array, or a --pages entry off the --url site, exits 2
  *                             before any browser starts. Nothing new → one line, exit 0, nothing
  *                             written (a --pages list that is all captured is known before launch)
+ *     --skip-urls <file>      with --skip-captured: urls, one per line, also dropped before the cap
+ *                             (pages an earlier pass could not capture), their slugs not taken
  *     --select-only           discover and select as above, print the selected urls on stdout, one
  *                             per line, and stop: nothing captured, nothing written — the roster a
  *                             caller records before the capture (replica's extend pass)
@@ -232,6 +235,10 @@ export function parseArgs(argv) {
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
     else if (k === '--select-only') a.selectOnly = true;
+    else if (k === '--skip-urls') {
+      a.skipUrls = argv[(i += 1)];
+      if (!a.skipUrls || a.skipUrls.startsWith('--')) throw new Error('--skip-urls needs a file of urls');
+    }
     else if (k === '--skip-captured') {
       a.skipCaptured = argv[(i += 1)];
       if (!a.skipCaptured || a.skipCaptured.startsWith('--')) throw new Error('--skip-captured needs a state.json path');
@@ -239,6 +246,7 @@ export function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
+  if (a.skipUrls && !a.skipCaptured) throw new Error('--skip-urls goes with --skip-captured');
   a.origin = new URL(a.url).origin;
   return a;
 }
@@ -316,10 +324,12 @@ export function addCapturedRecords(captured, records) {
 }
 
 // The identity --skip-captured matches on: dedupeKey with a `www.` prefix folded, so a capture recorded on the
-// apex host and a roster that followed the redirect to `www.` (or the reverse) name one page.
+// apex host and a roster that followed the redirect to `www.` (or the reverse) name one page, and a folder's
+// `index.html` folded into the folder (`/visit/index.html` is `/visit/`).
 export function captureKey(href) {
   const u = new URL(href);
-  return `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}${u.search}`;
+  const p = u.pathname.replace(/\/index\.html?$/i, '/').replace(/\/+$/, '');
+  return `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${p}${u.search}`;
 }
 const sameSite = (a, b) => { const x = new URL(a); const y = new URL(b); return x.protocol === y.protocol && x.host.toLowerCase().replace(/^www\./, '') === y.host.toLowerCase().replace(/^www\./, ''); };
 
@@ -641,9 +651,10 @@ export function captureGaps(records, alsoCaptured = []) {
 /**
  * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
  * page's links follow in document order, then the discovered list, both kept to same-origin non-asset pages;
- * without it, the discovered list follows the entry directly — in both orders only same-origin non-asset pages.
- * A page whose captureKey is in `exclude` (the captured set of --skip-captured; the entry included) is dropped
- * before the cap. Unparsable hrefs are skipped and returned in `skipped`. Pure. Returns { urls, skipped }.
+ * without it, the discovered list follows the entry directly (kept to same-origin non-asset pages only when
+ * `exclude` is not empty). A page whose captureKey is in `exclude` (the captured set of --skip-captured; the entry
+ * included) is dropped before the cap. Unparsable hrefs are skipped and returned in `skipped`. Pure.
+ * Returns { urls, skipped }.
  */
 export function selectPages({ entry, origin, linked, discovered, max, linkFirst, exclude = new Set() }) {
   const skipped = [];
@@ -651,8 +662,10 @@ export function selectPages({ entry, origin, linked, discovered, max, linkFirst,
     try { return [normalizeUrl(h, origin)]; } catch { skipped.push(h); return []; }
   });
   const page = (u) => { const url = new URL(u); return url.origin === origin && !ASSET_EXT.test(url.pathname); };
-  // the same-origin page check runs in both orders, before the cap: an asset or another host never takes a slot
-  const candidates = (linkFirst ? [...parse(linked), ...parse(discovered)] : parse(discovered)).filter(page);
+  // the same-origin page check runs before the cap with --link-first and under --skip-captured (an asset or
+  // another host never takes a slot of a later pass); a plain capped crawl keeps the discovered list as it is
+  const listed = linkFirst ? [...parse(linked), ...parse(discovered)] : parse(discovered);
+  const candidates = linkFirst || exclude.size ? listed.filter(page) : listed;
   const seen = new Set(); const urls = [];
   for (const u of [entry, ...candidates]) {
     const k = dedupeKey(u);
@@ -1403,7 +1416,16 @@ async function main() {
       try { return [JSON.parse(readFileSync(path.join(dir, f), 'utf8'))]; } catch { return [{ slug: f.slice(0, -5) }]; }
     }) : [];
     const onDisk = addCapturedRecords(args.captured, records);
-    const excluded = `${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) excluded (${args.skipCaptured}${onDisk ? `; ${onDisk} record(s) under ${dir} not in it` : ''})`;
+    // --skip-urls: pages an earlier pass tried and could not capture — excluded, their slugs not taken
+    let skipped = 0;
+    if (args.skipUrls) {
+      let text;
+      try { text = await readFile(args.skipUrls, 'utf8'); } catch (e) { throw new Error(`--skip-urls: cannot read ${args.skipUrls} (${e.code || e.message})`); }
+      for (const line of text.split('\n').map((l) => l.trim()).filter(Boolean)) {
+        try { args.captured.keys.add(captureKey(normalizeUrl(line, args.url))); skipped += 1; } catch { /* not a url */ }
+      }
+    }
+    const excluded = `${args.captured.keys.size} captured page url(s) and ${args.captured.slugs.size} slug(s) excluded (${args.skipCaptured}${onDisk ? `; ${onDisk} record(s) under ${dir} not in it` : ''}${skipped ? `; ${skipped} url(s) from ${args.skipUrls}` : ''})`;
     if (args.pages) {
       const { offOrigin, fresh } = precheckPages(args);
       if (offOrigin.length) throw new Error(`--skip-captured: --pages lists ${offOrigin.length} url(s) off the site of --url: ${offOrigin.join(', ')}`);

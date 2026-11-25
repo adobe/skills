@@ -437,7 +437,10 @@ pages or refresh existing ones.
 - Default behaviour, `--prep` included: skip URLs whose slug is already
   in `state.json` with status `extracted` or beyond. Crawl only newly
   discovered URLs — `crawl.mjs --skip-captured stardust/state.json`
-  drops them before the cap and keeps their slugs.
+  drops them before the cap and keeps their slugs; it makes `--pages`
+  exact (no entry page added) and the crawl log then lists only the new
+  pages. Never with `--refresh` / `--refresh-all`: those re-capture
+  pages that are in `state.json` on purpose.
 - `--refresh <slug>` re-extracts a single named page even if already
   extracted. The new per-page JSON overwrites, but state.json
   preserves the page's full lifecycle history.

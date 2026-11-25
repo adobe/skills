@@ -280,6 +280,8 @@ report and stops: nothing re-runs from Phase 1 and the spec is never
 re-promoted. `--extend` / `--extend-next` opens pass `x<N>` — the new
 pages only, the spec and the foundation frozen, new units with the pass
 suffix, Phases 3–4 for new page types only: `reference/extend-pass.md`.
+Not a bounded pilot (`bounded-single`): it grows by re-running Phase 1
+with `--prep` (`reference/preserve-direction.md` § 1a).
 
 ## What replica never does
 

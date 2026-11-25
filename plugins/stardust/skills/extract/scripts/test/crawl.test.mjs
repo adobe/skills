@@ -183,6 +183,9 @@ check('parseArgs: --skip-captured takes a path; a missing value is a usage error
   assert.throws(() => parse('--skip-captured'), /--skip-captured needs a state\.json path/);
   assert.throws(() => parse('--skip-captured', '--max', '3'), /--skip-captured needs a state\.json path/);
   assert.equal(parse('--select-only').selectOnly, true);
+  assert.equal(parse('--skip-captured', 's.json', '--skip-urls', 'failed.txt').skipUrls, 'failed.txt');
+  assert.throws(() => parse('--skip-urls', 'failed.txt'), /--skip-urls goes with --skip-captured/);
+  assert.throws(() => parse('--skip-captured', 's.json', '--skip-urls'), /--skip-urls needs a file of urls/);
   assert.equal(parse().selectOnly, undefined);
 });
 check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too); a valid empty pages[] is empty; no pages[] array throws', () => {
@@ -287,7 +290,17 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     const resumed = spawnSync(process.execPath, [...base, '--pages', '/visit'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.match(resumed.stderr, /0 new pages .*1 record\(s\) under .*pages not in it/);
+    // a page an earlier pass could not capture, listed in --skip-urls, is not selected again
+    writeFileSync(join(root, 'failed.txt'), 'https://www.example.com/broken\n');
+    const failedOnce = spawnSync(process.execPath, [...base, '--pages', '/broken', '--skip-urls', join(root, 'failed.txt')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(failedOnce.status, 0, failedOnce.stderr);
+    assert.match(failedOnce.stderr, /0 new pages .*1 url\(s\) from .*failed\.txt/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('captureKey: a folder\'s index.html is the folder; a query string stays part of the identity', () => {
+  assert.equal(crawl.captureKey('https://ex.test/visit/index.html'), crawl.captureKey('https://ex.test/visit/'));
+  assert.equal(crawl.captureKey('https://ex.test/index.html'), crawl.captureKey('https://ex.test/'));
+  assert.notEqual(crawl.captureKey('https://ex.test/visit/?utm_source=news'), crawl.captureKey('https://ex.test/visit/'));
 });
 check('captureKey / precheckPages: a `www.` prefix is one site and one page — a roster that followed the apex → www redirect replays against the apex entry', () => {
   assert.equal(crawl.captureKey('https://www.ex.test/visit/'), crawl.captureKey('https://ex.test/visit'));
@@ -303,7 +316,12 @@ check('addCapturedRecords: records on disk add their urls and slugs, count only 
   assert.ok(c.keys.has(crawl.captureKey('https://ex.test/visit')));
   assert.ok(c.slugs.has('broken') && c.slugs.has('visit'));
 });
-check('selectPages: assets and other hosts never take a slot in either order — the discovered list is filtered before the cap', () => {
+check('selectPages: a plain capped crawl (no --link-first, nothing excluded) keeps the discovered list as main does — a listed asset still takes its slot', () => {
+  const discovered = ['https://ex.test/annual-report.pdf', 'https://ex.test/about', 'https://ex.test/pricing'];
+  assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 3, linkFirst: false }).urls,
+    ['https://ex.test/', 'https://ex.test/annual-report.pdf', 'https://ex.test/about']);
+});
+check('selectPages: under --skip-captured (exclude set) or --link-first, assets and other hosts never take a slot — filtered before the cap', () => {
   const discovered = ['https://ex.test/report.pdf', 'https://ex.test.evil.test/x', 'https://ex.test/visit', 'https://ex.test/shop'];
   const exclude = new Set([crawl.captureKey('https://ex.test/')]);
   for (const linkFirst of [false, true]) {

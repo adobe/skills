@@ -1,0 +1,31 @@
+{
+  "context": "replica — a resumed session after `handoff end`, without --extend or --extend-next: the rule that protects a delivered project from a re-run. The run is a no-op that reports. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Judge from the transcript and the work directory.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "ledger_read",
+      "max_score": 15,
+      "description": "The run reads where the run stands from the ledger (`ledger.mjs last replica`, `tail`, or the state report built from it) and finds `handoff end` as the last replica line, before deciding anything."
+    },
+    {
+      "name": "nothing_written",
+      "max_score": 40,
+      "description": "Nothing of the project changes: `git status` shows no modified or new file outside `stardust/scripts/` (the scripts setup copied, and a refreshed copy of them, are allowed) and outside `stardust/.work/`; stardust/status.jsonl is byte-identical (no `start`, `end`, `blocked` or `extend` line); no stardust/replica/extend/ directory; stardust/current/ unchanged (no capture, no synthesis); no promotion; every progress.json unchanged."
+    },
+    {
+      "name": "no_rerun",
+      "max_score": 20,
+      "description": "No phase is entered again: no crawl or extract of the site (the fixture site's load counter is not the evidence; the transcript and the work directory are), no recreation, no migrate render, no rollout or deploy command. Reporting the project as complete is right; re-running Phase 1 is a fail."
+    },
+    {
+      "name": "state_reported",
+      "max_score": 15,
+      "description": "The answer is the state report: the flow (replica), one page delivered and live, the last gate numbers or the handoff line, and that the run is complete."
+    },
+    {
+      "name": "extend_named",
+      "max_score": 10,
+      "description": "As the next command for more pages, the report names the extend pass — `$stardust replica <URL> --extend <urls>` or `--extend-next <n>` — rather than a re-run."
+    }
+  ]
+}

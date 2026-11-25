@@ -9,7 +9,9 @@ $stardust replica <URL> --extend-next <n>         # the next n pages, in the fir
 ```
 
 A pass runs Phases 1 and 3–5 over its new pages only — never the whole procedure again, never Phase 2. Fewer than
-`n` pages left delivers those that are left; none left ends the pass at once.
+`n` new pages found delivers those; none found ends the pass at once. A bounded pilot (`stardust/direction.md`
+records `bounded-single`) has no extend pass: it grows to site scope by re-running Phase 1 with `--prep`, whose
+promotion replaces its spec (`preserve-direction.md` § 1a).
 
 ## Entry — when a pass opens
 
@@ -17,16 +19,18 @@ A pass runs Phases 1 and 3–5 over its new pages only — never the whole proce
 
 | Latest replica line | Without `--extend*` | With `--extend*` |
 |---|---|---|
-| `handoff end` (no track) or `extend end` (track `x<N>`) | delivered: the state report, then stop — the run is complete, nothing re-runs | open pass `x<N+1>` |
+| `handoff end` (no track) or `extend end` (track `x<N>`) | delivered: the state report, then stop — the run is complete, nothing re-runs | open pass `x1` after `handoff end`, `x<N+1>` after `extend end` |
 | any other line of track `x<N>` | resume pass `x<N>` from its roster (§ 2) — its units not `done` | resume pass `x<N>` first; a new pass opens only after its `extend end` |
 | a first-pass line (no track) before `handoff end` | the first pass resumes (`../SKILL.md` § Procedure) | refuse: the first pass is not delivered |
 
-Opening a pass refuses, before writing anything, unless: `state.json.flow` is `replica`; `<URL>` is on the site of
-`state.json.site.originUrl` (a `www.` prefix aside — another site's URL in this project is refused, not crawled);
-exactly one of `--extend` / `--extend-next`; `--extend-next` a positive integer (`0` would lift the crawl cap);
-every `--extend` URL http(s) on that same site.
+Opening a pass refuses, before writing anything, unless: `state.json.flow` is `replica`; `direction.md` does not
+record `bounded-single`; `<URL>` is on the site of `state.json.site.originUrl` (a `www.` prefix aside — another
+site's URL in this project is refused, not crawled); exactly one of `--extend` / `--extend-next`; `--extend-next` a
+positive integer (`0` would lift the crawl cap); every `--extend` URL http(s) on that same site and without a query
+string (name the page without it; a folder's `/index.html` is the folder).
 
-**Pass number** `N` = the count of `stardust/replica/extend/x*/` directories + 1. Every ledger line of the pass —
+**Pass number:** the table's — the ledger, never a directory count, so an opening that failed is resumed, not
+skipped. Every ledger line of the pass —
 replica, extract, migrate, rollout — carries `--track x<N>`, so its pairs never close or reopen another pass's
 (`done-check.mjs` reads the last `I-dashboard` line whatever its track). The pass opens with these steps, in order;
 any non-zero exit stops it before the extract:
@@ -39,9 +43,9 @@ any non-zero exit stops it before the extract:
 
 ```bash
 L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/foundation-freeze.mjs"
-X=stardust/replica/extend/x1; mkdir -p $X
+X=stardust/replica/extend/x1
 $L replica extend start --track x1 --detail "extend-next 300" --strict   # a --detail value never starts with --
-echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
+mkdir -p $X; echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
 SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
 for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
 $F freeze --paths-if-present "$(echo $SPEC | tr ' ' ,)" --out $X/spec-freeze.json   # a missing one is recorded absent
@@ -66,15 +70,19 @@ success; a resumed pass reads it and never selects again, and one without it sel
 ```bash
 C=stardust/scripts/extract/crawl.mjs; O=<state.json site.originUrl>
 node $C --url $O --pages <url,url,...> --skip-captured stardust/state.json --select-only > $X/urls.tmp && mv $X/urls.tmp $X/urls.txt        # --extend
-node $C --url $O --max <n> [--link-first] --skip-captured stardust/state.json --select-only > $X/urls.tmp && mv $X/urls.tmp $X/urls.txt   # --extend-next
+node $C --url $O --max <n> [--link-first] --skip-captured stardust/state.json --skip-urls stardust/replica/extend/failed.txt \
+  --select-only > $X/urls.tmp && mv $X/urls.tmp $X/urls.txt                                                                    # --extend-next
 ```
 
 `--skip-captured` drops every page already in `state.json` before the cap, the entry included, and makes a
 `--pages` list exact. `--link-first` only when `stardust/replica/extend/order.txt` reads `link-first`. Pass `x1`
 writes that file before its selection from the first pass's recorded provenance: `link-first` when
 `_crawl-log.json` says `discovery.selection: "link-first"`, or `capSource` `--cap` / `prompt-intent`; otherwise
-`discovered` — a numeric cap alone is no evidence. Later crawls rewrite the crawl log, so later passes read the
-file. An empty `urls.txt` ends the pass: `extract end`, the spec check, `extend end --detail "0 new pages"`.
+`discovered` — a numeric cap alone is no evidence. It also starts `stardust/replica/extend/failed.txt` with that
+log's `crawl.failures[].url` (an empty file when there are none — `--skip-urls` needs it); every pass appends its roster pages that still fail, so `--extend-next` never picks
+them again (a page the owner names is tried). Later crawls rewrite the crawl log, so later passes read the files. An
+empty `urls.txt` ends the pass: `extract end`, the spec check, `extend end --detail "0 new pages found by
+discovery"` — the report says discovery (sitemap, links) found nothing new, never that the site is complete.
 
 Then `$stardust extract <O> --prep --dynamics --pages <the urls.txt list>`, its crawl run with
 `--skip-captured stardust/state.json`: a roster page captured before an interruption is not captured again — a
@@ -86,7 +94,7 @@ extract's Phases 1, 2, 2.5 and 6 and prep's page typing and typed slots (`../../
 `DESIGN.json.extensions.modules[]`; a repeat outside it is a row in the pass's journal section, never a
 `DESIGN.json` edit. Capture gaps settle as in a first pass. `$X/slugs.txt` gets the `state.json` slug of each roster
 row, one per line — every `--only` list of the pass comes from it. A roster page that still fails after one re-run
-is named in the journal and the `extend end` detail, never dropped silently.
+is named in the journal, `failed.txt` and the `extend end` detail, never dropped silently.
 
 ## 3. New page types only — Phases 3–4
 
@@ -116,8 +124,9 @@ script already skips what is delivered.
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
   published gate re-run on every affected archetype, any pass's; unit `gate-all-x<N>` is `gate-all.mjs
-  --skip-existing` over every delivered page — the earlier pages' recorded verdicts are reused, only the new pages
-  are gated, and `summary.json` stays complete for `update-coverage.mjs --gate`.
+  --skip-existing` over every delivered page — the new pages are gated, and an earlier page too when an input of
+  its reuse key changed (#793: its content, a block, the frozen reference); the others' verdicts are reused, and
+  `summary.json` stays complete for `update-coverage.mjs --gate`.
 - **Relinked pages — published only on the owner's yes, in every mode.** Every `localize-links.mjs` run of the pass
   (each cluster's pre-PUT one, E2's) runs with `--json` and appends its `perFile` keys to `$X/relinked.paths`: a
   page this pass delivers can be a link target an earlier pass repointed to the source. At E2 the delivered pages
