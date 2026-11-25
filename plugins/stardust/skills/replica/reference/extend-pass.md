@@ -19,8 +19,8 @@ The ledger decides before anything is installed, copied or stamped (`../SKILL.md
 
 | Latest replica line | Without `--extend*` | With `--extend*` |
 |---|---|---|
-| `handoff end` (no track) or `extend end` (track `x<N>`) | delivered: the state report, then stop — nothing written | open pass `x1` after `handoff end`, `x<N+1>` after `extend end` |
-| any other line of track `x<N>` | resume pass `x<N>` (§ Opening, then its roster and units) | resume pass `x<N>` first; a new pass opens only after its `extend end` |
+| `handoff end` with NO track, or `extend end` (track `x<N>`) | delivered: the state report, then stop — nothing written | open pass `x1` after `handoff end`, `x<N+1>` after `extend end` |
+| any other line of track `x<N>`, `handoff end --track x<N>` included | resume pass `x<N>` (§ Opening, then its roster and units) | resume pass `x<N>` first; a new pass opens only after its `extend end` |
 | a first-pass line (no track) before `handoff end` | the first pass resumes (`../SKILL.md` § Procedure) | refuse: the first pass is not delivered |
 
 Opening a pass refuses, before writing anything, unless: `state.json.flow` is `replica`; `direction.md` does not
@@ -28,7 +28,9 @@ record `bounded-single`; `<URL>` is on the site of `state.json.site.originUrl` (
 site's URL is refused, not crawled); exactly one of `--extend` / `--extend-next`; `--extend-next` a positive integer
 (`0` would lift the crawl cap); every `--extend` URL http(s) on that site, without a query string. Then Setup runs:
 its copy steps and those of `handoff-contract.md` § 4, plus `../../extract/scripts/` → `stardust/scripts/extract/`,
-from the installed plugin (the project's copies can predate this pass's flags).
+from the installed plugin (the project's copies can predate this pass's flags). With `--extend`, the roster check of
+§ 2 then runs once with `--select-only` (it writes nothing) before `extend start`: its exit 2 — a named page whose
+destination is already delivered, or a query URL — refuses the pass with that message, and nothing is opened.
 
 Every ledger line of the pass — replica, extract, migrate, rollout — carries `--track x<N>`, so its pairs never
 close or reopen another pass's.
@@ -75,16 +77,19 @@ node $C --url $O --pages <url,url,...> $K --select-only > $X/urls.tmp && mv $X/u
 node $C --url $O --max <n> --first-run-order --skip-failed $K --select-only > $X/urls.tmp && mv $X/urls.tmp $X/urls.txt    # --extend-next
 ```
 
-The crawler's history (`_crawl-log.json` `runs[]`, `../../extract/reference/ia-extraction.md` § `_crawl-log.json`
+A request a resumed pass can never meet (exit 2 on a named page) closes the pass: `extract end`, the spec check,
+`extend end --detail "rejected: <the crawl's message>; 0 pages delivered"`; the owner's corrected request opens the
+next pass. The crawler's history (`_crawl-log.json` `runs[]`, `../../extract/reference/ia-extraction.md` § `_crawl-log.json`
 shape) gives the rest: `--first-run-order` takes the first run's order (link-first only on a recorded user-named
-cap), `--skip-failed` leaves out every page a run failed on (a page the owner names is tried). In this mode one
-delivery path is one slot — `www.`, `/index.html` and query strings fold — and a page whose path a coverage row
-already holds (a page built outside the capture, such as a search page) is never selected; a named one exits 2. An
+cap), `--skip-failed` leaves out every page a run failed on (a page the owner names is tried). `--delivered` makes
+the EDS destination the identity (`lib/paths.mjs`): one destination, one slot, the first source URL kept; a page
+whose destination a coverage row holds (a page built outside the capture, such as a search page) is never selected,
+and a named one exits 2; every coverage slug is reserved. An
 empty `urls.txt` ends the pass: `extract end`, the spec check, `extend end --detail "0 new pages found by
 discovery"` — the report says discovery (sitemap, links) found nothing new, never that the site is complete.
 
-Then `$stardust extract <O> --prep --dynamics --pages <the urls.txt list>`, its crawl run with
-`--skip-captured stardust/state.json`: a roster page captured before an interruption is not captured again — a
+Then `$stardust extract <O> --prep --dynamics --pages <the urls.txt list>`, its crawl run with `$K` (the
+coverage slugs stay reserved for the capture too): a roster page captured before an interruption is not captured again — a
 record under `stardust/current/pages/` counts even before its `state.json` row, and the crawl names such records:
 add their rows (extract Phase 6) before going on. A new page never takes a slug an earlier pass holds; a
 re-captured delivered page would change its JSON, and `inventory.mjs` would flag it `stale`. The pass runs
@@ -105,8 +110,9 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 ## 4. Phase 5 — units of the pass
 
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
-script already skips what is delivered. **The publish list** `$X/publish.paths` holds the DA paths of the pass's
-own pages (web paths, from the roster), plus the relinked pages the owner approves below. Every `deploy-batch.mjs`
+script already skips what is delivered. **The publish list** `$X/publish.paths` holds the DA document of each content
+file the pass's units wrote — `content/visit/index.html` is `/visit/index` (`deploy-batch.mjs` reads a `/visit/` line
+as that too) — plus the relinked pages the owner approves below. Every `deploy-batch.mjs`
 run of the pass — a cluster's, G's re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends
 nothing outside it (a held page is named; a held page listed in `--paths` exits 1). A finding on an older page is
 reported, never re-deployed.
@@ -130,9 +136,10 @@ reported, never re-deployed.
   target an earlier pass repointed to the source. A delivered page listed there is a candidate only when `git diff
   $(cat $X/base.txt) -- content/<file>` shows href changes alone. Show the owner the exact list and say that a re-PUT
   replaces the DA document, so an edit made in DA since delivery is lost. Approved paths join `publish.paths` and are
-  re-driven (`deploy-batch.mjs --paths <them> --force`). The rest — declined, unanswered, hands-off, or with other
-  changes — go back to their delivered bytes (`git show $(cat $X/base.txt):content/<file> > content/<file>`), so the
-  local tree stays what is published, and are named in `replica extend blocked --track x<N> --detail "republish
+  re-driven (`deploy-batch.mjs --paths <them> --force`). An approval covers that revision only: once its PUT lands,
+  copy the file to `$X/published/<file>` and take its path out of `publish.paths`. The rest — declined, unanswered,
+  hands-off, or with other changes — go back to their last published bytes, `$X/published/<file>` when it exists,
+  else `git show $(cat $X/base.txt):content/<file> > content/<file>`, so the local tree stays what is published, and are named in `replica extend blocked --track x<N> --detail "republish
   awaits the owner: <n> pages"`. The question is asked at C-final, before unit `gate-all-x<N>`, and again at E2 when
   its run rewrites more. After an approved re-PUT, `gate-all.mjs --only <their slugs>` captures them again (a
   recorded pass hashed the relinked bytes before they were served; a fresh capture replaces it), then unit

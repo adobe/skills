@@ -41,15 +41,17 @@ source-fidelity gate** against the live site before anything ships.
 
 ## Setup
 
-0. **A delivered run first, read-only.** With `stardust/status.jsonl`
-   present, its last replica line (`node stardust/scripts/stardust/ledger.mjs
-   last replica`) decides before anything is installed, copied or stamped:
-   after `handoff end` or `extend end`, a session without `--extend*`
-   renders the state report and stops — nothing re-runs from Phase 1, the
-   spec is never re-promoted; with them it is an extend pass,
-   `reference/extend-pass.md` (the new pages only, spec and foundation
-   frozen; not a `bounded-single` pilot, which re-runs Phase 1 with
-   `--prep`).
+0. **A delivered or extending run first, read-only.** With
+   `stardust/status.jsonl` present, its last replica line (`node
+   <plugin>/skills/stardust/scripts/ledger.mjs last replica`, the installed
+   plugin's copy) decides before anything is installed, copied or stamped. A line of track `x<N>` other
+   than `extend end` — `handoff end --track x<N>` included — resumes that
+   pass, flags or not. After an UNTRACKED `handoff end`, or an `extend
+   end`, a session without `--extend*` renders the state report and stops:
+   nothing re-runs from Phase 1, the spec is never re-promoted; with them
+   it opens a pass. Both: `reference/extend-pass.md` (new pages only, spec
+   and foundation frozen; never a `bounded-single` pilot, which re-runs
+   Phase 1 with `--prep`).
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup). **Flow
    guard:** if `state.json.flow` is `redesign`, refuse — print the never-mix
    line and the switch command (`$stardust replica --switch-flow`; master

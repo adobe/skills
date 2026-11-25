@@ -11,7 +11,7 @@
  *   --live-host  aem.live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost)
  *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so
  *   --track      a ledger track (replica's extend pass: x<N>): only that track's I-dashboard lines count, so an
- *                earlier pass's `end` never completes this one
+ *                earlier pass's `end` never completes this one; a missing, blank or flag-shaped name exits 2
  *   --json       print { complete, gaps[], liveChecked } instead of one line per gap
  *
  * Gaps, one per line in this order; complete = none:
@@ -200,6 +200,13 @@ async function main() {
   const LEDGER = arg('ledger', 'stardust/status.jsonl');
   const OFFLINE = argv.includes('--offline');
   const JSON_OUT = argv.includes('--json');
+  // --track given without a usable name is a usage error, never the untracked verdict (an earlier pass's end)
+  let TRACK = null;
+  const ti = argv.indexOf('--track');
+  if (ti !== -1) {
+    TRACK = argv[ti + 1];
+    if (typeof TRACK !== 'string' || !/^[A-Za-z0-9][\w.-]*$/.test(TRACK)) { console.error('rollout done-check: --track needs a track name (e.g. x1) — missing, blank or flag-shaped value.'); process.exit(2); }
+  }
 
   const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
   if (!pagesDoc) { console.error(`rollout done-check: no ${join(OUT, 'coverage', 'pages.json')} — run inventory.mjs first.`); process.exit(2); }
@@ -215,7 +222,7 @@ async function main() {
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
-  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library, track: arg('track', null) });
+  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library, track: TRACK });
   const GATES = arg('gates', 'stardust/replica/gates');
   const advisories = [...wideAdvisories(readWideTables(GATES)), ...unitsAdvisories(readGateTables(GATES))];
 

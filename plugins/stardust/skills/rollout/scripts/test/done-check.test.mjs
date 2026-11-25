@@ -179,6 +179,20 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('CLI --track: an earlier untracked I-dashboard end and none for the open pass — x1 is incomplete (exit 1); a missing, blank or flag-shaped name exits 2, never the untracked verdict', () => {
+  const proj = project({ ledger: [...ENDED, { skill: 'stardust:replica', phase: 'extend', event: 'start', track: 'x1' }] });
+  assert.equal(run(proj, ['--offline']).status, 0, 'untracked: the first pass is complete');
+  const r = run(proj, ['--offline', '--track', 'x1']);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /^rollout_incomplete$/m);
+  for (const tail of [['--track'], ['--track', ''], ['--track', '--offline'], ['--track', ' ']]) {
+    const bad = run(proj, ['--offline', ...tail]);
+    assert.equal(bad.status, 2, `${JSON.stringify(tail)}: ${bad.stdout}${bad.stderr}`);
+    assert.match(bad.stderr, /--track needs a track name/);
+  }
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('CLI: delivered pages without library/published.json are not complete (library-rows.json alone is a dry run)', () => {
   const proj = project({ library: false });
   mkdirSync(join(proj, 'stardust', 'rollout', 'library'), { recursive: true });

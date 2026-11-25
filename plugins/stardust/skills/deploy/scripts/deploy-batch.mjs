@@ -66,7 +66,9 @@
  *             sent, whatever --paths, --force or the ledger say — each held page is named
  *             on stderr (`held /x — not in <file>`), and a held page listed in --paths
  *             exits 1. Replica's extend pass passes its publish list on every deploy.
- *             A missing or unreadable file exits 2 before anything is sent.
+ *             A missing, blank or flag-shaped value, or an unreadable file, exits 2 before
+ *             anything is sent. A `/x/` entry (here and in --paths) is the folder's index
+ *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
@@ -123,7 +125,11 @@ function parseArgs(argv) {
     else if (k === '--branch') a.branch = next();
     else if (k === '--content') a.content = next();
     else if (k === '--paths') a.paths = next();
-    else if (k === '--allow') a.allow = next();
+    else if (k === '--allow') {
+      // a publish list given without a usable file name fails closed: never read as "no --allow"
+      a.allow = next();
+      if (typeof a.allow !== 'string' || !a.allow.trim() || a.allow.startsWith('--')) throw new Error('--allow needs a file of web paths (missing, blank or flag-shaped value) — nothing was sent');
+    }
     else if (k === '--ledger') a.ledger = next();
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
@@ -300,7 +306,7 @@ async function main() {
     process.exit(TOKEN_EXIT);
   }
   const pathList = async (file) => new Set((await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-    .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '')));
+    .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '').replace(/\/$/, '/index')));
   // --allow is read before anything is walked or sent: a publish list that cannot be read sends nothing
   let allow = null;
   if (args.allow) {

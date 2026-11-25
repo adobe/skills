@@ -198,6 +198,25 @@ await check('--allow: no page outside the publish list is sent, whatever --paths
   assert.match(missing.err, /--allow: cannot read nope\.allow .*nothing was sent/);
   assert.equal(since(from3).length, 0, 'no request at all');
 });
+await check('--allow fails closed on a missing, blank or flag-shaped value — exit 2, zero requests, even with --force and no --paths', async () => {
+  site('site-ab', ['a', 'b']);
+  for (const tail of [['--allow'], ['--allow', ''], ['--allow', '   '], ['--allow', '--force']]) {
+    const from = requests.length;
+    const r = await run(['--content', 'site-ab', '--force', ...tail]);
+    assert.equal(r.code, 2, `${JSON.stringify(tail)}: ${r.out}${r.err}`);
+    assert.match(r.err, /--allow needs a file of web paths/);
+    assert.equal(since(from).length, 0, `${JSON.stringify(tail)}: no request at all`);
+  }
+});
+await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
+  site('site-fold', ['visit/index', 'other']);
+  writeFileSync(join(proj, 'site-fold.allow'), '/visit/\n');
+  const from = requests.length;
+  const r = await run(['--content', 'site-fold', '--allow', 'site-fold.allow', '--force']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/visit/index.html`]);
+  assert.match(r.err, /held \/other — not in site-fold\.allow/);
+});
 await check('re-run skips pages already live (re-verified on the delivered origin, no admin call); --force re-drives them', async () => {
   const from = requests.length;
   const r = await run(['--content', 'site-a']);
