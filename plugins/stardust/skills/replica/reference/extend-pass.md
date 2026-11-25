@@ -83,9 +83,9 @@ capture, such as a search page), not a document a deploy ledger records live (it
 not an existing content document (nav, footer, fragments: no coverage row names them); one destination, one slot, a
 query-less URL kept over a query one, so the roster replays as written. `--reserved-out` records every destination
 taken now (captured ones included) in `$X/reserved.paths`, written before the roster: no output of the pass may
-take one (§ 4). Before the selection, `git status --porcelain -- content/` must be empty again, as at the opening
-(else stop): the reservations then cover every document of the opening commit. A deploy ledger that cannot be read
-stops the selection (exit 2, named):
+take one (§ 4). Before the selection, `git diff --quiet $(cat $X/base.txt) -- content/` must exit 0 (else stop):
+the reservations then cover every document of the opening commit. A deploy ledger that cannot be read stops the
+selection (exit 2, named):
 
 ```bash
 C=stardust/scripts/extract/crawl.mjs; R="node stardust/scripts/replica/extend-roster.mjs"; O=<state.json site.originUrl>; S="--skip-captured stardust/state.json"
