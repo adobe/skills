@@ -82,16 +82,26 @@
  *        [--lint stardust/scripts/rollout/delivery-lint.mjs] [--content content] [--widths 1440,360]
  *        [--height-tolerance 8] [--tables stardust/replica/gates] [--slug <s>]… [--check] [--dry-run] [--json]
  *   node stardust/scripts/replica/gate-evidence.mjs --unit <slug,…|@file> [--tables …] [--widths 1440,360] [--json]
+ *        [--content content] [--state stardust/state.json] [--coverage stardust/rollout/coverage/pages.json]
  *
  *   --unit <slug,…|@file>  the CLOSE CHECK of a delivery unit (handoff-contract.md § 1 row 5): no sidecar is read or
  *                written. Each named page (a comma list, or @file with one slug per line) needs a MEASURED row (a
  *                percentage and no probe error — gate-all's error row is no measurement) at every --widths entry, in `<tables>/all-<w>/`
  *                summary.json or runs/*.json (gate-all --only / --sample; the newest by _provenance.writtenAt).
  *                A page a `--sample` run left out (its run file's _provenance.sample: in `from`, not `picked`)
- *                is `sweep` — pending the all-pages run, not ungated — unless a row of the page is newer than that run. Prints `<slug>  1440=<pass|fail|sweep|none|
- *                error> [<pct>%]  360=…`, one `<slug>: NOT gated at <w> — <why>` line per gap, then the totals
+ *                is `sweep` — pending the all-pages run, not ungated — unless a row of the page is newer than that run. Prints `<slug>  1440=<pass|fail|sweep|stale|
+ *                none|error> [<pct>%]  360=…`, one `<slug>: NOT gated at <w> — <why>` line per gap, then the totals
  *                (failing rows named: a measured FAIL is fixed within the round cap or decided, it does not hold
- *                the unit here). Exit 2 when a page is NOT gated at a width.
+ *                the unit here). A PASS row counts only while the page's recorded pass (`<tables>/all-<w>/<slug>/
+ *                pixel.json`, the key of gate-all's § REUSE) still matches the page's local build inputs: its
+ *                content file and migrated HTML, the blocks it uses, the shared code (read from --content, --state
+ *                and --coverage, as gate-all reads them). Else the cell is `stale`, NOT gated, naming what changed;
+ *                so is a pass row whose page dir holds no pass with a key of this version (captured again since, an
+ *                older version's record, a --compare-only pass). `gate-all.mjs --only <slugs> --skip-existing`
+ *                gates exactly those again. A pass by override and a FAIL are not checked against the inputs, nor
+ *                is a page gate-all cannot key (no content file or migrated HTML, no blocks/, no shared code: its
+ *                passes are recorded without a key, and the table row stands alone).
+ *                Exit 2 when a page is NOT gated at a width.
  *
  *   --tables <dir>  where gate-all.mjs writes the pixel tables (`prototypes-<w>/`, `all-<w>/`); when
  *                one exists for a width its rows decide pixel-gate-<w> and a page without a row is
@@ -169,7 +179,7 @@ function help() {
 }
 
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, widths: [...DEFAULTS.widths], lintGiven: false, slugs: [], check: false, dryRun: false, json: false, unit: null };
+  const o = { ...DEFAULTS, widths: [...DEFAULTS.widths], lintGiven: false, slugs: [], check: false, dryRun: false, json: false, unit: null, state: 'stardust/state.json', coverage: 'stardust/rollout/coverage/pages.json' };
   const val = (flag, v) => { if (v === undefined || v.startsWith('--')) throw new UsageError(`gate-evidence: ${flag} needs a value (see --help)`); return v; };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -185,6 +195,8 @@ export function parseArgs(argv) {
     else if (a === '--check') o.check = true;
     else if (a === '--dry-run') o.dryRun = true;
     else if (a === '--json') o.json = true;
+    else if (a === '--state') o.state = val(a, argv[++i]);
+    else if (a === '--coverage') o.coverage = val(a, argv[++i]);
     else if (a === '--unit') { const v = val(a, argv[++i]); o.unit = v.startsWith('@') ? (() => { try { return readFileSync(v.slice(1), 'utf8'); } catch { throw new UsageError(`gate-evidence: --unit ${v}: file not readable`); } })().split(/[\s,]+/).filter(Boolean) : v.split(',').map((x) => x.trim()).filter(Boolean); if (!o.unit.length) throw new UsageError(`gate-evidence: --unit ${v} names no page`); }
     else throw new UsageError(`gate-evidence: unknown argument ${a} (see --help)`);
   }
@@ -619,9 +631,10 @@ export function publishedRuns(dir, width) {
   }
   return { rows, samples };
 }
-// unitCheck(slugs, { tables, widths, runs }) → { pages: [{ slug, widths: { <w>: { state, pct, why } } }], ungated, pending, failing }.
-// state: pass | fail (a measured row) | sweep (sampled out by a --sample run) | error (a row without a percentage) | none.
-export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.widths, runs = publishedRuns } = {}) {
+// unitCheck(slugs, { tables, widths, runs, verify }) → { pages: [{ slug, widths: { <w>: { state, pct, why } } }], ungated, pending, failing }.
+// state: pass | fail (a measured row) | sweep (sampled out by a --sample run) | stale (a pass row `verify(slug, w)`
+// answers a reason for: its recorded pass no longer holds) | error (a row without a percentage) | none.
+export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.widths, runs = publishedRuns, verify = null } = {}) {
   const byWidth = Object.fromEntries(widths.map((w) => [w, runs(tables, w)]));
   const pages = []; const ungated = []; const pending = []; const failing = [];
   for (const slug of slugs) {
@@ -635,12 +648,14 @@ export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.w
       // sampled out only by a sample run NEWER than the page's newest row: a later error row is not hidden by an older pick
       const sampledOut = samples.some((x) => x.from.has(slug) && !x.picked.has(slug) && (!hit || x.at > hit.at));
       let cell;
-      if (measured) cell = { state: row.pass || row.passWithOverride ? 'pass' : 'fail', pct: row.pct, why: (row.reasons || []).join('; ') || null, file: hit.file };
+      const stale = measured && row.pass && verify ? verify(slug, w) : null; // a pass by override has no record to check
+      if (stale) cell = { state: 'stale', pct: row.pct, why: `the pass in ${hit.file} no longer holds: ${stale}` };
+      else if (measured) cell = { state: row.pass || row.passWithOverride ? 'pass' : 'fail', pct: row.pct, why: (row.reasons || []).join('; ') || null, file: hit.file };
       else if (sampledOut) cell = { state: 'sweep', pct: null, why: 'sampled out — pending the all-pages run' };
       else if (row) cell = { state: 'error', pct: row.pct ?? null, why: `row without a measurement (${row.error || (probeErrors.length ? `probe-error: ${probeErrors.map((e) => (e && e.probe) || e).join(', ')}` : 'no percentage')}) in ${hit.file}` };
       else cell = { state: 'none', pct: null, why: `no row in ${join(tables, `all-${w}`)} (summary.json or runs/)` };
       out[w] = cell;
-      if (cell.state === 'none' || cell.state === 'error') ungated.push({ slug, width: w, why: cell.why });
+      if (cell.state === 'none' || cell.state === 'error' || cell.state === 'stale') ungated.push({ slug, width: w, why: cell.why });
     }
     if (Object.values(out).some((c) => c.state === 'sweep')) pending.push(slug);
     if (Object.values(out).some((c) => c.state === 'fail')) failing.push(slug);
@@ -648,14 +663,29 @@ export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.w
   }
   return { pages, ungated, pending, failing };
 }
-function unitCli(o) {
-  const r = unitCheck(o.unit, { tables: o.tables, widths: o.widths });
+// The unit check's view of gate-all's § REUSE (passInputs): a pass row stands while its page's recorded pass matches the
+// page's local build inputs now. gate-all.mjs is imported here only, so the sidecar run never loads it.
+async function passVerifier(o) {
+  const { inputsPage, localInputs, passInputs } = await import('./gate-all.mjs');
+  const quiet = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+  const state = quiet(o.state); const coverage = quiet(o.coverage);
+  const inputsOf = localInputs({ contentDir: o.content, stage: 'published', coverage });
+  const seen = new Map();
+  return (slug, w) => {
+    if (!seen.has(slug)) seen.set(slug, inputsOf(inputsPage(slug, { state, coverage })));
+    const r = passInputs(join(o.tables, `all-${w}`, slug), seen.get(slug));
+    if (r.miss) return r.miss;
+    return r.changed.length ? `${r.changed.join(', ')} since the pass${r.at ? ` of ${r.at}` : ''}` : null;
+  };
+}
+async function unitCli(o) {
+  const r = unitCheck(o.unit, { tables: o.tables, widths: o.widths, verify: await passVerifier(o) });
   if (o.json) console.log(JSON.stringify(r, null, 2));
   else {
     for (const p of r.pages) console.log(`${p.slug}  ${o.widths.map((w) => `${w}=${p.widths[w].state}${p.widths[w].pct != null ? ` ${p.widths[w].pct}%` : ''}`).join('  ')}`);
     for (const g of r.ungated) console.log(`${g.slug}: NOT gated at ${g.width} — ${g.why}`);
     const gated = r.pages.length - new Set(r.ungated.map((g) => g.slug)).size;
-    console.log(`gate-evidence --unit: ${r.pages.length} page(s) — ${gated} with a row or sampled out at every width${r.failing.length ? ` (${r.failing.length} failing: ${r.failing.slice(0, 8).join(', ')}${r.failing.length > 8 ? ', …' : ''} — fix within the round cap or record the decision)` : ''}, ${r.pending.length} pending the all-pages run, ${new Set(r.ungated.map((g) => g.slug)).size} NOT gated${r.ungated.length ? ' — the unit is not done: gate them (gate-all.mjs --only <slugs> --eds-host <host>, both widths), or run the unit with --sample' : ''}`);
+    console.log(`gate-evidence --unit: ${r.pages.length} page(s) — ${gated} with a row or sampled out at every width${r.failing.length ? ` (${r.failing.length} failing: ${r.failing.slice(0, 8).join(', ')}${r.failing.length > 8 ? ', …' : ''} — fix within the round cap or record the decision)` : ''}, ${r.pending.length} pending the all-pages run, ${new Set(r.ungated.map((g) => g.slug)).size} NOT gated${r.ungated.length ? ' — the unit is not done: gate them (gate-all.mjs --only <slugs> --eds-host <host>, both widths; --skip-existing gates again only what is not a standing pass), or run the unit with --sample' : ''}`);
   }
   return r.ungated.length ? 2 : 0;
 }
@@ -684,6 +714,7 @@ function cli(argv) {
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  try { process.exitCode = cli(process.argv.slice(2)); }
-  catch (e) { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; }
+  const fail = (e) => { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; };
+  try { const code = cli(process.argv.slice(2)); if (code instanceof Promise) code.then((c) => { process.exitCode = c; }, fail); else process.exitCode = code; } // --unit answers a promise
+  catch (e) { fail(e); }
 }

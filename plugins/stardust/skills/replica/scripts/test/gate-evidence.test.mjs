@@ -19,6 +19,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PASS_FORMAT, inputEntries, inputsPage, localInputs } from '../gate-all.mjs';
 import { publishedRuns, unitCheck, ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -511,6 +512,19 @@ check('a progress.json that is one archetype\'s residual record (the old documen
 });
 
 
+// --unit's project (gate-all § REUSE reads it): a state row and a content file per page, one block, the shared code;
+// `standing` writes gate-all's recorded pass for a page at a width, keyed on the page's inputs as they are now.
+const UNIT_SLUGS = ['a', 'b', 'c', 'd', 'e', 'f', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
+writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: UNIT_SLUGS.map((slug) => ({ slug, url: `https://example.test/${slug}`, status: 'deployed', liveUrl: `${PUBLISHED}/${slug}` })) }));
+for (const slug of UNIT_SLUGS) writeFileSync(join(CONTENT, `${slug}.html`), `<main><div><h1>${slug}</h1><div class="hero"><div>h</div></div></div></main>\n`);
+mkdirSync(join(root, 'blocks/hero'), { recursive: true }); writeFileSync(join(root, 'blocks/hero/hero.css'), '.hero { color: red; }\n');
+mkdirSync(join(root, 'styles'), { recursive: true }); writeFileSync(join(root, 'styles/styles.css'), 'body { margin: 0; }\n');
+const standing = (t, w, slug, { key = true, at = '2026-01-01T00:00:00.000Z' } = {}) => {
+  const d = join(t, `all-${w}`, slug); mkdirSync(d, { recursive: true });
+  const inputs = localInputs({ root, contentDir: 'content' })(inputsPage(slug, { state: json(join(root, 'stardust/state.json')) }));
+  writeFileSync(join(d, 'pixel.json'), JSON.stringify({ pct: 1, pass: true, capturesDropped: { masks: [], edsUrl: `${PUBLISHED}/${slug}`, ...(key ? { key: { v: PASS_FORMAT, build: `${PUBLISHED}/${slug}`, ...inputEntries(inputs) }, probes: {}, at } : {}) } }));
+};
+
 check('--unit: every page needs a measured row per width (summary.json or runs/, newest wins); a --sample run\'s left-out pages are pending; an error row or no row is NOT gated (exit 2); no sidecar is touched', () => {
   const t = join(root, 'unit-tables');
   const table = (w, file, at, rows, sample) => { const d = join(t, `all-${w}`, file.includes('/') ? dirname(file) : ''); mkdirSync(d, { recursive: true }); writeFileSync(join(t, `all-${w}`, file), JSON.stringify({ _provenance: { writtenAt: at, ...(sample ? { sample } : {}) }, rows })); };
@@ -526,6 +540,7 @@ check('--unit: every page needs a measured row per width (summary.json or runs/,
   const st = Object.fromEntries(u.pages.map((p) => [p.slug, [p.widths[1440].state, p.widths[360].state]]));
   assert.deepEqual(st, { a: ['pass', 'pass'], b: ['pass', 'pass'], c: ['pass', 'none'], d: ['pass', 'pass'], e: ['sweep', 'sweep'], f: ['none', 'none'] });
   assert.deepEqual(u.ungated.map((g) => `${g.slug}@${g.width}`), ['c@360', 'f@1440', 'f@360']); assert.deepEqual(u.pending, ['e']);
+  for (const [w, slugs] of [[1440, ['a', 'b', 'c', 'd']], [360, ['a', 'b', 'd']]]) for (const slug of slugs) standing(t, w, slug);
   const before = read(join(MIG, 'tours/north/_meta.json'));
   const r = run('--unit', 'a,b,c,d,e,f', '--tables', t);
   assert.equal(r.code, 2, r.err);
@@ -552,6 +567,45 @@ check('--unit: every page needs a measured row per width (summary.json or runs/,
   assert.equal(unitCheck(['h'], { tables: t, widths: [1440] }).pages[0].widths[1440].state, 'sweep', 'a sample newer than the error row leaves it out again');
   assert.equal(run('--unit', ',', '--tables', t).code, 1, 'an empty unit is a usage error');
   assert.equal(run('--unit', '@nope.txt').code, 1);
+});
+
+check('--unit × gate-all\'s recorded passes (§ REUSE): a pass row stands only while the page\'s recorded pass matches its local build inputs; a reused pass counts, a stale one, a missing record or a keyless one is NOT gated (exit 2, named); an override pass, a FAIL and a page gate-all cannot key are not checked', () => {
+  const t = join(root, 'unit-records');
+  const put = (file, at, rows) => { mkdirSync(dirname(join(t, 'all-1440', file)), { recursive: true }); writeFileSync(join(t, 'all-1440', file), JSON.stringify({ _provenance: { writtenAt: at }, rows })); };
+  const row = (slug, extra = {}) => ({ slug, pct: 2, pass: true, reasons: [], ...extra });
+  put('summary.json', '2026-02-01T00:00:00Z', ['p1', 'p2', 'p3', 'p4', 'p5'].map((x) => row(x)).concat([row('p6', { pass: false, passWithOverride: true, reasons: ['pixel 14%'] }), row('p7', { pct: 30, pass: false, reasons: ['pixel 30%'] })]));
+  put('runs/2026-02-02-p1.json', '2026-02-02T00:00:00Z', [row('p1')]); // p1's pass reused by a later --skip-existing run: the newer row, the older record
+  for (const x of ['p1', 'p4', 'p5']) standing(t, 1440, x);
+  standing(t, 1440, 'p3', { key: false }); // a --compare-only pass, or an older version's record
+  put('runs/2026-02-02-p8.json', '2026-02-02T00:00:00Z', [row('p8')]); standing(t, 1440, 'p8', { key: false }); // no state row, no content file: gate-all cannot key it
+  const unit = (slugs) => run('--unit', slugs, '--tables', t, '--widths', '1440');
+  let r = unit('p1,p4,p5,p6,p7,p8');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^p8 {2}1440=pass 2%$/m, 'a page gate-all cannot key: its keyless pass is all there is, the row stands');
+  assert.match(r.out, /^p1 {2}1440=pass 2%$/m); assert.match(r.out, /^p6 {2}1440=pass 2%$/m); assert.match(r.out, /^p7 {2}1440=fail 30%$/m); assert.match(r.out, /1 failing: p7/);
+  r = unit('p2,p3');
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /^p2: NOT gated at 1440 — the pass in .*summary\.json no longer holds: no recorded pass in .*all-1440\/p2/m);
+  assert.match(r.out, /^p3: NOT gated at 1440 — .*has no key of this version \(an older version's, or a --compare-only pass\)/m);
+  writeFileSync(join(CONTENT, 'p4.html'), '<main><h1>p4, edited after its pass</h1></main>\n');
+  writeFileSync(join(root, 'blocks/hero/hero.css'), '.hero { color: blue; }\n');
+  r = unit('p1,p4,p5');
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /^p4 {2}1440=stale 2%$/m);
+  assert.match(r.out, /^p4: NOT gated at 1440 — .*no longer holds: page content changed, block hero changed since the pass of 2026-01-01T00:00:00\.000Z$/m, 'the edited page names both; a block it no longer uses is a change too');
+  assert.match(r.out, /^p5: NOT gated at 1440 — .*no longer holds: block hero changed since the pass/m);
+  assert.match(r.out, /^p1: NOT gated at 1440 — .*runs\/2026-02-02-p1\.json no longer holds: block hero changed/m, 'a reused pass row is held to its record like a fresh one');
+  assert.match(r.out, /3 NOT gated — the unit is not done: .*--skip-existing gates again only what is not a standing pass/);
+  const j = JSON.parse(run('--unit', 'p5,p6', '--tables', t, '--widths', '1440', '--json').out);
+  assert.deepEqual([j.pages.map((x) => x.widths[1440].state), j.ungated.map((g) => g.slug)], [['stale', 'pass'], ['p5']]);
+  standing(t, 1440, 'p5', { at: '2026-02-03T00:00:00.000Z' }); // gated again on the edited block: a new record
+  assert.equal(unit('p5,p6,p7').code, 0);
+  assert.equal(unitCheck(['p4'], { tables: t, widths: [1440] }).pages[0].widths[1440].state, 'pass', 'unitCheck without `verify` reads the tables alone');
+  writeFileSync(join(root, 'blocks/hero/hero.css'), '.hero { color: red; }\n');
+  writeFileSync(join(root, 'styles/styles.css'), 'body { margin: 1px; }\n');
+  assert.match(unit('p1').out, /p1: NOT gated at 1440 — .*shared code changed/);
+  writeFileSync(join(root, 'styles/styles.css'), 'body { margin: 0; }\n');
+  assert.equal(unit('p1').code, 0, 'the inputs back as recorded: the pass stands again');
 });
 
 rmSync(root, { recursive: true, force: true });

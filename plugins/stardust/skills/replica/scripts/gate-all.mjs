@@ -164,7 +164,7 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error, 4 the preflight refused (--help § Preflight); --wide: 0. `verdict`, `rosterOffsets`, `deadlineHint`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `budgetPeak`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `localInputs`, `digest`, `fileDigest`, `prunedMeasurement`, `sampleSignals`, `pickSample`, `captureBytes`, `preflight`
+ * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `budgetPeak`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `localInputs`, `inputEntries`, `passInputs`, `inputsPage`, `digest`, `fileDigest`, `prunedMeasurement`, `sampleSignals`, `pickSample`, `captureBytes`, `preflight`
  * are exported.
  */
 import { spawn } from 'node:child_process';
@@ -882,8 +882,11 @@ export function passKey({ build, source, masks = null, presence = null, clipAllo
   if (prototype === null) return null; // a prototype file was named and could not be read
   if (!inputs || (inputs.unresolved || []).length || !inputs.content) return null; // the page's local build inputs: never the weaker key
   return { v: PASS_FORMAT, build, source, masks: digest(masks), presence: digest(presence), clipAllow: digest(clipAllow), override: digest(override), units: digest(units), options: digest(options), reference: digest(reference), archetype: digest(archetype), captures: digest(captures), instruments: digest(instruments), ...(prototype ? { prototype } : {}),
-    'page content': inputs.content, ...(inputs.shared ? { 'shared code': inputs.shared } : {}), ...Object.fromEntries(Object.entries(inputs.blocks || {}).map(([name, d]) => [`block ${name}`, d])) };
+    ...inputEntries(inputs) };
 }
+/** The local-build-input entries of a pass key ('page content', 'shared code', 'block <name>'), from localInputs' answer. */
+export const inputEntries = (inputs) => ({ 'page content': inputs.content, ...(inputs.shared ? { 'shared code': inputs.shared } : {}), ...Object.fromEntries(Object.entries(inputs.blocks || {}).map(([name, d]) => [`block ${name}`, d])) });
+const isInputEntry = (k) => k === 'page content' || k === 'shared code' || k.startsWith('block ');
 /**
  * THE PAGE'S LOCAL BUILD INPUTS (header § REUSE): what the page is built from in the project's working tree, by
  * content — never an mtime, never a fetch. localInputs({ root, contentDir, stage, coverage }) → inputsOf(page) →
@@ -967,6 +970,39 @@ export function recordedPass(d, key) {
   const origin = readJsonSafe(join(d, 'origin.json')); const eds = readJsonSafe(join(d, 'eds.json'));
   if (!origin || !eds || origin.error || eds.error) return { miss: ['a capture record is gone or holds an error'] };
   return { origin, eds, pixel, probes: drop.probes };
+}
+/**
+ * passInputs(d, inputs) → { at, changed: [why, …] } | { miss: why }: whether the recorded pass in the page dir `d`
+ * still describes the page's local build: its key's local-input entries (inputEntries) against `inputs`, localInputs'
+ * answer now. changed [] = unchanged; the unresolved reasons when `inputs` has any. `miss`: the dir holds no pass, or
+ * one without a key of this format (an older version's, a --compare-only pass), unless the page's inputs cannot be
+ * resolved at all: gate-all records such a page's passes without a key, so `unkeyed` (the reasons), changed [].
+ * The unit check's half of § REUSE (gate-evidence.mjs --unit): options, sidecars and instruments stay the gate run's
+ * to judge. No browser.
+ */
+export function passInputs(d, inputs) {
+  const drop = (readJsonSafe(join(d, 'pixel.json')) || {}).capturesDropped;
+  if (!drop) return { miss: `no recorded pass in ${d} (captured again since, or never recorded)` };
+  if (!drop.key || typeof drop.key !== 'object' || drop.key.v !== PASS_FORMAT) {
+    // a page gate-all cannot key (§ Reuse: its inputs unresolvable) records its passes without one: nothing to check
+    if (inputs && (inputs.unresolved || []).length) return { at: drop.at || null, changed: [], unkeyed: inputs.unresolved };
+    return { miss: `the recorded pass in ${d} has no key of this version (an older version's, or a --compare-only pass)` };
+  }
+  if (!inputs || (inputs.unresolved || []).length) return { at: drop.at || null, changed: inputs ? inputs.unresolved : ['the local build inputs cannot be resolved'] };
+  const now = inputEntries(inputs);
+  return { at: drop.at || null, changed: [...new Set([...Object.keys(drop.key).filter(isInputEntry), ...Object.keys(now)])].filter((k) => drop.key[k] !== now[k]).map((k) => `${k} changed`) };
+}
+/**
+ * inputsPage(slug, { state, coverage }) → the page as localInputs reads it outside a gate run (gate-evidence --unit):
+ * the state.json row and the ledger row merged as selectPages merges them: a deployed state row as it is, else its
+ * deployedPath or the ledger path, and the ledger's deployed URL before the state row's.
+ */
+export function inputsPage(slug, { state = null, coverage = null } = {}) {
+  const st = (state && Array.isArray(state.pages) ? state.pages : []).find((x) => x && x.slug === slug) || {};
+  const row = (Array.isArray(coverage) ? coverage : (coverage && Array.isArray(coverage.pages) ? coverage.pages : [])).find((x) => x && x.slug === slug) || {};
+  if (st.status === 'deployed' && st.liveUrl && st.url) return { ...st, slug };
+  const path = typeof row.path === 'string' && row.path.startsWith('/') ? row.path : undefined;
+  return { ...st, slug, liveUrl: (row.delivery && row.delivery.deployedUrl) || st.liveUrl, deployedPath: st.deployedPath || path };
 }
 // The recorded PIXEL pass --compare-only takes instead of the PNGs it no longer has: null when nothing was dropped, a
 // record is gone, or the masks or eds URL differ from the ones the pass was measured with (--skip-existing: recordedPass).

@@ -2227,5 +2227,36 @@ check('preflight × browser budget: the memory line reads the budget in force (b
     assert.ok(prunedMeasurement(join(out, 'bad'), { masks: [], edsUrl: 'https://eds.example/bad' }));
   } finally { done(); }
 });
+check('the unit check (gate-evidence --unit) counts a pass only while gate-all would still reuse it: a fresh pass and a reused one stand; an edit to the page\'s content or a block it uses makes the row stale (exit 2, named) until --skip-existing gates it again', () => {
+  const { root, out, gateAll, shots, done } = sandbox(['good', 'bad']);
+  try {
+    const rep = join(root, 'stardust/scripts/replica');
+    for (const f of ['gate-evidence.mjs', 'run-bg.mjs', 'run-capped.mjs']) copyFileSync(join(HERE, '..', f), join(rep, f));
+    const unit = () => { const r = spawnSync(process.execPath, [join(rep, 'gate-evidence.mjs'), '--unit', 'good,bad', '--widths', '1440'], { cwd: root, encoding: 'utf8' }); return { code: r.status, out: r.stdout + r.stderr }; };
+    let r = gateAll(['--only', 'good,bad']);
+    assert.equal(r.status, 2, r.stderr);
+    let u = unit();
+    assert.equal(u.code, 0, u.out); assert.match(u.out, /^good {2}1440=pass 1%$/m); assert.match(u.out, /^bad {2}1440=fail 30%$/m); assert.match(u.out, /1 failing: bad/);
+    r = gateAll(['--only', 'good,bad', '--skip-existing']);
+    assert.match(r.stdout, /good → recorded pass reused/); assert.deepEqual(shots(), [], 'the failing page reuses its captures, the passed one its record');
+    u = unit();
+    assert.equal(u.code, 0, u.out); assert.match(u.out, /^good {2}1440=pass 1%$/m, 'the reused pass, in the newer run file, counts');
+    writeFileSync(join(root, 'content/good.html'), readFileSync(join(root, 'content/good.html'), 'utf8').replace('<h1>good</h1>', '<h1>good, edited</h1>'));
+    u = unit();
+    assert.equal(u.code, 2, u.out); assert.match(u.out, /^good {2}1440=stale 1%$/m);
+    assert.match(u.out, /^good: NOT gated at 1440 — the pass in .* no longer holds: page content changed since the pass of 20\d\d-/m);
+    assert.match(u.out, /1 NOT gated — the unit is not done/);
+    r = gateAll(['--only', 'good,bad', '--skip-existing']);
+    assert.match(r.stdout, /good → recorded pass not reused \(page content changed\) — gated again/);
+    assert.equal(unit().code, 0, 'gated again: the new pass stands');
+    writeFileSync(join(root, 'blocks/cards/cards.css'), '.cards { color: blue; }\n');
+    u = unit();
+    assert.equal(u.code, 2, u.out); assert.match(u.out, /good: NOT gated at 1440 — .*no longer holds: block cards changed since the pass/);
+    r = gateAll(['--only', 'good', '--compare-only']);
+    u = unit();
+    assert.equal(u.code, 2, 'a --compare-only run does not refresh the record: the pass is still stale'); assert.match(u.out, /block cards changed/);
+    assert.match(readFileSync(join(out, 'good/pixel.json'), 'utf8'), /"capturesDropped"/);
+  } finally { done(); }
+});
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
