@@ -954,6 +954,33 @@ check('--help names the default hold, --no-hold-timers, --hold-min, --hold-timer
   && /Precedence: a flag wins over GATE_HOLD_TIMERS \(0 = off, 1 = 2000, a number = that threshold\)/.test(r.stdout) && /GATE_HOLD_TIMERS=0/.test(r.stdout), r.stdout.slice(0, 200));
 unlinkSync(join(replica, 'rounds.mjs'));
 
+// Reference URL (header § Reference URL; the real reference-url.mjs): another rendering than the inventory's page ends
+// the round first, exit 7, nothing captured or counted; a substitution the register records runs and says so; the
+// inventory URL (a trailing-slash variant too) prints nothing new.
+{
+  cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
+  cpSync(join(scripts, 'reference-url.mjs'), join(replica, 'reference-url.mjs'));
+  const stateFile = join(root, 'stardust/state.json'); const regFile = join(root, 'stardust/replica/inconsistency-register.md');
+  const INV = 'https://live.example/refpage'; const STATIC = `${INV}?page-mode=static`;
+  writeFileSync(stateFile, JSON.stringify({ pages: [{ slug: 'refpage', url: INV }] }));
+  const ref = (live, label) => { resetCount(); return gate(['refpage', live, buildUrl, '1440', label, '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile, STARDUST_ROUND_CAP: '' }); };
+  r = await ref(STATIC, 'u1');
+  check('reference URL: a fallback rendering (?page-mode=static) is refused before anything runs: exit 7, the REFUSED line on stderr, no capture, no round, no verdict file', r.status === 7
+    && /^gate\.sh: reference: REFUSED for refpage: the gate URL https:\/\/live\.example\/refpage\?page-mode=static is not the page the inventory lists \(https:\/\/live\.example\/refpage\): query page-mode=static added\. /m.test(r.stderr)
+    && /^gate\.sh: REFUSED \(exit 7\)/m.test(r.stderr) && attempts().length === 0 && !roundsOf('refpage').length && !verdictJson('refpage', 'u1'), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+  r = await ref(`${INV}/`, 'u2');
+  check('reference URL: the inventory URL (trailing-slash variant) runs as before, no reference-url line', r.status === 0 && !/reference: (REFUSED|SUBSTITUTED|the inventory URL)/.test(r.stdout + r.stderr) && !('substitution' in ((verdictJson('refpage', 'u2') || {}).reference || {})), `status ${r.status} ${r.stdout} ${r.stderr}`);
+  mkdirSync(dirname(regFile), { recursive: true });
+  writeFileSync(regFile, `# Inconsistency register\n\n## R-01 static rendering as the reference\n\n- **Reference substitution:** ${STATIC} for ${INV}: the app mode cannot be stitched; the user agreed.\n- **Status:** applied\n`);
+  r = await ref(STATIC, 'u3');
+  check('reference URL: a substitution the register records runs, and the round names it after its reference line and in verdict-<label>.json', r.status === 0
+    && /^gate\.sh: reference: a live capture[^\n]*\ngate\.sh: reference: SUBSTITUTED: https:\/\/live\.example\/refpage\?page-mode=static stands in for https:\/\/live\.example\/refpage \(query page-mode=static added\), accepted by R-01 in the inconsistency register\. A pass is a pass against that rendering, not the page visitors see/m.test(r.stdout)
+    && /^SUBSTITUTED: .*accepted by R-01/.test(((verdictJson('refpage', 'u3') || {}).reference || {}).substitution || ''), `status ${r.status} ${r.stdout}`);
+  r = await gate(['--help']);
+  check('--help documents the reference URL check and exit 7', /^Reference URL \(source-fidelity-gate\.md § Hardening rule 13\)/m.test(r.stdout) && /7 another rendering than/.test(r.stdout));
+  rmSync(stateFile); rmSync(regFile); unlinkSync(join(replica, 'reference-url.mjs')); unlinkSync(join(replica, 'rounds.mjs'));
+}
+
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
 else rmSync(root, { recursive: true, force: true });

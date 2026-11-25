@@ -54,6 +54,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
 - `replica/reference.mjs` — primed frozen origin + noise floor — `freeze <url> <dir> --width <px> [--captures 2] [--force]`; `status|mask <dir>`; `assess <a.png> <b.png>`; exit 2 = unstable
+- `replica/reference-url.mjs` — is the live URL the inventory's page (gate.sh runs it) — `<slug> <live-url>`; exit 7 = another rendering
 - `replica/rounds.mjs` — round cap ledger, exit 6 — `check|record|decide|status <dir> --stage <s>`; `count <root>`
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`

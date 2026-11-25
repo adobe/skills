@@ -93,6 +93,13 @@
  * lives: the archetype gate dir when that holds one, else the page dir) and freezes again in the same place — never
  * --force: an unstable page stays an error. --live-origin (or GATE_REFERENCE=live in the environment, gate.sh's
  * opt-out) is the origin as it was: the prototype stage's cached live.png, else a fresh stitch on every run.
+ * REFERENCE URL (reference-url.mjs owns the rule; source-fidelity-gate.md § Hardening rule 13): a page whose record
+ * (state.json currentStatePath, else stardust/current/pages/<slug>.json) was captured from another rendering than its
+ * inventory URL is an ERROR row, `reference-refused: …`, nothing captured (totals.referenceRefused). An
+ * inconsistency-register entry naming the inventory URL and another one makes the other one the origin: the row
+ * carries `referenceSubstitution` { url, inventoryUrl, entry, title, changes }, summary.md names it above the table
+ * and in the verdict cell, totals.referenceSubstituted counts it. A cached live.png whose live.json `url` is not
+ * the origin URL is not reused.
  * SETTINGS: a usable reference frozen under other capture settings than this run's (`reference.mjs settings`: consent,
  * dismiss, noDismiss, locale against baseline.json `flags`) is deleted and frozen again where it lives, one log line
  * `reference: re-frozen — capture settings changed (consent, locale)` (gate.sh's rule and wording; an unstable
@@ -161,6 +168,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
 import { DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
+import { alternateFor, checkReference, pageRecord, referenceContext, sameAsInventory } from './reference-url.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -305,6 +313,9 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   <slug>/<side>.capture.json) fails the row: font-not-loaded:<family>; one dead on the source is reported, not failed;
   a font check that could not run (fontsFailed null, or no record) fails it: font-check-skipped:<origin|build>.
   A probe that errored or timed out is an error row (probe-error:<probe>), never a pass and not a FAIL.
+  The reference is the page as the inventory lists it (reference-url.mjs --help): a page record captured from another
+  rendering is an error row (reference-refused); a substitution the inconsistency register records is gated against
+  the URL that stands in and named on its row and above the table.
   A page no repeated-unit family applies to did not take that check: unitsDeclared 0 and a note on the row,
   totals.unitsNotDeclared and the calibration line count it; the verdict and the exit code do not read it.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
@@ -717,13 +728,16 @@ export function formatSummary(summary) {
   const fonts = named(faces.filter(fontFails)); const sourceDead = named(faces.filter((f) => !fontFails(f)));
   const title = p.wide ? `Wide report — ${p.stage === 'prototype' ? 'every crafted prototype' : 'all deployed pages'} (a report, not a delivery criterion)` : p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages';
   const head = [`# ${title}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}${t.failOffsets ? ` (${t.failOffsets} on offsets alone)` : ''}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}${t.probeErrors ? `; probe errors ${t.probeErrors} (error rows, not FAIL)` : ''}${sourceDead.length ? `; fonts dead on the source — reported, not failing: ${t.fontsDeadOnSource ?? summary.rows.filter((r) => (r.fontsNotLoaded || []).some((f) => !fontFails(f))).length} (${sourceDead.join(', ')})` : ''}; content n/a (origin not probed) ${t.contentNA}${t.unitsNotDeclared ? `; **units not declared ${t.unitsNotDeclared} of ${t.pages}** (no repeated-unit family applies: the check did not run on them${t.unitsRecordedNotDeclared ? `; ${t.unitsRecordedNotDeclared} of them have repeated modules recorded` : ''})` : ''}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}${t.alignedOnlyPass != null ? `; pixel criterion met only thanks to alignment (unaligned % over the threshold): ${t.alignedOnlyPass}` : ''}${t.offsetsWithinTolerance ? `; offsets over the strict bound, within the roster tolerance: ${t.offsetsWithinTolerance}` : ''}${t.referenceUnstable ? `; **${t.referenceUnstable} unstable reference(s)** (error rows — pin the page's state, then --recapture-origin)` : ''}${p.wide ? `; over the threshold at this width: **${t.overThreshold ?? 0} of ${t.pages}**` : ''}.`, ''];
+  // a substituted reference (reference-url.mjs): every such row named, above the table, with both URLs
+  const subs = summary.rows.filter((r) => r.referenceSubstitution);
+  if (subs.length) head.push(`**Reference substituted on ${subs.length} page(s)**, accepted in the inconsistency register: a pass on these rows is a pass against that rendering, not the page visitors see. ${subs.map((r) => `\`${r.path}\`: ${r.referenceSubstitution.url} for ${r.referenceSubstitution.inventoryUrl} (${r.referenceSubstitution.entry})`).join('; ')}.`, '');
   const rows = ['| page | template | tier | origin | browser | pixel % aligned (unaligned) [text] | offsets | Δh px | clipped | content | units | verdict | reasons |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const probeErr = (r.probeErrors || []).map((e) => e.probe);
     const content = probeErr.includes('content') ? 'ERROR' : r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
     const units = probeErr.includes('units') ? 'ERROR' : r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}${r.unitsDeclared > 0 ? ` (${r.unitsDeclared} famil${r.unitsDeclared > 1 ? 'ies' : 'y'} checked)` : ''}` : r.unitsDeclared === 0 ? 'not declared' : r.unitsDeclared > 0 ? `no result (${r.unitsDeclared} declared)` : '-';
     const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
-    const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : probeErr.length ? `ERROR (probe: ${probeErr.join(', ')})` : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
+    const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? `PASS${r.referenceSubstitution ? ` (against the substituted reference, ${r.referenceSubstitution.entry})` : ''}` : probeErr.length ? `ERROR (probe: ${probeErr.join(', ')})` : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
     rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${r.alignedUsed ? `${cell(r.alignedPct)} (${cell(r.pct)})` : cell(r.pct)}${r.textPct != null ? ` [${r.textPct}]` : ''} | ${r.alignedUsed && r.steps && r.steps.length ? `${r.steps.length}${r.steps.length >= OFFSETS.kept ? '+' : ''} step(s), ${r.totalShift}px${r.offsetBound != null ? ` (bound ${r.offsetBound}${r.offsetJudge === 'tolerance' ? `, tolerance ${r.offsetTolerance}` : ''})` : ''}` : '-'} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${[...r.reasons, ...(r.notes || []).map((x) => `(reported) ${x}`), ...(r.hint ? [`(hint) ${r.hint}`] : [])].join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
@@ -947,17 +961,31 @@ async function main() {
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
   const coverage = opts.stage === 'prototype' ? null : readJsonSafe(opts.coverage);
-  const { pages, skipped, from } = selectPages({ state, coverage, stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
+  const selected = selectPages({ state, coverage, stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
+  const { skipped, from } = selected;
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   for (const s of skipped) console.error(`gate-all: ${s.slug} NOT gated — ${s.why}`);
-  for (const slug of unselected(opts.only, pages, skipped)) console.error(`gate-all: ${slug} NOT gated — named with --only, but neither ${opts.state} nor ${opts.coverage} has a row for that slug`);
-  if (!pages.length) {
+  for (const slug of unselected(opts.only, selected.pages, skipped)) console.error(`gate-all: ${slug} NOT gated — named with --only, but neither ${opts.state} nor ${opts.coverage} has a row for that slug`);
+  if (!selected.pages.length) {
     console.error(opts.stage === 'prototype'
       ? `gate-all: no prototype pages selected — ${opts.state} has no row with a prototypePath and a url${opts.only ? ` among --only ${opts.only.join(',')}` : ''}`
       : `gate-all: no deployed pages selected${opts.only ? ` among --only ${opts.only.join(',')}` : ''} — two sources consulted: ${opts.state} (rows with status "deployed" + liveUrl + url: none) and ${opts.coverage} (${coverage ? `rows with delivery.status ${DELIVERED.join(' | ')}, or failed on a gate, and a build URL: none${skipped.length ? `; ${skipped.length} skipped above` : ''}` : (existsSync(opts.coverage) ? 'unreadable' : 'not found')}). Record the delivery (rollout's update-coverage.mjs <slug> --status deployed --url <u>) or pass --state / --coverage.`);
     process.exit(1);
   }
-  if (opts.stage !== 'prototype') console.error(`gate-all: ${pages.length} page(s) — ${from.state} from ${opts.state}, ${from.coverage} from ${opts.coverage}`);
+  if (opts.stage !== 'prototype') console.error(`gate-all: ${selected.pages.length} page(s) — ${from.state} from ${opts.state}, ${from.coverage} from ${opts.coverage}`);
+  // The reference is the page as the inventory lists it (reference-url.mjs; header § REFERENCE URL): a page whose
+  // record was captured from another rendering is an error row; a substitution the register records is gated
+  // against the URL that stands in, and its row says so.
+  const refCtx = referenceContext({ state: opts.state });
+  const refused = new Map();
+  const pages = selected.pages.map((p) => {
+    const alt = alternateFor(p.url, refCtx.register);
+    const c = checkReference({ slug: p.slug, inventoryUrl: p.url, url: alt ? alt.url : null, ...pageRecord(p), crawlLog: refCtx.crawlLog, register: refCtx.register });
+    if (c.verdict === 'refused') { refused.set(p.slug, `reference-refused: ${c.line.replace(/^reference: REFUSED for [^:]*: /, '')}`); console.error(`gate-all: ${p.slug}: ${c.line}`); return p; }
+    if (c.verdict !== 'substituted') return p;
+    console.error(`gate-all: ${p.slug}: ${c.line}`);
+    return { ...p, url: c.substitution.url, inventoryUrl: p.url, referenceSubstitution: c.substitution };
+  });
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   for (const [slug, o] of Object.entries(OVERRIDES)) {
@@ -1058,6 +1086,9 @@ async function main() {
     let useCached = !refDir && !freezeInto && opts.stage === 'prototype' && existsSync(cachedLive);
     const staleLive = useCached ? staleReason(cachedLive, optsFor(p).holdTimers) : null;
     if (staleLive) { useCached = false; log(`origin ${p.slug}: ${cachedLive} ${staleLive} — not reused, capturing the origin`); }
+    // a cached live.png taken from another URL is another page or rendering (its live.json `url`; none recorded: reused)
+    const cachedFrom = useCached ? (readJsonSafe(join(gateDir, 'live.json')) || {}).url : null;
+    if (typeof cachedFrom === 'string' && !sameAsInventory(p.url, cachedFrom, { crawlLog: refCtx.crawlLog }).same) { useCached = false; log(`origin ${p.slug}: ${cachedLive} was captured from ${cachedFrom}, not from ${p.url}: not reused, capturing the origin`); }
     if (!opts.liveOrigin && !blocked && !refDir && !freezeInto && !useCached) { if (await usable(d, p)) refDir = d; else freezeInto = d; }
     let refrozen = null; let why = ''; let freezeOpts = opts;
     if (refDir) {
@@ -1229,7 +1260,8 @@ async function main() {
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: OVERRIDES[p.slug] || null, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
       reference: ref ? ref.dir : null, noiseFloor: ref ? ref.noiseFloor : null, variableRows: ref ? ref.variableRows : 0, hint: (ref && ref.hint) || (r.origin && r.origin.hint) || null,
-      hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null };
+      hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null,
+      ...(p.referenceSubstitution ? { referenceSubstitution: p.referenceSubstitution } : {}) };
   };
   // The reuse key of a page's pass (passKey; header § REUSE), from what this run would gate it with and the capture
   // metas on disk — computed alike when the pass is written and when a later run asks whether it still stands.
@@ -1247,9 +1279,12 @@ async function main() {
       captures: [fileDigest(join(d, 'origin.json')), fileDigest(join(d, 'eds.json'))], instruments: INSTRUMENTS, inputs: inputsFor(p),
       ...(opts.stage === 'prototype' ? { prototype: p.prototypePath ? fileDigest(p.prototypePath) : null } : {}) });
   };
+  // A refused reference is an error row: nothing captured, probed, compared or reused for it.
+  for (const p of pages) if (refused.has(p.slug)) { rec(p, 'origin', { instrument: 'none', error: refused.get(p.slug) }); rec(p, 'pixel', { error: refused.get(p.slug) }); }
   const reused = new Set();
   if (opts.compareOnly && !opts.recaptureEds && !opts.recaptureOrigin) {
     for (const p of pages) {
+      if (refused.has(p.slug)) continue;
       const kept = droppedPass(dir(p), measuredWith(p));
       if (!kept || await referenceMoved(kept.origin)) continue;
       reused.add(p.slug); for (const [k, v] of Object.entries(kept)) rec(p, k, v);
@@ -1259,6 +1294,7 @@ async function main() {
     // --skip-existing: the recorded pass is the page's whole verdict — no capture, no probe, no compare — while its
     // key holds; the row is rebuilt from the record, and a record that would not pass under this run is not reused.
     for (const p of pages) {
+      if (refused.has(p.slug)) continue;
       const kept = recordedPass(dir(p), keyOf(p, readJsonSafe(join(dir(p), 'origin.json'))));
       if (!kept) continue;
       const { unresolved } = inputsFor(p);
@@ -1276,7 +1312,7 @@ async function main() {
   // The default is sized to THIS job: the build captures it will really take and the pages it will probe.
   // ONE decision feeds both: `reused` (above) is the set the batches skip (`shoot`) and the set the budget leaves out —
   // a page with a reusable recorded pass opens no browser, so it is neither a page to capture nor a page to probe.
-  const toGate = pages.filter((p) => !reused.has(p.slug));
+  const toGate = pages.filter((p) => !reused.has(p.slug) && !refused.has(p.slug));
   const jobSize = {
     capture: opts.compareOnly ? 0 : toGate.filter((p) => !(opts.skip && !opts.recaptureEds && reusable(p, 'eds', join(dir(p), 'eds.png'), join(dir(p), 'eds.json'), true))).length,
     probe: opts.compareOnly || !(opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) ? 0 : toGate.length,
@@ -1314,7 +1350,7 @@ async function main() {
     // --compare-only opens no browser and runs no probe: the recorded results, the sidecars re-applied. Its pass is
     // the pixel pass (no key: a later --skip-existing gates the page), a reused record keeps the key it has.
     for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJsonSafe(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
-    for (const p of batch) recallProbes(p);
+    for (const p of batch) if (!refused.has(p.slug)) recallProbes(p);
     await pool(shoot, 4, compare);
     for (const p of batch) {
       if (!rowOf(p).pass) continue;
@@ -1329,6 +1365,7 @@ async function main() {
   if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — fix per § What a failing row means, or record the decision: rounds.mjs decide ${join(dirname(opts.out), `<slug>-${opts.width}`)} --stage all-pages --decision accept-residual|re-prototype --reason "<why>" (a closed page is not listed again)`);
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), unitsNotDeclared: n((r) => r.unitsDeclared === 0), unitsRecordedNotDeclared: n((r) => r.unitsDeclared === 0 && r.unitsRecorded > 0), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
+    ...(n((r) => r.referenceSubstitution) ? { referenceSubstituted: n((r) => r.referenceSubstitution) } : {}), ...(refused.size ? { referenceRefused: refused.size } : {}),
     alignedOnlyPass: n((r) => r.pixelPass && r.pct > opts.threshold), failOffsets: n((r) => r.pct != null && !r.pixelPass && r.alignedPct <= opts.threshold), offsetsWithinTolerance: n((r) => r.offsetsWithinTolerance), referenceUnstable: n((r) => UNSTABLE.test(r.error || '')),
     ...(opts.wide ? { overThreshold: n((r) => r.alignedPct != null && r.alignedPct > opts.threshold), heightOff: n((r) => r.pct != null && !r.heightPass) } : {}) };
   const flagged = opts.wide ? wideFlagged(rows, opts) : []; const flaggedLine = wideLine(flagged, opts);

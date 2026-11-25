@@ -432,6 +432,24 @@ check('with a pixel table for the width, the row decides and a page without a ro
   assert.ok(loadTables(join(root, 'stardust/replica/gates'), [1440, 360])[360].any === false);
   rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true });
 });
+check('a pixel gate measured against a substituted reference (reference-url.mjs) passes and says so: the table row\'s referenceSubstitution, or gate.sh\'s SUBSTITUTED line in the round\'s log', () => {
+  const sub = { url: `${LIVE}/tours/north/?page-mode=static`, inventoryUrl: `${LIVE}/tours/north/`, entry: 'R-02', title: 'static mode', changes: ['query page-mode=static added'] };
+  const note = ` [SUBSTITUTED reference: ${sub.url} for ${sub.inventoryUrl} (R-02): a pass against that rendering, not the page visitors see]`;
+  const dir = join(root, 'stardust/replica/gates/all-1440'); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'summary.json'), JSON.stringify({ rows: [{ slug: 'tours-north', pct: 2.1, heightDelta: 3, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [], referenceSubstitution: sub }] }));
+  let by = Object.fromEntries(JSON.parse(run('--dry-run', '--json').out).map((r) => [r.slug, r]));
+  assert.ok(by['tours-north'].gatesPassed.includes('pixel-gate-1440'));
+  assert.ok(by['tours-north'].gateEvidence['pixel-gate-1440'].endsWith(`[published regime]${note}`), by['tours-north'].gateEvidence['pixel-gate-1440']);
+  assert.deepEqual(by['tours-north'].pixel['1440'].referenceSubstitution, sub);
+  rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true });
+  const line = `gate.sh: reference: SUBSTITUTED: ${sub.url} stands in for ${sub.inventoryUrl} (query page-mode=static added), accepted by R-02 in the inconsistency register. A pass is a pass against that rendering, not the page visitors see: the run report says so`;
+  job('tours-north-360-sub', GATE, ['tours-north', sub.url, `${PROTO}/tours-north-proposed.html`, '360', 'sub1'], { start: 500, end: 501, exit: 0, log: `${line}\n${pixelLog(0, 2600, 522000, '0.50', 'PASS')}` });
+  by = Object.fromEntries(JSON.parse(run('--dry-run', '--json').out).map((r) => [r.slug, r]));
+  assert.equal(by['tours-north'].gateEvidence['pixel-gate-360'], `0.50% (2600 px, threshold 10%), height delta 0px, round sub1 @360 (tours-north-360-sub.log) [prototype regime]${note}`);
+  assert.deepEqual(by['tours-north'].pixel['360'].referenceSubstitution, { url: sub.url, inventoryUrl: sub.inventoryUrl, entry: 'R-02' });
+  assert.equal((by['tours-north'].pixel['1440'] || {}).referenceSubstitution, undefined, 'a round without the line has no substitution');
+  for (const f of ['tours-north-360-sub.json', 'tours-north-360-sub.log']) rmSync(join(BG, f));
+});
 check('without any table the log rule stands and --check notes the missing table', () => {
   const r = run('--dry-run', '--check');
   assert.match(r.out + r.err, /no pixel table for 1440 under stardust\/replica\/gates\//);
