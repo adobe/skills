@@ -63,7 +63,12 @@
 #   path or host) ends the round first, exit 7, its REFUSED line on stderr: nothing captured, nothing counted. A
 #   substitution the inconsistency register records runs, and the round says so after its reference line,
 #   `gate.sh: reference: SUBSTITUTED: <alt> stands in for <url> (…), accepted by R-<nn> …`, and in verdict-<label>.json
-#   `reference.substitution`. No state.json row for the slug, or no reference-url.mjs beside this script: unchecked.
+#   `reference.substitution`. No stardust/state.json, or no row or URL for the slug: the helper's
+#   `reference: unchecked: <why>` line on stdout, the round runs. The guard fails closed: without reference-url.mjs
+#   beside this script, or when it ends with any other code than 0 or 7, or exits 0 without one of its lines (a crash,
+#   a usage error, a state.json it cannot read), the round does not run (exit 1, before the cap and any capture; the
+#   helper's stderr is kept): re-copy the replica scripts dir. No opt-out: the helper reads files only, so every such
+#   failure has a repair, and the inconsistency register is how another rendering is accepted.
 #
 # Stage (the round's budget, its pixel bound and its probes; written to verdict-<label>.json `stage`):
 #   prototype    the build URL is local (http://localhost*, http://127.0.0.1*, file:*) AND its path ends in
@@ -203,7 +208,8 @@
 # missing/blocked side must never be compared, and a blocked round has no
 # verdict. Exit codes: 0 gate PASS, 2 gate FAIL (the pixel criterion, or horizontal
 # overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict), 4 build-side identity assertion failed
+# retry — re-queue, not a verdict; also a guard that could not run: § Round cap,
+# § Reference URL), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 5 origin reference UNSTABLE — nothing frozen, no verdict, not a counted
 # round (§ Origin reference), 124 instrument deadline exceeded (not a measurement —
@@ -390,15 +396,18 @@ case "$REGIME" in local-build) OFFSET_STAGE=prototype; UNIT_STAGE=published ;; *
 # Reference URL (header § Reference URL): before the cap is asked and before anything is fetched. Exit 7 = another
 # rendering than the inventory's page, nothing ran; a substitution the register records rides to the reference line.
 REF_SUB=""
-if [ -f "$HERE/reference-url.mjs" ]; then
-  REF_URL_LINE=$(node "$HERE/reference-url.mjs" "$SLUG" "$LIVE_URL" 2>/dev/null); rc=$?
-  REF_URL_LINE=$(printf '%s\n' "$REF_URL_LINE" | tail -1)
-  case "$rc" in
-    7) echo "gate.sh: $REF_URL_LINE" >&2
-       echo "gate.sh: REFUSED (exit 7): the live side is not the page the inventory lists, so the round did not run and is not counted" >&2; exit 7 ;;
-    0) case "$REF_URL_LINE" in "reference: SUBSTITUTED: "*) REF_SUB=${REF_URL_LINE#reference: } ;; esac ;;
-  esac
-fi
+# The guard fails closed: no helper, another exit, or exit 0 without one of its lines ends the round (exit 1), its stderr kept.
+[ -f "$HERE/reference-url.mjs" ] || { echo "gate.sh: $HERE/reference-url.mjs missing: the reference URL cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; }
+REF_URL_LINE=$(node "$HERE/reference-url.mjs" "$SLUG" "$LIVE_URL"); rc=$?
+REF_URL_LINE=$(printf '%s\n' "$REF_URL_LINE" | tail -1)
+case "$rc:$REF_URL_LINE" in
+  "7:"*) echo "gate.sh: $REF_URL_LINE" >&2
+     echo "gate.sh: REFUSED (exit 7): the live side is not the page the inventory lists, so the round did not run and is not counted" >&2; exit 7 ;;
+  "0:reference: SUBSTITUTED: "*) REF_SUB=${REF_URL_LINE#reference: } ;;
+  "0:reference: unchecked: "*) echo "gate.sh: $REF_URL_LINE" ;;
+  "0:reference: the inventory URL "*) ;;
+  *) echo "gate.sh: reference-url.mjs exited $rc${REF_URL_LINE:+ ($REF_URL_LINE)}: the reference URL could not be checked, so the round does not run (its stderr above); re-copy the replica scripts dir (replica SKILL.md § Setup), or repair what it names" >&2; exit 1 ;;
+esac
 # Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
 # one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
 ROUND_VERDICT=0

@@ -31,6 +31,7 @@
  *   reference: unchecked: <why>                                exit 0 (no state.json, no row or no URL for the slug)
  *   reference: SUBSTITUTED: <alt> stands in for <url> (…), accepted by R-<nn> in the inconsistency register; …   exit 0
  *   reference: REFUSED for <slug>: …                           exit 7
+ * A state.json that exists but cannot be read is no answer: one line on stderr, exit 1 (gate.sh then refuses the round).
  * Exit 125: usage. Pure, no browser, no network.
  */
 /* eslint-disable no-restricted-syntax, max-len, no-continue */
@@ -47,7 +48,8 @@ with state.json pages[].url for <slug>. Same page: www., scheme, trailing slash,
 parameters (utm_*, gclid, fbclid), the redirect the record followed (url to finalUrl) and the crawl's origin redirect. Anything else (a query such as
 page-mode=static, another path, another host) is another rendering: REFUSED, exit 7, unless an inconsistency-register
 entry has a "- **Reference substitution:**" field naming both URLs: SUBSTITUTED, exit 0, and the line says a pass is
-against that rendering. One line on stdout; exit 0 same / unchecked / substituted, 7 refused, 125 usage.
+against that rendering. One line on stdout; exit 0 same / unchecked / substituted, 7 refused, 1 a state.json that
+cannot be read (no answer, on stderr), 125 usage.
 source-fidelity-gate.md § Hardening rule 13.`;
 
 export const REFUSED_EXIT = 7;
@@ -168,7 +170,8 @@ const readJson = (f) => { try { const j = JSON.parse(readFileSync(f, 'utf8')); r
 const readText = (f) => { try { return readFileSync(f, 'utf8'); } catch { return ''; } };
 /** referenceContext({ state, register, crawlLog }) → { state, register: entries, crawlLog }: the files every page's check reads, once. */
 export function referenceContext({ state = PATHS.state, register = PATHS.register, crawlLog = PATHS.crawlLog } = {}) {
-  return { state: existsSync(state) ? readJson(state) : null, register: registerSubstitutions(readText(register)), crawlLog: existsSync(crawlLog) ? readJson(crawlLog) : null };
+  const present = existsSync(state); const parsed = present ? readJson(state) : null;
+  return { state: parsed, statePath: state, stateUnreadable: present && !parsed, register: registerSubstitutions(readText(register)), crawlLog: existsSync(crawlLog) ? readJson(crawlLog) : null };
 }
 /** pageRecord(row) → { record, recordFile }: the page record a state.json row names (currentStatePath), else the conventional one. */
 export function pageRecord(row) {
@@ -177,7 +180,8 @@ export function pageRecord(row) {
 }
 /** check(slug, url, ctx) → checkReference's answer for one state.json slug and the URL a gate loads. */
 export function check(slug, url, ctx) {
-  if (!ctx.state) return { verdict: 'unchecked', line: 'reference: unchecked: no readable state.json' };
+  if (ctx.stateUnreadable) return { verdict: 'error', line: `reference: ERROR: ${ctx.statePath || 'state.json'} exists but cannot be read as JSON, so the reference cannot be checked: repair it` };
+  if (!ctx.state) return { verdict: 'unchecked', line: 'reference: unchecked: no state.json' };
   const row = (Array.isArray(ctx.state.pages) ? ctx.state.pages : []).find((p) => p && p.slug === slug);
   if (!row) return { verdict: 'unchecked', line: `reference: unchecked: state.json has no row for ${slug}` };
   return checkReference({ slug, inventoryUrl: typeof row.url === 'string' ? row.url : null, url, ...pageRecord(row), crawlLog: ctx.crawlLog, register: ctx.register });
@@ -195,6 +199,7 @@ export function main(argv) {
   }
   if (pos.length !== 2) { console.error('reference-url: needs <slug> <live-url> (--help)'); return 125; }
   const r = check(pos[0], pos[1], referenceContext(o));
+  if (r.verdict === 'error') { console.error(r.line); return 1; }
   console.log(r.line);
   return r.verdict === 'refused' ? REFUSED_EXIT : 0;
 }

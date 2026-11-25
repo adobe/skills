@@ -109,13 +109,17 @@ check('a recorded substitution is allowed and surfaced: SUBSTITUTED, the entry, 
   assert.equal(checkReference({ slug: 'abc', inventoryUrl: null, url: STATIC }).verdict, 'unchecked');
 });
 
-check('CLI in a project: same (exit 0), refused (exit 7, one line), substituted once registered (exit 0), unchecked, --help, usage 125', () => {
+check('CLI in a project: same (exit 0), refused (exit 7, one line), substituted once registered (exit 0), unchecked, an unreadable state.json (exit 1, stderr), --help, usage 125', () => {
   const root = mkdtempSync(join(tmpdir(), 'reference-url-test-'));
   try {
     const run = (...a) => spawnSync(process.execPath, [SCRIPT, ...a], { cwd: root, encoding: 'utf8' });
     let r = run('abc', STATIC);
-    assert.equal(r.status, 0); assert.equal(r.stdout.trim(), 'reference: unchecked: no readable state.json');
+    assert.equal(r.status, 0); assert.equal(r.stdout.trim(), 'reference: unchecked: no state.json');
     mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(root, 'stardust/state.json'), '{ "pages": [');
+    r = run('abc', STATIC);
+    assert.equal(r.status, 1, 'a state.json that cannot be read is no answer, never unchecked'); assert.equal(r.stdout, '');
+    assert.match(r.stderr, /^reference: ERROR: stardust\/state\.json exists but cannot be read as JSON, so the reference cannot be checked/);
     writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ flow: 'replica', pages: [{ slug: 'abc', url: INV, currentStatePath: 'stardust/current/pages/abc.json' }] }));
     writeFileSync(join(root, 'stardust/current/pages/abc.json'), JSON.stringify({ slug: 'abc', url: INV, finalUrl: INV }));
     r = run('abc', `${INV}/#x`);

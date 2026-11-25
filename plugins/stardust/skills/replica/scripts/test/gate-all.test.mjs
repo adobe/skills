@@ -615,6 +615,23 @@ check('reference URL: a page record captured from another rendering (?page-mode=
     assert.match(md, /\| `\/good` \|.*\| PASS \|/);
   } finally { done(); }
 });
+check('reference URL fails closed: a reference check that throws, or no reference-url.mjs beside gate-all, stops the run (exit 1) before anything is captured: no gate dir, no summary, no round record, never a PASS', () => {
+  const { root, gateAll, shots, files, done } = sandbox(['good', 'app']);
+  try {
+    mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(root, 'stardust/current/pages/app.json'), JSON.stringify({ slug: 'app', url: 'https://origin.example/app?page-mode=static' }));
+    const rep = join(root, 'stardust/scripts/replica');
+    copyFileSync(join(rep, 'reference-url.mjs'), join(rep, 'reference-url-real.mjs'));
+    writeFileSync(join(rep, 'reference-url.mjs'), "export * from './reference-url-real.mjs';\nexport function checkReference() { throw new Error('stub: the reference check crashed'); }\n");
+    let r = gateAll();
+    assert.equal(r.status, 1, r.stdout + r.stderr); assert.match(r.stderr, /stub: the reference check crashed/);
+    assert.deepEqual([shots(), files('stardust/replica/gates')], [[], []], 'a throwing check: nothing captured, no gate dir, no summary, no rounds.json');
+    rmSync(join(rep, 'reference-url.mjs'));
+    r = gateAll();
+    assert.equal(r.status, 1, r.stdout + r.stderr); assert.match(r.stderr, /reference-url\.mjs/);
+    assert.deepEqual([shots(), files('stardust/replica/gates')], [[], []], 'no checker: nothing captured, no gate dir, no summary, no rounds.json');
+  } finally { done(); }
+});
 check('a failed or interrupted re-capture never leaves the old pass to be reused: the next --skip-existing run captures again', () => {
   const { out, gateAll, shots, rows, done } = sandbox(['good']);
   try {

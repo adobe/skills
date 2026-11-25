@@ -174,7 +174,7 @@ archetype, per breakpoint, live URL against the served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # ONE server, ONE port; one that answers but is not yours is never killed — take another port
-LIVE="https://<site>/<path>"   # state.json pages[].url; never a static, print or AMP rendering (gate doc § Hardening rule 13)
+LIVE="https://<site>/<path>"   # state.json pages[].url (gate doc § Hardening rule 13)
 G=stardust/replica/gates/<slug>-1440
 # A round = gate.sh through run-bg, never a hand-written wrapper. The FIRST round of a
 # breakpoint and the CONFIRMATION round after the last fix run --full; the others are pixel rounds.

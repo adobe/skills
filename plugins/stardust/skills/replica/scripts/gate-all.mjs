@@ -99,7 +99,8 @@
  * inconsistency-register entry naming the inventory URL and another one makes the other one the origin: the row
  * carries `referenceSubstitution` { url, inventoryUrl, entry, title, changes }, summary.md names it above the table
  * and in the verdict cell, totals.referenceSubstituted counts it. A cached live.png whose live.json `url` is not
- * the origin URL is not reused.
+ * the origin URL is not reused. The check fails closed: one that throws, or no reference-url.mjs beside this script
+ * (a static import), stops the job with exit 1 before anything is captured or written.
  * SETTINGS: a usable reference frozen under other capture settings than this run's (`reference.mjs settings`: consent,
  * dismiss, noDismiss, locale against baseline.json `flags`) is deleted and frozen again where it lives, one log line
  * `reference: re-frozen — capture settings changed (consent, locale)` (gate.sh's rule and wording; an unstable

@@ -46,6 +46,8 @@ mkdirSync(diff, { recursive: true });
 cpSync(join(scripts, 'gate.sh'), join(replica, 'gate.sh'));
 chmodSync(join(replica, 'gate.sh'), 0o755);
 cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
+// The reference URL guard (gate.sh § Reference URL) is real in every section: without it a round does not run.
+cpSync(join(scripts, 'reference-url.mjs'), join(replica, 'reference-url.mjs'));
 
 // Stubs read their behaviour from environment variables so one sandbox covers every case. stitch-shot: per side
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
@@ -959,7 +961,6 @@ unlinkSync(join(replica, 'rounds.mjs'));
 // inventory URL (a trailing-slash variant too) prints nothing new.
 {
   cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
-  cpSync(join(scripts, 'reference-url.mjs'), join(replica, 'reference-url.mjs'));
   const stateFile = join(root, 'stardust/state.json'); const regFile = join(root, 'stardust/replica/inconsistency-register.md');
   const INV = 'https://live.example/refpage'; const STATIC = `${INV}?page-mode=static`;
   writeFileSync(stateFile, JSON.stringify({ pages: [{ slug: 'refpage', url: INV }] }));
@@ -978,7 +979,40 @@ unlinkSync(join(replica, 'rounds.mjs'));
     && /^SUBSTITUTED: .*accepted by R-01/.test(((verdictJson('refpage', 'u3') || {}).reference || {}).substitution || ''), `status ${r.status} ${r.stdout}`);
   r = await gate(['--help']);
   check('--help documents the reference URL check and exit 7', /^Reference URL \(source-fidelity-gate\.md § Hardening rule 13\)/m.test(r.stdout) && /7 another rendering than/.test(r.stdout));
-  rmSync(stateFile); rmSync(regFile); unlinkSync(join(replica, 'reference-url.mjs')); unlinkSync(join(replica, 'rounds.mjs'));
+  rmSync(regFile);
+  r = await ref(STATIC, 'u4');
+  check('reference URL: with the register entry gone the same URL is refused again', r.status === 7 && attempts().length === 0 && !verdictJson('refpage', 'u4'), `status ${r.status} ${r.stderr}`);
+
+  // The guard fails closed (header § Reference URL): a checker that cannot answer ends the round with exit 1 before the
+  // cap and any capture, the helper's stderr kept; the gate dir stays empty (no capture, no verdict, no round record).
+  const gdirFiles = (slug) => (existsSync(join(root, gdir(slug))) ? readdirSync(join(root, gdir(slug))) : []);
+  const realRefUrl = readFileSync(join(scripts, 'reference-url.mjs'), 'utf8');
+  const closed = async (slug, label) => { resetCount(); return gate([slug, STATIC, buildUrl, '1440', label, '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile, STARDUST_ROUND_CAP: '' }); };
+  writeFileSync(join(replica, 'reference-url.mjs'), "#!/usr/bin/env node\nthrow new Error('stub: the reference check crashed');\n");
+  r = await closed('crashpage', 'c1');
+  check('reference URL fails closed: a checker that throws ends the round, exit 1, its stderr kept, nothing captured, no verdict, no round record', r.status === 1
+    && /Error: stub: the reference check crashed/.test(r.stderr) && /^gate\.sh: reference-url\.mjs exited 1: the reference URL could not be checked, so the round does not run \(its stderr above\)/m.test(r.stderr)
+    && attempts().length === 0 && gdirFiles('crashpage').length === 0 && !/PASS/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} files ${gdirFiles('crashpage')} ${r.stdout} ${r.stderr}`);
+  writeFileSync(join(replica, 'reference-url.mjs'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  r = await closed('crashpage', 'c2');
+  check('reference URL fails closed: exit 0 without a reference line is no answer, exit 1, nothing captured', r.status === 1 && /^gate\.sh: reference-url\.mjs exited 0: /m.test(r.stderr) && attempts().length === 0 && gdirFiles('crashpage').length === 0, `status ${r.status} ${r.stderr}`);
+  unlinkSync(join(replica, 'reference-url.mjs'));
+  r = await closed('crashpage', 'c3');
+  check('reference URL fails closed: no reference-url.mjs beside gate.sh ends the round, exit 1 with the re-copy line, nothing captured, no verdict, no round record', r.status === 1
+    && /^gate\.sh: \S*reference-url\.mjs missing: the reference URL cannot be checked, so the round does not run; re-copy the replica scripts dir/m.test(r.stderr)
+    && attempts().length === 0 && gdirFiles('crashpage').length === 0, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+  r = await gate(['crashpage', STATIC, buildUrl, '1440', 'c4', '--marker', 'home-proposed'], { STARDUST_ROUND_CAP: '0' });
+  check('reference URL fails closed: STARDUST_ROUND_CAP=0 (the cap\'s opt-out) does not run a round the reference guard could not check', r.status === 1 && gdirFiles('crashpage').length === 0, `status ${r.status} ${r.stderr}`);
+  writeFileSync(join(replica, 'reference-url.mjs'), realRefUrl);
+  writeFileSync(stateFile, '{ "pages": [');
+  r = await closed('refpage', 'c5');
+  check('reference URL fails closed: a state.json that cannot be read is no answer (the helper\'s exit 1 and its line on stderr), nothing captured', r.status === 1
+    && /^reference: ERROR: stardust\/state\.json exists but cannot be read as JSON/m.test(r.stderr) && /^gate\.sh: reference-url\.mjs exited 1: /m.test(r.stderr) && attempts().length === 0 && !verdictJson('refpage', 'c5'), `status ${r.status} ${r.stderr}`);
+  writeFileSync(stateFile, JSON.stringify({ pages: [{ slug: 'refpage', url: INV }] }));
+  r = await closed('norow', 'c6');
+  check('reference URL: a slug with no state.json row is unchecked, said on stdout (the helper\'s own line), and the round runs', r.status === 0
+    && /^gate\.sh: reference: unchecked: state\.json has no row for norow$/m.test(r.stdout) && verdictJson('norow', 'c6') !== null, `status ${r.status} ${r.stdout} ${r.stderr}`);
+  rmSync(stateFile); unlinkSync(join(replica, 'rounds.mjs'));
 }
 
 server.close();
