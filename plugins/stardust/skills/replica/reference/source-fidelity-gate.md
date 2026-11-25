@@ -802,10 +802,9 @@ none visible on a local harness):
 shipped the other pages unmeasured; the owner's first feedback was that they "don't look
 formatted as the original". A runner then gated every deployed page on stitched 1440 captures
 and pixel-compare, and a fix program took the roster from 3 to 67 PASS. Then the coupon-listing
-page PASSED at **6.7 % / Δh 69 px** while every one of its 284 cards was broken: a fixed-height
-card with `overflow: hidden`, the body ~30 px too low, the description clipped mid-glyph, the
-details link pushed under the primary button — and the sort control reading a different default
-than the origin. The links WERE in the served DOM; pure CSS geometry. Pixelmatch underweights
+page PASSED at **6.7 % / Δh 69 px** while every one of its 284 cards was broken (fixed-height
+cards with `overflow: hidden`, descriptions clipped mid-glyph, links pushed under buttons). The
+links WERE in the served DOM; pure CSS geometry. Pixelmatch underweights
 small text inside otherwise matching shapes (the text-only number, `--text-boxes`, read 16.5 %).
 "PASS" meant "right shapes at the right places", not "every element present and legible".
 Element presence and legibility are checkable — so `gate-all.mjs` checks them.
@@ -851,10 +850,15 @@ Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
 counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
-visible in the artifact. Sites without bot management measure identically on both tiers.
+visible in the artifact.
 `--eds-host` gates a code branch against the same content (branch hosts
 serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
 the two captures at the row's band, never the whole pages.
+
+**Disk and memory.** A capturing run refuses (exit 4) when its peak captures plus a 2 GB
+reserve do not fit (`--help` § Preflight); `--prune-captures` keeps a failing page's measurement,
+not its PNGs; a delivery unit short of either gates `--only <its slugs> --sample <n>`, never
+nothing (`handoff-contract.md` § 1 row 5).
 
 **What a failing row means (#126).** The row's evidence decides the fix, mechanically: clip
 groups, HIDDEN links or unit deltas confined to one block → fix the BLOCK (CSS or encoder) and

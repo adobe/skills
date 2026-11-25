@@ -22,14 +22,19 @@
 // stub instruments, no browser. Reuse: the recorded pass is the whole verdict (no probe), each key ingredient
 // invalidates it, an incomplete or older record is not reused, it is on disk before the batch ends, kill and resume.
 // Local build inputs in the key: the page's content file, its blocks, the shared code; unresolvable = never reused.
+// --prune-captures: a measured failing page loses its PNGs too and --compare-only keeps
+// its measurement (never "missing capture"); --skip-existing re-captures it. Preflight: the plan lines, exit 4 when the
+// captures cannot fit (sparse files make the measured per-page size huge), --no-preflight runs anyway.
+// --sample: pickSample (one page per template, then each risk signal in turn, deterministic, reasons), sampleSignals
+// (page JSON + EDS schema), and the run file's _provenance.sample with summary.* untouched.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HINT, deadlineHint, PASS_FORMAT, localInputs, passKey, recordedPass, repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS } from '../gate-all.mjs';
+import { HINT, deadlineHint, PASS_FORMAT, localInputs, passKey, recordedPass, repeatGroups, unitsNote, unitsState, rosterOffsets, ROSTER_OFFSETS, BROWSER_BYTES, DISK_RESERVE, PAGE_BYTES_DEFAULT, budgetPeak, captureBytes, pickSample, preflight, prunedMeasurement, sampleSignals } from '../gate-all.mjs';
 import { BATCH, CHILD_FLAGS, DELIVERED, HOLD_DEFAULT, HOLD_DEFAULT_WHY, refHold, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, limiter, browserBudget, maxBrowsersOf, budgetLine, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, staleReason, holdMismatch, envHold, hintOf, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
@@ -2074,6 +2079,153 @@ check('gate-all carries run-bg\'s marker, and --help states the hint formula', (
   assert.ok(src.includes('run-bg:deadline-hint'), 'the marker run-bg.mjs reads before it asks');
   const r = spawnSync(process.execPath, [join(HERE, '..', 'gate-all.mjs'), '--help'], { encoding: 'utf8', cwd: tmpdir() });
   assert.equal(r.status, 0); assert.match(r.stdout, /--deadline-hint/); assert.match(r.stdout, /the larger of 900 and 300 \+ B × pages ÷ c seconds, at most 14400/); assert.match(r.stdout, /B = 240 s a page at the published stage/);
+});
+
+// ---- --sample, preflight, --prune-captures ------------------------------------------------------------------------
+check('pickSample: one page per template (its longest) first, n raised to the template count, then each risk signal in turn; deterministic, reasons named', () => {
+  const pages = ['a', 'b', 'c', 'd', 'e', 'f'].map((slug, i) => ({ slug, template: i < 4 ? 'detail' : 'list' }));
+  const sig = { a: { words: 100, repeats: 0, longestBlock: 40 }, b: { words: 900, repeats: 2, longestBlock: 50 }, c: { words: 300, repeats: 14, longestBlock: 60 }, d: { words: 200, repeats: 1, longestBlock: 700 }, e: { words: 50, repeats: 0, longestBlock: 10 }, f: { words: 80, repeats: 0, longestBlock: 20 } };
+  const one = pickSample(pages, 1, (p) => sig[p.slug]);
+  assert.deepEqual(one.map((x) => x.slug), ['b', 'f'], 'n=1 still takes one page per template');
+  assert.match(one[0].why.join('; '), /template detail/); assert.match(one[0].why.join('; '), /longest page \(900 words\)/, 'a template pick that tops a signal carries that reason too');
+  const four = pickSample(pages, 4, (p) => sig[p.slug]);
+  assert.deepEqual(four.map((x) => x.slug), ['b', 'f', 'c', 'd']);
+  assert.deepEqual([four[2].why, four[3].why], [['longest page (300 words)', 'most repeated units (14)'], ['most repeated units (1)', 'longest block text (700 words)']], 'each signal in turn; a pick that tops a signal says so too');
+  assert.deepEqual(pickSample([...pages].reverse(), 4, (p) => sig[p.slug]).map((x) => x.slug).sort(), four.map((x) => x.slug).sort(), 'order-independent');
+  const blind = pickSample([{ slug: 'z' }, { slug: 'y' }, { slug: 'x' }], 2);
+  assert.deepEqual(blind.map((x) => [x.slug, x.why]), [['x', ['template (no template)']], ['y', ['no risk signal recorded — slug order']]], 'no signal: slug order');
+  assert.equal(pickSample(pages, 50, (p) => sig[p.slug]).length, 6, 'never more than the pages');
+});
+check('sampleSignals: words, the longest section and the longest list / Q&A from the captured page JSON, repeats from the EDS schema; neither file → 0s, known false', () => {
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-sample-'));
+  try {
+    mkdirSync(join(d, 'pages')); mkdirSync(join(d, 'schema'));
+    writeFileSync(join(d, 'pages/p.json'), JSON.stringify({ stats: { wordCount: 812 }, landmarks: [{ tag: 'main', children: [{ wordCount: 90, lists: [{ items: ['1', '2', '3'] }] }, { wordCount: 400, qa: [{}, {}, {}, {}, {}] }] }] }));
+    writeFileSync(join(d, 'schema/p.json'), JSON.stringify({ sections: [{ repeats: [{ count: 4 }] }] }));
+    assert.deepEqual(sampleSignals('p', { pagesDir: join(d, 'pages'), schemaDir: join(d, 'schema') }), { words: 812, longestBlock: 400, repeats: 5, known: true });
+    writeFileSync(join(d, 'schema/q.json'), JSON.stringify({ sections: [{ repeats: [{ count: 9 }] }] }));
+    assert.deepEqual(sampleSignals('q', { pagesDir: join(d, 'pages'), schemaDir: join(d, 'schema') }), { words: 0, longestBlock: 0, repeats: 9, known: true });
+    assert.deepEqual(sampleSignals('none', { pagesDir: join(d, 'pages'), schemaDir: join(d, 'schema') }), { words: 0, longestBlock: 0, repeats: 0, known: false });
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+check('preflight: every page at peak (a failing page keeps its PNGs), one batch with --prune-captures; free space unknown refuses; memory is a warning, never a refusal', () => {
+  const GB = 2 ** 30; const MB = 2 ** 20;
+  const full = preflight({ shoot: 500, perPage: 40 * MB, free: 12 * GB, freeMem: 8 * GB, browsers: 2 });
+  assert.equal(full.fits, false); assert.match(full.lines.join('\n'), /does NOT fit/); assert.match(full.lines.join('\n'), /add --prune-captures/); assert.match(full.lines.join('\n'), /--sample <n>/);
+  const pruned = preflight({ shoot: 500, prune: true, perPage: 40 * MB, free: 12 * GB, freeMem: 8 * GB, browsers: 2 });
+  assert.equal(pruned.fits, true); assert.equal(pruned.disk, 25 * 40 * MB); assert.doesNotMatch(pruned.lines.join('\n'), /refused/);
+  assert.equal(preflight({ shoot: 1, free: null }).fits, false, 'a guard that cannot read the free space refuses');
+  assert.match(preflight({ shoot: 1, free: 100 * GB }).lines[0], new RegExp(`${PAGE_BYTES_DEFAULT / MB} MB \\(default`), 'no capture on disk: the default size, said so');
+  const tight = preflight({ shoot: 1, free: 100 * GB, freeMem: BROWSER_BYTES, browsers: 4 });
+  assert.equal(tight.fits, true, 'memory never refuses'); assert.match(tight.lines[1], /warning: the run may swap/);
+  assert.equal(preflight({ shoot: 10, perPage: MB, free: DISK_RESERVE + 10 * MB }).fits, true, 'the reserve is counted');
+  assert.equal(preflight({ shoot: 10, perPage: MB, free: DISK_RESERVE + 9 * MB }).fits, false);
+});
+check('captureBytes: the mean origin + eds + diff size over the page dirs that hold all three; none → null', () => {
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-bytes-'));
+  try {
+    assert.equal(captureBytes(join(d, 'absent')), null); assert.equal(captureBytes(d), null);
+    for (const [slug, n] of [['a', 10], ['b', 30]]) { mkdirSync(join(d, slug)); for (const f of ['origin.png', 'eds.png', 'diff.png']) writeFileSync(join(d, slug, f), 'x'.repeat(n)); }
+    mkdirSync(join(d, 'c')); writeFileSync(join(d, 'c/origin.png'), 'x'.repeat(999));
+    assert.equal(captureBytes(d), 60);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+check('--prune-captures: the failing page loses its PNGs and records the prune; --compare-only keeps its measured FAIL (never "missing capture"); a changed mask says so; --skip-existing re-captures it', () => {
+  const { out, gateAll, shots, pngs, rows, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll(['--prune-captures']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([pngs('good'), pngs('bad')], [[], []], 'passed and failed pages both keep no PNG');
+    const px1 = JSON.parse(readFileSync(join(out, 'bad/pixel.json'), 'utf8'));
+    assert.equal(px1.pct, 30); assert.deepEqual(px1.capturesPruned, { masks: [], edsUrl: 'https://eds.example/bad' });
+    assert.match(r.stderr, /preflight: 2 page\(s\) to capture/);
+    assert.ok(prunedMeasurement(join(out, 'bad'), { masks: [], edsUrl: 'https://eds.example/bad' }));
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([rows().bad.pct, rows().bad.pass, rows().bad.error], [30, false, null], 'the measured failure stands');
+    assert.equal(rows().good.pass, true);
+    assert.deepEqual(shots(), [], 'no capture');
+    writeFileSync(join(out, 'masks.json'), JSON.stringify({ bad: { masks: ['0:40'], reason: 'carousel' } }));
+    r = gateAll(['--compare-only']);
+    assert.match(rows().bad.error, /pruned \(--prune-captures\) and the masks or eds URL changed since/);
+    rmSync(join(out, 'masks.json'));
+    r = gateAll(['--compare-only']);
+    assert.deepEqual([rows().bad.pct, rows().bad.error], [30, null], 'the recorded measurement survived the mismatched run');
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual(shots(), ['https://eds.example/bad', 'https://origin.example/bad'], 'the pruned failing page is captured again; the passed one is reused');
+    assert.deepEqual(pngs('bad'), ['diff.png', 'eds.png', 'origin.png'], 'without --prune-captures a failing page keeps its PNGs');
+    assert.equal(JSON.parse(readFileSync(join(out, 'bad/pixel.json'), 'utf8')).capturesPruned, undefined, 'a re-capture forgets the prune');
+  } finally { done(); }
+});
+check('preflight refuses before any capture when the captures cannot fit (exit 4, nothing shot); --no-preflight runs anyway; --compare-only takes no preflight', () => {
+  const { out, gateAll, shots, done } = sandbox(['huge']);
+  try {
+    mkdirSync(join(out, 'old'), { recursive: true });
+    for (const f of ['origin.png', 'eds.png', 'diff.png']) { writeFileSync(join(out, 'old', f), ''); truncateSync(join(out, 'old', f), 2 ** 40); } // sparse: a measured size (1 TiB, within ext4 / XFS / APFS limits), no disk
+    let r = gateAll();
+    assert.equal(r.status, 4, r.stderr); assert.match(r.stderr, /does NOT fit/); assert.match(r.stderr, /refused — nothing captured \(exit 4\)/);
+    assert.deepEqual(shots(), []);
+    r = gateAll(['--no-preflight']);
+    assert.equal(r.status, 0, r.stderr); assert.doesNotMatch(r.stderr, /preflight:/); assert.equal(shots().length, 2);
+    r = gateAll(['--compare-only']);
+    assert.doesNotMatch(r.stderr, /preflight:/);
+  } finally { done(); }
+});
+check('preflight under --skip-existing: a page whose two captures are on disk (not stale) is not counted — the sweep is not refused for PNGs it already holds', () => {
+  const { out, gateAll, shots, done } = sandbox(['bad']);
+  try {
+    let r = gateAll(['--no-preflight']);
+    assert.equal(r.status, 2, r.stderr);
+    for (const f of ['origin.png', 'eds.png', 'diff.png']) truncateSync(join(out, 'bad', f), 2 ** 40); // the failing page keeps its (now huge, sparse) captures
+    r = gateAll(['--skip-existing']);
+    assert.match(r.stderr, /preflight: 0 page\(s\) to capture/); assert.equal(r.status, 2, r.stderr); assert.deepEqual(shots(), [], 'reused, nothing shot');
+    r = gateAll();
+    assert.equal(r.status, 4, 'a run that re-captures counts the page');
+  } finally { done(); }
+});
+check('--sample: gates the picked pages only, prints why, writes a runs/ file with _provenance.sample { n, from, picked } and leaves summary.* untouched; refused without --only and with --compare-only', () => {
+  const { root, out, gateAll, shots, done } = sandbox(['a', 'b', 'c', 'd']);
+  try {
+    writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: ['a', 'b', 'c', 'd'].map((slug, i) => ({ slug, template: i < 3 ? 'detail' : 'list', url: `https://origin.example/${slug}`, status: 'deployed', liveUrl: `https://eds.example/${slug}` })) }));
+    mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    for (const [slug, words] of [['a', 100], ['b', 800], ['c', 300], ['d', 50]]) writeFileSync(join(root, 'stardust/current/pages', `${slug}.json`), JSON.stringify({ stats: { wordCount: words } }));
+    let r = gateAll(['--sample', '1']);
+    assert.equal(r.status, 1, 'without --only: refused (a site-wide sample would mark every other unit\'s pages sampled out)'); assert.match(r.stderr, /not without --only/);
+    r = gateAll(['--only', 'a,b,c,d', '--sample', '1']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(shots(), ['https://eds.example/b', 'https://eds.example/d', 'https://origin.example/b', 'https://origin.example/d']);
+    assert.match(r.stderr, /sample b — template detail; longest page \(800 words\)/); assert.match(r.stderr, /sample 2 of 4 page\(s\) gated now; the other 2 wait/);
+    assert.equal(existsSync(join(out, 'summary.json')), false, 'summary.* untouched');
+    const runs = readdirSync(join(out, 'runs'));
+    assert.equal(runs.length, 1); assert.match(runs[0], /-sample-a\.json$/);
+    const rec = JSON.parse(readFileSync(join(out, 'runs', runs[0]), 'utf8'));
+    assert.deepEqual([rec._provenance.sample.n, rec._provenance.sample.from, rec._provenance.sample.picked.map((x) => x.slug), rec.rows.map((x) => x.slug)], [1, ['a', 'b', 'c', 'd'], ['b', 'd'], ['b', 'd']]);
+    r = gateAll(['--only', 'a,b', '--sample', '2', '--compare-only']);
+    assert.equal(r.status, 1); assert.match(r.stderr, /--sample picks, among a delivery unit's pages/);
+    r = gateAll(['--only', 'a', '--sample', '0']);
+    assert.equal(r.status, 1);
+  } finally { done(); }
+});
+check('preflight × browser budget: the memory line reads the budget in force (budgetPeak) and names the setting to lower; it never changes the budget, so an explicit --max-browsers or STARDUST_MAX_BROWSERS stands', () => {
+  const o = { maxBrowsers: null, ec: 4, oc: 2, pc: 2 };
+  assert.deepEqual([budgetPeak(o, { capture: 12, probe: 12 }), budgetPeak(o, { capture: 1, probe: 1 }), budgetPeak(o, { capture: 0, probe: 0 }), budgetPeak(o, { capture: 0, probe: 12 }), budgetPeak({ ...o, maxBrowsers: 7 }, { capture: 1, probe: 1 })], [6, 2, 1, 2, 7]);
+  const low = (budgetFrom) => preflight({ shoot: 1, free: 2 ** 40, freeMem: BROWSER_BYTES, browsers: 7, budgetFrom }).lines[1];
+  assert.match(low('flag'), /up to 7 browser\(s\) at once \(the browser budget, --max-browsers\).*warning: .*the budget stands as set: lower --max-browsers/);
+  assert.match(low('env'), /\(the browser budget, STARDUST_MAX_BROWSERS\).*lower STARDUST_MAX_BROWSERS/);
+  assert.match(low('default'), /lower --eds-concurrency \/ --probe-concurrency, or set --max-browsers/);
+  assert.equal(preflight({ shoot: 1, free: 2 ** 40, freeMem: 1, browsers: 64 }).fits, true, 'memory never refuses, whatever the budget');
+  const { out, gateAll, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll(['--max-browsers', '7']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stdout, /browser budget: 7 at once \(--max-browsers\)/); assert.match(r.stderr, /preflight: up to 7 browser\(s\) at once \(the browser budget, --max-browsers\)/);
+    r = gateAll([], { STARDUST_MAX_BROWSERS: '5' });
+    assert.match(r.stdout, /browser budget: 5 at once \(STARDUST_MAX_BROWSERS\)/); assert.match(r.stderr, /preflight: up to 5 browser\(s\) at once \(the browser budget, STARDUST_MAX_BROWSERS\)/);
+    r = gateAll(['--prune-captures', '--max-browsers', '1']);
+    assert.equal(r.status, 2, r.stderr); assert.match(r.stdout, /browser budget: 1 at once/);
+    assert.equal(recordedPass(join(out, 'bad'), {}), null, 'a pruned FAIL is a measurement, never a recorded pass --skip-existing could reuse');
+    assert.ok(prunedMeasurement(join(out, 'bad'), { masks: [], edsUrl: 'https://eds.example/bad' }));
+  } finally { done(); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

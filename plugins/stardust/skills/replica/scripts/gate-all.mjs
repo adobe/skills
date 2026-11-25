@@ -159,17 +159,18 @@
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--max-browsers <n>] [--threshold 10] [--offset-max <px>] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
- *        [--compare-only] [--warmup <url>] [--vh <px>] [--deadline-hint]
+ *        [--compare-only] [--sample <n>] [--prune-captures] [--no-preflight] [--warmup <url>] [--vh <px>] [--deadline-hint]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `rosterOffsets`, `deadlineHint`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
+ * (overrides count), 2 any FAIL or error row, 1 error, 4 the preflight refused (--help § Preflight); --wide: 0. `verdict`, `rosterOffsets`, `deadlineHint`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `localInputs`, `digest`, `fileDigest`
+ * `clipArgs`, `unitArgs`, `limiter`, `browserBudget`, `maxBrowsersOf`, `budgetPeak`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `refHold`, `hintOf`, `dropPassedCaptures`, `droppedPass`, `passKey`, `recordedPass`, `localInputs`, `digest`, `fileDigest`, `prunedMeasurement`, `sampleSignals`, `pickSample`, `captureBytes`, `preflight`
  * are exported.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statfsSync, statSync, writeFileSync } from 'node:fs';
+import { freemem } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
@@ -184,6 +185,11 @@ const { siblingPath } = await import(CONTRACTS.href);
 
 // Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
 export const BATCH = 25;
+// Preflight (--help § Preflight): one page's origin + eds + diff when no capture on disk says otherwise, the disk kept
+// free, and one browser of the job's budget.
+export const PAGE_BYTES_DEFAULT = 40 * 2 ** 20;
+export const DISK_RESERVE = 2 * 2 ** 30;
+export const BROWSER_BYTES = 600 * 2 ** 20;
 /** limiter(n) → slot(fn): runs `fn` (→ a promise) with at most n in flight, first come first served; n < 1 or not a number = 1. */
 export function limiter(n) {
   const max = n >= 1 ? Math.floor(n) : 1; let active = 0; const waiting = [];
@@ -219,6 +225,12 @@ export function maxBrowsersOf(flag, env = process.env) {
   const e = env.STARDUST_MAX_BROWSERS;
   if (e != null && e !== '') return whole(e) ? { max: whole(e), from: 'env' } : { error: `STARDUST_MAX_BROWSERS needs a whole number, at least 1 (got ${e})` };
   return { max: null, from: 'default' };
+}
+/** The most browsers the budget lets this job hold at once (budgetLine's number, the origin captures counted at their
+ * limit): the given cap, else max(min(capture, eds) + min(capture, origin), min(probe, probe concurrency)), at least 1. */
+export function budgetPeak(o, { capture = 0, probe = 0 } = {}) {
+  if (o.maxBrowsers != null) return o.maxBrowsers;
+  return Math.max(1, Math.min(capture, o.ec) + Math.min(capture, o.oc), Math.min(probe, o.pc));
 }
 /** The first log line of a job that opens browsers: the budget in force and where it came from. */
 export function budgetLine(o, { capture = 0, probe = 0 } = {}) {
@@ -294,7 +306,17 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
   --compare-only            no captures, no probes, no browser: pixel-compare over the existing PNGs (a passed page:
-                            its recorded pass), the recorded probe results (<slug>/probes.json), the sidecars
+                            its recorded pass; a --prune-captures page: its recorded measurement), the recorded probe
+                            results (<slug>/probes.json), the sidecars
+  --sample <n>              with --only <a unit's slugs>: gate a risk-ranked subset of them now — one page per
+                            template (its longest), then the longest pages, the most repeated units and the longest
+                            block text in turn, from stardust/current/pages/<slug>.json and stardust/eds-schema/
+                            (n is raised to the template count); each pick is printed with why. Writes a runs/ file
+                            (summary.* untouched) whose _provenance.sample { n, from, picked } lets gate-evidence.mjs
+                            --unit hold the picked pages to a row and count the rest as pending the all-pages run
+  --prune-captures          a measured page that FAILS loses its PNGs too (frozen references stay); pixel.json records
+                            capturesPruned, --compare-only keeps that measurement, --skip-existing re-captures the page
+  --no-preflight            skip the disk check below (the memory line is advice either way)
   --warmup <url>            origin warm-up for the probes
   --vh <px>                 stitch chunk height
   --deadline-hint           print the seconds this job may take (§ Deadline hint below) and exit 0: the rosters are
@@ -359,7 +381,7 @@ Reuse (--skip-existing): a page's pass is recorded the moment its verdict is kno
   without --skip-existing, or with --recapture-eds (reuses no pass).
   summary.* is written at the end only: a killed job leaves the previous one, never a partial one.
 Deadline hint (--deadline-hint): the larger of ${HINT.floor} and ${HINT.fixed} + B × pages ÷ c seconds, at most ${HINT.ceiling} (4 h).
-  pages = the pages this run selects (state + ledger, after --only); B = ${HINT.perPage.published} s a page at the published stage
+  pages = the pages this run selects (state + ledger, after --only and --sample); B = ${HINT.perPage.published} s a page at the published stage
   (--wide too), ${HINT.perPage.prototype} s at the prototype stage; c = the smallest of --origin-concurrency, --eds-concurrency and
   --probe-concurrency, at most ${HINT.maxConcurrency} (the default; nothing faster was recorded). A --skip-existing or --compare-only
   page counts in full: how many recorded passes a run reused was never recorded, so no discount could be calibrated.
@@ -367,7 +389,15 @@ Deadline hint (--deadline-hint): the larger of ${HINT.floor} and ${HINT.fixed} +
   170 s × c a page (published), 10 s × c (prototype); the hint covers every one of them and 99 % or more of each
   smaller size class (1, 2–5, 6–15 pages). A later 75-page roster job at 360 px went at 216 s × c a page (39 pages in
   6000 s at the default c = 2), so B leaves room above it. 20 pages → 2700 s, 53 → 6660 s, 75 → 9300 s, 100 → 12300 s (c = 2).
-Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.`;
+Preflight (a capturing run): peak disk = pages to capture × the mean origin+eds+diff size of the page dirs on disk
+  (else ${PAGE_BYTES_DEFAULT / 2 ** 20} MB) — every page, since a failing one keeps its PNGs, or one batch with --prune-captures — plus a
+  ${DISK_RESERVE / 2 ** 30} GB reserve, against the free space of --out. More than that: nothing is captured, exit 4, the plan printed
+  with the way out (--prune-captures, --sample, fewer pages per --only). Memory: the job's browser budget (above) ×
+  ${BROWSER_BYTES / 2 ** 20} MB against the free memory the OS reports, a warning only (macOS and page caches under-report): the
+  preflight never changes the budget, so an explicit --max-browsers / STARDUST_MAX_BROWSERS stands, and the warning
+  names it as the thing to lower.
+Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error, 4 preflight: the captures do not fit on disk;
+  --wide: 0.`;
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
 export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
@@ -382,7 +412,7 @@ export const refHold = (b) => Number(b && b.flags && b.flags.holdTimers) || Numb
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, maxBrowsers: null, maxBrowsersFrom: 'default', threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', contentDir: 'content', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, maxBrowsers: null, maxBrowsersFrom: 'default', threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', contentDir: 'content', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: HOLD_DEFAULT, holdGiven: false, wide: false, design: 'DESIGN.json', sample: null, prune: false, preflight: true };
   // the timer hold: the default, then GATE_HOLD_TIMERS, then the flags (holdGiven: the variable or a flag named it)
   const env = envHold(process.env.GATE_HOLD_TIMERS); if (env !== undefined) { o.holdTimers = env; o.holdGiven = true; }
   let holdOn = false; let holdOff = false; let holdMin = null;
@@ -405,6 +435,8 @@ export function parseArgs(argv) {
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--deadline-hint') o.deadlineHint = true;
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
+    else if (a === '--sample') { o.sample = Number(need(a, v())); if (!(Number.isInteger(o.sample) && o.sample >= 1)) { console.error(`--sample needs a whole number of pages, at least 1\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--prune-captures') o.prune = true; else if (a === '--no-preflight') o.preflight = false;
     else if (a === '--hold-timers') holdOn = true; else if (a === '--no-hold-timers') holdOff = true; else if (a === '--hold-min') holdMin = Number(need(a, v()));
     else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -416,6 +448,7 @@ export function parseArgs(argv) {
   if (mb.error) { console.error(`gate-all: ${mb.error}\n\n${HELP}`); process.exit(1); }
   o.maxBrowsers = mb.max; o.maxBrowsersFrom = mb.from;
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
+  if (o.sample && (o.stage === 'prototype' || o.wide || o.compareOnly || !o.only)) { console.error('gate-all: --sample picks, among a delivery unit\'s pages (--only <its slugs>), the ones it gates now — the published stage, capturing (not without --only, nor with --stage prototype, --wide or --compare-only)'); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   // --wide: a report table at the derived probe width — its own dir, no content probe (the base width measured it).
   if (o.wide) { if (!widthGiven) o.width = wideWidth(o.design); o.content = false; }
@@ -817,14 +850,17 @@ export function holdMismatch(originRec, buildRec) {
 // with → PNGs deleted.
 // `key` + `probes` (a live run's pass: passKey, and the probe results the verdict read) make the record the page's
 // WHOLE verdict, which --skip-existing reuses without a probe (recordedPass); without them it is the pixel pass alone.
+// `as` capturesPruned: the same drop for a measured page that failed (--prune-captures), read back by prunedMeasurement
+// only (never a pass, never reused by --skip-existing).
 // Written through a sibling temp file + rename: a run killed here leaves the previous pixel.json, never half of one.
-export function dropPassedCaptures(d, { masks = [], edsUrl, key = null, probes = null, at = null }) {
+export function dropPassedCaptures(d, { masks = [], edsUrl, key = null, probes = null, at = null }, as = 'capturesDropped') {
   const pixel = readJsonSafe(join(d, 'pixel.json'));
   if (!pixel) return 0;
   const pngs = readdirSync(d).filter((f) => f.endsWith('.png') && f !== 'baseline.png');
   for (const f of pngs) rmSync(join(d, f), { force: true });
   const tmp = join(d, `pixel.json.${process.pid}.tmp`);
-  writeFileSync(tmp, JSON.stringify({ ...pixel, capturesDropped: { masks, edsUrl, ...(key && probes ? { key, probes, at: at || new Date().toISOString() } : {}) } }, null, 2));
+  const drop = { masks, edsUrl, ...(as === 'capturesDropped' && key && probes ? { key, probes, at: at || new Date().toISOString() } : {}) };
+  writeFileSync(tmp, JSON.stringify({ ...pixel, [as]: drop }, null, 2));
   renameSync(tmp, join(d, 'pixel.json'));
   return pngs.length;
 }
@@ -941,12 +977,101 @@ export function droppedPass(d, { masks = [], edsUrl }) {
   const origin = readJsonSafe(join(d, 'origin.json')); const eds = readJsonSafe(join(d, 'eds.json'));
   return origin && eds && !origin.error && !eds.error ? { origin, eds, pixel } : null;
 }
-// Before a page is captured again: a failed or interrupted capture must not leave the old pass to be reused.
+// What --compare-only reads for a failing page whose PNGs --prune-captures deleted: its recorded measurement (the
+// pixel.json the compare wrote, the two metas) — null when nothing was pruned, a record is gone, the pixel record holds
+// no percentage, or the masks or eds URL differ from the ones it was measured with (then: re-capture).
+export function prunedMeasurement(d, { masks = [], edsUrl }) {
+  const pixel = readJsonSafe(join(d, 'pixel.json'));
+  const drop = pixel && pixel.capturesPruned;
+  if (!drop || pixel.pct == null || drop.edsUrl !== edsUrl || JSON.stringify(drop.masks) !== JSON.stringify(masks)) return null;
+  const origin = readJsonSafe(join(d, 'origin.json')); const eds = readJsonSafe(join(d, 'eds.json'));
+  return origin && eds ? { origin, eds, pixel } : null;
+}
+// Before a page is captured again: a failed or interrupted capture must not leave the old pass (or pruned
+// measurement) to be reused.
 function forgetDroppedPass(d) {
   const pixel = readJsonSafe(join(d, 'pixel.json'));
-  if (!pixel || !pixel.capturesDropped) return;
-  delete pixel.capturesDropped;
+  if (!pixel || !(pixel.capturesDropped || pixel.capturesPruned)) return;
+  delete pixel.capturesDropped; delete pixel.capturesPruned;
   writeFileSync(join(d, 'pixel.json'), JSON.stringify(pixel, null, 2));
+}
+
+// ---- --sample: the risk-ranked pages a delivery unit gates now ---------------------------------------------------
+/**
+ * sampleSignals(slug, { pagesDir, schemaDir }) → { words, longestBlock, repeats, known } — what the risk ranking reads,
+ * from artifacts stardust already wrote: the captured page JSON (extract's stats.wordCount; the longest section by
+ * landmarks[].children[].wordCount; the longest list or Q/A set of a section) and the EDS schema's repeat counts.
+ * A page with neither file reads 0s (known false). No browser.
+ */
+export function sampleSignals(slug, { pagesDir = 'stardust/current/pages', schemaDir = SCHEMA_DIR } = {}) {
+  const page = readJsonSafe(join(pagesDir, `${slug}.json`)) || {};
+  const sections = (Array.isArray(page.landmarks) ? page.landmarks : []).flatMap((l) => (l && Array.isArray(l.children) ? l.children : [])).filter((x) => x && typeof x === 'object');
+  const count = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const longestBlock = sections.reduce((m, x) => Math.max(m, count(x.wordCount)), 0);
+  const words = count(page.stats && page.stats.wordCount) || sections.reduce((n, x) => n + count(x.wordCount), 0);
+  const listed = sections.reduce((m, x) => Math.max(m, ...(Array.isArray(x.lists) ? x.lists : []).map((l) => (l && Array.isArray(l.items) ? l.items.length : 0)), Array.isArray(x.qa) ? x.qa.length : 0), 0);
+  const schema = readJsonSafe(join(schemaDir, `${slug}.json`));
+  const repeated = schema && Array.isArray(schema.sections) ? schema.sections.reduce((m, x) => Math.max(m, ...(x && Array.isArray(x.repeats) ? x.repeats : []).map((r) => count(r && r.count))), 0) : 0;
+  return { words, longestBlock, repeats: Math.max(listed, repeated), known: !!(page.stats || sections.length || schema) };
+}
+export const SAMPLE_SIGNALS = [['words', 'longest page', ' words'], ['repeats', 'most repeated units', ''], ['longestBlock', 'longest block text', ' words']];
+/**
+ * pickSample(pages, n, signalsOf) → [{ slug, template, why: [..], words, longestBlock, repeats }] — one page per
+ * template first (its longest; so the sample is at least the template count), then the top page by each signal in
+ * turn (SAMPLE_SIGNALS) until n are picked; a page with no signal left fills in slug order. A pick that also tops a
+ * signal carries that reason too. Deterministic: ties go to the slug order, so every width picks the same pages.
+ */
+export function pickSample(pages, n, signalsOf = () => ({})) {
+  const sig = new Map(pages.map((p) => [p.slug, { words: 0, longestBlock: 0, repeats: 0, ...signalsOf(p) }]));
+  const ranked = (k) => [...pages].sort((a, b) => (sig.get(b.slug)[k] - sig.get(a.slug)[k]) || String(a.slug).localeCompare(String(b.slug)));
+  const picked = new Map();
+  const add = (p, why) => { const e = picked.get(p.slug); if (e) { if (!e.why.includes(why)) e.why.push(why); return; } const s = sig.get(p.slug); picked.set(p.slug, { slug: p.slug, template: p.template ?? null, why: [why], words: s.words, longestBlock: s.longestBlock, repeats: s.repeats }); };
+  const firstOf = new Map();
+  for (const p of ranked('words')) { const t = p.template ?? '(no template)'; if (!firstOf.has(t)) firstOf.set(t, p); }
+  for (const [t, p] of firstOf) add(p, `template ${t}`);
+  const queues = SAMPLE_SIGNALS.map(([k, label, unit]) => ({ k, label, unit, list: ranked(k).filter((p) => sig.get(p.slug)[k] > 0) }));
+  const reason = (q, p) => `${q.label} (${sig.get(p.slug)[q.k]}${q.unit})`;
+  const want = Math.min(Math.max(n, firstOf.size), pages.length);
+  while (picked.size < want) {
+    let added = false;
+    for (const q of queues) { if (picked.size >= want) break; const next = q.list.find((p) => !picked.has(p.slug)); if (next) { add(next, reason(q, next)); added = true; } }
+    if (!added) { const next = [...pages].sort((a, b) => String(a.slug).localeCompare(String(b.slug))).find((p) => !picked.has(p.slug)); if (!next) break; add(next, 'no risk signal recorded — slug order'); }
+  }
+  for (const q of queues) if (q.list.length && picked.has(q.list[0].slug)) add(q.list[0], reason(q, q.list[0]));
+  return [...picked.values()];
+}
+
+// ---- preflight: will the captures fit? -----------------------------------------------------------------------------
+/** The mean origin + eds + diff bytes over the page dirs under `out` that hold all three, or null (none on disk). */
+export function captureBytes(out) {
+  const sums = [];
+  let dirs = []; try { dirs = readdirSync(out, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(out, e.name)); } catch { return null; }
+  for (const d of dirs) {
+    const sizes = ['origin.png', 'eds.png', 'diff.png'].map((f) => { try { return statSync(join(d, f)).size; } catch { return null; } });
+    if (sizes.every((x) => x != null)) sums.push(sizes.reduce((a, b) => a + b, 0));
+  }
+  return sums.length ? Math.round(sums.reduce((a, b) => a + b, 0) / sums.length) : null;
+}
+/**
+ * preflight({ shoot, prune, perPage, free, freeMem, browsers, budgetFrom }) → { fits, disk, memory, lines } — the peak
+ * the captures reach (every page to capture, since a failing page keeps its PNGs; one BATCH with --prune-captures) plus
+ * DISK_RESERVE against `free` (bytes; null = could not be read → does not fit: a guard that cannot run refuses).
+ * Memory (`browsers`, the job's browser budget from budgetPeak, × BROWSER_BYTES against freeMem) is a warning line, never
+ * a refusal and never a change to the budget: it names the setting to lower (`budgetFrom`: maxBrowsersOf's `from`).
+ * The disk verdict does not read the browsers. Pure.
+ */
+export function preflight({ shoot, prune = false, perPage = null, free = null, freeMem = null, browsers = 1, budgetFrom = 'default', reserve = DISK_RESERVE, batch = BATCH }) {
+  const per = perPage || PAGE_BYTES_DEFAULT;
+  const peakPages = prune ? Math.min(shoot, batch) : shoot;
+  const disk = peakPages * per; const memory = browsers * BROWSER_BYTES;
+  const gb = (b) => (b == null ? '?' : (b / 2 ** 30).toFixed(1));
+  const fits = free != null && disk + reserve <= free;
+  const lines = [
+    `preflight: ${shoot} page(s) to capture × ~${Math.round(per / 2 ** 20)} MB${perPage ? '' : ' (default — no capture on disk to measure)'} → peak ~${gb(disk)} GB ${prune ? `(--prune-captures: ${peakPages} page(s) on disk at a time)` : '(a failing page keeps its PNGs)'} + ${gb(reserve)} GB reserve; free ${free == null ? 'unknown (the free space could not be read)' : `${gb(free)} GB`} → ${fits ? 'fits' : 'does NOT fit'}`,
+    `preflight: up to ${browsers} browser(s) at once (the browser budget${budgetFrom === 'flag' ? ', --max-browsers' : budgetFrom === 'env' ? ', STARDUST_MAX_BROWSERS' : ''}) × ~${Math.round(BROWSER_BYTES / 2 ** 20)} MB = ~${gb(memory)} GB; the OS reports ${gb(freeMem)} GB free${freeMem != null && memory > freeMem ? ` — warning: the run may swap and lose browsers; the budget stands as set: lower ${budgetFrom === 'flag' ? '--max-browsers' : budgetFrom === 'env' ? 'STARDUST_MAX_BROWSERS' : '--eds-concurrency / --probe-concurrency, or set --max-browsers'} to use less` : ''}`,
+  ];
+  if (!fits) lines.push(`preflight: refused — nothing captured (exit 4). Free space, or ${prune ? '' : 'add --prune-captures (peak = one batch), '}gate fewer pages per run (--only <batch>, or --only <a unit's slugs> --sample <n>: gate-evidence.mjs --unit counts the rest as pending the all-pages run), or --no-preflight to run anyway`);
+  return { fits, disk, memory, lines };
 }
 
 // A probe's JSON → the result the verdict reads (one mapping for a live probe and for --compare-only).
@@ -988,7 +1113,7 @@ async function main() {
     const st = readJsonSafe(opts.state);
     if (!st) { console.error(`gate-all: ${opts.state} not found or unreadable — no deadline hint`); process.exit(1); }
     const sel = selectPages({ state: st, coverage: opts.stage === 'prototype' ? null : readJsonSafe(opts.coverage), stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
-    console.log(String(deadlineHint(sel.pages.length, opts)));
+    console.log(String(deadlineHint(opts.sample ? pickSample(sel.pages, opts.sample, (p) => sampleSignals(p.slug)).length : sel.pages.length, opts)));
     return;
   }
   const ignoreNote = referenceIgnoreNote(readTextSafe('stardust/.gitignore'));
@@ -1014,7 +1139,7 @@ async function main() {
   // against the URL that stands in, and its row says so.
   const refCtx = referenceContext({ state: opts.state });
   const refused = new Map();
-  const pages = selected.pages.map((p) => {
+  let pages = selected.pages.map((p) => {
     const alt = alternateFor(p.url, refCtx.register);
     const c = checkReference({ slug: p.slug, inventoryUrl: p.url, url: alt ? alt.url : null, ...pageRecord(p), crawlLog: refCtx.crawlLog, register: refCtx.register });
     if (c.verdict === 'refused') { refused.set(p.slug, `reference-refused: ${c.line.replace(/^reference: REFUSED for [^:]*: /, '')}`); console.error(`gate-all: ${p.slug}: ${c.line}`); return p; }
@@ -1022,6 +1147,18 @@ async function main() {
     console.error(`gate-all: ${p.slug}: ${c.line}`);
     return { ...p, url: c.substitution.url, inventoryUrl: p.url, referenceSubstitution: c.substitution };
   });
+  // --sample: the risk-ranked subset a delivery unit gates now; the record goes into the run file for gate-evidence --unit.
+  // A page whose reference is refused is no candidate and is never left out: its error row costs no capture, so it
+  // stays in this run and gate-evidence --unit holds the unit on it now, not after the all-pages run.
+  let sample = null;
+  if (opts.sample) {
+    const picked = pickSample(pages.filter((p) => !refused.has(p.slug)), opts.sample, (p) => sampleSignals(p.slug));
+    sample = { n: opts.sample, from: pages.map((p) => p.slug), picked };
+    for (const x of picked) console.error(`gate-all: sample ${x.slug} — ${x.why.join('; ')}`);
+    const keep = new Set([...picked.map((x) => x.slug), ...refused.keys()]);
+    console.error(`gate-all: sample ${picked.length} of ${pages.length} page(s) gated now${refused.size ? `, ${refused.size} with a refused reference kept as error rows` : ''}; the other ${pages.length - keep.size} wait for the all-pages run (gate-evidence.mjs --unit reads this record)`);
+    pages = pages.filter((p) => keep.has(p.slug));
+  }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   for (const [slug, o] of Object.entries(OVERRIDES)) {
@@ -1263,7 +1400,11 @@ async function main() {
     const d = dir(p);
     const originMeta = (results[p.slug] || {}).origin || {};
     if (!existsSync(join(d, 'origin.png')) || !existsSync(join(d, 'eds.png'))) {
-      const px = { error: UNSTABLE.test(originMeta.error || '') ? originMeta.error : 'missing capture' }; mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); return;
+      // pruned, then measured under other masks or another eds URL: an error row now, the recorded measurement kept on disk
+      const pruned = opts.compareOnly && (readJsonSafe(join(d, 'pixel.json')) || {}).capturesPruned;
+      const px = { error: UNSTABLE.test(originMeta.error || '') ? originMeta.error : pruned ? 'missing capture — pruned (--prune-captures) and the masks or eds URL changed since; re-capture (run without --compare-only)' : 'missing capture' };
+      if (!pruned) { mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); }
+      rec(p, 'pixel', px); return;
     }
     // the two sides stitched under different timer holds are two instruments: an error row, nothing compared
     const hm = holdMismatch(readJsonSafe(captureRecordOf(join(d, 'origin.png'))), readJsonSafe(captureRecordOf(join(d, 'eds.png'))));
@@ -1321,10 +1462,12 @@ async function main() {
   if (opts.compareOnly && !opts.recaptureEds && !opts.recaptureOrigin) {
     for (const p of pages) {
       if (refused.has(p.slug)) continue;
-      const kept = droppedPass(dir(p), measuredWith(p));
+      const pass = droppedPass(dir(p), measuredWith(p));
+      // a failing page whose PNGs --prune-captures deleted: --compare-only keeps its measurement (a FAIL, never a pass on record)
+      const kept = pass || prunedMeasurement(dir(p), measuredWith(p));
       if (!kept || await referenceMoved(kept.origin)) continue;
       reused.add(p.slug); for (const [k, v] of Object.entries(kept)) rec(p, k, v);
-      log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
+      log(`${p.slug} → ${pass ? 'recorded pass reused (its captures were dropped on the pass)' : 'recorded measurement reused (its captures were pruned, --prune-captures)'}`);
     }
   } else if (opts.skip && !opts.recaptureEds && !opts.recaptureOrigin) {
     // --skip-existing: the recorded pass is the page's whole verdict — no capture, no probe, no compare — while its
@@ -1355,13 +1498,26 @@ async function main() {
   };
   const browsers = browserBudget({ max: opts.maxBrowsers, eds: Math.min(jobSize.capture, opts.ec), probe: Math.min(jobSize.probe, opts.pc) });
   if (!opts.compareOnly) log(budgetLine(opts, jobSize));
-  let dropped = 0;
+  // Preflight (--help § Preflight): the captures this run takes must fit on disk before the first one is taken; a page
+  // reused above, or under --skip-existing one whose two captures are on disk and not stale, adds nothing. Memory is
+  // read against the budget just decided (budgetPeak): a warning that never changes it.
+  if (!opts.compareOnly && opts.preflight) {
+    const onDisk = (p) => opts.skip && !opts.recaptureEds && !opts.recaptureOrigin && ['origin', 'eds'].every((side) => reusable(p, side, join(dir(p), `${side}.png`), join(dir(p), `${side}.json`), true));
+    const shoot = toGate.filter((p) => !onDisk(p)).length;
+    let free = null; try { const f = statfsSync(opts.out); free = Number(f.bavail) * Number(f.bsize); } catch { /* unknown: refused below */ }
+    const plan = preflight({ shoot, prune: opts.prune, perPage: captureBytes(opts.out), free, freeMem: freemem(), browsers: budgetPeak(opts, jobSize), budgetFrom: opts.maxBrowsersFrom });
+    for (const l of plan.lines) console.error(`gate-all: ${l}`);
+    if (!plan.fits) process.exit(4);
+  }
+  let dropped = 0; let pruned = 0;
   const measured = [];
   const stamp = new Date().toISOString(); // one round label for the job, whenever each page's round is written
   // A page's verdict is known: a pass is on disk NOW — its round, then its record (key + probe results) and its PNGs
-  // gone — so a job killed later keeps it. A failing page keeps its captures and its records, as it has them already.
+  // gone — so a job killed later keeps it. A failing page keeps its captures and its records, as it has them already;
+  // with --prune-captures a measured one loses its PNGs here too (capturesPruned: a measurement, never a pass to reuse).
   const settle = async (p) => {
-    const row = rowOf(p); if (!row.pass) return;
+    const row = rowOf(p);
+    if (!row.pass) { if (opts.prune && row.pct != null) pruned += dropPassedCaptures(dir(p), measuredWith(p), 'capturesPruned'); return; }
     if (!opts.wide) await recordRounds([row], opts, { now: () => stamp });
     const r = results[p.slug] || {}; const key = keyOf(p, r.origin);
     dropped += dropPassedCaptures(dir(p), { ...measuredWith(p), key, probes: Object.fromEntries(['content', 'clip', 'units'].filter((k) => r[k] !== undefined).map((k) => [k, r[k]])) });
@@ -1370,7 +1526,7 @@ async function main() {
     const batch = pages.slice(i, i + BATCH);
     const shoot = batch.filter((p) => toGate.includes(p));
     if (!opts.compareOnly) measured.push(...shoot);
-    for (const p of shoot) forgetDroppedPass(dir(p));
+    if (!opts.compareOnly) for (const p of shoot) forgetDroppedPass(dir(p)); // nothing is re-captured under --compare-only
     if (!opts.compareOnly) {
       // the probes read no capture: they start with the batch's captures, under their own limit and the browser budget; a page is
       // compared when its two captures and its probes are done, and settled then — not when the batch is
@@ -1389,12 +1545,14 @@ async function main() {
     for (const p of batch) if (!refused.has(p.slug)) recallProbes(p);
     await pool(shoot, 4, compare);
     for (const p of batch) {
-      if (!rowOf(p).pass) continue;
+      const row = rowOf(p);
+      if (!row.pass) { if (opts.prune && !reused.has(p.slug) && row.pct != null) pruned += dropPassedCaptures(dir(p), measuredWith(p), 'capturesPruned'); continue; }
       const prev = reused.has(p.slug) ? ((readJsonSafe(join(dir(p), 'pixel.json')) || {}).capturesDropped || {}) : {};
       dropped += dropPassedCaptures(dir(p), { ...measuredWith(p), key: prev.key, probes: prev.probes, at: prev.at });
     }
   }
   if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#156)`);
+  if (pruned) log(`pruned ${pruned} PNG(s) of measured failing pages — their records stay (--prune-captures); re-gate a fixed page with --only, or crop its band after a re-capture`);
   const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
   const overCap = opts.wide ? [] : await recordRounds(measured.map((p) => rowOf(p)).filter((r) => !r.pass), opts, { now: () => stamp }); // a report records no round; a pass has its round already (settle)
@@ -1407,9 +1565,9 @@ async function main() {
   const flagged = opts.wide ? wideFlagged(rows, opts) : []; const flaggedLine = wideLine(flagged, opts);
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height; roster tolerance: ${opts.heightTol * 100}% of the origin height with no step over ${ROSTER_OFFSETS.step}px`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, ...(opts.wide ? { wide: { line: flaggedLine, pages: flagged } } : {}), rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height; roster tolerance: ${opts.heightTol * 100}% of the origin height with no step over ${ROSTER_OFFSETS.step}px`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only, ...(sample ? { sample } : {}) }, totals, ...(opts.wide ? { wide: { line: flaggedLine, pages: flagged } } : {}), rows };
   const md = formatSummary(summary);
-  if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
+  if (opts.only || sample) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${sample ? 'sample-' : ''}${(opts.only || pages.map((p) => p.slug))[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }
   console.log(JSON.stringify(totals));
   if (flaggedLine) console.log(flaggedLine); // last, where a log tail is read

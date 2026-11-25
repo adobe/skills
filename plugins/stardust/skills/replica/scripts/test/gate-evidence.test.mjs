@@ -9,7 +9,9 @@
 // record at its top level wrapped under types.<archetype> and refused only when it names no archetype (a ledger with
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
-// dropped from the acceptance set until the page's delivered content file exists (`--content`).
+// dropped from the acceptance set until the page's delivered content file exists (`--content`). --unit: the delivery
+// unit's close check — a measured row per page per width from summary.json or runs/ (newest wins), a --sample run's
+// left-out pages pending the all-pages run, error rows and missing rows NOT gated (exit 2), no sidecar touched.
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -17,7 +19,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { publishedRuns, unitCheck, ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -506,6 +508,50 @@ check('a progress.json that is one archetype\'s residual record (the old documen
   after = json(PROGRESS); assert.deepEqual(after.types, map.types); assert.deepEqual(after._provenance, map._provenance); assert.deepEqual(after.breakpoints, map.breakpoints); assert.deepEqual(after.siblings, {});
   assert.deepEqual(Object.keys(after), ['_provenance', 'types', 'breakpoints', 'siblings'], 'the map keys stay first; this script appends its own');
   writeFileSync(PROGRESS, good);
+});
+
+
+check('--unit: every page needs a measured row per width (summary.json or runs/, newest wins); a --sample run\'s left-out pages are pending; an error row or no row is NOT gated (exit 2); no sidecar is touched', () => {
+  const t = join(root, 'unit-tables');
+  const table = (w, file, at, rows, sample) => { const d = join(t, `all-${w}`, file.includes('/') ? dirname(file) : ''); mkdirSync(d, { recursive: true }); writeFileSync(join(t, `all-${w}`, file), JSON.stringify({ _provenance: { writtenAt: at, ...(sample ? { sample } : {}) }, rows })); };
+  const row = (slug, pct, pass = true, extra = {}) => ({ slug, pct, pass, reasons: pass ? [] : ['pixel 30%'], ...extra });
+  table(1440, 'summary.json', '2026-01-01T00:00:00Z', [row('a', 3), row('b', 30, false), row('c', null, false, { error: 'missing capture' })]);
+  table(1440, 'runs/2026-01-02-b.json', '2026-01-02T00:00:00Z', [row('b', 4), row('c', 2)]);
+  table(360, 'summary.json', '2026-01-01T00:00:00Z', [row('a', 5), row('b', 6)]);
+  table(1440, 'runs/2026-01-03-sample-d.json', '2026-01-03T00:00:00Z', [row('d', 1)], { n: 1, from: ['d', 'e'], picked: [{ slug: 'd', why: ['template t'] }] });
+  table(360, 'runs/2026-01-03-sample-d.json', '2026-01-03T00:00:00Z', [row('d', 2)], { n: 1, from: ['d', 'e'], picked: [{ slug: 'd', why: ['template t'] }] });
+  const { rows, samples } = publishedRuns(t, 1440);
+  assert.deepEqual([rows.get('b').row.pct, rows.get('c').row.pct, samples.length], [4, 2, 1], 'the newer run outranks the summary');
+  const u = unitCheck(['a', 'b', 'c', 'd', 'e', 'f'], { tables: t, widths: [1440, 360] });
+  const st = Object.fromEntries(u.pages.map((p) => [p.slug, [p.widths[1440].state, p.widths[360].state]]));
+  assert.deepEqual(st, { a: ['pass', 'pass'], b: ['pass', 'pass'], c: ['pass', 'none'], d: ['pass', 'pass'], e: ['sweep', 'sweep'], f: ['none', 'none'] });
+  assert.deepEqual(u.ungated.map((g) => `${g.slug}@${g.width}`), ['c@360', 'f@1440', 'f@360']); assert.deepEqual(u.pending, ['e']);
+  const before = read(join(MIG, 'tours/north/_meta.json'));
+  const r = run('--unit', 'a,b,c,d,e,f', '--tables', t);
+  assert.equal(r.code, 2, r.err);
+  assert.match(r.out, /^c: NOT gated at 360 — no row in/m); assert.match(r.out, /6 page\(s\) — 4 with a row or sampled out at every width, 1 pending the all-pages run, 2 NOT gated — the unit is not done/);
+  assert.equal(read(join(MIG, 'tours/north/_meta.json')), before, 'no sidecar touched');
+  writeFileSync(join(root, 'unit.txt'), 'a\nb\n\nd\ne\n');
+  const ok = run('--unit', '@unit.txt', '--tables', t);
+  assert.equal(ok.code, 0, ok.out + ok.err); assert.match(ok.out, /4 page\(s\) — 4 with a row/);
+  table(360, 'runs/2026-01-04-a.json', '2026-01-04T00:00:00Z', [row('a', null, false, { error: 'pixel error: capture failed' })]);
+  const err = run('--unit', 'a', '--tables', t);
+  assert.equal(err.code, 2); assert.match(err.out, /a: NOT gated at 360 — row without a measurement \(pixel error: capture failed\)/);
+  table(1440, 'runs/2026-01-05-b.json', '2026-01-05T00:00:00Z', [row('b', 31, false)]);
+  const fail = run('--unit', 'b', '--tables', t, '--widths', '1440');
+  assert.equal(fail.code, 0, 'a measured FAIL does not hold the unit here'); assert.match(fail.out, /1 failing: b — fix within the round cap or record the decision/);
+  const j = JSON.parse(run('--unit', 'b,f', '--tables', t, '--json').out);
+  assert.deepEqual([j.failing, j.ungated.map((g) => g.slug)], [['b'], ['f', 'f']]);
+  // an older sample must not hide a newer error row; a row with a probe error is no measurement (gate-all's isErrorRow)
+  table(1440, 'runs/2026-01-06-sample-g.json', '2026-01-06T00:00:00Z', [row('g', 1)], { n: 1, from: ['g', 'h', 'k'], picked: [{ slug: 'g', why: [] }] });
+  table(1440, 'runs/2026-01-07-h.json', '2026-01-07T00:00:00Z', [row('h', null, false, { error: 'capture failed' }), row('k', 3, false, { probeErrors: [{ probe: 'content', error: 'timeout' }] })]);
+  const late = unitCheck(['h', 'k'], { tables: t, widths: [1440] });
+  assert.deepEqual(late.pages.map((p) => p.widths[1440].state), ['error', 'error']);
+  assert.match(late.ungated[1].why, /probe-error: content/);
+  table(1440, 'runs/2026-01-08-sample-h.json', '2026-01-08T00:00:00Z', [row('g', 1)], { n: 1, from: ['g', 'h'], picked: [{ slug: 'g', why: [] }] });
+  assert.equal(unitCheck(['h'], { tables: t, widths: [1440] }).pages[0].widths[1440].state, 'sweep', 'a sample newer than the error row leaves it out again');
+  assert.equal(run('--unit', ',', '--tables', t).code, 1, 'an empty unit is a usage error');
+  assert.equal(run('--unit', '@nope.txt').code, 1);
 });
 
 rmSync(root, { recursive: true, force: true });
