@@ -84,6 +84,20 @@
  *                                  check exit 0 with an ADVISORY line. Absent, nothing above
  *                                  changes.
  *
+ * Measurement normalisation (source-normalize.mjs measurePrep, measured then
+ * restored): closed <details>, <dialog>s and aria-controls panels are opened,
+ * EDS fragment and modal links are resolved from <path>.plain.html in place,
+ * and EDS content outside main (a sticky tray) is read after the scope. A slot's
+ * text passes when the page holds it as shown OR with those opened; CTAs and
+ * images are looked up with them opened. The report names what ran.
+ *   (5) EMBEDS      — each model `embeds` entry (iframe, <video>, Wistia /
+ *                     YouTube / Vimeo / Brightcove player) has a counterpart
+ *                     anywhere on the rendered page or in its authored
+ *                     <path>.plain.html links: same provider + video id, else
+ *                     same src host + path. None → FAIL.
+ *   ALT TEXT (advisory) — the model's `altFlags` (non-descriptive alt) are
+ *                     listed, never failed: a residual to fix, not carried silently.
+ *
  * Exit: 0 all checks pass, 1 any fail, 2 setup error (incl. a stalled
  *       decoration, an invalid --deltas file), 3 bot challenge / blocked live
  *       target (fail loud, never measured).
@@ -140,10 +154,11 @@ if (Object.hasOwn(args, 'eds-timeout') && !/^[1-9]\d*$/.test(args['eds-timeout']
 // Siblings are imported here, after the --help guard: --help answers from a directory holding only this script.
 // browser.mjs lives in the master skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
 // the documented project copy stardust/scripts/reskin ↔ stardust/scripts/stardust).
-let eds; let live;
+let eds; let live; let normalizeLib;
 try {
   eds = await import('./deployed/eds.mjs');
   live = await eds.loadLiveSession();
+  normalizeLib = await import('./source-normalize.mjs');
 } catch (e) {
   if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
   console.error(`[slot-coverage] ${e.message.split('\n')[0]}`);
@@ -152,6 +167,7 @@ try {
 }
 const { edsSettle, isEdsHost } = eds;
 const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = live;
+const { measurePrep, measureRestore, IMG_GROUP, groupRanges, alignOptional, keptItems, EMBED_SOURCES, embedIdentity } = normalizeLib;
 
 try { await loadPlaywright(); } catch (e) {
   console.error(`[slot-coverage] ${e.message}`);
@@ -230,32 +246,60 @@ await page.evaluate(() => Promise.race([
 ]));
 await page.waitForTimeout(300);
 
+const normPath = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
+const squash = (t) => t.replace(/\s+/g, ' ').trim();
 const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
 
 // ---- (1)(2)(3) slot coverage ------------------------------------------------
 // With `images` declared, only the images the model capture counts as content are measured (imgVisibleSrc is
 // source-normalize.mjs IMG_VISIBLE, the same code dom-equality runs); otherwise every <img> in scope, as before.
-const rendered = await page.evaluate(({ scopeSel, imgVisibleSrc: visibleSrc }) => {
-  const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
+// Text is read twice: as the page shows it, then after measurement normalisation (both kept; see the header).
+const shownText = await page.evaluate((sel) => (document.querySelector(sel)?.innerText || '').replace(/\s+/g, ' ').trim(), args['rendered-scope']);
+const prep = await page.evaluate(measurePrep, { scopes: args['rendered-scope'], resolve: true });
+const rendered = await page.evaluate(({ scopeSel, imgVisibleSrc: visibleSrc, imgGroupSrc, embedSrc }) => {
+  const norm = (t) => (t || '').replace(/[\uFDD0\uFDD1]/g, '').replace(/\s+/g, ' ').trim();
   const scope = document.querySelector(scopeSel);
   if (!scope) return { error: `rendered scope not found: ${scopeSel}` };
   const imgVisible = visibleSrc ? (0, eval)(visibleSrc) : () => true;
+  const imgGroup = (0, eval)(imgGroupSrc);
+  const imgs = Array.from(scope.querySelectorAll('img')).filter(imgVisible);
   return {
     text: norm(scope.innerText),
     hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.dataset.sourceHref || a.href, text: norm(a.innerText) })),
-    imgs: Array.from(scope.querySelectorAll('img')).filter(imgVisible).map((i) => ({
+    imgs: imgs.map((i) => ({
       src: i.dataset.sourceSrc || i.currentSrc || i.src,
       alt: i.getAttribute('alt') ?? '',
       width: Math.round(i.getBoundingClientRect().width),
       painted: i.complete && i.naturalWidth > 0,
     })),
+    imgGroups: imgs.map(imgGroup),
+    embeds: (0, eval)(embedSrc)(document, { scripts: true, counterpart: true }).map((e) => e.src),
   };
-}, { scopeSel: args['rendered-scope'], imgVisibleSrc });
+}, { scopeSel: args['rendered-scope'], imgVisibleSrc, imgGroupSrc: IMG_GROUP, embedSrc: EMBED_SOURCES });
+await page.evaluate(measureRestore);
 if (rendered.error) { await browser.close(); die(`${rendered.error}${navErr ? ` (navigation failed: ${navErr.message.split('\n')[0]})` : ''}`); }
+// An EDS embed / video block is authored as a link and may not have built its player: the page's own
+// <path>.plain.html links count as counterparts too (http targets only).
+if (model.embeds?.length && /^https?:/.test(page.url())) {
+  rendered.embeds.push(...await page.evaluate(async () => {
+    const path = location.pathname.replace(/(\.plain)?\.html$/, '');
+    try {
+      const r = await fetch(`${path.endsWith('/') ? `${path}index` : path}.plain.html`);
+      if (!r.ok) return [];
+      const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      return [...doc.querySelectorAll('a[href], iframe[src], video[src], source[src]')].map((e) => new URL(e.getAttribute('href') || e.getAttribute('src'), location.href).href);
+    } catch { return []; }
+  }));
+}
+// deltas.images compares positionally: an image only the opened page shows counts where the model has its alt
+// at that position, else it is left out (the model was captured as the source shows).
+if (deltas?.images) {
+  const opt = groupRanges(rendered.imgGroups);
+  const al = alignOptional(model.sections.flatMap((s) => s.images).map((i) => squash(i.alt ?? '')), rendered.imgs.map((i) => squash(i.alt)), [], opt);
+  rendered.imgs = keptItems(rendered.imgs, opt, al.skipB);
+}
 
-const normPath = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
-const squash = (t) => t.replace(/\s+/g, ' ').trim();
 // (3b) PAINT (F-R4): src-string presence is not rendering. A rendered content image that never painted
 // (naturalWidth=0 — e.g. the source CDN 403s hotlinked requests) is a broken page the string gate cannot see.
 const paintCheck = (label, painted) => {
@@ -276,7 +320,7 @@ let nextImg = 0; let nextText = 0;
 for (const s of model.sections) {
   const [text, ...ctaTexts] = textDeltas ? textDeltas.texts.slice(nextText, nextText + 1 + s.ctas.length).map(squash) : textsOf(s);
   nextText += 1 + s.ctas.length;
-  R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
+  R('slot-coverage', `${s.slot} text present`, shownText.includes(text) || rendered.text.includes(text), text.slice(0, 50));
   for (const [ci, c] of s.ctas.entries()) {
     const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
     const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(ctaTexts[ci]));
@@ -305,6 +349,12 @@ for (const s of model.sections) {
 if (deltas?.images) {
   const total = deltasLib.compareImages(model.sections.flatMap((s) => s.images), rendered.imgs, deltas.images);
   R('slot-coverage', `images total (${deltas.images})`, total.pass, total.detail);
+}
+
+// ---- (5) embeds: provider + video id, else src host + path ----------------------
+const renderedEmbedKeys = new Set(rendered.embeds.map((u) => embedIdentity(u)?.key).filter(Boolean));
+for (const e of model.embeds ?? []) {
+  R('embeds', `${e.slot ?? 'page'} ${e.kind} ${e.key}`, renderedEmbedKeys.has(e.key), renderedEmbedKeys.has(e.key) ? '' : `no counterpart on the rendered page (${e.src.slice(0, 80)})`);
 }
 
 // ---- (4) metadata carried verbatim -------------------------------------------
@@ -349,13 +399,23 @@ await browser.close();
 // ---- report -------------------------------------------------------------------
 const byGate = {};
 for (const r of results) (byGate[r.gate] ??= []).push(r);
-let md = `# Slot-coverage + metadata report\n\n- Model: ${args.model}\n- Rendered: ${args.rendered} (scope: \`${args['rendered-scope']}\`)\n- Generated: ${new Date().toISOString()}\n\n`;
+const normalisationLine = `Measurement normalisation (measured only, page restored): ${prep.details} details opened, ${prep.dialogs} dialogs opened, ${prep.panels} aria-controls panels revealed, `
+  + `${prep.fragments.length} fragments resolved${prep.fragments.length ? ` (${prep.fragments.join(', ')})` : ''}, ${prep.modals.length} modals resolved${prep.modals.length ? ` (${prep.modals.join(', ')})` : ''}`
+  + `${prep.outside ? `, ${prep.outside} EDS regions outside main read` : ''}${prep.deduped.length ? `, already shown, not added: ${prep.deduped.join(', ')}` : ''}${prep.failed.length ? `, fetch FAILED: ${prep.failed.join(', ')}` : ''}`
+  + ' — slot text passes as shown or opened';
+let md = `# Slot-coverage + metadata report\n\n- Model: ${args.model}\n- Rendered: ${args.rendered} (scope: \`${args['rendered-scope']}\`)\n- Generated: ${new Date().toISOString()}\n- ${normalisationLine}\n\n`;
 let allPass = true;
 for (const [gate, rs] of Object.entries(byGate)) {
   const fails = rs.filter((r) => !r.pass);
   if (fails.length) allPass = false;
   md += `## ${gate} — ${rs.length - fails.length}/${rs.length} pass\n\n`;
   for (const r of rs) md += `- [${r.pass ? 'x' : ' '}] ${r.check}${r.detail ? ` — ${r.detail}` : ''}\n`;
+  md += `\n`;
+}
+const altFlags = model.altFlags ?? [];
+if (altFlags.length) {
+  md += `## alt-text (advisory) — ${altFlags.length} flagged\n\nNon-descriptive alt text on the source, carried as is: a residual to fix with the client, not a failure.\n\n`;
+  for (const f of altFlags) md += `- ${f.slot ?? 'page'} ${JSON.stringify(f.alt)} (${f.reason}) — ${f.src}\n`;
   md += `\n`;
 }
 md += `**Overall: ${allPass ? 'PASS' : 'FAIL'}**\n`;
@@ -379,7 +439,10 @@ if (args.report) {
 }
 const failLines = results.filter((r) => !r.pass);
 console.log(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`);
+// stdout names the normalisation only when it revealed or resolved something (the line format is otherwise unchanged)
+if (prep.details + prep.dialogs + prep.panels + prep.fragments.length + prep.modals.length + prep.outside + prep.failed.length) console.log(`  ${normalisationLine}`);
 for (const f of failLines.slice(0, 15)) console.log(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`);
+for (const f of altFlags.slice(0, 15)) console.log(`  ADVISORY alt: ${f.slot ?? 'page'} ${JSON.stringify(f.alt)} (${f.reason}) — ${f.src}`);
 if (deltas) {
   console.log(`  deltas applied: ${applied.length ? applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`);
   if (ignoredKeys.length) console.log(`  ignored by delta: ${ignoredKeys.join(', ')}`);

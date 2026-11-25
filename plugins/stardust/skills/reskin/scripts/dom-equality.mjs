@@ -37,6 +37,14 @@
  *     gated against: measuring an interstitial as the source is the byte
  *     gate's own correctness bug. Local/file targets (including the
  *     rendered page and file-path sources) keep the legacy networkidle path.
+ *   - Measurement normalisation (source-normalize.mjs measurePrep), both
+ *     sides, measured then restored: closed <details>, closed <dialog>s and
+ *     aria-expanded="false" panels are opened; on the rendered side EDS
+ *     fragment and modal links are resolved from <path>.plain.html in place
+ *     and EDS content outside main (a sticky tray) is read after the scope.
+ *     That content is OPTIONAL: counted where the other side has the same
+ *     text/images at that position, dropped from both sides where not.
+ *     Content one side shows stays required. The report lists what ran.
  *
  * Usage:
  *   node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>
@@ -148,6 +156,7 @@ try {
 const { edsSettle, isEdsHost } = eds;
 const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = live;
 const { loadNormalize, IMG_VISIBLE, IMG_CROP, compareCrops, compareRegions } = normalizeLib;
+const { measurePrep, measureRestore, IMG_GROUP, parseMarked, flattenSegments, groupRanges, alignOptional, keptItems } = normalizeLib;
 
 try { await loadPlaywright(); } catch (e) {
   console.error(`[dom-equality] ${e.message}`);
@@ -215,28 +224,34 @@ async function capture(url, scopeList, normalize, rendered = false) {
   // image crop needs each image's natural size: wait (bounded) for the images the scroll pass started to finish
   await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 8000 }).catch(() => {});
   if (normalize) { await page.evaluate(NORMALIZE); await page.waitForTimeout(300); }
-  const data = await page.evaluate(({ sl, imgVisibleSrc, imgCropSrc }) => {
+  const prep = await page.evaluate(measurePrep, { scopes: scopeList, resolve: rendered });
+  const data = await page.evaluate(({ sl, imgVisibleSrc, imgCropSrc, imgGroupSrc }) => {
     const sels = sl.split(',').map((s) => s.trim().replace(/!$/, ''));
     const scopes = sels.map((s) => document.querySelector(s));
     if (scopes.some((s) => !s)) return { error: `scope missing among: ${sl}` };
-    const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
     // Shared image predicate — the SAME code capture-content.mjs ran at
     // capture time (source-normalize.mjs IMG_VISIBLE): no capture↔gate drift.
     const imgVisible = (0, eval)(imgVisibleSrc);
     const imgCrop = (0, eval)(imgCropSrc);
+    const imgGroup = (0, eval)(imgGroupSrc);
     const fileOf = (u) => { try { return new URL(u, location.href).pathname.split('/').pop(); } catch { return u; } };
-    const all = scopes.flatMap((sc) => Array.from(sc.querySelectorAll('*')));
+    const all = scopes.flatMap((sc) => Array.from(sc.querySelectorAll('*'))).filter((e) => !e.closest('[data-stardust-mark], [data-stardust-splice]'));
+    const imgs = scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible));
     return {
       elementCount: all.length,
       tagSequence: all.map((e) => e.tagName.toLowerCase() + ((typeof e.className === 'string' && e.className.trim()) ? '.' + e.className.trim().split(/\s+/)[0] : '')),
-      visibleText: norm(scopes.map((sc) => sc.innerText || '').join(' ')),
-      imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.dataset.sourceSrc || i.currentSrc || i.src || '')),
-      images: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => ({ alt: i.getAttribute('alt') ?? '', width: Math.round(i.getBoundingClientRect().width) }))),
-      crops: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => ({ ...imgCrop(i), label: i.getAttribute('alt') || fileOf(i.currentSrc || i.src || '') }))),
+      markedText: scopes.map((sc) => sc.innerText || '').join(' '),
+      imageSrcs: imgs.map((i) => i.dataset.sourceSrc || i.currentSrc || i.src || ''),
+      imageGroups: imgs.map(imgGroup),
+      images: imgs.map((i) => ({ alt: i.getAttribute('alt') ?? '', width: Math.round(i.getBoundingClientRect().width) })),
+      crops: imgs.map((i) => ({ ...imgCrop(i), label: i.getAttribute('alt') || fileOf(i.currentSrc || i.src || '') })),
     };
-  }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE, imgCropSrc: IMG_CROP });
+  }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE, imgCropSrc: IMG_CROP, imgGroupSrc: IMG_GROUP });
+  await page.evaluate(measureRestore);
   await page.close();
   if (data.error) die(`${data.error} (page: ${url}${navErr ? ` — navigation failed: ${navErr.message.split('\n')[0]}` : ''})`);
+  data.prep = prep;
+  data.flat = flattenSegments(parseMarked(data.markedText));
   return data;
 }
 
@@ -248,8 +263,25 @@ await browser.close();
 
 // --deltas: a text delta maps the source's text to what the preview renders, so it rewrites the SOURCE side before
 // the comparison (everything below, the report's source length and divergence snippet included, reads that text).
-const textDeltas = deltas ? deltasLib.applyText(src.visibleText, deltas) : null;
-if (textDeltas) src.visibleText = textDeltas.text.replace(/\s+/g, ' ').trim();
+// Applied per run of required / optional words (a delta does not span a revealed region's edge); with nothing
+// revealed that is the whole text, as before.
+let textDeltas = null;
+if (deltas) {
+  const runs = [];
+  src.flat.words.forEach((w, k) => {
+    const g = src.flat.groups[k]; const last = runs[runs.length - 1];
+    if (last && last.g === g) last.t += ` ${w}`; else runs.push({ g, t: w });
+  });
+  if (!runs.length) runs.push({ g: 0, t: '' });
+  textDeltas = deltasLib.applyTexts(runs.map((r) => r.t), deltas);
+  src.flat = flattenSegments(runs.map((r, k) => ({ t: `${textDeltas.texts[k]} `, opt: r.g > 0 })));
+}
+
+// Measurement normalisation: optional (revealed / resolved) words count where the other side holds the same words
+// at that position, else they drop out of both sides; the comparisons below read the kept text and images.
+const textAlign = alignOptional(src.flat.words, rnd.flat.words, src.flat.opt, rnd.flat.opt);
+src.visibleText = keptItems(src.flat.words, src.flat.opt, textAlign.skipA).join(' ');
+rnd.visibleText = keptItems(rnd.flat.words, rnd.flat.opt, textAlign.skipB).join(' ');
 
 // --- PRIMARY: visible text (byte-identical after whitespace normalization) ---
 const textMatch = src.visibleText === rnd.visibleText;
@@ -268,6 +300,12 @@ if (!textMatch) {
 // --- PRIMARY: visible image srcs (ordered; URL-normalized to host+path) -----
 // With deltas.images: count + alt + rendered width instead (deployed/deltas.mjs compareImages).
 const normSrc = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
+const imgKey = (side) => (deltas?.images ? side.images.map((i) => i.alt.replace(/\s+/g, ' ').trim()) : side.imageSrcs.map(normSrc));
+const imgOpt = { src: groupRanges(src.imageGroups), rnd: groupRanges(rnd.imageGroups) };
+const imgAlign = alignOptional(imgKey(src), imgKey(rnd), imgOpt.src, imgOpt.rnd);
+for (const [side, opt, skip] of [[src, imgOpt.src, imgAlign.skipA], [rnd, imgOpt.rnd, imgAlign.skipB]]) {
+  for (const k of ['imageSrcs', 'images', 'crops']) side[k] = keptItems(side[k], opt, skip);
+}
 const srcImgs = src.imageSrcs.map(normSrc);
 const rndImgs = rnd.imageSrcs.map(normSrc);
 const imgDiffs = [];
@@ -298,11 +336,30 @@ const minT = Math.min(src.tagSequence.length, rnd.tagSequence.length);
 for (let i = 0; i < minT; i += 1) if (src.tagSequence[i] !== rnd.tagSequence[i]) { firstTagDivergence = i; break; }
 
 const pass = textMatch && imageMatch && cropCheck.pass;
+// what measurement normalisation did, on each side (measured only, the page is restored afterwards)
+const optCount = (opt, skip) => [opt.reduce((n, [a, b]) => n + b - a, 0), opt.reduce((n, [a, b], k) => n + (skip.has(k) ? 0 : b - a), 0)];
+const sideLine = (side, textSkip, imgSkip, opt) => {
+  const p = side.prep; const parts = [`${p.details} details opened`];
+  if (p.dialogs) parts.push(`${p.dialogs} dialogs opened`);
+  if (p.panels) parts.push(`${p.panels} aria-controls panels revealed`);
+  if (side === rnd) {
+    parts.push(`${p.fragments.length} fragments resolved${p.fragments.length ? ` (${p.fragments.join(', ')})` : ''}`);
+    parts.push(`${p.modals.length} modals resolved${p.modals.length ? ` (${p.modals.join(', ')})` : ''}`);
+    if (p.outside) parts.push(`${p.outside} EDS regions outside main read`);
+    if (p.deduped.length) parts.push(`already shown, not added: ${p.deduped.join(', ')}`);
+    if (p.failed.length) parts.push(`fetch FAILED: ${p.failed.join(', ')}`);
+  }
+  const [w, wk] = optCount(side.flat.opt, textSkip); const [m, mk] = optCount(opt, imgSkip);
+  parts.push(`optional words counted ${wk}/${w}, optional images counted ${mk}/${m}`);
+  return parts.join(', ');
+};
+const normalisationLine = `Measurement normalisation (measured only, page restored): source — ${sideLine(src, textAlign.skipA, imgAlign.skipA, imgOpt.src)}; rendered — ${sideLine(rnd, textAlign.skipB, imgAlign.skipB, imgOpt.rnd)}`;
 const tick = (b) => (b ? 'PASS' : 'FAIL');
 let md = `# Content gate — DOM equality report (reskin profile)\n\n`;
 md += `- Source: ${args.source} (scopes: \`${args['source-scope']}\`, normalize: \`${normalizeSource}\`)\n`;
 md += `- Rendered: ${args.rendered} (scope: \`${args['rendered-scope']}\`)\n`;
-md += `- Generated: ${new Date().toISOString()}\n\n`;
+md += `- Generated: ${new Date().toISOString()}\n`;
+md += `- ${normalisationLine}\n\n`;
 md += `## Primary checks (gating)\n\n`;
 md += `| Check | Source | Rendered | Status |\n|---|---|---|---|\n`;
 md += `| Visible text (normalized chars) | ${src.visibleText.length} | ${rnd.visibleText.length} | ${tick(textMatch)} |\n`;
@@ -346,6 +403,7 @@ if (deltas) {
 
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, md);
+if ([src, rnd].some(({ prep: p }) => p.details + p.dialogs + p.panels + p.fragments.length + p.modals.length + p.outside + p.failed.length)) console.error(`[dom-equality] ${normalisationLine}`);
 console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
 cropCheck.wrong.slice(0, 5).forEach((w) => console.error(`  image [${w.index}] "${w.label}" wrong area: ${w.inside == null ? 'unpaired' : `${pct(w.inside)} inside the source's`}${w.anchorOff ? ', source anchor not kept' : ''} (${w.rendered.box} ${w.rendered.fit} ${w.rendered.position}) — fix: object-position: ${w.fix}`));
 if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);

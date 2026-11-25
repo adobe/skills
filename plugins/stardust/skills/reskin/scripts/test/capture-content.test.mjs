@@ -2,7 +2,8 @@
 // skills/reskin/scripts/test/capture-content.test.mjs — capture-content.mjs: --help answers before any I/O, and the
 // slots of a scope never include a <script>, <style>, <noscript> or <template> child (a JSON-LD <script> in `main` is
 // metadata, not a section), though JSON-LD still reaches metadata.jsonLd; a source-clamped feed card body keeps its
-// line clamp (capture's lineClamp/clampGroup → stream-render's .clamp box, measured in Chromium). The page cases run the CLI on a local file in
+// line clamp (capture's lineClamp/clampGroup → stream-render's .clamp box, measured in Chromium); the model's embeds
+// inventory and altFlags. The page cases run the CLI on a local file in
 // plain Chromium (needs playwright; prints a skip line otherwise). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -110,6 +111,17 @@ if (playwrightOk) {
         assert.ok(c.text.includes('https://feed.test/p/'), 'the URL stays in innerText');
       }
     } finally { await browser.close(); }
+  });
+
+  await check('embeds: an iframe player, a Wistia player and a <video> are inventoried by identity (a player script naming the same video adds none); altFlags names non-descriptive alts', () => {
+    const img = (alt, n) => `<img width="120" height="80" alt="${alt}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Ctext%3E${n}%3C/text%3E%3C/svg%3E">`;
+    const r = capture('embeds', page(`<main><section><h2>Watch</h2><iframe width="560" height="315" data-src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>
+      <div class="wistia_embed wistia_async_abc123def4" style="width:400px;height:225px"></div><script type="text/x-inert" src="https://fast.wistia.com/embed/medias/abc123def4.jsonp"></script></section>
+      <section><h2>Gallery</h2><video preload="none" width="320" height="180" src="https://cdn.example.com/v/intro.mp4"></video>${img('icon', 1)}${img('IMG_1234.jpg', 2)}${img('A nurse with a patient', 3)}${img('', 4)}</section></main>`));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.model.embeds.map((e) => `${e.slot} ${e.kind} ${e.key}`), ['s01 iframe youtube:dQw4w9WgXcQ', 's01 player wistia:abc123def4', 's02 video url:cdn.example.com/v/intro.mp4']);
+    assert.deepEqual(r.model.altFlags.map((f) => `${f.slot} ${f.alt} ${f.reason}`), ['s02 icon generic', 's02 IMG_1234.jpg file-name']);
+    assert.match(r.stdout, /alt flag \(generic\): s02 "icon"/);
   });
 }
 

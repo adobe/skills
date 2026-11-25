@@ -45,6 +45,13 @@
  *   the whole scope (the content-gate reference string), a scope-coverage
  *   diagnostic (bodyTextLen vs scopeTextLen + h1-in-scope), and a
  *   full-page screenshot.
+ *   `embeds`: the page's embedded players — iframes, <video>, Wistia /
+ *   YouTube / Vimeo / Brightcove players (by element, iframe src or player
+ *   script) — as [{ kind, slot, src, provider, id, key }], one per video id
+ *   (else src host + path); slot-coverage.mjs fails one with no counterpart.
+ *   `altFlags`: content images whose alt is non-descriptive (generic,
+ *   a file name, or one alt on several images) as [{ slot, src, alt,
+ *   reason }]; slot-coverage.mjs lists them as advisory residuals.
  *
  * Text is captured via innerText, i.e. RENDERED case — text-transform is
  * reflected. The reskin reproduces casing via CSS text-transform, never by
@@ -79,7 +86,7 @@
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
+import { loadNormalize, IMG_VISIBLE, EMBED_SOURCES, embedIdentity, altFlags } from './source-normalize.mjs';
 
 // browser.mjs lives in the master skill's scripts dir. Two layouts exist:
 // the plugin tree (skills/reskin/scripts ↔ skills/stardust/scripts) and the
@@ -118,6 +125,7 @@ if (opts.help || !opts.url || !opts.out) {
   console.log('usage: node capture-content.mjs --url <page-url> --out <dir> [--scope sel1,sel2!] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('Writes <dir>/content-model.json + <dir>/source-full.png.');
+  console.log('The model also lists the page\'s embeds (players, by video id) and altFlags (non-descriptive alt text).');
   console.log('Scope: comma-separated selectors captured in order; trailing "!" keeps a scope whole as one slot.');
   console.log('Each selector captures exactly ONE element (querySelector, first match) — to capture N');
   console.log('siblings, scope their common container (content-model.md § Scope discovery step 4).');
@@ -203,7 +211,7 @@ const metadata = await page.evaluate(() => {
   };
 });
 
-const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
+const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) => {
   // A trailing "!" on a selector means: keep this scope whole as ONE slot
   // (don't descend into children). Without it, children become slots.
   const scopeDefs = scopeSelList.split(',').map((s) => s.trim()).map((s) => ({
@@ -530,6 +538,10 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
   const bodyText = norm(document.body.innerText || '');
   const h1 = document.querySelector('h1');
   const h1Text = h1 ? norm(h1.innerText) : null;
+  // embed inventory: players in each slot, plus page-level player scripts (named by video id node-side)
+  const embedsOf = (0, eval)(embedSrc);
+  const embeds = sections.flatMap((s, i) => embedsOf(sectionEls[i]).map(({ kind, src }) => ({ kind, slot: s.slot, src })))
+    .concat(embedsOf(document, { scripts: true }).filter((e) => e.kind === 'script').map(({ kind, src }) => ({ kind, slot: null, src })));
   return {
     scope: scopeDefs,
     visibleTextNormalized: scopeText,
@@ -541,8 +553,9 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       h1InScope: h1Text ? scopeText.includes(h1Text) : null,
     },
     sections,
+    embeds,
   };
-}, { scopeSelList: opts.scope, imgVisibleSrc: IMG_VISIBLE });
+}, { scopeSelList: opts.scope, imgVisibleSrc: IMG_VISIBLE, embedSrc: EMBED_SOURCES });
 
 if (model.error) {
   console.error(`[capture-content] ${model.error}`);
@@ -559,6 +572,16 @@ if (model.error) {
   await browser.close();
   process.exit(2);
 }
+
+// embeds: one per identity (a script names a video only by provider id); altFlags: non-descriptive alt text
+const embedKeys = new Set();
+model.embeds = model.embeds.flatMap((e) => {
+  const id = embedIdentity(e.src);
+  if (!id || (e.kind === 'script' && id.provider === 'url') || embedKeys.has(id.key)) return [];
+  embedKeys.add(id.key);
+  return [{ ...e, ...id }];
+});
+model.altFlags = altFlags(model.sections.flatMap((sec) => sec.images.map((im) => ({ slot: sec.slot, src: im.currentSrc, alt: im.alt }))));
 
 const shot = `${opts.out.replace(/\/$/, '')}/source-full.png`;
 await page.screenshot({ path: shot, fullPage: true });
@@ -586,6 +609,8 @@ writeFileSync(out, JSON.stringify({
 
 const imgCount = model.sections.reduce((n, s) => n + s.images.length, 0);
 console.log(`[capture-content] slots=${model.sections.length} textLen=${model.visibleTextNormalized.length} images=${imgCount}`);
+if (model.embeds.length) console.log(`[capture-content] embeds: ${model.embeds.map((e) => `${e.slot ?? 'page'} ${e.key}`).join(', ')}`);
+for (const f of model.altFlags) console.log(`[capture-content] alt flag (${f.reason}): ${f.slot} ${JSON.stringify(f.alt)} — ${f.src}`);
 console.log(`[capture-content] coverage: scope ${model.coverage.scopeTextLen} / body ${model.coverage.bodyTextLen} chars (ratio ${model.coverage.ratio}) — h1 in scope: ${model.coverage.h1InScope}`);
 
 // Slot-granularity smell (content-model.md § Scope discovery step 3b): a

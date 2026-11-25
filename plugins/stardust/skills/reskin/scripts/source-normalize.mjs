@@ -259,6 +259,335 @@ export function compareRegions(source, rendered, { tolerance = 0.1 } = {}) {
   return { pass: wrong.length === 0, measured, unmeasured, unpaired, wrong };
 }
 
+/* global document, window, location, getComputedStyle, fetch, DOMParser, AbortController, setTimeout, clearTimeout */
+/**
+ * MEASUREMENT NORMALISATION (reference/gates.md § dom-equality): content a page keeps behind a behaviour — a closed
+ * <details>, a <dialog> not open, an aria-expanded="false" trigger's hidden aria-controls panel, and on the RENDERED
+ * side an EDS fragment or modal (a same-origin link whose path holds /fragments/ or /modals/, loaded from
+ * <path>.plain.html at runtime) or EDS content loaded outside main and the header/footer (a sticky tray) — is
+ * revealed for the measurement only, wrapped in MARKS, and counted as OPTIONAL: it counts where the other side has
+ * the same text (or image) at that position, and drops out of both sides where it does not (alignOptional). Text a
+ * page shows stays required, so content one side shows and the other lacks still fails.
+ *
+ * measurePrep runs inside page.evaluate (self-contained): it reveals, splices and marks, keeps an undo list on
+ * window, and returns what it did. measureRestore undoes it all. Each fragment/modal is fetched once (by path); a
+ * resolved fragment whose text the scope already shows is not spliced again (deduped).
+ */
+export const MARKS = ['\uFDD0', '\uFDD1'];
+export async function measurePrep({ scopes: scopeList, resolve = false, timeoutMs = 10000 }) {
+  const [OPEN, CLOSE] = ['\uFDD0', '\uFDD1'];
+  const undo = []; window.__stardustMeasureUndo = undo;
+  const stats = { details: 0, dialogs: 0, panels: 0, fragments: [], modals: [], outside: 0, deduped: [], failed: [] };
+  const scopes = scopeList.split(',').map((s) => document.querySelector(s.trim().replace(/!$/, ''))).filter(Boolean);
+  if (!scopes.length) return stats;
+  const norm = (t) => (t || '').replace(/[\uFDD0\uFDD1]/g, '').replace(/\s+/g, ' ').trim();
+  const inScope = (el) => scopes.some((s) => s.contains(el));
+  const all = (sel) => scopes.flatMap((s) => [...s.querySelectorAll(sel)]);
+  let gid = 0;
+  // an optional region: a mark pair inside root (after `after`, e.g. a <summary>), and its group id for images
+  const mark = (root, after = null) => {
+    const mk = (c) => { const s = document.createElement('span'); s.setAttribute('data-stardust-mark', ''); s.style.setProperty('display', 'inline', 'important'); s.textContent = c; return s; };
+    const a = mk(OPEN); const b = mk(CLOSE);
+    if (after) after.after(a); else root.prepend(a);
+    root.append(b);
+    gid += 1; root.setAttribute('data-stardust-opt', String(gid));
+    undo.push(() => { a.remove(); b.remove(); root.removeAttribute('data-stardust-opt'); });
+  };
+  // a page's own toggle handlers (an exclusive accordion closing its siblings) must not undo the reveal
+  const stop = (e) => e.stopImmediatePropagation();
+  for (const t of ['toggle', 'beforetoggle']) { window.addEventListener(t, stop, true); undo.push(() => window.removeEventListener(t, stop, true)); }
+  for (const d of all('details:not([open])')) {
+    const name = d.getAttribute('name');
+    if (name !== null) { d.removeAttribute('name'); undo.push(() => d.setAttribute('name', name)); }
+    mark(d, d.querySelector(':scope > summary'));
+    d.open = true; stats.details += 1;
+    undo.push(() => { d.open = false; });
+  }
+  for (const dl of all('dialog:not([open])')) {
+    mark(dl); dl.setAttribute('open', ''); stats.dialogs += 1;
+    undo.push(() => dl.removeAttribute('open'));
+  }
+  const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  for (const t of all('[aria-expanded="false"][aria-controls]')) {
+    for (const id of t.getAttribute('aria-controls').split(/\s+/).filter(Boolean)) {
+      const p = document.getElementById(id);
+      if (!p || !inScope(p) || p.hasAttribute('data-stardust-opt') || shown(p)) continue;
+      const before = { hidden: p.getAttribute('hidden'), style: p.getAttribute('style') };
+      const put = () => {
+        if (before.hidden !== null) p.setAttribute('hidden', before.hidden);
+        if (before.style === null) p.removeAttribute('style'); else p.setAttribute('style', before.style);
+      };
+      p.removeAttribute('hidden');
+      if (getComputedStyle(p).display === 'none') p.style.setProperty('display', 'block', 'important');
+      if (getComputedStyle(p).visibility === 'hidden') p.style.setProperty('visibility', 'visible', 'important');
+      if (!shown(p)) { put(); continue; } // an ancestor hides it: not a collapsed panel of this scope
+      mark(p); stats.panels += 1; undo.push(put);
+    }
+  }
+  if (resolve) {
+    const baseline = norm(scopes.map((s) => s.innerText).join(' '));
+    const seen = [];
+    const refOf = (href) => {
+      try {
+        const u = new URL(href, location.href);
+        if (u.origin !== location.origin || !/^https?:$/.test(u.protocol)) return null;
+        const kind = /\/fragments\//.test(u.pathname) ? 'fragment' : /\/modals\//.test(u.pathname) ? 'modal' : null;
+        return kind && { kind, path: u.pathname.replace(/(\.plain)?\.html$/, '') };
+      } catch { return null; }
+    };
+    // EDS fragment.js: strip (.plain).html, fetch <path>.plain.html, reset ./media_ to the fragment's base
+    const fetchPlain = async (path) => {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeoutMs);
+      try {
+        const r = await fetch(`${path.endsWith('/') ? `${path}index` : path}.plain.html`, { signal: ctl.signal });
+        return r.ok ? await r.text() : null;
+      } catch { return null; } finally { clearTimeout(t); }
+    };
+    // fetched markup is data: parsed inert, scripts / handlers / metadata blocks dropped
+    const splice = (html, kind, path) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      doc.querySelectorAll('script, style, .metadata, .section-metadata').forEach((e) => e.remove());
+      doc.querySelectorAll('*').forEach((e) => [...e.attributes].forEach((a) => { if (/^on/i.test(a.name)) e.removeAttribute(a.name); }));
+      const base = new URL(path, location.href);
+      doc.querySelectorAll('img[src^="./media_"]').forEach((i) => i.setAttribute('src', new URL(i.getAttribute('src'), base).href));
+      doc.querySelectorAll('source[srcset^="./media_"]').forEach((s) => s.setAttribute('srcset', new URL(s.getAttribute('srcset'), base).href));
+      const c = document.createElement('div'); c.setAttribute('data-stardust-splice', kind);
+      c.append(...doc.body.childNodes);
+      return c;
+    };
+    // finer groups inside a spliced region: tray chrome (a toggle label) must not sink the content beside it
+    const place = (c, at, label, list) => {
+      at(c);
+      const text = norm(c.innerText);
+      if (!text || baseline.includes(text) || seen.some((s) => s.includes(text))) { c.remove(); if (text) stats.deduped.push(label); return; }
+      seen.push(text);
+      const leaves = [...c.querySelectorAll('.section, p, h1, h2, h3, h4, h5, h6, li, button, blockquote, figcaption, dt, dd')]
+        .filter((e) => !e.querySelector('.section, p, h1, h2, h3, h4, h5, h6, li, button, blockquote, figcaption, dt, dd'));
+      mark(c); leaves.forEach((e) => mark(e));
+      undo.push(() => c.remove());
+      if (list) list.push(label); else stats.outside += 1;
+    };
+    const done = new Set();
+    const resolveRef = async (ref, at) => {
+      if (done.has(ref.path) || done.size >= 30) return;
+      done.add(ref.path);
+      const html = await fetchPlain(ref.path);
+      if (html == null) { stats.failed.push(ref.path); return; }
+      place(splice(html, ref.kind, ref.path), at, ref.path, ref.kind === 'modal' ? stats.modals : stats.fragments);
+    };
+    const BLOCKISH = 'p, li, h1, h2, h3, h4, h5, h6, dt, dd, td, th, blockquote';
+    for (const a of all('a[href]')) {
+      const ref = refOf(a.getAttribute('href'));
+      if (!ref || a.closest('[data-stardust-splice]')) continue;
+      const host = a.closest(BLOCKISH);
+      await resolveRef(ref, (c) => (host && inScope(host) ? host : a).after(c));
+    }
+    const last = scopes[scopes.length - 1];
+    const appendLast = (c) => last.append(c);
+    // EDS content loaded outside the scope (not header/footer): a sticky tray's sections or blocks, measured after the scope
+    const out = [...document.querySelectorAll('.section, [data-block-name]')]
+      .filter((el) => !el.closest('main, header, footer, [data-stardust-splice]') && !scopes.some((s) => s.contains(el) || el.contains(s)));
+    for (const el of out.filter((e) => !out.some((o) => o !== e && o.contains(e)))) {
+      const c = document.createElement('div'); c.setAttribute('data-stardust-splice', 'outside');
+      const clone = el.cloneNode(true); clone.removeAttribute('style'); c.append(clone);
+      place(c, appendLast, 'outside', null);
+    }
+    // fragments named outside the scope (a <meta> a tray script reads, a link outside main) that the page did not load yet
+    const named = [...document.querySelectorAll('meta[content]:not([name="nav"]):not([name="footer"])')].map((m) => m.getAttribute('content'))
+      .concat([...document.querySelectorAll('a[href]')].filter((a) => !inScope(a) && !a.closest('header, footer')).map((a) => a.getAttribute('href')));
+    for (const href of named) {
+      const ref = /^(\/|https?:)/.test(href || '') ? refOf(href) : null;
+      if (ref && ref.kind === 'fragment') await resolveRef(ref, appendLast);
+    }
+  }
+  // revealed images were never in view: load them (bounded) so the image checks measure them
+  const imgs = [...document.querySelectorAll('[data-stardust-opt] img')].filter((i) => !i.complete || i.loading === 'lazy');
+  imgs.forEach((i) => { const l = i.getAttribute('loading'); i.loading = 'eager'; undo.push(() => (l === null ? i.removeAttribute('loading') : i.setAttribute('loading', l))); });
+  await Promise.race([
+    Promise.all(imgs.map((i) => (i.complete ? 0 : new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); })))),
+    new Promise((r) => setTimeout(r, Math.min(timeoutMs, 5000))),
+  ]);
+  return stats;
+}
+export function measureRestore() {
+  const undo = window.__stardustMeasureUndo || [];
+  while (undo.length) { try { undo.pop()(); } catch { /* keep restoring */ } }
+  delete window.__stardustMeasureUndo;
+}
+/**
+ * IMG_GROUP — runs inside page.evaluate: an img → the id of the innermost optional region holding it (0: required).
+ * A closed <details>' summary is not part of its optional region.
+ */
+export const IMG_GROUP = `((img) => {
+  for (let n = img.parentElement; n; n = n.parentElement) {
+    const g = n.getAttribute && n.getAttribute('data-stardust-opt');
+    if (g && !(n.tagName === 'DETAILS' && img.closest('summary') && img.closest('summary').parentElement === n)) return +g;
+  }
+  return 0;
+})`;
+
+/** Split marked text into segments: { t, opt } — opt when inside any mark pair; every mark starts a new segment. */
+export function parseMarked(raw) {
+  const segs = []; let depth = 0; let buf = '';
+  const flush = () => { if (buf) segs.push({ t: buf, opt: depth > 0 }); buf = ''; };
+  for (const c of raw || '') {
+    if (c === MARKS[0] || c === MARKS[1]) { flush(); depth = Math.max(0, depth + (c === MARKS[0] ? 1 : -1)); } else buf += c;
+  }
+  flush();
+  return segs;
+}
+
+/**
+ * Whitespace-normalize segments into words: { text (the words joined by single spaces — the page's normalized
+ * innerText), words, groups (per word: 0 required, else 1 + the index of the optional segment it is read from),
+ * opt (groupRanges of groups) }. Comparing word lists keeps the separators out of the optional ranges: dropping a
+ * range leaves the text the page would read without that region. A word straddling a mark is required.
+ */
+export function flattenSegments(segs) {
+  const words = []; const groups = []; let cur = null;
+  segs.forEach(({ t, opt }, k) => {
+    for (const c of t) {
+      if (/\s/.test(c)) { cur = null; continue; }
+      if (!cur) { cur = { w: '', g: opt ? k + 1 : 0 }; words.push(cur); }
+      else if (cur.g !== (opt ? k + 1 : 0)) cur.g = 0;
+      cur.w += c;
+    }
+  });
+  for (const x of words) groups.push(x.g);
+  const list = words.map((x) => x.w);
+  return { text: list.join(' '), words: list, groups, opt: groupRanges(groups) };
+}
+
+/** Item groups → ranges: consecutive items sharing one non-zero group id form one optional range. */
+export function groupRanges(groups) {
+  const out = [];
+  groups.forEach((g, i) => {
+    if (!g) return;
+    const last = out[out.length - 1];
+    if (last && last[1] === i && groups[i - 1] === g) last[1] = i + 1; else out.push([i, i + 1]);
+  });
+  return out;
+}
+
+/**
+ * alignOptional — do a and b (strings or arrays, compared item by item) agree once optional ranges are counted or
+ * dropped? An optional range is counted when the other side holds the same items at that position (required or
+ * optional there), else dropped; greedy, left to right. Returns { pass, i, j (where they diverge), skipA, skipB (the
+ * dropped range indices), keptA, keptB (lengths counted) }. With no optional ranges it is plain equality.
+ */
+export function alignOptional(a, b, aOpt = [], bOpt = []) {
+  const same = (i, j, n) => {
+    if (i + n > a.length || j + n > b.length) return false;
+    for (let k = 0; k < n; k += 1) if (a[i + k] !== b[j + k]) return false;
+    return true;
+  };
+  const skipA = new Set(); const skipB = new Set();
+  let i = 0; let j = 0; let ka = 0; let kb = 0;
+  for (;;) {
+    while (ka < aOpt.length && aOpt[ka][0] < i) ka += 1;
+    while (kb < bOpt.length && bOpt[kb][0] < j) kb += 1;
+    const ra = ka < aOpt.length && aOpt[ka][0] === i ? aOpt[ka] : null;
+    const rb = kb < bOpt.length && bOpt[kb][0] === j ? bOpt[kb] : null;
+    if (ra || rb) {
+      const na = ra ? ra[1] - ra[0] : 0; const nb = rb ? rb[1] - rb[0] : 0;
+      if (ra && same(i, j, na)) { i += na; j += na; continue; }
+      if (rb && same(i, j, nb)) { i += nb; j += nb; continue; }
+      if (ra) { skipA.add(ka); i = ra[1]; continue; }
+      skipB.add(kb); j = rb[1]; continue;
+    }
+    if (i >= a.length || j >= b.length || a[i] !== b[j]) break;
+    i += 1; j += 1;
+  }
+  const kept = (len, opt, skip) => len - [...skip].reduce((n, k) => n + opt[k][1] - opt[k][0], 0);
+  return { pass: i >= a.length && j >= b.length, i, j, skipA, skipB, keptA: kept(a.length, aOpt, skipA), keptB: kept(b.length, bOpt, skipB) };
+}
+
+/** The items whose index falls in no dropped range. */
+export function keptItems(list, ranges, skip) {
+  return list.filter((_, idx) => !ranges.some(([s, e], k) => skip.has(k) && idx >= s && idx < e));
+}
+
+/**
+ * EMBED_SOURCES — runs inside page.evaluate: root → [{ kind, src, node }] for the embeds under it: iframes (a
+ * non-player iframe only when it shows, unless counterpart), <video> (a blob:/data: stream is identified by its
+ * player instead), player elements (Wistia wistia_async_<id> / <wistia-player media-id>, data-youtube-id,
+ * data-vimeo-id, data-wistia-id, Brightcove data-video-id) as provider:id, script srcs (opts.scripts) and, for a
+ * counterpart search, every link (an EDS embed/video block is authored as a link).
+ */
+export const EMBED_SOURCES = `((root, opts = {}) => {
+  const out = []; const add = (kind, src, node) => { if (src && !/^(blob|data|about|javascript):/i.test(src)) out.push({ kind, src, node }); };
+  const PLAYER = /youtube|youtu\\.be|vimeo|wistia|brightcove|dailymotion|vidyard|loom\\.com|jwplayer|kaltura/i;
+  root.querySelectorAll('iframe').forEach((f) => {
+    const src = f.getAttribute('src') || f.getAttribute('data-src') || f.getAttribute('data-lazy-src') || '';
+    if (!opts.counterpart && !PLAYER.test(src)) { const r = f.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1) return; }
+    add('iframe', src, f);
+  });
+  root.querySelectorAll('video').forEach((v) => {
+    const s = v.currentSrc || v.getAttribute('src') || v.querySelector('source[src]')?.getAttribute('src') || v.getAttribute('data-src');
+    add('video', s && new URL(s, document.baseURI).href, v);
+  });
+  root.querySelectorAll('[class*="wistia_async_"], wistia-player[media-id], [data-wistia-id], [data-youtube-id], [data-vimeo-id], video-js[data-video-id], [data-video-id][data-account]').forEach((e) => {
+    const w = /wistia_async_([a-z0-9]+)/i.exec(typeof e.className === 'string' ? e.className : '');
+    if (w) add('player', 'wistia:' + w[1], e);
+    if (e.getAttribute('media-id')) add('player', 'wistia:' + e.getAttribute('media-id'), e);
+    if (e.getAttribute('data-wistia-id')) add('player', 'wistia:' + e.getAttribute('data-wistia-id'), e);
+    if (e.getAttribute('data-youtube-id')) add('player', 'youtube:' + e.getAttribute('data-youtube-id'), e);
+    if (e.getAttribute('data-vimeo-id')) add('player', 'vimeo:' + e.getAttribute('data-vimeo-id'), e);
+    if (e.getAttribute('data-video-id') && (e.tagName === 'VIDEO-JS' || e.hasAttribute('data-account'))) add('player', 'brightcove:' + e.getAttribute('data-video-id'), e);
+  });
+  if (opts.scripts) root.querySelectorAll('script[src]').forEach((s) => add('script', s.src || s.getAttribute('src'), s));
+  if (opts.counterpart) root.querySelectorAll('a[href], source[src]').forEach((a) => add('link', a.href || a.getAttribute('href') || a.getAttribute('src'), a));
+  return out;
+})`;
+
+/**
+ * An embed's identity: { provider, id, key } — YouTube, Vimeo, Wistia and Brightcove by video id (a player script
+ * names Wistia's), anything else by host + path (provider 'url'). null when the src names no video (a provider's
+ * API script, a bare host).
+ */
+export function embedIdentity(src) {
+  if (!src) return null;
+  const pseudo = /^(youtube|vimeo|wistia|brightcove):([\w-]+)$/.exec(src);
+  if (pseudo) return { provider: pseudo[1], id: pseudo[2], key: `${pseudo[1]}:${pseudo[2]}` };
+  let u; try { u = new URL(src, 'https://x.invalid'); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const host = u.hostname.toLowerCase().replace(/^(www|m)\./, ''); const p = u.pathname;
+  const vid = (provider, id) => (id ? { provider, id, key: `${provider}:${id}` } : null);
+  if (host === 'youtu.be') return vid('youtube', p.split('/')[1]);
+  if (/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return vid('youtube', /^\/(?:embed|shorts|v|live)\/([\w-]{6,})/.exec(p)?.[1] || u.searchParams.get('v'));
+  if (/(^|\.)vimeo\.com$/.test(host)) return vid('vimeo', /\/(\d{5,})(?:\/|$)/.exec(p)?.[1]);
+  if (/(^|\.)wistia\.(com|net)$/.test(host) || host === 'wi.st') return vid('wistia', (/\/(?:medias|iframe)\/([a-z0-9]{6,})/i.exec(p) || /^\/embed\/([a-z0-9]{6,})\.js$/i.exec(p))?.[1]);
+  if (/(^|\.)brightcove\.(net|com)$/.test(host)) return vid('brightcove', u.searchParams.get('videoId'));
+  if (u.hostname === 'x.invalid') return null;
+  return { provider: 'url', id: null, key: `url:${u.hostname}${p}` };
+}
+
+/**
+ * Non-descriptive alt text on content images: [{ slot, src, alt, reason }]. reason: 'generic' ("icon", "image",
+ * "photo 2"…), 'file-name' (an image file name, a camera name like IMG_1234, a slug like team_photo or hero-banner-2x), or
+ * 'repeated' (one alt on `repeat` or more different images). An empty alt is not flagged (decorative is a choice).
+ */
+export function altFlags(images, { repeat = 3 } = {}) {
+  const GENERIC = /^(icon|image|img|photo|photograph|picture|pic|banner|logo|graphic|placeholder|thumbnail|thumb|hero|untitled|alt|alt text|null|undefined|default|spacer|figure)(\s*[-_#]?\s*\d+)?$/;
+  const FILE = /\.(jpe?g|png|gif|webp|svg|avif|bmp|tiff?|heic)$|^(img|dsc|dscn|dcim|pxl|screenshot|screen shot)[\s_-]*\d/i;
+  const SLUG = (a) => /^[a-z0-9]+([_-][a-z0-9]+)+$/i.test(a) && (/_/.test(a) || (/\d/.test(a) && a.split('-').length > 2)); // team_photo, hero-banner-2x — not well-being, covid-19
+  const pathOf = (s) => { try { const u = new URL(s, 'https://x.invalid'); return u.hostname + u.pathname; } catch { return s; } };
+  const bySrcs = new Map();
+  for (const im of images) {
+    const k = (im.alt || '').trim().toLowerCase();
+    if (k) (bySrcs.get(k) || bySrcs.set(k, new Set()).get(k)).add(pathOf(im.src));
+  }
+  const out = [];
+  for (const im of images) {
+    const alt = (im.alt || '').trim(); const k = alt.toLowerCase();
+    if (!alt) continue;
+    const bare = k.replace(/[.,:;!?'"()]+/g, '').trim();
+    const reason = GENERIC.test(bare) ? 'generic' : FILE.test(alt) || SLUG(alt) ? 'file-name' : bySrcs.get(k).size >= repeat ? 'repeated' : null;
+    if (reason) out.push({ slot: im.slot ?? null, src: im.src, alt, reason });
+  }
+  return out;
+}
+
 /**
  * Resolve the normalization to use: a page ledger module (--normalize path)
  * or the default. Returns { script, ledger, source }.
@@ -280,7 +609,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (arg === '--help' || arg === '-h') {
     console.log('source-normalize.mjs — shared executable normalization ledger (reskin).');
     console.log('Usage: node source-normalize.mjs        # print default ledger entries + script');
-    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE, IMG_CROP, visibleFraction, visibleRegion, compareCrops, compareRegions } from it.');
+    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE, IMG_CROP, visibleFraction, visibleRegion, compareCrops, compareRegions,');
+    console.log('  measurePrep, measureRestore, IMG_GROUP, parseMarked, flattenSegments, groupRanges, alignOptional, keptItems, EMBED_SOURCES, embedIdentity, altFlags } from it.');
     console.log('Page ledgers: export NORMALIZE (string) and LEDGER; pass via --normalize to');
     console.log('capture-content.mjs and dom-equality.mjs — the SAME file to both.');
     process.exit(0);
