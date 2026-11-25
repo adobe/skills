@@ -60,5 +60,19 @@ check("the publish guard: only the documents <content>/.deploy-allow lists are r
   assert.equal(run("--check").status, 0, "the check passes on what the guard lists");
   rmSync(root, { recursive: true });
 });
+check("the publish guard fails closed: an open extend pass in the ledger beside --content and no guard file exits 1 with no byte changed; a closed pass runs as before", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-o-")); const c = join(root, "content"); mkdirSync(c, { recursive: true }); mkdirSync(join(root, "stardust"));
+  const OLD = '<a href="https://example.com/index.html">home</a>';
+  writeFileSync(join(c, "index.html"), OLD);
+  const line = (o) => JSON.stringify({ skill: "stardust:replica", phase: "extend", ...o }) + "\n";
+  writeFileSync(join(root, "stardust", "status.jsonl"), line({ event: "start", track: "x2" }));
+  const run = () => spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c], { encoding: "utf8" });
+  const r = run();
+  assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /extend pass x2 is open .* is missing — nothing was sent or written/);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), OLD);
+  writeFileSync(join(root, "stardust", "status.jsonl"), line({ event: "start", track: "x2" }) + line({ event: "end", track: "x2" }));
+  assert.equal(run().status, 0); assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="/">home</a>');
+  rmSync(root, { recursive: true });
+});
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });
 process.exit(failed ? 1 : 0);

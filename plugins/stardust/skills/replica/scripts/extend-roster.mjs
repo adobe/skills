@@ -25,8 +25,8 @@
  *             (nav, footer and fragments included, though no coverage row names them), and not under /library (the
  *             DA authoring library). One destination takes one slot, at its first candidate's place; a query-less url
  *             of that destination replaces a query one. --max n keeps the first n (0 or absent: all). --slugs-out
- *             gets every coverage `slug` (for `crawl.mjs --reserve-slugs`) and --reserved-out every destination a
- *             document holds now (coverage, ledgers, content), both written BEFORE the roster, each through a temp
+ *             gets every coverage `slug` (for `crawl.mjs --reserve-slugs`) and --reserved-out every destination
+ *             taken now (captured, coverage, ledgers, content), both written BEFORE the roster, each through a temp
  *             file + rename: a roster on disk means the selection completed. Hand the roster to capture as a file
  *             (`crawl.mjs --pages-file`): a url may hold a comma. --named (urls the owner named): a url with a query
  *             string, or one whose destination is delivered, an existing document or the library — captured or not
@@ -34,16 +34,17 @@
  *   output    a unit that succeeded records the exact files it wrote for its roster pages in its own
  *             <pass>/outputs/<unit>.paths (one writer per file: concurrent units never share a record); a record only
  *             grows — a resumed unit reporting a subset keeps the rest. Refused (exit 2, nothing written): a file
- *             that is no document (a lowercase `.html` under --content), whose destination a document held at the
- *             opening (<pass>/reserved.paths), that is no roster page's (<pass>/urls.txt), or a second file for a
- *             page any record gives an output.
+ *             that is no document (a lowercase `.html` under --content), that is reached through a symbolic link,
+ *             whose destination was taken at the opening (<pass>/reserved.paths), that is no roster page's
+ *             (<pass>/urls.txt), or a second file for a page any record gives an output.
  *   publish   writes the guard <content>/.deploy-allow: the DA path (`/visit/index`) of every recorded output plus
  *             every entry of <pass>/also.paths (a NEW fragment the pages need, written there by the unit that
  *             creates it), one per line. While the guard exists, `deploy-batch.mjs` sends only the documents it
  *             lists and `localize-links.mjs` rewrites only those. Any other new document (an owner's draft, a file
- *             at a roster page no unit recorded) is held and named. An entry that is missing, or whose destination
- *             a document held at the opening, exits 2 with nothing written. Run it before every deploy of the pass;
- *             delete the guard when the pass ends.
+ *             at a roster page no unit recorded) is held and named. An entry that is missing, reached through a
+ *             symbolic link, or whose destination was taken at the opening, exits 2 with nothing written. It reads
+ *             the records and replaces the guard under a lock (deploy/file-lock.mjs), so units may run it at once.
+ *             Run it after every `output` and before every deploy of the pass; delete the guard after `extend end`.
  *
  * Exit codes: 0 ok (an empty roster is ok) · 2 usage, an unreadable input, a refused url, file or entry, or a missing
  * pass record. --help / -h prints this usage and touches no file.
@@ -59,7 +60,7 @@ const SELF = fileURLToPath(import.meta.url);
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 if (!CONTRACTS) { console.error('extend-roster: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/) — copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(2); }
-const { pathKey, deliveredUrl, documentPath } = await import(CONTRACTS.href);
+const { pathKey, deliveredUrl, documentPath, loadSibling } = await import(CONTRACTS.href);
 
 class UsageError extends Error {}
 const usage = (m) => { throw new UsageError(`extend-roster: ${m}`); };
@@ -78,6 +79,10 @@ export function documents(dir, rel = '') {
     return name.endsWith('.html') ? [f] : [];
   }).sort();
 }
+
+// A document reached through a symbolic link (the file or a folder above it) can be an older document under a new
+// name: writing through it would rewrite that older document.
+const viaSymlink = (content, f) => realpathSync(join(content, f)) !== join(realpathSync(content), f);
 
 // `/library` is the DA folder rollout's da-library.mjs writes: never a page's destination.
 const isLibraryPath = (key) => key === '/library' || key.startsWith('/library/');
@@ -191,7 +196,7 @@ function select(o) {
   }
   // the reservations first, the roster last: a roster on disk means every output of the selection is written
   if (o.slugsOut) writeAtomic(o.slugsOut, lines(cov.slugs));
-  if (o.reservedOut) writeAtomic(o.reservedOut, lines([...new Set([...cov.paths, ...docs])].sort()));
+  if (o.reservedOut) writeAtomic(o.reservedOut, lines([...new Set([...captured, ...cov.paths, ...docs])].sort()));
   writeAtomic(o.out, lines(r.urls));
   console.error(`roster: ${r.urls.length} page(s) → ${o.out} (${candidates.length} candidate(s); ${captured.size} captured, ${cov.paths.size} delivered, ${docs.size} document destination(s) reserved)`);
   return 0;
@@ -203,15 +208,15 @@ function rosterDestinations(pass) {
   return new Set(readFileSync(f, 'utf8').split('\n').filter(Boolean).map((u) => destinationOf(u)));
 }
 
-// The destinations a document held when the pass opened (`select --reserved-out`): no pass output and no also.paths
-// entry may take one.
+// The destinations taken when the pass opened (`select --reserved-out`): no pass output and no also.paths entry may
+// take one.
 function reservedOf(pass) {
   const f = join(pass, 'reserved.paths');
   if (!existsSync(f)) usage(`${f} not found — \`select --reserved-out\` writes it with the roster`);
   return new Set(readFileSync(f, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean));
 }
 const takenWhy = (reserved, dest) => (isLibraryPath(dest) ? 'the DA authoring library\'s folder'
-  : reserved.has(dest) ? `a document held ${dest} when the pass opened: never a pass output` : '');
+  : reserved.has(dest) ? `${dest} was taken when the pass opened: never a pass output` : '');
 const outputRecords = (pass) => {
   const dir = join(pass, 'outputs');
   return existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith('.paths')).sort().map((n) => ({ unit: n.slice(0, -'.paths'.length), files: readList(join(dir, n)) })) : [];
@@ -230,6 +235,7 @@ function output(o) {
   for (const f of o.files) {
     const dest = pathKey(`/${f}`);
     if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends)`);
+    else if (viaSymlink(o.content, f)) problems.push(`/${f} — reached through a symbolic link: never a pass output`);
     else if (takenWhy(reserved, dest)) problems.push(`/${f} — ${takenWhy(reserved, dest)}`);
     else if (!pages.has(dest)) problems.push(`/${f} — ${dest} is not a roster page (a fragment the pages need goes in also.paths)`);
     else if ((claim.has(dest) && claim.get(dest) !== f) || (others.has(dest) && others.get(dest).f !== f)) problems.push(`/${f} — roster page ${dest} already has its output /${claim.get(dest) || others.get(dest).f}${others.has(dest) ? ` (unit ${others.get(dest).unit})` : ''}`);
@@ -246,7 +252,14 @@ function output(o) {
   return 0;
 }
 
-function publish(o) {
+// The records are read and the guard replaced under one lock: a unit that publishes while another does never writes
+// a guard without the other's documents.
+async function publish(o) {
+  const { withLock } = await loadSibling('deploy', 'file-lock.mjs');
+  return withLock(join(o.pass, 'guard'), () => buildGuard(o));
+}
+
+function buildGuard(o) {
   const pages = rosterDestinations(o.pass); const reserved = reservedOf(o.pass);
   const docs = new Set(documents(o.content));
   const keep = new Set(); const problems = []; const owner = new Map();
@@ -259,7 +272,8 @@ function publish(o) {
     }
   }
   for (const f of [...[...owner.values()].map((v) => v.f), ...readList(join(o.pass, 'also.paths'))]) {
-    const why = docs.has(f) ? takenWhy(reserved, pathKey(`/${f}`)) : `listed, but no such document under ${o.content}`;
+    const why = !docs.has(f) ? `listed, but no such document under ${o.content}`
+      : viaSymlink(o.content, f) ? 'reached through a symbolic link: never a pass output' : takenWhy(reserved, pathKey(`/${f}`));
     if (why) problems.push(`/${f} — ${why}`); else keep.add(f);
   }
   if (problems.length) {
@@ -282,11 +296,11 @@ function publish(o) {
 
 const help = () => readFileSync(SELF, 'utf8').match(/\/\*\*[\s\S]*?\*\//)[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim();
 
-export function main(argv) {
+export async function main(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(help()); return 0; }
   try {
     const o = parseArgs(argv);
-    return { select, output, publish }[o.cmd](o);
+    return await { select, output, publish }[o.cmd](o);
   } catch (e) {
     if (e instanceof UsageError) { console.error(e.message); return 2; }
     if (e && typeof e.code === 'string') { console.error(`extend-roster: ${e.code}${e.path ? ` ${e.path}` : ''}: ${e.message}`); return 2; }
@@ -296,4 +310,4 @@ export function main(argv) {
 
 let isMain = false;
 try { isMain = Boolean(process.argv[1]) && realpathSync(process.argv[1]) === SELF; } catch { /* not run as a script */ }
-if (isMain) process.exit(main(process.argv.slice(2)));
+if (isMain) process.exit(await main(process.argv.slice(2)));

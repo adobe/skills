@@ -81,9 +81,11 @@ selects again from `$X/request.txt`. The crawler lists source pages; `extend-ros
 site can take — their EDS destination (`lib/paths.mjs`) is not captured, not a coverage row (a page built outside the
 capture, such as a search page), not a document a deploy ledger records live (its file in the checkout or not) and
 not an existing content document (nav, footer, fragments: no coverage row names them); one destination, one slot, a
-query-less URL kept over a query one, so the roster replays as written. `--reserved-out` records every destination a
-document holds now in `$X/reserved.paths`, written before the roster: no output of the pass may take one (§ 4). A
-deploy ledger that cannot be read stops the selection (exit 2, named):
+query-less URL kept over a query one, so the roster replays as written. `--reserved-out` records every destination
+taken now (captured ones included) in `$X/reserved.paths`, written before the roster: no output of the pass may
+take one (§ 4). Before the selection, `git status --porcelain -- content/` must be empty again, as at the opening
+(else stop): the reservations then cover every document of the opening commit. A deploy ledger that cannot be read
+stops the selection (exit 2, named):
 
 ```bash
 C=stardust/scripts/extract/crawl.mjs; R="node stardust/scripts/replica/extend-roster.mjs"; O=<state.json site.originUrl>; S="--skip-captured stardust/state.json"
@@ -132,17 +134,22 @@ links. Relinking and re-publishing them is not part of a pass: the report names 
 enforces the rule, so no caller has to remember a flag:
 
 - **The guard.** `$R publish --pass $X` writes `content/.deploy-allow`, the DA paths of the pass's own documents.
-  Run it at `handoff start`, where it writes an empty guard. Run it again after every change to `$X/outputs/` or
-  `$X/also.paths`, before the deploy. While the guard exists, `deploy-batch.mjs` sends only the documents it
-  lists, with or without `--force`. `localize-links.mjs` rewrites only those. A `--paths` entry the guard does
-  not list exits 2 with nothing sent. Every command of `handoff-contract.md` § 2 runs as written there.
-- **The pass's documents.** After each render unit, run `$R output --pass $X --unit <unit> --files <them>`. It
-  records the files the unit wrote, one per roster page, in `$X/outputs/<unit>.paths`. A new fragment the pages
-  need is one line in `$X/also.paths`, written by the unit that creates it. `publish` holds and names any other
-  new document: an owner's draft, or a file at a roster page whose capture or render failed. A file at a
-  destination of `$X/reserved.paths` is refused.
-- **Resume.** The guard is committed with the checkpoints. If it is missing on an open pass, `publish` writes it
-  again before anything else runs.
+  Run it at `handoff start`, where it writes an empty guard. While the guard exists, `deploy-batch.mjs` sends only
+  the documents it lists, with or without `--force`. `localize-links.mjs` rewrites only those. A `--paths` entry
+  the guard does not list exits 2 with nothing sent. Every command of `handoff-contract.md` § 2 runs as written
+  there.
+- **Fail closed.** Both scripts read the run ledger beside `content/`. While it shows an extend pass open (an
+  `extend start` without its `extend end`) and the guard is missing, they send and write nothing, and name the
+  `publish` command that puts it back. The guard is committed with the checkpoints.
+- **The pass's documents.** `migrate.mjs render` writes `stardust/migrated/`, never `content/`: the guard stays
+  empty during migrate. The conversion of `handoff-contract.md` § 2 writes each `content/<page>.html`. Right after
+  it, before the localizer and the PUT, the unit runs `$R output --pass $X --unit <unit> --files <them>`, then
+  `$R publish --pass $X`. `output` records the files, one per roster page, in `$X/outputs/<unit>.paths`. A new
+  fragment the pages need is one line in `$X/also.paths`, written by the unit that creates it. `publish` holds and
+  names any other new document: an owner's draft, or a file at a roster page no unit recorded. A page no unit
+  recorded is not sent, and `done-check.mjs` reports it unfinished. Units may run `publish` at the same time: it
+  works under a lock. A file at a destination of `$X/reserved.paths`, or reached through a symbolic link, is
+  refused.
 
 The units:
 
@@ -153,7 +160,7 @@ The units:
   <sibling slugs> --to directed --skill replica` (the frozen direction); each one's slot-filled clone
   (`handoff-contract.md` § 1 row 2) at `stardust/prototypes/<slug>-proposed.html` or `--source <slug>=<file>`; then
   `migrate.mjs render <sibling slugs> --archetype <slug>=<arch>`. Each of those sidecars reads `fidelityTier:
-  "sibling"` and names its archetype; a sibling's that reads `archetype` stops the unit. Then `output` and `publish`.
+  "sibling"` and names its archetype; a sibling's that reads `archetype` stops the unit.
 - **Units:** every new unit in both `progress.json` files is named `<unit>-x<N>` (`archetype-<template>-x1`,
   `<cluster>-x1`, `gate-all-1440-x1`); a `done` unit of an earlier pass is never reopened, and a new page of a known
   template joins a new cluster unit. No `foundation` unit: the foundation is delivered and frozen.
@@ -178,10 +185,12 @@ The units:
 - **F–I** as in a first pass, with two changes. G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt`
   (no site-level fix: the foundation is frozen), then `deploy-batch.mjs --force --paths <the pages it changed>`.
   The library refresh (`done-check.mjs`'s `library_missing` remedy) is `da-library.mjs`, as in a first pass.
-- **The end.** `rm content/.deploy-allow`. Then list each opening document that changed or went missing on disk:
-  `git diff --diff-filter=MD --name-only $(cat $X/base.txt) -- 'content/*.html'`. The guard sent none of them.
-  Name each in the report and leave it as it is. The owner settles that edit, and the pass never restores it. Then
-  `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's — `replica
-  handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail "<n> pages
-  delivered (x<N>), <total> live[; <n> older documents keep source links (relink-pending.txt)]"`. A pass that ends
-  before Phase 5 (rejected, or 0 new pages) never wrote a guard.
+- **The end.** The guard stays through every check and every retry: a `pages_not_live` gap is closed by a
+  re-deploy, and that re-deploy needs it. List each opening document that changed, moved or went missing on disk:
+  `git diff --no-renames --diff-filter=MD --name-only $(cat $X/base.txt) -- 'content/*.html'`. The guard sent none
+  of them. Name each in the report and leave it as it is. The owner settles that edit, and the pass never restores
+  it. Then `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's —
+  `replica handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail
+  "<n> pages delivered (x<N>), <total> live[; <n> older documents keep source links (relink-pending.txt)]"`. Only
+  then `rm content/.deploy-allow`, the last step of the pass. A pass that ends before Phase 5 (rejected, or 0 new
+  pages) never wrote a guard.

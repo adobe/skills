@@ -338,18 +338,20 @@ export function capturedFromState(state) {
  * Page records an interrupted run already wrote under <out>/pages/ (`{ slug, url, finalUrl }` each), merged into
  * a captured set from capturedFromState: their urls are captured and their slugs taken, so a resumed run neither
  * fetches them again nor writes over them. Returns the number of records added and lists them ({ slug, url }) in
- * `captured.recovered`. Pure (mutates `captured`).
+ * `captured.recovered`. A record whose slug the state already holds only adds its urls (a redirect's final url is an
+ * alias of that row, not a missing row). Pure (mutates `captured`).
  */
 export function addCapturedRecords(captured, records) {
   let n = 0;
   for (const r of records) {
+    const inState = Boolean(r?.slug) && captured.slugs.has(String(r.slug));
     if (r?.slug) captured.slugs.add(String(r.slug));
     let hit = false;
     for (const u of [r?.url, r?.finalUrl]) {
       if (!u) continue;
       try { const k = captureKey(normalizeUrl(u)); if (!captured.keys.has(k)) { captured.keys.add(k); captured.urls.push(normalizeUrl(u)); hit = true; } } catch { /* not a url */ }
     }
-    if (hit) { n += 1; (captured.recovered ||= []).push({ slug: r?.slug ?? null, url: r?.url ?? r?.finalUrl ?? null }); }
+    if (hit && !inState) { n += 1; (captured.recovered ||= []).push({ slug: r?.slug ?? null, url: r?.url ?? r?.finalUrl ?? null }); }
   }
   return n;
 }

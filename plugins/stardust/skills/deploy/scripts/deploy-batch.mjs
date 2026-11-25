@@ -63,10 +63,12 @@
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
  *
- * Publish guard: while <content>/.deploy-allow exists (replica's extend pass writes it,
- * `extend-roster.mjs publish`), only the documents it lists (web paths, one per line)
- * are sent, with or without --force. A --paths entry it does not list, or a guard that
- * cannot be read, exits 2 before any request. No guard file: nothing changes.
+ * Publish guard (publish-guard.mjs): while <content>/.deploy-allow exists (replica's
+ * extend pass writes it, `extend-roster.mjs publish`), only the documents it lists (web
+ * paths, one per line) are sent, with or without --force. A --paths entry it does not
+ * list exits 2 before any request, its file on disk or not. So does a missing guard
+ * while the ledger beside --content shows an open extend pass. No guard file and no
+ * open pass: nothing changes.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -88,6 +90,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
+import { publishGuard } from './publish-guard.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -297,21 +300,19 @@ async function main() {
     process.exit(TOKEN_EXIT);
   }
   let pages = await walkHtml(args.content);
-  if (args.paths) {
-    const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-      .map((p) => (p.startsWith('/') ? p : `/${p}`)));
-    pages = pages.filter((p) => want.has(p.webPath));
-  }
-  // The publish guard: read before any request, so a caller that forgets it cannot send an older document.
-  const guard = path.join(args.content, '.deploy-allow');
-  if (existsSync(guard)) {
-    const allow = new Set((await readFile(guard, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean));
-    const held = pages.filter((p) => !allow.has(p.webPath));
-    if (held.length && args.paths) {
-      throw new Error(`${guard} does not list ${held.map((p) => p.webPath).join(', ')} (named in --paths) — nothing was sent; an extend pass sends only its own documents`);
-    }
-    if (held.length) console.error(`[deploy-batch] ${guard}: ${held.length} document(s) it does not list are held — not sent`);
-    pages = pages.filter((p) => allow.has(p.webPath));
+  const want = args.paths && new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
+    .map((p) => (p.startsWith('/') ? p : `/${p}`)));
+  if (want) pages = pages.filter((p) => want.has(p.webPath));
+  // The publish guard, before any request: a caller that forgets it cannot send an older document. It throws when
+  // an extend pass is open and its guard is missing.
+  const guard = publishGuard(args.content);
+  if (guard) {
+    // the requested paths, not the files found: a path whose file is absent is still a request for an older document
+    const refused = want ? [...want].filter((p) => !guard.allow.has(p)) : [];
+    if (refused.length) throw new Error(`${guard.file} does not list ${refused.join(', ')} (named in --paths) — nothing was sent; an extend pass sends only its own documents`);
+    const held = pages.filter((p) => !guard.allow.has(p.webPath));
+    if (held.length) console.error(`[deploy-batch] ${guard.file}: ${held.length} document(s) it does not list are held — not sent`);
+    pages = pages.filter((p) => guard.allow.has(p.webPath));
   }
   const ledger = (!args.force && existsSync(args.ledger))
     ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};

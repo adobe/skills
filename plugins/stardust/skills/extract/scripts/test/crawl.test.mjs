@@ -398,6 +398,12 @@ check('captureKey / precheckPages: a `www.` prefix is one site and one page — 
   assert.deepEqual(r.offOrigin, []);
   assert.deepEqual(r.fresh, ['https://www.ex.test/visit/']);
 });
+check('addCapturedRecords: a record whose slug the state holds is not reported as missing — a redirect\'s final url is reserved as an alias of that row', () => {
+  const c = crawl.capturedFromState({ site: { originUrl: 'https://ex.test' }, pages: [{ slug: 'index', url: '/' }] });
+  assert.equal(crawl.addCapturedRecords(c, [{ slug: 'index', url: 'https://ex.test/', finalUrl: 'https://ex.test/en/' }]), 0);
+  assert.equal(c.recovered, undefined, 'nothing to add to state.json');
+  assert.ok(c.keys.has(crawl.captureKey('https://ex.test/en/')), 'the final url is still captured');
+});
 check('addCapturedRecords: records on disk add their urls and slugs, count only the new ones', () => {
   const c = crawl.capturedFromState(STATE);
   assert.equal(crawl.addCapturedRecords(c, [{ slug: 'visit', url: 'https://ex.test/visit/' }, { slug: 'about', url: 'https://ex.test/about' }, { slug: 'broken' }]), 1);

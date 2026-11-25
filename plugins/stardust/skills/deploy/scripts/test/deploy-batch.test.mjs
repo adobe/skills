@@ -196,6 +196,14 @@ await check('the publish guard: while <content>/.deploy-allow exists only the do
   assert.equal(listed.code, 2, listed.out + listed.err);
   assert.match(listed.err, /does not list \/old \(named in --paths\) — nothing was sent/);
   assert.equal(requests.length, from, 'no request at all');
+  // a requested path whose file is absent (a ledger-only footer) is still a request for an older document
+  writeFileSync(join(proj, 'site-guard.paths'), '/footer\n/new\n');
+  from = requests.length;
+  const absent = await run(['--content', 'site-guard', '--paths', 'site-guard.paths', '--force']);
+  assert.equal(absent.code, 2, absent.out + absent.err);
+  assert.match(absent.err, /does not list \/footer \(named in --paths\) — nothing was sent/);
+  assert.equal(requests.length, from, 'no request at all, the allowed /new included');
+  writeFileSync(join(proj, 'site-guard.paths'), '/old\n/new\n');
   writeFileSync(join(proj, 'site-guard', '.deploy-allow'), '');
   from = requests.length;
   assert.equal((await run(['--content', 'site-guard', '--force'])).code, 0);
@@ -204,6 +212,23 @@ await check('the publish guard: while <content>/.deploy-allow exists only the do
   from = requests.length;
   assert.equal((await run(['--content', 'site-guard', '--paths', 'site-guard.paths', '--force'])).code, 0);
   assert.deepEqual(requests.slice(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/new.html`, `${SRC}/old.html`], 'no guard: --paths as before');
+});
+
+await check('the publish guard fails closed: the ledger beside --content shows an open extend pass and the guard file is missing — exit 2, no request; a closed pass, or no ledger, changes nothing', async () => {
+  site('open-pass/content', ['old', 'new']);
+  const ledger = join(proj, 'open-pass', 'stardust', 'status.jsonl');
+  mkdirSync(dirname(ledger), { recursive: true });
+  const line = (o) => `${JSON.stringify({ skill: 'stardust:replica', ...o })}\n`;
+  writeFileSync(ledger, `${line({ phase: 'handoff', event: 'end' })}not json\n${line({ phase: 'extend', event: 'start', track: 'x1' })}${line({ phase: 'handoff', event: 'end', track: 'x1' })}`);
+  let from = requests.length;
+  const open = await run(['--content', 'open-pass/content', '--force']);
+  assert.equal(open.code, 2, open.out + open.err);
+  assert.match(open.err, /extend pass x1 is open .*and open-pass\/content\/\.deploy-allow is missing — nothing was sent or written/);
+  assert.equal(requests.length, from, 'no request at all');
+  writeFileSync(ledger, `${readFileSync(ledger, 'utf8')}${line({ phase: 'extend', event: 'end', track: 'x1' })}`);
+  from = requests.length;
+  assert.equal((await run(['--content', 'open-pass/content', '--force'])).code, 0);
+  assert.equal(requests.slice(from).filter((q) => q.method === 'PUT').length, 2, 'the pass is closed: as on main');
 });
 
 await check('--no-publish: PUT → preview → verify only, ledger `previewed`, no POST /live', async () => {
