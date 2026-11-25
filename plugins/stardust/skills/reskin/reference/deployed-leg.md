@@ -147,7 +147,7 @@ residual is never `accepted`.
 
 ## The fix budget
 
-One reconcile round per family on the preview: content (`content`, `inherited`), design (`tokens`, `parity`,
+Two reconcile rounds per family on the preview: content (`content`, `inherited`), design (`tokens`, `parity`,
 `sanity`), Figma fidelity. A round costs a push, a Code Sync, a re-preview and a propagation poll, so a fix re-runs
 only what it can move; what still fails afterwards is logged as a residual.
 

@@ -9,7 +9,7 @@ a file path (auto-converted to `file://`).
 
 Run order: content gate first (a design-adopted page with dropped
 content is worthless), then design adoption, then sanity, then (d),
-then (e) once the page is deployed. One fix iteration per gate family
+then (e) once the page is deployed. Two fix iterations per gate family
 (§ below); (e) has its own budget (`deployed-leg.md` § The fix budget).
 
 ## Install
@@ -524,14 +524,14 @@ fetches `.plain.html` without a browser.
   `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
 
-## One fix iteration per gate family, then residuals
+## Two fix iterations per gate family, then residuals
 
-The budget is **one fix iteration per gate family**: one for the
-content gate (dom-equality + slot-coverage), one for
+The budget is **two fix iterations per gate family**: two for the
+content gate (dom-equality + slot-coverage), two for
 design-adoption/sanity (donor-probe + overflow), and for a Figma donor
-one for (d) (B0, B1, B3 failures). On a failure: diagnose, fix once,
-**re-run every gate family** (a fix for one gate can break another).
-When a family's iteration is spent and it still fails, stop iterating
+two for (d) (B0, B1, B3 failures). On a failure: diagnose, fix, and
+**re-run every gate family** after each fix (a fix for one gate can break another).
+When a family's two iterations are spent and it still fails, stop iterating
 that family and log. On the preview each round costs a push and a Code
 Sync, so (e) re-runs a matrix instead (`deployed-leg.md`).
 
@@ -567,7 +567,7 @@ imposed (a page cap), named in the handoff like a user's opt-out.
 
 In a hands-off run (`state.json` `handsOff: true`) nobody can accept an
 owner-only residual, so a section still failing (d) `figma.join`,
-`figma.geometry` or `figma.ramp` after its fix iteration is remapped
+`figma.geometry` or `figma.ramp` after its two fix iterations is remapped
 instead of recorded `needs-owner`. No gate is lowered: each step renders the new mapping and
 re-runs every gate. A step is not a fix iteration.
 
@@ -590,7 +590,7 @@ A header or footer failing (d) takes the kit's other Header / Footer
 module if there is one, then a `chrome` row naming no module (`—`): the
 source's own header or footer, restyled with donor tokens.
 
-A section failing (a) after its fix iteration takes step 2 directly:
+A section failing (a) after its two fix iterations takes step 2 directly:
 the source's block, its text carried verbatim.
 
 What no section remap fixes takes a recorded fallback,

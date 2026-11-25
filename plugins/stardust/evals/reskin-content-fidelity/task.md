@@ -39,7 +39,7 @@ The stardust `reskin` skill is invoked. It:
    informational, shared normalization) + `slot-coverage.mjs` (every model
    slot present, metadata carried verbatim); design-adoption gate —
    `donor-probe.mjs` token assertions (selector-missing = FAIL) + overflow
-   sanity at 1440/360. One fix iteration, then residuals are logged.
+   sanity at 1440/360. Two fix iterations, then residuals are logged.
 6. Hands off to migrate (donor-pinned target, sibling tier) / deploy /
    rollout unchanged; reskin state stays under `stardust/reskin/`.
 

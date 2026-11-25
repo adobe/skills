@@ -40,7 +40,7 @@
     {
       "name": "iteration_discipline",
       "max_score": 5,
-      "description": "At most one fix iteration after measurement; remaining deltas land in the residual ledger rather than silently accepted."
+      "description": "At most two fix iterations per gate family after measurement; remaining deltas land in the residual ledger rather than silently accepted."
     },
     {
       "name": "standard_handoff_no_core_changes",

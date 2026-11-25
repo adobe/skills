@@ -259,7 +259,7 @@ a deployed page. Commands, pass bars, tolerances and failure modes:
   CLS and header checks stay mandatory. Recipe, delta file and budget:
   `reference/deployed-leg.md`.
 
-**One fix iteration per gate family** ((e) has its own budget), then
+**Two fix iterations per gate family** ((e) has its own budget), then
 re-run all gates. Failures left are `residuals[]`, never absorbed or
 looped on. **The ledger is written by script, never by hand:**
 `reskin-ledger.mjs record|eyeball|residual|step10|flag|delivery`

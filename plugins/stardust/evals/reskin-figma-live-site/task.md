@@ -36,7 +36,7 @@ The stardust `reskin` skill is invoked with a Figma donor
 4. **Runs the gates**: content (`dom-equality` + `slot-coverage`),
    design adoption (`donor-probe`, overflow at 1440/360) and Figma
    fidelity (`figma-gate all` with a checks file that has a mobile root
-   for every module with a mobile frame). One fix iteration, then
+   for every module with a mobile frame). Two fix iterations, then
    residuals.
 5. **Hands off to migrate** through the bridge (`canon-from-reskin`,
    `reskin-ledger`, `reskin-preflight` exit 0) and deploys to EDS: every
