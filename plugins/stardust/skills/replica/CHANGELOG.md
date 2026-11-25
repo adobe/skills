@@ -1,3 +1,10 @@
+## [1.8.5](https://github.com/adobe/skills/compare/replica-v1.8.4...replica-v1.8.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs one recorded unit per width, with a deadline sized to its roster ([#821](https://github.com/adobe/skills/issues/821)) ([d0e4c34](https://github.com/adobe/skills/commit/d0e4c34bbbc059de2eb9840064a0ad3f8b3e98cd))
+
 ## [1.8.4](https://github.com/adobe/skills/compare/replica-v1.8.3...replica-v1.8.4) (2026-11-24)
 
 

@@ -36,17 +36,48 @@ async function sitemapSite() {
   };
 }
 
-test('site scan prints the summary document', async () => {
+test('site scan prints grouped JSON and lists only selected URLs in text', async () => {
   const server = createServer((req, res) => {
     res.writeHead(req.url === '/sitemap.xml' ? 200 : 404);
-    res.end(`<urlset><url><loc>http://127.0.0.1:${server.address().port}/p</loc></url></urlset>`);
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    res.end(`<urlset xmlns:xhtml="http://www.w3.org/1999/xhtml">
+      <url><loc>${origin}/en/p</loc>
+        <xhtml:link rel="alternate" hreflang="x-default" href="${origin}/"/>
+        <xhtml:link rel="alternate" hreflang="fr" href="${origin}/fr/p"/>
+      </url>
+      <url><loc>${origin}/fr/p</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="${origin}/en/p"/>
+      </url>
+    </urlset>`);
   });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   try {
-    const { code, doc } = await run(['site', 'scan', `http://127.0.0.1:${server.address().port}`]);
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const args = ['site', 'scan', origin, '--exclude', '/fr/**'];
+    const { code, doc } = await run(args);
     assert.equal(code, 0);
     assert.equal(doc.valid, 1);
-    assert.equal(doc.urls[0].lang, '');
+    assert.equal(doc.total, 2);
+    assert.deepEqual(doc.urls, [
+      {
+        url: `${origin}/`,
+        variants: [
+          { lang: ['en'], url: `${origin}/en/p` },
+          { lang: ['fr'], url: `${origin}/fr/p` },
+        ],
+      },
+    ]);
+    assert.ok(!Object.hasOwn(doc, 'scannedUrls'));
+    const stdout = sink();
+    assert.equal(
+      await runCli(['node', 'web', '--format', 'text', ...args], {
+        stdout,
+        stderr: sink(),
+        env: {},
+      }),
+      0,
+    );
+    assert.equal(stdout.buf, `1 valid of 2 URLs\n${origin}/en/p\n`);
   } finally {
     server.close();
   }

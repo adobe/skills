@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.8](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.7...plugin/stardust/v0.46.8) (2026-11-25)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs one recorded unit per width, with a deadline sized to its roster ([#821](https://github.com/adobe/skills/issues/821)) ([d0e4c34](https://github.com/adobe/skills/commit/d0e4c34bbbc059de2eb9840064a0ad3f8b3e98cd))
+
 ## [0.46.7](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.6...plugin/stardust/v0.46.7) (2026-11-24)
 
 

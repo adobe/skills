@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/adobe/skills/compare/migrate-header-v1.0.4...migrate-header-v1.0.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* **deps:** update dependency pnpm to v12.22.0 ([#818](https://github.com/adobe/skills/issues/818)) ([6b9dd49](https://github.com/adobe/skills/commit/6b9dd4973671d5422f7d287a81dbc4790a5f8a6c))
+
 ## [1.0.4](https://github.com/adobe/skills/compare/migrate-header-v1.0.3...migrate-header-v1.0.4) (2026-11-20)
 
 
