@@ -8,7 +8,8 @@
 //            slot (slot-coverage), with the page's declared deltas. Blocking unless the delta file says otherwise.
 //   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
 //   parity   A3: the preview held to the local reskin page with replica's instruments (stitch-shot, pixel-compare,
-//            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking.
+//            crop-compare, chrome-parity, cap-probe) at 1440 and 360, and the source header's nav groups held to the
+//            preview's dropdowns (nav-depth). Blocking.
 //   sanity   A4: the hard asserts on the preview at 1440 and 360 (overflow, decoration, broken images, page errors,
 //            clip-probe, content-presence). Blocking and never waivable.
 //   inherited  A5: deploy's delivered-page gates on the preview: the .plain.html asserts, ai-readability, qa-gate; the
@@ -127,13 +128,23 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
+           nav-depth      the live source's header (<_provenance.url> of the content model, after networkidle) against
+                          the preview's (decoration settled). A source nav group is a top-level header item that owns a
+                          submenu: a <li> holding a nested list of links (or a panel of 3+ links), or a shown, labeled
+                          disclosure (aria-controls / aria-haspopup / <details>) whose panel holds 2+ links; the same
+                          label counts once. The preview's groups are its .nav-sections li holding a list (nav-drop).
+                          Fewer delivered groups than the source's is a FAIL, "source N nav groups, delivered M": a
+                          flat list of the group links does not satisfy it. A dropdown open at load (aria-expanded
+                          "true" or its submenu shown) is a FAIL. "n/a: the source header has no nav groups" (or no
+                          content model) is printed but not a row. Blocking. Writes nav-depth.json beside preview.json
+                          ({ row, sourceUrl, previewUrl, source, delivered }: each side's { count, labels, groups })
          A preview that answers HTTP 401 or 403 to this step's browser is exit 2 (a protected preview is out of
          scope), never rows. The step prints "PASS parity", or "FAIL parity" and one indented line per
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
-         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }], ignored? }), the captures and
-         diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
+         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }], ignored? }; without the
+         nav-depth row, which is in nav-depth.json), the captures and diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
          on a row in error (the rows measured stay in parity.json).
 sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: no delta file, no residual
          accepts a failure here. Reads preview.json (no record, or one with problems, is exit 2; a skipped
@@ -192,7 +203,7 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
          preview.json once: no record, or one with problems, is exit 2, before any step starts; a skipped leg is one "ADVISORY <step> not
          run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
-         tokens.json, parity.json, sanity.json, inherited.json and summary.json, so a stale file never feeds the
+         tokens.json, parity.json, nav-depth.json, sanity.json, inherited.json and summary.json, so a stale file never feeds the
          ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json,
          except a stalled decoration, "stalled decoration: <what>": the gate measured nothing because blocks of the
          preview never decorated, and that is the step's FAIL, "FAIL <step>: stalled decoration: <what>", with the
@@ -214,8 +225,10 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
            { _provenance, page, url, regime: "preview", originOverride?, steps: { <step>: { verdict, exit, detail } },
              codeStamp, ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
-           { regime: "preview", url, originOverride?, content, tokens, parity, sanity: { verdict, hard: true },
-             inherited, figma, codeStamp, invocation }
+           { regime: "preview", url, originOverride?, content, tokens, parity, chrome: { navDepth }, sanity: { verdict,
+             hard: true }, inherited, figma, codeStamp, invocation }
+         chrome.navDepth is parity's nav-depth row: "PASS", "FAIL source N nav groups, delivered M[, k open at load]",
+         "n/a: <why>", "ERROR (exit 124): <why>" or "not run: <why>"; a FAIL there is also a FAIL row of parity.
          codeStamp is sha256 (hex, first 16 characters) over the sorted relative paths and contents of the project
          root's blocks/, styles/, scripts/ (node_modules and .DS_Store ignored) and head.html, taken as the run starts.
          originOverride is preview.json's, { env: "DEPLOY_VERIFY_ORIGIN", origin }, and only when the measured origin
@@ -245,7 +258,7 @@ DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, nev
 
 Evidence, all under <dir>/.work/reskin/gates/<slug>/deployed/: preview.json (preview); content.json,
 content-dom-equality.md, content-slot-coverage.md; tokens.json, tokens-spec.json, tokens-probe.md,
-tokens-probe.json; parity.json, parity/, design.json; sanity.json, sanity/; inherited.json, inherited/;
+tokens-probe.json; parity.json, parity/, design.json, nav-depth.json; sanity.json, sanity/; inherited.json, inherited/;
 summary.json (all). The figma-gate child writes its own files under <dir>/.work/reskin/gates/<slug>/figma-preview/.
 The tracked input is <dir>/reskin/deltas/<slug>.json.
 
@@ -425,9 +438,12 @@ async function parityStep(ctx) {
   const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('parity', ctx);
   if (!preview) return 0;
-  const { runParity, parityLines } = await helper('parity');
-  const result = await runParity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  const [{ runParity, parityLines }, rows] = await Promise.all([helper('parity'), helper('rows')]);
+  const parity = await runParity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  const nav = await (ctx.runners?.navDepth ?? runNavDepth)({ dir, slug: opts.page, preview, env });
+  const result = withNavDepth(parity, nav, rows);
   for (const line of parityLines(result)) log(line);
+  if (nav.status === 'n/a') (ctx.warn ?? log)(`${nav.value} (nav-depth @${nav.width})`);
   return result.exit;
 }
 
@@ -451,11 +467,182 @@ async function inheritedStep(ctx) {
   return result.exit;
 }
 
+// ---- nav-depth: the source header's dropdown groups held to the delivered header's ---------------------------------------
+
+const NAV_WIDTH = 1440;
+const NAV_BAR = 'delivered groups ≥ source groups, closed at load';
+const NAV_TIMEOUT_MS = 60000;
+// A disclosure that opens the whole menu, a search, a language or account panel: never a nav group of its own.
+const NOT_A_GROUP = /\b(menu|navigation|nav|search|languages?|locale|country|region|account|log ?in|sign ?in|cart|basket)\b/i;
+
+// In the page, self-contained: the outermost <header> (else [role=banner], else the first <nav>) as a tree of
+// { t, cls, role, label, shown, expanded, links, trig, kids }; trig is a disclosure's panel (aria-controls,
+// aria-haspopup's next sibling, or a <details>): { links, nested, shown }.
+export const navTree = () => {
+  const root = [...document.querySelectorAll('header')].find((h) => !h.parentElement?.closest('header')) || document.querySelector('[role=banner]') || document.querySelector('nav');
+  if (!root) return null;
+  const LISTS = 'ul, ol, [role=menu], [role=menubar]';
+  const SKIP = new Set(['svg', 'script', 'style', 'template', 'noscript']);
+  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const s = getComputedStyle(el);
+    return s.visibility !== 'hidden' && Number(s.opacity) > 0;
+  };
+  const nested = (el) => [...el.querySelectorAll('li')].some((li) => [...li.querySelectorAll(LISTS)].some((l) => l.querySelector('a[href]')));
+  const labelOf = (el) => {
+    const own = [...el.querySelectorAll('a, button, summary, [role=button]')].find((x) => x.parentElement.closest(LISTS) === el.closest(LISTS));
+    if (own) return clean(own.getAttribute('aria-label') || own.textContent);
+    const c = el.cloneNode(true);
+    c.querySelectorAll(LISTS).forEach((x) => x.remove());
+    return clean(el.getAttribute('aria-label') || c.textContent);
+  };
+  const panelOf = (el) => {
+    if (el.tagName === 'DETAILS') return { el, open: el.open };
+    const popup = el.getAttribute('aria-haspopup');
+    const controls = el.getAttribute('aria-controls');
+    if (popup === 'dialog' || popup === 'false') return null;
+    const p = controls && (el.hasAttribute('aria-expanded') || popup) ? document.getElementById(controls.split(/\s+/)[0]) : popup ? el.nextElementSibling : null;
+    return p && p !== el ? { el: p, open: shown(p) } : null;
+  };
+  let budget = 4000;
+  const walk = (el) => {
+    budget -= 1;
+    const t = el.tagName.toLowerCase();
+    const panel = panelOf(el);
+    return {
+      t,
+      cls: typeof el.className === 'string' ? el.className : '',
+      role: el.getAttribute('role'),
+      label: t === 'li' ? labelOf(el) : panel ? clean(el.getAttribute('aria-label') || el.textContent) : null,
+      shown: shown(el),
+      expanded: el.getAttribute('aria-expanded'),
+      links: el.querySelectorAll('a[href]').length,
+      trig: panel ? { links: panel.el.querySelectorAll('a[href]').length, nested: nested(panel.el), shown: panel.open } : null,
+      kids: [...el.children].filter((k) => !SKIP.has(k.tagName.toLowerCase()) && budget > 0).map(walk),
+    };
+  };
+  return walk(root);
+};
+
+const isList = (n) => ['ul', 'ol'].includes(n.t) || ['menu', 'menubar'].includes(n.role);
+const anyBelow = (n, f) => n.kids.some((k) => f(k) || anyBelow(k, f));
+const subList = (n) => isList(n) && n.links > 0;
+// A list item that owns a submenu: a nested list of links, or a panel of three links or more without one.
+const groupItem = (n) => n.t === 'li' && (anyBelow(n, subList) || n.links >= 3);
+
+// The top-level nav groups of a navTree (null for none): { count, labels, groups: [{ label, open }] }. A list item that
+// owns a submenu is a group, the items nested in it are not; an unlabeled item that only wraps groups is looked into.
+// A rendered, labeled disclosure whose panel holds two links or more and no groups is one too. Groups with the same
+// label count once (a desktop and a mobile copy of the nav). eds scopes to the boilerplate's .nav-sections when present.
+// open: shown and aria-expanded="true", or its submenu shown.
+export function navGroups(tree, { eds = false } = {}) {
+  if (!tree) return null;
+  const find = (n) => ((n.cls ?? '').split(/\s+/).includes('nav-sections') ? n : n.kids.map(find).find(Boolean));
+  const found = [];
+  const walk = (n) => {
+    if (groupItem(n)) {
+      if (!n.label && anyBelow(n, groupItem)) n.kids.forEach(walk);
+      else found.push({ label: n.label ?? '', open: n.shown && (n.expanded === 'true' || anyBelow(n, (k) => subList(k) && k.shown)) });
+      return;
+    }
+    if (n.trig && n.label && n.shown && n.trig.links >= 2 && !n.trig.nested && !NOT_A_GROUP.test(n.label)) {
+      found.push({ label: n.label, open: n.expanded === 'true' || n.trig.shown });
+      return;
+    }
+    n.kids.forEach(walk);
+  };
+  walk((eds && find(tree)) || tree);
+  const byLabel = new Map();
+  found.forEach((g, i) => {
+    const key = g.label.toLowerCase() || `#${i}`;
+    const prior = byLabel.get(key);
+    byLabel.set(key, prior ? { ...prior, open: prior.open || g.open } : g);
+  });
+  const groups = [...byLabel.values()];
+  return { count: groups.length, labels: groups.map((g) => g.label || '(unlabeled)'), groups };
+}
+
+// The nav-depth row of parity from both headers' navTree (null: no header), or the error that kept them unread.
+export function navDepthRow({ source = null, delivered = null, error = null } = {}) {
+  const row = (status, value, detail = null) => ({ check: 'nav-depth', width: NAV_WIDTH, value, bar: NAV_BAR, status, artifact: null, detail });
+  if (error) return row('ERROR', 'ERROR (exit 124)', error);
+  const src = navGroups(source);
+  if (!src?.count) return row('n/a', `n/a: the source ${src ? 'header has no nav groups' : 'page has no header'}`);
+  const del = navGroups(delivered, { eds: true }) ?? { count: 0, labels: [], groups: [] };
+  const open = del.groups.filter((g) => g.open);
+  const problems = [];
+  if (del.count < src.count) {
+    problems.push(`the source header has ${src.count} nav groups (${src.labels.join(', ')}), the delivered header ${delivered ? del.count : 'none (no <header>)'}${del.count ? ` (${del.labels.join(', ')})` : ''}: a flat list of the group links does not satisfy it, each group needs its own dropdown (.nav-sections li > ul)`);
+  }
+  if (open.length) problems.push(`${open.length} dropdown(s) open at load @${NAV_WIDTH} (${open.map((g) => g.label || '(unlabeled)').join(', ')}): a dropdown is closed by default (aria-expanded="false", its submenu hidden)`);
+  const value = `source ${src.count} nav groups, delivered ${del.count}${open.length ? `, ${open.length} open at load` : ''}`;
+  return problems.length ? row('FAIL', value, problems.join('\n')) : row('PASS', value);
+}
+
+// The row's value in the ledger fragment, chrome.navDepth.
+export function navDepthLedger(r) {
+  if (r.status === 'PASS') return 'PASS';
+  if (r.status === 'FAIL') return `FAIL ${r.value}`;
+  if (r.status === 'ERROR') return `ERROR (exit 124): ${r.detail}`;
+  return r.value;
+}
+
+// parity's result with the nav-depth row among its rows (an n/a row stays out: it is recorded in chrome.navDepth).
+export function withNavDepth(result, navRow, { verdictOf, EXIT }) {
+  if (navRow.status === 'n/a') return result;
+  const rows = [...result.rows, navRow];
+  const verdict = verdictOf(rows);
+  return { ...result, rows, verdict, exit: EXIT[verdict] };
+}
+
+// Both headers at 1440: the live source (the content model's _provenance.url) after networkidle, the preview once its
+// decoration settled.
+async function measureNav({ sourceUrl, previewUrl }) {
+  const { edsSettle, loadLiveSession } = await helper('eds');
+  const { goto, gotoLive, newLiveContext, openBrowser } = await loadLiveSession();
+  const browser = await openBrowser({ mode: 'plain' });
+  const read = async (url, eds) => {
+    const ctx = await newLiveContext(browser, { viewport: { width: NAV_WIDTH, height: 900 }, ...(eds ? {} : { stateUrl: url }) });
+    try {
+      const page = await ctx.newPage();
+      if (eds) {
+        const response = await goto(page, url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+        if (response && response.status() >= 400) throw new Error(`HTTP ${response.status()} at ${url}`);
+        await edsSettle(page, { timeoutMs: 20000 });
+      } else await gotoLive(page, url, { waitUntil: 'networkidle', timeoutMs: NAV_TIMEOUT_MS, settleMs: 0 });
+      return await page.evaluate(navTree);
+    } finally { await ctx.close(); }
+  };
+  try { return { source: await read(sourceUrl, false), delivered: await read(previewUrl, true) }; } finally { await browser.close(); }
+}
+
+// The nav-depth row of a page, written to <deployed>/nav-depth.json with the groups each side counts. A bot challenge on
+// the source throws code 3; any other failure to read a page is the row's ERROR.
+export async function runNavDepth({ dir, slug, preview, measure = measureNav }) {
+  const [{ deployedDir }, { readJsonIf, writeJson }, { coded }] = await Promise.all([helper('io'), helper('io', 'figma'), helper('child')]);
+  const file = join(deployedDir(dir, slug), 'nav-depth.json');
+  rmSync(file, { force: true });
+  let model = null;
+  try { model = readJsonIf(join(dir, 'reskin', 'content-model', slug, 'content-model.json')); } catch { /* unreadable: no source, below */ }
+  const sourceUrl = model?._provenance?.url;
+  if (typeof sourceUrl !== 'string' || !sourceUrl.trim()) return { ...navDepthRow({}), value: 'n/a: no content model _provenance.url: the source page is unknown' };
+  let trees;
+  try { trees = await measure({ sourceUrl, previewUrl: preview.url }); } catch (e) {
+    if (e?.name === 'BotChallengeError' || e?.code === 3) throw coded(3, `nav-depth: ${e.message}`);
+    trees = { error: String(e?.message ?? e).split('\n')[0] || 'the pages could not be read' };
+  }
+  const r = { ...navDepthRow(trees), artifact: file };
+  writeJson(file, { row: r, sourceUrl, previewUrl: preview.url, source: navGroups(trees.source ?? null), delivered: navGroups(trees.delivered ?? null, { eds: true }) });
+  return r;
+}
+
 // ---- all: the whole leg in one run ---------------------------------------------------------------------------------------
 
 const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'figma'];
 // What a previous run left: the step records and the summary built from them (each step deletes its own evidence).
-const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json'];
+const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'nav-depth.json', 'sanity.json', 'inherited.json', 'summary.json'];
 const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
 const ERROR_LINE = /^ERROR \(exit \d+\) /;
 const MAX_WHY = 300;
@@ -587,16 +774,25 @@ async function allStep(ctx) {
   const stamp = codeStamp(dirname(resolve(dir)));
 
   let run = {};
+  let navDepth = null;
   if (!preview.skipped) {
-    const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }] = await Promise.all([
-      helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'),
+    const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }, rowsLib] = await Promise.all([
+      helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'), helper('rows'),
     ]);
     const base = { dir, slug, preview, env };
     const withPage = { ...base, reskinPage: opts.reskin };
     run = {
       content: async () => contentOutcome(await (runners.content ?? runContent)(base)),
       tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(base)),
-      parity: async () => { const r = await (runners.parity ?? runParity)(withPage); return rowsOutcome('parity', r, parityLines(r)); },
+      parity: async () => {
+        const r = await (runners.parity ?? runParity)(withPage);
+        const nav = await (runners.navDepth ?? runNavDepth)(base);
+        navDepth = navDepthLedger(nav);
+        const merged = withNavDepth(r, nav, rowsLib);
+        const outcome = rowsOutcome('parity', merged, parityLines(merged));
+        if (nav.status === 'n/a') outcome.detail.push(`  ${nav.value} (nav-depth @${nav.width})`);
+        return outcome;
+      },
       sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
       inherited: async () => { const r = await (runners.inherited ?? runInherited)(base); return rowsOutcome('inherited', r, inheritedLines(r)); },
       figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError, waiverBudget: opts['waiver-budget'] }),
@@ -634,8 +830,10 @@ async function allStep(ctx) {
   const invocation = invocationOf(argv);
   const url = preview.url ?? null;
   const override = preview.originOverride ? { originOverride: preview.originOverride } : {};
-  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, figma: ledger.figma, codeStamp: stamp, invocation };
-  const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json'].filter((f) => existsSync(join(deployed, f)));
+  // parity's nav-depth row, or why it was not measured (the parity step did not run, or ended before it).
+  const chrome = { navDepth: navDepth ?? (/^not run/.test(ledger.parity) ? ledger.parity : `not run: parity ${ledger.parity}`) };
+  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, chrome, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, figma: ledger.figma, codeStamp: stamp, invocation };
+  const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'nav-depth.json', 'sanity.json', 'inherited.json'].filter((f) => existsSync(join(deployed, f)));
   const summary = {
     _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
     page: slug, url, regime: 'preview', ...override, steps: recorded, codeStamp: stamp, ledgerFragment, invocation,

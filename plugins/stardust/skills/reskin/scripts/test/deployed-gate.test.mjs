@@ -650,7 +650,7 @@ await check('all: content, tokens, parity, sanity, inherited, then figma-gate as
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), STEPS.map(() => ['PASS', 0]));
   assert.equal(s.invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)}`);
   assert.deepEqual(s.ledgerFragment, {
-    regime: 'preview', url: ALL_URL, content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', figma: FRAGMENT, codeStamp: codeStamp(root), invocation: s.invocation,
+    regime: 'preview', url: ALL_URL, content: 'PASS', tokens: 'PASS', parity: 'PASS', chrome: { navDepth: 'n/a: no content model _provenance.url: the source page is unknown' }, sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', figma: FRAGMENT, codeStamp: codeStamp(root), invocation: s.invocation,
   });
   assert.equal(s.codeStamp, codeStamp(root));
   assert.match(s.codeStamp, /^[0-9a-f]{16}$/);
@@ -876,7 +876,7 @@ await check('all: a step whose gate stalls on the decoration is that step\'s FAI
   const s = summaryAt(root);
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), [['FAIL', 1], ['FAIL', 1], ['PASS', 0], ['FAIL', 1], ['PASS', 0], ['FAIL', 1]]);
   assert.deepEqual(s.ledgerFragment, {
-    regime: 'preview', url: ALL_URL, content: 'FAIL stalled decoration: block cards', tokens: 'FAIL stalled decoration: block cards', parity: 'PASS', sanity: { verdict: 'FAIL 1/2', hard: true },
+    regime: 'preview', url: ALL_URL, content: 'FAIL stalled decoration: block cards', tokens: 'FAIL stalled decoration: block cards', parity: 'PASS', chrome: { navDepth: 'n/a: no content model _provenance.url: the source page is unknown' }, sanity: { verdict: 'FAIL 1/2', hard: true },
     inherited: 'PASS', figma: 'FAIL stalled decoration: block cards, block hero', codeStamp: codeStamp(root), invocation: s.invocation,
   });
 
@@ -949,7 +949,7 @@ await check('all: a skipped preview is every step "not run: skipped", figma incl
   assert.ok(r.lines.some((l) => /not an aem-boilerplate project/.test(l)), 'the reason is shown');
   const s = summaryAt(root);
   assert.deepEqual(s.ledgerFragment, {
-    regime: 'preview', url: null, content: 'not run: skipped', tokens: 'not run: skipped', parity: 'not run: skipped', sanity: { verdict: 'not run: skipped', hard: true }, inherited: 'not run: skipped', figma: 'not run: skipped', codeStamp: codeStamp(root), invocation: s.invocation,
+    regime: 'preview', url: null, content: 'not run: skipped', tokens: 'not run: skipped', parity: 'not run: skipped', chrome: { navDepth: 'not run: skipped' }, sanity: { verdict: 'not run: skipped', hard: true }, inherited: 'not run: skipped', figma: 'not run: skipped', codeStamp: codeStamp(root), invocation: s.invocation,
   });
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), STEPS.map(() => ['not run: skipped', null]));
 });
@@ -1119,12 +1119,12 @@ if (playwrightOk) {
       assert.equal(qa?.status, 'PASS', JSON.stringify(qa));
       assert.match(readFileSync(join(out, 'inherited', 'qa-gate.txt'), 'utf8'), /^QA GATE: PASS — /m, 'qa-gate\'s measurement receipt is kept');
       assert.deepEqual(s.ledgerFragment, {
-        regime: 'preview', url: `${server.origin}/ns/home`, originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), figma: 'not run: no figma checks', codeStamp: codeStamp(root), invocation: s.invocation,
+        regime: 'preview', url: `${server.origin}/ns/home`, originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), chrome: { navDepth: 'n/a: the source header has no nav groups' }, sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), figma: 'not run: no figma checks', codeStamp: codeStamp(root), invocation: s.invocation,
       });
       assert.equal(s.invocation, `deployed-gate.mjs all --page home --reskin ${reskin}`);
       for (const f of ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json']) assert.ok(existsSync(join(out, f)), f);
       assert.equal(read(out, 'sanity.json').hard, true);
-      assert.deepEqual(s._provenance.readArtifacts, ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json']);
+      assert.deepEqual(s._provenance.readArtifacts, ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'nav-depth.json', 'sanity.json', 'inherited.json']);
     } finally { await server.close(); await source.close(); }
   });
 

@@ -2,7 +2,7 @@
 // skills/rollout/scripts/test/done-check.test.mjs — the completion verdict of done-check.mjs: each gap fires
 // on its own condition and only then (unfinished rows, failed rows and failed gate rows, delivered rows the
 // live host does not serve, open P1 findings the optimize gate would count, a rollout whose last I-dashboard
-// line is not an `end`, delivered pages without a published DA library); a clean run is complete; the live probe keeps input order and treats non-200 and
+// line is not an `end`, delivered pages without a published DA library, source URL forms the live host 404s); a clean run is complete; the live probe keeps input order and treats non-200 and
 // network errors as not live; a migration project's header must be proven (header_parity: contract, comparison,
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
 // probe runs against a stub fetch. --help writes nothing.
@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readGateTables, readWideTables, rolloutEnded, unitsAdvisories, wideAdvisories } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, probeSourceForms, readGateTables, readWideTables, rolloutEnded, sourceUrlForms, unitsAdvisories, wideAdvisories } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, libraryGap, publicUrl } from '../lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -135,6 +135,33 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
   const missing = await probeLive('main--site--org.aem.live', ['/', '/boom', '/ok', '/gone', '/moved'], { fetchImpl, concurrency: 2 });
   assert.deepEqual(missing, ['/boom', '/gone', '/moved']);
   assert.ok(seen.every(([u, m]) => u.startsWith('https://main--site--org.aem.live/') && m === 'HEAD'));
+});
+
+// --- source URL forms (stub fetch) ----------------------------------------------------------------
+const sourced = (slug, path, sourceUrl, status = 'verified') => ({ ...row(slug, path, status), source: { sourceUrl } });
+check('the source URL forms: the source path as written, its no-slash and trailing-slash forms; .html only when the source used it', () => {
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a')), ['/a', '/a/']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/?x=1')), ['/a/', '/a']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a.html')), ['/a.html', '/a', '/a/']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/index.html')), ['/a/index.html', '/a', '/a/']);
+  assert.deepEqual(sourceUrlForms(sourced('home', '/', 'https://src.test/')), ['/']);
+  assert.deepEqual(sourceUrlForms(row('b', '/b', 'verified')), ['/b', '/b/'], 'no sourceUrl: the row path');
+});
+
+check('source_url_404: /a 404 while /a/ answers 200 is a gap; a 301 is ok; only delivered rows are probed, HEAD without following', async () => {
+  const seen = [];
+  const served = { '/what-is-evh': 404, '/what-is-evh/': 200, '/moved': 301, '/moved/': 200, '/b': 308, '/b/': 200, '/c.html': 500, '/c': 200, '/c/': 200 };
+  const fetchImpl = async (url, opts) => { seen.push([new URL(url).pathname, opts.method, opts.redirect]); return { status: served[new URL(url).pathname] ?? 404 }; };
+  const pages = [sourced('evh', '/what-is-evh', 'https://src.test/what-is-evh'), sourced('m', '/moved', 'https://src.test/moved'), sourced('b', '/b', 'https://src.test/b/'), sourced('c', '/c', 'https://src.test/c.html'), sourced('p', '/p', 'https://src.test/p', 'pending')];
+  const failing = await probeSourceForms('https://main--site--org.aem.live/', pages, { fetchImpl, concurrency: 3 });
+  assert.deepEqual(failing, ['/what-is-evh', '/c.html']);
+  assert.ok(seen.every(([, m, r]) => m === 'HEAD' && r === 'manual'));
+  assert.ok(!seen.some(([p]) => p.startsWith('/p')), 'a pending row is not probed');
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], sourceUrl404: failing, library: null });
+  assert.deepEqual(v.gaps, ['source_url_404:2: /what-is-evh, /c.html']);
+  assert.equal(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], sourceUrl404: [], library: null }).complete, true);
+  const ordered = doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: ['/x/'], sourceUrl404: ['/x'], library: null }).gaps;
+  assert.deepEqual(ordered, ['pages_not_live:1: /x/', 'source_url_404:1: /x', 'rollout_incomplete'], 'right after pages_not_live');
 });
 
 // --- CLI ------------------------------------------------------------------------------------------

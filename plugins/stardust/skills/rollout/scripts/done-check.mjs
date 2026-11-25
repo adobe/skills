@@ -9,13 +9,17 @@
  *   --out        rollout dir (default stardust/rollout): coverage/pages.json, optimize/findings.json, rollout.json
  *   --ledger     run-status ledger (default stardust/status.jsonl)
  *   --live-host  aem.live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost)
- *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so
+ *   --offline    skip the live probe; pages_not_live and source_url_404 are not checked and the verdict says so
  *   --json       print { complete, gaps[], liveChecked } instead of one line per gap
  *
  * Gaps, one per line in this order; complete = none:
  *   pages_unfinished:N             coverage rows not yet verified (pending, content-pending, converting, deployed, stale)
  *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false
  *   pages_not_live:N: <paths>      deployed or verified rows that do not answer 200 on the live host
+ *   source_url_404:N: <paths>      the source's URL forms of a deployed or verified row (source.sourceUrl's path as the
+ *                                  source wrote it, else the row's path; its no-slash and trailing-slash forms; `.html`
+ *                                  only when the source used it) that the live host answers with neither 200 nor a 3xx
+ *                                  redirect (HEAD, not followed): a link or bookmark to the old URL 404s
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -101,13 +105,15 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
 }
 
 /** `library` is the library gap (lib.mjs libraryGap) or null; it counts only once a page is delivered. */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, library = null }) {
+/** `sourceUrl404` is the list of source URL forms the live host does not answer (probeSourceForms), or null when not probed. */
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, sourceUrl404 = null, header = null, library = null }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
   const failed = pages.filter((p) => statusOf(p) === 'failed' || (p.delivery && p.delivery.gate && p.delivery.gate.pass === false));
   if (failed.length) gaps.push(`pages_failed:${failed.length}: ${listed(failed.map(pathOf))}`);
   if (notLive && notLive.length) gaps.push(`pages_not_live:${notLive.length}: ${listed(notLive)}`);
+  if (sourceUrl404 && sourceUrl404.length) gaps.push(`source_url_404:${sourceUrl404.length}: ${listed(sourceUrl404)}`);
   const p1 = openP1(findings);
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
@@ -175,6 +181,37 @@ export async function probeLive(host, paths, { fetchImpl = fetch, concurrency = 
   return paths.filter((p) => missing.includes(p)); // input order, not completion order
 }
 
+/**
+ * The URL forms a row's source address may be reached by: the source's path as written (`/a`, `/a/`, `/a.html`,
+ * `/a/index.html`), then its no-slash and trailing-slash forms. `.html` stays only when the source used it.
+ */
+export function sourceUrlForms(page) {
+  const raw = (page.source && page.source.sourceUrl) || pathOf(page);
+  let path;
+  try { path = new URL(raw, 'https://source.invalid').pathname; } catch { path = pathOf(page); }
+  const base = path.replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+  const bare = base.replace(/\/+$/, '') || '/';
+  return [...new Set([path, bare, bare === '/' ? '/' : `${bare}/`])];
+}
+
+/** HEAD every source URL form of the delivered rows on the live host; returns the forms answering neither 200 nor 3xx. */
+export async function probeSourceForms(host, pages, { fetchImpl = fetch, concurrency = 8 } = {}) {
+  const origin = /^https?:\/\//.test(host) ? host.replace(/\/$/, '') : `https://${host}`;
+  const paths = [...new Set(pages.filter((p) => DELIVERED.has(statusOf(p))).flatMap(sourceUrlForms))];
+  const failing = new Set();
+  let next = 0;
+  async function worker() {
+    while (next < paths.length) {
+      const path = paths[next]; next += 1;
+      let status = 0;
+      try { status = (await fetchImpl(`${origin}${path}`, { method: 'HEAD', redirect: 'manual' })).status; } catch { status = 0; }
+      if (!(status === 200 || (status >= 300 && status < 400))) failing.add(path);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, paths.length) }, worker));
+  return paths.filter((p) => failing.has(p));
+}
+
 export function readLedger(path) {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } });
@@ -204,12 +241,13 @@ async function main() {
   const pages = pagesDoc.pages || [];
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
+  const sourceUrl404 = OFFLINE ? null : await probeSourceForms(host, pages);
   const chrome = arg('chrome', 'stardust/chrome');
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host, decisions: (readJSON(join(chrome, 'header-decisions.json'), {}) || {}).decisions || [] });
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
-  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library });
+  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, sourceUrl404, header, library });
   const GATES = arg('gates', 'stardust/replica/gates');
   const advisories = [...wideAdvisories(readWideTables(GATES)), ...unitsAdvisories(readGateTables(GATES))];
 
