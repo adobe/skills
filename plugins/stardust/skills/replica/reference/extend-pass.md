@@ -43,9 +43,11 @@ settle), so every tracked document's opening bytes are the opening commit's, rec
 it. The `extend start` line carries the request and that commit, so a session that ends mid-opening loses neither.
 Everything the pass keeps under `$X` is committed with the checkpoints; a shallow clone of the last checkpoint
 resumes it. A site whose ledgers predate digests (live rows without `sha256`) first runs `deploy-batch.mjs --adopt
---ledger <it>` once per ledger, with its usual flags: read-only on DA, it records a digest only where DA holds the
-local bytes exactly; a row it cannot match stays `live-unverified` — a link target, but held from approval and from
-the library tree.
+--ledger <it>` once per ledger, with its usual flags: read-only, it records a digest only where DA's source is the
+local bytes AND the admin status shows the live page published from that source since; a row it cannot prove stays
+`live-unverified` — a link target, but held from approval and from the library tree. `inventory` also writes
+`$X/reserved.paths`: every DA document a ledger records live, its file in the checkout or not — no pass output may
+take one.
 
 ```bash
 L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/foundation-freeze.mjs"
@@ -128,8 +130,8 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
 script already skips what is delivered. **The publish list:** a unit whose pages rendered records the exact files it
-wrote, `$R output --pass $X --files <them>` (one file per roster page; an older document, a second file for one page
-or a non-roster file is refused). `$R publish --pass $X`, run again before each deploy, writes `$X/publish.paths`:
+wrote, `$R output --pass $X --unit <unit> --files <them>`, in its own `$X/outputs/<unit>.paths` (one file per roster
+page; an older or reserved document, a second file for one page or a non-roster file is refused). `$R publish --pass $X`, run again before each deploy, writes `$X/publish.paths`:
 those outputs plus `$X/also.paths` (a fragment the pages need, written there by the unit that creates it). Any other
 new document — an owner's draft, a file at a roster page whose capture or render failed — is held and named. It also
 writes `$X/targets.paths`: every opening document with a live row, plus the publish list. Every `deploy-batch.mjs`
@@ -159,13 +161,13 @@ approved revision, below; a finding on one is reported.
   are the only evidence of what it changed — each names the bytes that run read and wrote, so concurrent clusters
   never share a record. `$R relink-status --pass $X` names each older document a receipt covers:
   - `candidate` — the localizer's own edit and nothing else, measured against the document's last published bytes
-    (the opening commit's blob when a ledger digest shows those bytes live, or a landed approved revision). Show
+    (the committed copy — any pass's opening blob or approved revision — whose digest the newest live row records). Show
     the owner the exact list and say that a re-PUT replaces the DA document, so an edit made in DA since delivery is
     lost.
   - `conflict` — an edit before or after the localizer's runs, or changes other than links (the owner's work):
     held, the file kept exactly as it is, named to the owner.
-  - `held` — no known published bytes: git-ignored, never published, a live row without a digest, another version
-    published last (or left held by an earlier pass), or a clone without the opening commit (the line names the `git
+  - `held` — no known published bytes: git-ignored, never published, a newest live row without a digest, a version
+    whose bytes are in no commit, or a clone without the opening commit (the line names the `git
     fetch` that brings it).
 
   Approved candidates: `$R relink-approve --pass $X --files <them>` freezes the bytes it classified in
@@ -190,15 +192,16 @@ approved revision, below; a finding on one is reported.
   `$X/redrive.paths` every document of the publish list whose bytes are not its newest verified delivery in any
   ledger — a page a later cluster's localizer changed after its PUT, a C-archetype representative a sibling's run
   relinked, a declared fragment never sent — and `deploy-batch.mjs --paths $X/redrive.paths --allow
-  $X/publish.paths --ledger stardust/deploy/ledger-x<N>-reconcile.json`; the relinked older pages, above; then the
+  $X/publish.paths --force --ledger stardust/deploy/ledger-x<N>-reconcile.json` (`--force`: a plain re-run skips
+  a page its ledger reads live and the origin serves; a resume runs `reconcile` again first); the relinked older pages, above; then the
   final units
   exactly as `handoff-contract.md` § 3, row C (C-final), names them, each name suffixed: `gate-all-1440-x<N>`,
   `gate-all-360-x<N>`, `gate-all-wide-x<N>`, then `update-coverage.mjs --gate` per width. Over every delivered page
   with `--skip-existing`, the new pages are gated, and an earlier page too when an input of its reuse key changed
   (#793); the others' verdicts are reused, and each summary stays complete.
 - **The library refresh** (`done-check.mjs`'s `library_missing` remedy) reads delivered bytes, never working files: `LIB=$(mktemp
-  -d)/library-src; $R published --pass $X --out $LIB` writes each document at its verified digest, its landed
-  approved revision or its opening blob, and names the rest withheld; then `da-library.mjs --content $LIB`. It exits 1 while a delivered page is withheld (a conflict's published bytes missing, a pass page
+  -d)/library-src; $R published --pass $X --out $LIB` writes each document at the bytes its newest live row's digest
+  names (the working file or any pass's committed copy), and names the rest withheld; then `da-library.mjs --content $LIB`. It exits 1 while a delivered page is withheld (a conflict's published bytes missing, a pass page
   not delivered as it is): close that first, or a `blocked` line names it.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
 - **F–I** as in a first pass, except G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level

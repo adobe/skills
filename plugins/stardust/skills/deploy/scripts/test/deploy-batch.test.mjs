@@ -44,6 +44,7 @@ const count = { put: {}, preview: {}, live: {}, verify: {} };
 const bump = (kind, p) => { count[kind][p] = (count[kind][p] || 0) + 1; return count[kind][p]; };
 const putOk = new Set(); // pages whose fragment landed: the delivered origin answers 200 for these only
 const stored = new Map(); // the bytes each PUT sent: the source GET answers with them
+const statusOf = new Map(); // admin status per page: { edit: { lastModified }, live: { sourceLastModified } }
 function parseMultipart(body, contentType) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType || ''); if (!m) return [];
   const delim = Buffer.from(`--${m[1] || m[2]}`);
@@ -99,6 +100,11 @@ const server = createServer((req, res) => {
       if (/burst-live$/.test(p) && n <= 2) return reply(401, '');
       if (!valid) return reply(401, 'bad token');
       return reply(200, '{}', { 'content-type': 'application/json' });
+    }
+    if (req.method === 'GET' && url.startsWith(`/status/${ORG}/${REPO}/${BRANCH}/`)) {
+      if (!valid) return reply(401, '');
+      const p = url.slice(`/status/${ORG}/${REPO}/${BRANCH}`.length);
+      return statusOf.has(p) ? reply(200, JSON.stringify(statusOf.get(p)), { 'content-type': 'application/json' }) : reply(404, '');
     }
     if (req.method === 'GET' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
       if (!valid) return reply(401, '');
@@ -256,7 +262,7 @@ await check('composition: the list `extend-roster.mjs publish` writes, fed to --
   site('pass-x/content', ['visit/index', 'nav.html', 'draft', 'missing']);   // missing.html: a draft where a failed capture's page would go
   writeFileSync(join(px, 'content', 'nav.htm'), '<nav>no document</nav>');
   writeFileSync(join(px, 'content', 'nav.html'), '<nav>relinked locally</nav>');
-  const out = spawnSync(process.execPath, [ROSTER, 'output', '--pass', 'x1', '--files', 'visit/index.html'], { cwd: px, encoding: 'utf8' });
+  const out = spawnSync(process.execPath, [ROSTER, 'output', '--pass', 'x1', '--unit', 'c-visit', '--files', 'visit/index.html'], { cwd: px, encoding: 'utf8' });
   assert.equal(out.status, 0, out.stderr);
   const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
   assert.equal(pub.status, 0, pub.stderr);
@@ -280,50 +286,72 @@ await check('a --paths entry is resolved against the documents: `/changelog.html
   assert.match(r.err, /--paths: \/missing names no document under site-lit/);
   assert.match(r.err, /1 --paths entry names no document — not deployed/);
 });
-await check('a page the ledger reads live is driven again when its file changed since its PUT (a later relink); unchanged pages stay skipped', async () => {
+await check('a retry re-drives failures only, as on main: a live page whose file changed since is skipped (its ledger still records the digests); --force --paths drives exactly the listed page', async () => {
   site('site-chg', ['a', 'b']);
   assert.equal((await run(['--content', 'site-chg'])).code, 0);
-  assert.match(ledgerOf('site-chg')['/a'].sha256, /^[0-9a-f]{64}$/, 'the PUT bytes recorded');
+  assert.match(ledgerOf('site-chg')['/a'].sha256, /^[0-9a-f]{64}$/, 'the verified bytes recorded');
+  assert.equal(ledgerOf('site-chg')['/a'].putSha256, ledgerOf('site-chg')['/a'].sha256);
   writeFileSync(join(proj, 'site-chg', 'a.html'), '<div><p>relinked</p></div>\n');
-  const from = requests.length;
+  let from = requests.length;
   const r = await run(['--content', 'site-chg']);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.err, /2 pages, 1 already live, 1 to drive \(1 changed since their PUT\)/);
+  assert.match(r.err, /2 pages, 2 already live, 0 to drive/);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT'), [], 'an ordinary retry sends no local edit');
+  writeFileSync(join(proj, 'site-chg.redrive'), '/a.html\n');
+  from = requests.length;
+  const f = await run(['--content', 'site-chg', '--paths', 'site-chg.redrive', '--force']);
+  assert.equal(f.code, 0, f.out + f.err);
   assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/a.html`]);
 });
-await check('a token halt on live during a changed-page re-drive never marks the new bytes live: the retry drives it again (PUT, preview, live), not a GET on the old version', async () => {
+await check('a token halt on live during a forced re-drive never marks the new bytes live: the same command drives it again (PUT, preview, live), not a GET on the old version', async () => {
   site('site-th', ['p-dead-live']);
   assert.equal((await run(['--content', 'site-th'], { token: FRESH_TOKEN })).code, 0, 'v1 live with a fresh token');
   const v1 = ledgerOf('site-th')['/p-dead-live'].sha256;
   writeFileSync(join(proj, 'site-th', 'p-dead-live.html'), '<div><p>v2</p></div>\n');
-  const halted = await run(['--content', 'site-th', '--retries', '0']);   // PUT + preview pass, live answers 401
+  writeFileSync(join(proj, 'site-th.redrive'), '/p-dead-live\n');
+  const halted = await run(['--content', 'site-th', '--paths', 'site-th.redrive', '--force', '--retries', '0']);   // PUT + preview pass, live answers 401
   assert.equal(halted.code, 3, halted.out + halted.err);
   const rec = ledgerOf('site-th')['/p-dead-live'];
-  assert.equal(rec.sha256, v1, 'the verified digest is still v1');
-  assert.notEqual(rec.putSha256, v1, 'v2 was sent');
+  assert.notEqual(rec.sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 is not recorded as verified');
+  assert.equal(rec.putSha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 was sent');
+  assert.ok(v1);
   const from = requests.length;
-  const retry = await run(['--content', 'site-th'], { token: FRESH_TOKEN });
+  const retry = await run(['--content', 'site-th', '--paths', 'site-th.redrive', '--force'], { token: FRESH_TOKEN });
   assert.equal(retry.code, 0, retry.out + retry.err);
-  assert.match(retry.err, /1 to drive \(1 changed since their PUT\)/);
   assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
-  assert.notEqual(ledgerOf('site-th')['/p-dead-live'].sha256, v1);
+  assert.equal(ledgerOf('site-th')['/p-dead-live'].sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'));
 });
-await check('--adopt: a live row without a sha256 gets one only when DA\'s source holds exactly the local bytes; nothing is PUT or published', async () => {
-  site('site-ad', ['p-a', 'p-b']);
+await check('--adopt: a digest is recorded only when DA\'s source is the local bytes AND the admin status shows the live page published from that source; a source-only match (a draft in DA) is kept apart as sourceSha256; nothing is PUT or published', async () => {
+  site('site-ad', ['p-a', 'p-b', 'p-c']);
   assert.equal((await run(['--content', 'site-ad'])).code, 0);
   const led = ledgerOf('site-ad');
   for (const r of Object.values(led)) { delete r.sha256; delete r.putSha256; }   // rows written before ledgers kept a digest
   writeFileSync(join(proj, 'site-ad', '.deploy-ledger.json'), JSON.stringify(led));
   writeFileSync(join(proj, 'site-ad', 'p-b.html'), '<div><p>committed, never sent</p></div>\n');
+  statusOf.set('/p-a', { edit: { lastModified: '2026-11-01T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
+  statusOf.set('/p-b', { edit: { lastModified: '2026-11-01T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
+  // p-c: DA's source holds the local bytes, but it was saved after the live publication — v1 is live, v2 a DA draft
+  statusOf.set('/p-c', { edit: { lastModified: '2026-11-02T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
   const from = requests.length;
   const r = await run(['--content', 'site-ad', '--adopt']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.deepEqual([...new Set(since(from).map((q) => q.method))], ['GET'], 'read-only');
   const after = ledgerOf('site-ad');
-  assert.equal(after['/p-a'].sha256, createHash('sha256').update(readFileSync(join(proj, 'site-ad', 'p-a.html'))).digest('hex'));
-  assert.ok(after['/p-a'].adoptedAt);
+  const sha = (f) => createHash('sha256').update(readFileSync(join(proj, 'site-ad', f))).digest('hex');
+  assert.equal(after['/p-a'].sha256, sha('p-a.html')); assert.ok(after['/p-a'].adoptedAt);
   assert.equal(after['/p-b'].sha256, undefined, 'DA holds other bytes: not adopted');
   assert.match(r.err, /\/p-b not adopted — DA holds other bytes/);
+  assert.equal(after['/p-c'].sha256, undefined, 'a source edited after the live publication is not what is live');
+  assert.equal(after['/p-c'].sourceSha256, sha('p-c.html'));
+  assert.match(r.err, /\/p-c not adopted — the source was edited after the live publication/);
+});
+await check('a --content that is not a directory exits 2 before anything is sent or written (a misspelled dir never reads as an empty success)', async () => {
+  const from = requests.length;
+  const r = await run(['--content', 'no-such-dir']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--content no-such-dir is not a directory/);
+  assert.equal(since(from).length, 0);
+  assert.equal(existsSync(join(proj, 'no-such-dir')), false, 'no ledger dir created');
 });
 await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
   site('site-fold', ['visit/index', 'other']);

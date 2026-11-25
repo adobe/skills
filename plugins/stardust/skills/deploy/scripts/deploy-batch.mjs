@@ -79,13 +79,16 @@
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
  * --adopt     send nothing: for each selected page the ledger reads `live` without a `sha256` (a row
- *             written before ledgers kept one), GET its DA source and record `sha256` (+ `adoptedAt`)
- *             only when DA holds exactly the local file's bytes; any other answer is named and the row
- *             left as it is. Read-only on DA (GET admin.da.live/source); honours --paths / --allow.
- * A page the ledger reads `live` is skipped only while its file still holds the bytes last VERIFIED delivered (the
- * ledger's `sha256`, written only after live and verify succeed — `putSha256` is what the last PUT sent; a row
- * written before either existed is checked on the delivered origin alone): a page changed locally since — a later
- * localize-links run, or a re-drive a token halt interrupted — is driven again, named in the count line.
+ *             written before ledgers kept one), GET its DA source and its admin status. `sha256` (+
+ *             `adoptedAt`) is recorded only when DA's source is exactly the local file's bytes AND the
+ *             status shows the live page was published from that source unchanged since
+ *             (`live.sourceLastModified` not older than `edit.lastModified`). A source match alone is
+ *             kept apart as `sourceSha256` — a draft in DA is not a publication. Read-only (GET
+ *             admin.da.live/source, GET admin.hlx.page/status); honours --paths / --allow.
+ * A page the ledger reads `live` and the delivered origin still serves is skipped, as on every re-run: a retry
+ * re-drives the failures only. The ledger also records `sha256` — the bytes verified delivered, written only after
+ * live and verify succeed — and `putSha256`, the bytes the last PUT sent, for a caller that compares them (replica's
+ * extend pass re-drives its own list with --force --paths).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -103,7 +106,7 @@
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
 import { readFile, appendFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -159,6 +162,8 @@ function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
+  // a misspelled --content must not read as an empty, successful batch (nor get a ledger created in it)
+  if (!existsSync(a.content) || !statSync(a.content).isDirectory()) throw new Error(`--content ${a.content} is not a directory — nothing was sent`);
   // The token source (daTokenSource, lib/da-token.mjs — the uploader's rule): one file or one variable, never
   // both. The file is read here, once, before anything else runs; the value lives on `token` only and every
   // message names the source (tokenLabel, and readDaToken's errors), never the value.
@@ -372,15 +377,27 @@ async function main() {
       const rec = ledger[p.webPath];
       if (!rec || rec.status !== 'live' || rec.sha256) continue;
       const local = createHash('sha256').update(await readFile(p.file)).digest('hex');
-      let status = 0; let body = null;
-      try {
-        const res = await fetch(`${DA_SRC}/${args.org}/${args.repo}${encodeURI(p.webPath)}.html`, { headers: { Authorization: `Bearer ${args.token}` } });
-        status = res.status; if (status === 200) body = Buffer.from(await res.arrayBuffer());
-      } catch (e) { status = 0; }
-      if (status === 401) { console.error(`[deploy-batch] --adopt: 401 on ${p.webPath} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`); await persistNow(); process.exit(TOKEN_EXIT); }
-      if (body && createHash('sha256').update(body).digest('hex') === local) {
+      const get = async (url) => {
+        try { const res = await fetch(url, { headers: { Authorization: `Bearer ${args.token}` } }); return { status: res.status, body: res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null }; } catch { return { status: 0, body: null }; }
+      };
+      const enc = encodeURI(p.webPath);
+      const src = await get(`${DA_SRC}/${args.org}/${args.repo}${enc}.html`);
+      const st = src.status === 200 ? await get(`${ADMIN}/status/${args.org}/${args.repo}/${args.branch}${enc}`) : { status: 0, body: null };
+      if (src.status === 401 || st.status === 401) { console.error(`[deploy-batch] --adopt: 401 on ${p.webPath} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`); await persistNow(); process.exit(TOKEN_EXIT); }
+      const srcSha = src.body && createHash('sha256').update(src.body).digest('hex');
+      if (srcSha === local) rec.sourceSha256 = local; // DA's source holds these bytes — not yet proof they are live
+      let status = null;
+      try { status = st.body && JSON.parse(st.body.toString('utf8')); } catch { status = null; }
+      const edited = Date.parse(status?.edit?.lastModified); const published = Date.parse(status?.live?.sourceLastModified);
+      const liveFromSource = Number.isFinite(edited) && Number.isFinite(published) && published >= edited;
+      if (srcSha === local && liveFromSource) {
         rec.sha256 = local; rec.adoptedAt = new Date().toISOString(); adopted += 1;
-      } else { kept += 1; console.error(`[deploy-batch] --adopt: ${p.webPath} not adopted — ${body ? 'DA holds other bytes than the local file' : `source GET ${status}`}`); }
+      } else {
+        kept += 1;
+        const why = !src.body ? `source GET ${src.status}` : srcSha !== local ? 'DA holds other bytes than the local file'
+          : !status ? `status GET ${st.status}` : !liveFromSource ? 'the source was edited after the live publication (or the status names no dates) — a draft in DA, not what is live' : '';
+        console.error(`[deploy-batch] --adopt: ${p.webPath} not adopted — ${why}`);
+      }
     }
     await persistNow();
     console.error(`[deploy-batch] --adopt: ${adopted} digest(s) recorded, ${kept} left without; nothing sent.`);
@@ -389,12 +406,10 @@ async function main() {
 
   // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
   const todo = [];
-  let skipped = 0; let changed = 0;
+  let skipped = 0;
   for (const p of pages) {
     const rec = ledger[p.webPath];
     if (!args.force && rec && rec.status === 'live') {
-      // a 200 does not say which bytes are live: a page changed locally since its PUT is driven again
-      if (rec.sha256 && rec.sha256 !== createHash('sha256').update(await readFile(p.file)).digest('hex')) { changed += 1; todo.push(p); continue; }
       const v = await deliveredOk({ ...args, webPath: p.webPath });
       if (v.ok) { skipped += 1; continue; }
     }
@@ -409,7 +424,7 @@ async function main() {
   };
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
-  console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive${changed ? ` (${changed} changed since their PUT)` : ''} (concurrency ${args.concurrency}, publish=${args.publish})`);
+  console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
   let done = 0;
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries
   const results = [];

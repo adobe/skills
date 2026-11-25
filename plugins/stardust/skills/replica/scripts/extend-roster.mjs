@@ -16,8 +16,10 @@
  *        [--content content] [--slugs-out <file>]
  *   node stardust/scripts/replica/extend-roster.mjs inventory|publish|reconcile|relink-status --pass <dir>
  *        [--content content]
- *   node stardust/scripts/replica/extend-roster.mjs output|relink-approve|relink-restore --pass <dir>
- *        --files <a.html,b.html> [--content content]
+ *   node stardust/scripts/replica/extend-roster.mjs output --pass <dir> --unit <name> --files <a.html,b.html>
+ *        [--content content]
+ *   node stardust/scripts/replica/extend-roster.mjs relink-approve|relink-restore --pass <dir> --files <a.html,b.html>
+ *        [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs published --pass <dir> --out <dir> [--content content]
  *
  *   select    reads the candidate urls (one per line, in the crawler's order) and keeps those whose EDS destination
@@ -40,18 +42,22 @@
  *             say of THESE bytes: `live` (the newest live row's sha256 is theirs), `live-unverified` (a live row from
  *             before ledgers kept a sha256 — `deploy-batch.mjs --adopt` records one), `differs` (another version
  *             landed last, or an earlier pass ended with it a conflict or held), `unpublished` (no live row). It is
- *             the record of what existed, tracked by git; the bytes it names are never needed on disk. Written once.
- *   output    a unit that succeeded records the exact files it wrote for its roster pages in <pass>/outputs.paths.
- *             Refused (exit 2, nothing written): a file that is no document, existed at the opening, sits under
- *             /library, is no roster page's, or a second file for a page that has its output.
- *   publish   writes <pass>/publish.paths — outputs.paths plus <pass>/also.paths (a fragment the pages need, written
+ *             the record of what existed, tracked by git; the bytes it names are never needed on disk. Written once,
+ *             with <pass>/reserved.paths: every DA document a ledger records live, whether or not its file is in the
+ *             checkout (an ignored nav) — no pass output or also.paths entry may name one or share its destination.
+ *   output    a unit that succeeded records the exact files it wrote for its roster pages in its own
+ *             <pass>/outputs/<unit>.paths (one writer per file: concurrent units never share a record). Refused (exit
+ *             2, nothing written): a file that is no document, existed at the opening, is reserved, sits under
+ *             /library, is no roster page's, or a second file for a page another record gives an output.
+ *   publish   writes <pass>/publish.paths — the union of outputs/*.paths (two files for one page exit 2) plus
+ *             <pass>/also.paths (a fragment the pages need, written
  *             by the unit that creates it), each checked with the deployer's own entry rule — and <pass>/targets.paths:
  *             the link targets (every opening document with a live row, and the publish list) for `localize-links.mjs
  *             --targets`. Any other new document (an owner's draft, one at a roster page whose capture failed) is
  *             held and named. An entry that is missing, existed at the opening, sits under /library or would resolve
- *             to another document exits 2, nothing written.
- *   published writes into --out (a new dir) every document at bytes known delivered — its newest verified digest, a
- *             landed approved revision, or the opening blob of a `live` document — and names the rest withheld: the
+ *             to another document, or is reserved, exits 2, nothing written.
+ *   published writes into --out (a new dir) every document at bytes known delivered — the bytes, working file or any
+ *             committed copy, whose digest is its NEWEST live row's — and names the rest withheld: the
  *             input of `da-library.mjs --content <out>`, so a held or conflicted working file never reaches the library.
  *   reconcile writes <pass>/redrive.paths: every document of publish.paths whose bytes are not the newest live
  *             row's sha256 in any ledger — a pass page relinked after its PUT, a C-archetype representative a
@@ -59,9 +65,10 @@
  *             <pass>/publish.paths`.
  *   relink-status  classifies every inventory document a localize-links receipt of the pass names
  *             (<pass>/receipts/*.json, written by `localize-links.mjs --receipt`: the input and output digest of
- *             each file that run itself rewrote), against its LAST PUBLISHED BYTES (the newest <pass>/approved/
- *             r<k>/<file> whose ledger records that exact sha256 live, else — when the inventory says `live` — the
- *             opening commit's blob, `git show $(cat <pass>/base.txt):./<content>/<file>`). A run interrupted before it
+ *             each file that run itself rewrote), against its LAST PUBLISHED BYTES: the newest live row across every
+ *             ledger decides (none: never published; no digest: unknown), and its digest is matched against every
+ *             committed copy — any pass's approved/r<k>/<file>, any pass's opening blob (`git show <base.txt>:./
+ *             <content>/<file>`). A run interrupted before it
  *             reached a file left a record whose input is still the file: it is not counted:
  *               candidate  the localizer's own edit and nothing else: a receipt's input is the last published bytes,
  *                          each later receipt's input (by `at`) the previous output, the file still the last output,
@@ -85,7 +92,7 @@
  * Exit codes: 0 ok (an empty roster is ok) · 1 a named file refused · 2 usage, an unreadable input, a --named url
  * refused, or a missing pass record. --help / -h prints this usage and touches no file.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync,
@@ -188,7 +195,6 @@ const writeAtomic = (file, data) => { mkdirSync(dirname(file), { recursive: true
 const lines = (arr) => (arr.length ? `${arr.join('\n')}\n` : '');
 
 const PUBLISHED = ['live', 'live-unverified', 'differs', 'unpublished'];
-const isPublished = (e) => e.pub === 'live' || e.pub === 'live-unverified';
 function readInventory(pass) {
   const f = join(pass, 'inventory.tsv');
   if (!existsSync(f)) usage(`${f} not found — run \`inventory\` at the opening`);
@@ -201,34 +207,50 @@ function readInventory(pass) {
   return map;
 }
 
-// The last published bytes of an inventory document: the newest approved revision whose ledger records its exact
-// bytes live, else the opening commit's blob (tracked documents only). Returns { bytes } or { bytes: null, why }.
-function lastPublished(o, file, entry) {
-  const dir = join(o.pass, 'approved');
-  const revs = existsSync(dir) ? readdirSync(dir).filter((n) => /^r\d+$/.test(n)).sort((a, b) => Number(b.slice(1)) - Number(a.slice(1))) : [];
-  for (const r of revs) {
-    const copy = join(dir, r, file);
-    if (!existsSync(copy)) continue;
-    const ledgerFile = join(dir, r, '.deploy-ledger.json');
-    const ledger = existsSync(ledgerFile) ? JSON.parse(readFileSync(ledgerFile, 'utf8')) : {};
-    const rec = ledger[documentPath(file)];
-    const bytes = readFileSync(copy);
-    if (rec && rec.status === 'live' && rec.sha256 === sha(bytes)) return { bytes };
+const EXT = 'stardust/replica/extend';
+const passDirs = () => (existsSync(EXT) ? readdirSync(EXT).filter((n) => /^x\d+$/i.test(n)).sort((a, b) => Number(b.slice(1)) - Number(a.slice(1))) : []);
+
+// Every committed copy of a document the passes recorded, newest first: their approved revisions, then their opening
+// blobs (`git show <base>:./<content>/<file>`). A blob git cannot read (a shallow clone) is reported in `missing`.
+function committedCopies(o, file, missing) {
+  const out = [];
+  for (const pass of passDirs()) {
+    const ap = join(EXT, pass, 'approved');
+    if (!existsSync(ap)) continue;
+    for (const r of readdirSync(ap).filter((n) => /^r\d+$/.test(n)).sort((a, b) => Number(b.slice(1)) - Number(a.slice(1)))) {
+      if (existsSync(join(ap, r, file))) out.push(() => readFileSync(join(ap, r, file)));
+    }
   }
-  if (entry.ignored) return { bytes: null, why: 'git-ignored: its published bytes are in no commit — never restored or re-published by the pass' };
-  if (entry.pub === 'unpublished') return { bytes: null, why: 'no deploy ledger records it live: never published — not a republish' };
-  if (entry.pub === 'live-unverified') return { bytes: null, why: 'its live row predates ledger digests: which version DA holds is not known — `deploy-batch.mjs --adopt` records it when DA holds the opening bytes' };
-  if (entry.pub === 'differs') return { bytes: null, why: 'another version than the opening commit\'s was published last, or an earlier pass ended with it held — DA\'s bytes are not known here' };
-  const baseFile = join(o.pass, 'base.txt');
-  if (!existsSync(baseFile)) usage(`${baseFile} not found`);
-  const base = readFileSync(baseFile, 'utf8').trim();
-  // `<rev>:./<path>` is read from the working directory, as every other path here
-  const spec = `${base}:./${relative(process.cwd(), resolve(o.content, file)).split(sep).join('/')}`;
-  let bytes;
-  try { bytes = execFileSync('git', ['show', spec], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); } catch {
-    return { bytes: null, why: `the opening commit ${base.slice(0, 12)} is not in this clone — \`git fetch --depth 1 origin ${base}\`, then again` };
+  const spec = `./${relative(process.cwd(), resolve(o.content, file)).split(sep).join('/')}`;
+  const bases = [resolve(o.pass), ...passDirs().map((p) => resolve(EXT, p))].filter((d, i, a) => a.indexOf(d) === i)
+    .map((d) => join(d, 'base.txt')).filter((f) => existsSync(f)).map((f) => readFileSync(f, 'utf8').trim()).filter(Boolean);
+  for (const base of [...new Set(bases)]) {
+    out.push(() => {
+      try { return execFileSync('git', ['show', `${base}:${spec}`], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); } catch {
+        if (spawnSync('git', ['cat-file', '-e', `${base}^{commit}`]).status !== 0) missing.push(base);
+        return null;
+      }
+    });
   }
-  return sha(bytes) === entry.sha ? { bytes } : { bytes: null, why: `the opening commit's blob differs from the inventory (${spec})` };
+  return out;
+}
+
+// The last published bytes of a document: the NEWEST live row across every ledger decides — no row, never published;
+// a row without a digest, unknown — and its digest is matched against the working file, then every committed copy.
+// Returns { bytes } or { bytes: null, why }.
+function lastPublished(o, file, entry, cache = {}, current = null) {
+  const newest = liveRows(o, file, cache)[0];
+  if (!newest) return { bytes: null, why: 'no deploy ledger records it live: never published — not a republish' };
+  if (!newest.sha256) return { bytes: null, why: 'its newest live row has no digest: which version DA holds is not known — `deploy-batch.mjs --adopt` records it when the status proves it' };
+  if (current && sha(current) === newest.sha256) return { bytes: current };
+  if (entry && entry.ignored) return { bytes: null, why: 'git-ignored: its published bytes are in no commit — never restored or re-published by the pass' };
+  const missing = [];
+  for (const read of committedCopies(o, file, missing)) {
+    const b = read();
+    if (b && sha(b) === newest.sha256) return { bytes: b };
+  }
+  if (missing.length) return { bytes: null, why: `the opening commit ${missing[0].slice(0, 12)} is not in this clone — \`git fetch --depth 1 origin ${missing[0]}\`, then again` };
+  return { bytes: null, why: `DA holds the version ${newest.sha256.slice(0, 12)}, whose bytes are in no commit here` };
 }
 
 // The localizer's receipts of this pass, in order: one record per file a run itself rewrote.
@@ -292,13 +314,13 @@ function unresolvedEarlier(o) {
 }
 
 function statusAll(o) {
-  const inv = readInventory(o.pass); const recs = relinkRecords(o.pass); const out = [];
+  const inv = readInventory(o.pass); const recs = relinkRecords(o.pass); const out = []; const cache = {};
   for (const [file, records] of recs) {
     const entry = inv.get(file);
     if (!entry) continue;
     const path = join(o.content, file);
     const current = existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
-    const { bytes: published, why } = lastPublished(o, file, entry);
+    const { bytes: published, why } = lastPublished(o, file, entry, cache);
     out.push({ file, ...classify({ published, unavailable: why, current, records }), published, current });
   }
   return out.sort((a, b) => a.file.localeCompare(b.file));
@@ -309,7 +331,7 @@ const FLAGS = {
   inventory: ['--pass', '--content'],
   publish: ['--pass', '--content'],
   reconcile: ['--pass', '--content'],
-  output: ['--pass', '--content', '--files'],
+  output: ['--pass', '--content', '--unit', '--files'],
   published: ['--pass', '--content', '--out'],
   'relink-status': ['--pass', '--content'],
   'relink-approve': ['--pass', '--content', '--files'],
@@ -328,10 +350,16 @@ export function parseArgs(argv) {
     if (v === undefined || !v.trim() || v.startsWith('--')) usage(`${f} needs a value`);
     if (f === '--max') { if (!/^\d+$/.test(v)) usage('--max needs a whole number'); o.max = Number(v) === 0 ? Infinity : Number(v); } else o[f.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
   }
-  const need = cmd === 'select' ? ['candidates', 'out'] : ['relink-approve', 'relink-restore', 'output'].includes(cmd) ? ['pass', 'files'] : cmd === 'published' ? ['pass', 'out'] : ['pass'];
+  const need = cmd === 'select' ? ['candidates', 'out'] : cmd === 'output' ? ['pass', 'unit', 'files'] : ['relink-approve', 'relink-restore'].includes(cmd) ? ['pass', 'files'] : cmd === 'published' ? ['pass', 'out'] : ['pass'];
   for (const n of need) if (!o[n]) usage(`${cmd} needs --${n}`);
   if (o.files) o.files = o.files.split(',').map((s) => s.trim().replace(/^\/+/, '')).filter(Boolean);
   return o;
+}
+
+// Every DA document a deploy ledger records live — whether or not its file is in this checkout (an ignored nav).
+function liveDocuments(o) {
+  const cache = {}; liveRows(o, 'x.html', cache);
+  return [...cache.rows.keys()].sort();
 }
 
 function select(o) {
@@ -340,6 +368,7 @@ function select(o) {
   const candidates = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const captured = capturedDestinations(readJson(o.state, '--state'));
   const cov = coverageOf(readJson(o.coverage, '--coverage'));
+  for (const w of liveDocuments(o)) cov.paths.add(pathKey(w)); // a ledger's live document reserves its destination too
   const docs = new Set(documents(o.content).map((f) => pathKey(`/${f}`)));
   const r = selectRoster({ candidates, captured, delivered: cov.paths, documents: docs, max: o.max, named: o.named });
   for (const d of r.dropped) console.error(`dropped ${d.url} — ${d.why}`);
@@ -371,8 +400,9 @@ function inventory(o) {
     count[pub] = (count[pub] || 0) + 1;
     return `${h}\t${f}\t${tracked.has(f) ? 'tracked' : 'ignored'}\t${pub}`;
   });
+  writeAtomic(join(o.pass, 'reserved.paths'), lines(liveDocuments(o)));
   writeAtomic(out, lines(rows));
-  console.error(`inventory: ${rows.length} document(s) → ${out} (${rows.filter((r) => r.includes('\tignored\t')).length} ignored; ${Object.entries(count).map(([k, n]) => `${n} ${k}`).join(', ')})`);
+  console.error(`inventory: ${rows.length} document(s) → ${out}, ${liveDocuments(o).length} live DA document(s) → ${join(o.pass, 'reserved.paths')} (${rows.filter((r) => r.includes('\tignored\t')).length} ignored; ${Object.entries(count).map(([k, n]) => `${n} ${k}`).join(', ')})`);
   return 0;
 }
 
@@ -383,20 +413,37 @@ function rosterDestinations(pass) {
   return new Set(readFileSync(f, 'utf8').split('\n').filter(Boolean).map((u) => destinationOf(u)));
 }
 
-// A unit records the exact files it wrote for its roster pages, once it succeeded: the only page documents publish lists.
+// The DA documents live at the opening (inventory's reserved.paths): no pass output, no also.paths entry may name one
+// or share its destination, whether or not its file is in the checkout.
+function reservedOf(pass) {
+  const f = join(pass, 'reserved.paths');
+  if (!existsSync(f)) usage(`${f} not found — \`inventory\` writes it at the opening`);
+  const docs = new Set(readFileSync(f, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean));
+  return { docs, keys: new Set([...docs].map((w) => pathKey(w))) };
+}
+const reservedWhy = (res, f) => (res.docs.has(documentPath(f)) || res.keys.has(pathKey(`/${f}`)) ? `a deploy ledger records ${documentPath(f)} or its destination live — an older document, never a pass output` : '');
+const outputRecords = (pass) => {
+  const dir = join(pass, 'outputs');
+  return existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith('.paths')).sort().map((n) => ({ unit: n.slice(0, -'.paths'.length), files: readList(join(dir, n)) })) : [];
+};
+
+// A unit records the exact files it wrote for its roster pages, once it succeeded, in its own <pass>/outputs/<unit>.paths
+// (one writer per file: concurrent units never share one). The only page documents publish lists.
 function output(o) {
-  const inv = readInventory(o.pass); const pages = rosterDestinations(o.pass);
+  if (!/^[A-Za-z0-9._-]+$/.test(o.unit)) usage(`--unit ${o.unit}: letters, digits, '.', '_' and '-' only`);
+  const inv = readInventory(o.pass); const pages = rosterDestinations(o.pass); const res = reservedOf(o.pass);
   const docs = new Set(documents(o.content));
-  const file = join(o.pass, 'outputs.paths');
-  const claim = new Map(readList(file).map((f) => [pathKey(`/${f}`), f]));
-  const problems = [];
+  const others = new Map();
+  for (const r of outputRecords(o.pass)) if (r.unit !== o.unit) for (const f of r.files) others.set(pathKey(`/${f}`), { f, unit: r.unit });
+  const claim = new Map(); const problems = [];
   for (const f of o.files) {
     const dest = pathKey(`/${f}`);
     if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends)`);
     else if (inv.has(f)) problems.push(`/${f} — existed at the opening: never a pass output`);
+    else if (reservedWhy(res, f)) problems.push(`/${f} — ${reservedWhy(res, f)}`);
     else if (isLibraryPath(`/${f}`)) problems.push(`/${f} — the DA authoring library's folder`);
     else if (!pages.has(dest)) problems.push(`/${f} — ${dest} is not a roster page (a fragment the pages need goes in also.paths)`);
-    else if (claim.has(dest) && claim.get(dest) !== f) problems.push(`/${f} — roster page ${dest} already has its output /${claim.get(dest)}`);
+    else if ((claim.has(dest) && claim.get(dest) !== f) || (others.has(dest) && others.get(dest).f !== f)) problems.push(`/${f} — roster page ${dest} already has its output /${claim.get(dest) || others.get(dest).f}${others.has(dest) ? ` (unit ${others.get(dest).unit})` : ''}`);
     else claim.set(dest, f);
   }
   if (problems.length) {
@@ -404,20 +451,30 @@ function output(o) {
     console.error(`extend-roster: ${problems.length} output(s) refused; nothing written`);
     return 2;
   }
+  const file = join(o.pass, 'outputs', `${o.unit}.paths`);
   writeAtomic(file, lines([...new Set(claim.values())].sort().map((f) => `/${f}`)));
-  console.error(`output: ${o.files.length} recorded → ${file} (${claim.size} roster page(s) with their output)`);
+  console.error(`output: ${claim.size} file(s) of unit ${o.unit} → ${file}`);
   return 0;
 }
 
 function publish(o) {
-  const inv = readInventory(o.pass); const pages = rosterDestinations(o.pass);
+  const inv = readInventory(o.pass); const pages = rosterDestinations(o.pass); const res = reservedOf(o.pass);
   const docs = contentDocuments(o.content); const byFile = new Map(docs.map((d) => [d.file, d]));
   const webPaths = new Set(docs.map((d) => d.webPath));
-  const outputs = readList(join(o.pass, 'outputs.paths')); const also = readList(join(o.pass, 'also.paths'));
-  const keep = new Set(); const problems = [];
-  for (const f of [...outputs, ...also]) {
+  const records = outputRecords(o.pass); const also = readList(join(o.pass, 'also.paths'));
+  const keep = new Set(); const problems = []; const owner = new Map();
+  for (const r of records) {
+    for (const f of r.files) {
+      const dest = pathKey(`/${f}`);
+      if (!pages.has(dest)) problems.push(`/${f} — unit ${r.unit}: ${dest} is not a roster page`);
+      else if (owner.has(dest) && owner.get(dest).f !== f) problems.push(`/${f} — unit ${r.unit} and unit ${owner.get(dest).unit} (/${owner.get(dest).f}) claim roster page ${dest}`);
+      else owner.set(dest, { f, unit: r.unit });
+    }
+  }
+  for (const f of [...[...owner.values()].map((v) => v.f), ...also]) {
     if (!byFile.has(f)) problems.push(`/${f} — listed, but no such document under ${o.content}`);
     else if (inv.has(f)) problems.push(`/${f} — existed at the opening: never on the publish list`);
+    else if (reservedWhy(res, f)) problems.push(`/${f} — ${reservedWhy(res, f)}`);
     else if (isLibraryPath(`/${f}`)) problems.push(`/${f} — the DA authoring library's folder`);
     // the consumer's rule (deploy-batch --allow): the entry must name this document and no other
     else if (resolveEntry(`/${f}`, webPaths).match !== byFile.get(f).webPath) problems.push(`/${f} — deploy-batch would not read this entry as this document`);
@@ -425,16 +482,15 @@ function publish(o) {
   }
   if (problems.length) {
     for (const p of problems) console.error(`refused ${p}`);
-    console.error(`extend-roster: ${problems.length} entr${problems.length === 1 ? 'y' : 'ies'} of outputs.paths / also.paths refused; nothing written`);
+    console.error(`extend-roster: ${problems.length} entr${problems.length === 1 ? 'y' : 'ies'} of outputs/*.paths / also.paths refused; nothing written`);
     return 2;
   }
-  const owner = new Map(outputs.map((f) => [pathKey(`/${f}`), f]));
   let held = 0;
   for (const { file: f } of docs) {
     if (inv.has(f) || keep.has(f)) continue;
     held += 1;
     const dest = pathKey(`/${f}`);
-    console.error(`held /${f} — ${owner.has(dest) ? `roster page ${dest} has its output /${owner.get(dest)}` : pages.has(dest) ? `no unit recorded it as the output of roster page ${dest}` : 'new, neither a unit\'s output nor in also.paths'}`);
+    console.error(`held /${f} — ${owner.has(dest) ? `roster page ${dest} has its output /${owner.get(dest).f}` : pages.has(dest) ? `no unit recorded it as the output of roster page ${dest}` : 'new, neither a unit\'s output nor in also.paths'}`);
   }
   // link targets: what was published before the pass (any live row) and what the pass publishes
   const targets = [...[...inv.entries()].filter(([, e]) => e.pub !== 'unpublished').map(([f]) => f), ...keep];
@@ -452,10 +508,7 @@ function published(o) {
   let n = 0; const withheld = [];
   for (const f of documents(o.content)) {
     const cur = readFileSync(join(o.content, f));
-    const newest = liveRows(o, f, cache).find((r) => r.sha256);
-    let bytes = newest && newest.sha256 === sha(cur) ? cur : null; let why = '';
-    if (!bytes && inv.has(f)) ({ bytes, why } = lastPublished(o, f, inv.get(f)));
-    else if (!bytes) why = newest ? 'changed since its last verified delivery' : 'no verified delivery recorded';
+    const { bytes, why } = lastPublished(o, f, inv.get(f) || null, cache, cur);
     if (!bytes) { withheld.push(`/${f} — ${why}`); continue; }
     mkdirSync(dirname(join(o.out, f)), { recursive: true });
     writeFileSync(join(o.out, f), bytes); n += 1;
@@ -473,9 +526,9 @@ function reconcile(o) {
     const f = entry.replace(/^\/+/, '');
     const p = join(o.content, f);
     if (!existsSync(p)) { console.error(`missing ${entry} — on the list, not on disk`); continue; }
-    const newest = liveRows(o, f, cache).find((r) => r.sha256);
+    const newest = liveRows(o, f, cache)[0];
     const now = sha(readFileSync(p));
-    if (!newest || newest.sha256 !== now) { redrive.push(entry); console.error(`redrive ${entry} — ${newest ? 'changed since its last verified delivery' : 'no verified delivery recorded'}`); }
+    if (!newest || newest.sha256 !== now) { redrive.push(entry); console.error(`redrive ${entry} — ${!newest ? 'no delivery recorded' : !newest.sha256 ? 'its newest live row has no digest' : 'changed since its last verified delivery'}`); }
   }
   writeAtomic(join(o.pass, 'redrive.paths'), lines(redrive));
   console.error(`reconcile: ${redrive.length} document(s) → ${join(o.pass, 'redrive.paths')}`);
@@ -491,19 +544,25 @@ function relinkStatus(o) {
   return 0;
 }
 
-// Restore one file only while it still holds the bytes that were classified: moved aside atomically, checked, and the
-// restored bytes linked in (a link never replaces a file). Anything else leaves the newer bytes in place. Returns why not.
-export function guardedRestore(path, expected, bytes) {
-  const aside = `${path}.relink-${process.pid}`;
-  try { renameSync(path, aside); } catch (e) { return `cannot move it aside (${e.code})`; }
-  if (sha(readFileSync(aside)) !== expected) {
-    try { linkSync(aside, path); rmSync(aside); } catch { return `changed since it was classified, and a new file took its place — the changed bytes are kept in ${aside}`; }
-    return 'changed since it was classified — left as it is';
+// Restore one file only while it still holds the bytes that were classified. The replacement is written first; the file
+// is moved aside atomically and checked; the replacement is linked in (a link never replaces a file). On any failure the
+// original is put back, or kept beside it and named. Returns why it was not restored (null when it was). `fs` is for tests.
+export function guardedRestore(path, expected, bytes, fs = { renameSync, linkSync, rmSync, writeFileSync, readFileSync }) {
+  const tmp = `${path}.restore-${process.pid}`; const aside = `${path}.relink-${process.pid}`;
+  try { fs.writeFileSync(tmp, bytes); } catch (e) { return `cannot prepare the restored bytes (${e.code || e.message}) — left as it is`; }
+  try { fs.renameSync(path, aside); } catch (e) { fs.rmSync(tmp, { force: true }); return `cannot move it aside (${e.code || e.message}) — left as it is`; }
+  const putBack = (why) => {
+    try { fs.linkSync(aside, path); fs.rmSync(aside); return why; } catch (e) {
+      return `${why}; ${e.code === 'EEXIST' ? 'a new file took its place' : `putting it back failed (${e.code || e.message})`} — its bytes are kept in ${aside}`;
+    }
+  };
+  if (sha(fs.readFileSync(aside)) !== expected) { fs.rmSync(tmp, { force: true }); return putBack('changed since it was classified — left as it is'); }
+  try { fs.linkSync(tmp, path); } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    if (e.code === 'EEXIST') return `saved again while it was restored — the new file is kept; the bytes classified are in ${aside}`;
+    return putBack(`restoring failed (${e.code || e.message}) — left as it is`);
   }
-  const tmp = `${path}.restore-${process.pid}`;
-  writeFileSync(tmp, bytes);
-  try { linkSync(tmp, path); } catch { rmSync(tmp); rmSync(aside); return 'saved again while it was restored — the new file is kept'; }
-  rmSync(tmp); rmSync(aside);
+  fs.rmSync(tmp); fs.rmSync(aside);
   return null;
 }
 
