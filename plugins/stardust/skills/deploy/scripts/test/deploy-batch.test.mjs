@@ -43,9 +43,6 @@ const requests = [];
 const count = { put: {}, preview: {}, live: {}, verify: {} };
 const bump = (kind, p) => { count[kind][p] = (count[kind][p] || 0) + 1; return count[kind][p]; };
 const putOk = new Set(); // pages whose fragment landed: the delivered origin answers 200 for these only
-const stored = new Map(); // the bytes each PUT sent: the source GET answers with them
-const statusOf = new Map(); // admin status per page: { liveStatus, sourceLastModified } — the live copy's source time
-const sourceModified = new Map(); // DA source Last-Modified per page (a PUT sets it; a test moves it to model a later save)
 function parseMultipart(body, contentType) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType || ''); if (!m) return [];
   const delim = Buffer.from(`--${m[1] || m[2]}`);
@@ -83,7 +80,7 @@ const server = createServer((req, res) => {
       if (/-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the transport fails, every attempt
       if (/recover$/.test(p) && n <= 2) return reply(503, 'unavailable');
       if (!valid) return reply(401, 'bad token');
-      const created = () => { putOk.add(p); stored.set(p, requests[requests.length - 1].parts[0]?.data); sourceModified.set(p, new Date().toUTCString()); reply(201, '{}', { 'content-type': 'application/json' }); };
+      const created = () => { putOk.add(p); reply(201, '{}', { 'content-type': 'application/json' }); };
       if (/slow$/.test(p)) { setTimeout(created, 800); return undefined; }
       return created();
     }
@@ -102,24 +99,10 @@ const server = createServer((req, res) => {
       if (!valid) return reply(401, 'bad token');
       return reply(200, '{}', { 'content-type': 'application/json' });
     }
-    if (req.method === 'GET' && url.startsWith(`/status/${ORG}/${REPO}/${BRANCH}/`)) {
-      if (!valid) return reply(401, '');
-      const p = url.slice(`/status/${ORG}/${REPO}/${BRANCH}`.length);
-      // as helix-admin's status handler: `edit` is filled only on an edit lookup (?editUrl=…); a bare request gets {}
-      const q = new URL(req.url, 'http://x').searchParams;
-      const p2 = p.split('?')[0];
-      const st = statusOf.get(p2) || { liveStatus: 404 };
-      const live = st.liveStatus === 200 ? { status: 200, sourceLastModified: st.sourceLastModified } : { status: 404 };
-      return reply(200, JSON.stringify({ webPath: p2, live, preview: live, edit: q.get('editUrl') ? { status: 200, lastModified: sourceModified.get(p2) } : {} }), { 'content-type': 'application/json' });
-    }
-    if (req.method === 'GET' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
-      if (!valid) return reply(401, '');
-      const p = url.slice(SRC.length, -'.html'.length);
-      return stored.has(p) ? reply(200, stored.get(p), { 'content-type': 'text/html', 'last-modified': sourceModified.get(p) }) : reply(404, '');
-    }
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
       bump('verify', p);
+      if (/-noverify$/.test(p)) return reply(503, 'unavailable'); // live POST answered 200, the delivered check fails
       // an older version of a `-sever` page is still live: the delivered origin answers 200 for it
       return putOk.has(p) || /-sever$/.test(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
     }
@@ -328,33 +311,6 @@ await check('a token halt on live during a forced re-drive never marks the new b
   assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
   assert.equal(ledgerOf('site-th')['/p-dead-live'].sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'));
 });
-await check('--adopt (needs --paths): proven live only when DA\'s source is the local bytes AND its Last-Modified equals the status\'s live.sourceLastModified (a bare status request: no edit lookup); a DA draft saved after the live copy, other bytes or a page not live are not; a page delivered by hand (no row) gets one; nothing is sent', async () => {
-  site('site-ad', ['p-a', 'p-b', 'p-c', 'p-d', 'p-e']);
-  assert.equal((await run(['--content', 'site-ad'])).code, 0);
-  const led = ledgerOf('site-ad');
-  for (const r of Object.values(led)) { delete r.sha256; delete r.putSha256; delete r.published; }   // rows written before ledgers kept a digest
-  delete led['/p-d'];   // p-d delivered by hand: no row at all
-  writeFileSync(join(proj, 'site-ad', '.deploy-ledger.json'), JSON.stringify(led));
-  writeFileSync(join(proj, 'site-ad', 'p-b.html'), '<div><p>committed, never sent</p></div>\n');
-  for (const p of ['/p-a', '/p-b', '/p-c', '/p-d']) statusOf.set(p, { liveStatus: 200, sourceLastModified: sourceModified.get(p) });
-  sourceModified.set('/p-c', new Date(Date.now() + 60000).toUTCString());   // saved in DA after the live copy was built
-  statusOf.set('/p-e', { liveStatus: 404 });
-  writeFileSync(join(proj, 'site-ad.paths'), '/p-a\n/p-b\n/p-c\n/p-d\n/p-e\n');
-  assert.equal((await run(['--content', 'site-ad', '--adopt'])).code, 2, 'no list: nothing adopted by default');
-  const from = requests.length;
-  const r = await run(['--content', 'site-ad', '--adopt', '--paths', 'site-ad.paths']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.deepEqual([...new Set(since(from).map((q) => q.method))], ['GET'], 'read-only');
-  assert.ok(since(from).filter((q) => q.url.startsWith('/status/')).every((q) => !q.url.includes('editUrl')), 'a bare status request');
-  const after = ledgerOf('site-ad');
-  const sha = (f) => createHash('sha256').update(readFileSync(join(proj, 'site-ad', f))).digest('hex');
-  assert.equal(after['/p-a'].published.sha256, sha('p-a.html')); assert.equal(after['/p-a'].sha256, sha('p-a.html')); assert.ok(after['/p-a'].adoptedAt);
-  assert.equal(after['/p-d'].status, 'live'); assert.equal(after['/p-d'].published.sha256, sha('p-d.html'), 'a page delivered by hand gets its row');
-  assert.equal(after['/p-b'].published, undefined); assert.match(r.err, /\/p-b not adopted — DA holds other bytes/);
-  assert.equal(after['/p-c'].published, undefined, 'a DA draft is not what is live'); assert.equal(after['/p-c'].sourceSha256, sha('p-c.html'));
-  assert.match(r.err, /\/p-c not adopted — the source was saved after the live copy was built/);
-  assert.match(r.err, /\/p-e not adopted — not live \(status 404\)/);
-});
 await check('an interrupted forced reconcile: the retry list RECOMPUTED from disk still names the page — the newer verified publication (B) survives a 401 on live, so the older one (A) never reads as current', async () => {
   const px = join(proj, 'pass-r'); mkdirSync(join(px, 'stardust', 'deploy'), { recursive: true }); mkdirSync(join(px, 'x1'), { recursive: true });
   site('pass-r/content', ['p-dead-live']);
@@ -369,6 +325,44 @@ await check('an interrupted forced reconcile: the retry list RECOMPUTED from dis
   assert.equal(r.code, 3, r.out + r.err);   // PUT and preview pass, live answers 401
   assert.equal(JSON.parse(readFileSync(join(px, 'stardust/deploy/ledger-x1-reconcile.json'), 'utf8'))['/p-dead-live'].published.sha256, h('B'));
   assert.equal(reconcile(), '/p-dead-live.html\n', 'recomputed after the halt: still to re-drive');
+});
+await check('a live POST that succeeded but did not verify: `liveAttempt` stands beside the older `published`, and reconcile recomputed from disk re-drives the page (A is not taken as what is live)', async () => {
+  const px = join(proj, 'pass-v'); mkdirSync(join(px, 'stardust', 'deploy'), { recursive: true }); mkdirSync(join(px, 'x1'), { recursive: true });
+  site('pass-v/content', ['p-noverify']);
+  const A = readFileSync(join(px, 'content', 'p-noverify.html'));
+  const h = (b) => createHash('sha256').update(b).digest('hex');
+  const L = 'pass-v/stardust/deploy/ledger-x1-reconcile.json';
+  writeFileSync(join(proj, L), JSON.stringify({ '/p-noverify': { status: 'live', sha256: h(A), published: { sha256: h(A), at: '2026-11-01T00:00:00Z' }, ts: '2026-11-01T00:00:00Z', attempts: 1 } }));
+  writeFileSync(join(px, 'content', 'p-noverify.html'), '<div><p>B</p></div>\n');
+  writeFileSync(join(px, 'x1', 'publish.paths'), '/p-noverify.html\n'); writeFileSync(join(px, 'x1', 'redrive.paths'), '/p-noverify.html\n');
+  const r = await run(['--content', 'pass-v/content', '--paths', 'pass-v/x1/redrive.paths', '--allow', 'pass-v/x1/publish.paths', '--force', '--ledger', L]);
+  assert.equal(r.code, 1, r.out + r.err);
+  const row = JSON.parse(readFileSync(join(proj, L), 'utf8'))['/p-noverify'];
+  assert.equal(row.published.sha256, h(A), 'history kept'); assert.equal(row.liveAttempt.sha256, h('<div><p>B</p></div>\n'), 'B was published, not verified');
+  writeFileSync(join(px, 'content', 'p-noverify.html'), A);   // local restored to A
+  const rc = spawnSync(process.execPath, [ROSTER, 'reconcile', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
+  assert.equal(rc.status, 0, rc.stderr);
+  assert.equal(readFileSync(join(px, 'x1', 'redrive.paths'), 'utf8'), '/p-noverify.html\n', 'what is live is unknown: re-drive');
+  assert.match(rc.stderr, /an unverified live publication/);
+});
+await check('two forced batches on one ledger with disjoint --paths, at once: each merges only its own rows — neither writes back the other\'s stale copy', async () => {
+  site('site-two', ['a-slow', 'b-slow']);
+  assert.equal((await run(['--content', 'site-two'])).code, 0);
+  writeFileSync(join(proj, 'site-two', 'a-slow.html'), '<div><p>a2</p></div>\n'); writeFileSync(join(proj, 'site-two', 'b-slow.html'), '<div><p>b2</p></div>\n');
+  writeFileSync(join(proj, 'site-two.a'), '/a-slow\n'); writeFileSync(join(proj, 'site-two.b'), '/b-slow\n');
+  const [ra, rb] = await Promise.all([run(['--content', 'site-two', '--paths', 'site-two.a', '--force']), run(['--content', 'site-two', '--paths', 'site-two.b', '--force'])]);
+  assert.equal(ra.code, 0, ra.err); assert.equal(rb.code, 0, rb.err);
+  const led = ledgerOf('site-two'); const h = (t) => createHash('sha256').update(t).digest('hex');
+  assert.equal(led['/a-slow'].published.sha256, h('<div><p>a2</p></div>\n'));
+  assert.equal(led['/b-slow'].published.sha256, h('<div><p>b2</p></div>\n'));
+});
+await check('the exit status covers the pages this run selected: forcing /new succeeds (exit 0) though an unrelated history row (/old) failed', async () => {
+  site('site-hist', ['new', 'old']);
+  writeFileSync(join(proj, 'site-hist', '.deploy-ledger.json'), JSON.stringify({ '/old': { status: 'put-fail', attempts: 3, lastError: 'put 503' } }));
+  writeFileSync(join(proj, 'site-hist.new'), '/new\n');
+  const r = await run(['--content', 'site-hist', '--paths', 'site-hist.new', '--force']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(ledgerOf('site-hist')['/old'].status, 'put-fail', 'history untouched');
 });
 await check('a --content that is not a directory exits 2 before anything is sent or written (a misspelled dir never reads as an empty success)', async () => {
   const from = requests.length;

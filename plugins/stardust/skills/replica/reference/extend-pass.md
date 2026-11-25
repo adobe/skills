@@ -42,10 +42,11 @@ close or reopen another pass's.
 settle), so every tracked document's opening bytes are the opening commit's, recoverable from any clone that has
 it. The `extend start` line carries the request and that commit, so a session that ends mid-opening loses neither.
 Everything the pass keeps under `$X` is committed with the checkpoints; a shallow clone of the last checkpoint
-resumes it. The opening runs `opening-check` (local, read-only): it lists every delivered document — a coverage row
-`deployed`/`verified` or a ledger's live row — whose published bytes cannot be recovered (a page delivered by hand, a
-row from before ledgers kept digests) in `$X/unproven.paths`, and exits 1 while any is left. The opening goes on;
-the report names them up front, and C-deliver proves or blocks them before the pass's first PUT (§ 4). `inventory` then writes
+resumes it. The opening runs `opening-check` (local, read-only): it lists every page the library refresh reads — a
+coverage row `deployed`/`verified` — whose published bytes cannot be recovered from its file or a commit (a page
+delivered by hand, a row from before ledgers kept digests) in `$X/unproven.paths`, and exits 1 while any is left.
+The opening goes on; the report names them up front, and C-deliver settles them before the pass's first PUT (§ 4). A
+document no coverage row names (a ledger-only nav) is no input: it stays reserved and untouched. `inventory` then writes
 `$X/reserved.paths`: every DA document a ledger records live, its file in the checkout or not — no pass output may
 take one. A deploy ledger that cannot be read stops `select`, `inventory` and every later command (exit 2, named).
 
@@ -55,7 +56,7 @@ X=stardust/replica/extend/x1
 $L replica extend start --track x1 --detail "extend-next 300 @ $(git rev-parse HEAD)" --strict   # never a value starting with --
 mkdir -p $X; echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
 R="node stardust/scripts/replica/extend-roster.mjs"
-$R opening-check --pass $X || true   # unproven delivered pages: named in the report, proven at C-deliver (§ 4)
+$R opening-check --pass $X || true   # unproven delivered pages: named in the report, settled at C-deliver (§ 4)
 $R inventory --pass $X   # every document: path, sha256, tracked or git-ignored; reserved.paths
 SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
 for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
@@ -136,11 +137,14 @@ wrote, `$R output --pass $X --unit <unit> --files <them>`, in its own `$X/output
 page; an older or reserved document, a second file for one page or a non-roster file is refused). `$R publish --pass $X`, run again before each deploy, writes `$X/publish.paths`:
 those outputs plus `$X/also.paths` (a fragment the pages need, written there by the unit that creates it). Any other
 new document — an owner's draft, a file at a roster page whose capture or render failed — is held and named. It also
-writes `$X/targets.paths`: every opening document with a live row, plus the publish list. Every `deploy-batch.mjs`
+writes `$X/targets.paths` (link targets: every opening document a ledger records live or coverage delivers, plus the
+publish list) and `$X/rewrite.paths` (what the localizer may rewrite: the publish list, and an opening document only
+when its published bytes are in a commit — never one whose only proven copy is its working file). Every `deploy-batch.mjs`
 run of the pass — a cluster's, G's re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends
 nothing outside it. The localizer runs twice, as `handoff-contract.md` § 2 orders: `localize-links.mjs … --targets
-$X/targets.paths --receipt $X/receipts/<unit>-<UTC time>.json` (a new file per run), then `localize-links.mjs …
---targets $X/targets.paths --check`, which writes nothing and takes no receipt. An older page is sent only as an
+$X/targets.paths --rewrite $X/rewrite.paths --receipt $X/receipts/<unit>-<UTC time>.json` (a new file per run), then
+`localize-links.mjs … --targets $X/targets.paths --rewrite $X/rewrite.paths --check`, which writes nothing and takes
+no receipt. An older page is sent only as an
 approved revision, below; a finding on one is reported.
 
 - **Migrate,** one render unit at a time on the main agent (`state.mjs` and `migrate.mjs` each rewrite the whole
@@ -188,13 +192,13 @@ approved revision, below; a finding on one is reported.
   three final units again over every delivered page WITHOUT `--skip-existing` (a reuse key names only files called
   `nav.html`/`footer.html` at the content root or one level below — a fresh capture is the only proof). Then
   `update-coverage.mjs --gate` on the delivery tables only (`all-<w>`, never `wide-<w>`).
-- **C-deliver** (`--track x<N>`; one start/end pair per pass) opens with the proof the opening deferred, before any
-  PUT: `$R opening-check --pass $X`; on exit 1, `deploy-batch.mjs --adopt --paths $X/unproven.paths --ledger
-  stardust/deploy/ledger-x<N>-adopt.json` (its usual flags; read-only) records each page it proves live — DA's source
-  is exactly the local bytes and its `Last-Modified` equals the admin status's `live.sourceLastModified`, so a later
-  save in DA is a draft, never adopted — then `opening-check` again. Still exit 1: a `replica extend blocked` line
-  naming the pages, nothing sent (the library refresh would refuse them); the owner approves re-delivering them from
-  their committed bytes (`deploy-batch.mjs --paths <them> --allow <them> --force`) or ends the pass. Then: C-archetype units for the new types, cluster units
+- **C-deliver** (`--track x<N>`; one start/end pair per pass) settles what the opening deferred, before any PUT:
+  `$R opening-check --pass $X`. On exit 1 nothing is sent — the library refresh would refuse those pages, and no
+  platform record proves which revision is live — and the owner decides: re-deliver them from their committed bytes,
+  saying that a re-PUT replaces the DA document, or end the pass (`replica extend blocked` names them meanwhile). On
+  the yes: `$R redeliver --pass $X --files <them>` freezes the opening commit's bytes in `$X/approved/r<k>/` (never
+  the working file); commit it; `deploy-batch.mjs --content $X/approved/r<k> --allow $X/approved/r<k>.paths` (a retry
+  is the same command, its ledger inside the revision); commit the ledger; `opening-check` exits 0. Then: C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
   published gate re-run on every affected archetype, any pass's; `$R reconcile --pass $X`, which lists in
   `$X/redrive.paths` every document of the publish list whose bytes are not its newest verified delivery in any

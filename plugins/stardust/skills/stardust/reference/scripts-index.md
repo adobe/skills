@@ -9,7 +9,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content d [--allow f] [--force] [--no-publish] [--token-env|-file]`; exit 1 fail, 3 token halt
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
-- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host h [--content d] [--check] [--receipt f] [--targets f]`
+- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host h [--content d] [--check] [--receipt|--targets|--rewrite f]`
 - `deploy/martech-scaffold.mjs` — contract → martech.js + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
 - `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema eds-schema/<p>.json [--design DESIGN.json]`
 - `deploy/render-harness.mjs` — screenshot decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
@@ -29,7 +29,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b | --pages-file <f>] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60] [--skip-captured <state> [--reserve-slugs f] [--skip-failed] [--first-run-order]] [--select-only]`
+- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b|--pages-file f] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60] [--skip-captured <state> [--reserve-slugs f] [--skip-failed] [--first-run-order]] [--select-only]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
@@ -43,8 +43,8 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/extend-roster.mjs` — extend pass — `select --candidates f --out f [--named] [--max n] [--slugs-out f]`; `inventory|publish|published|reconcile|opening-check|relink-status --pass d [--out d]`; `output|relink-approve|-restore --pass d --files a,b` (+--unit)
-- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check` (an `absent[]` path that appears: `added`)
+- `replica/extend-roster.mjs` — extend pass — `select --candidates f --out f [--named] [--max n] [--slugs-out f]`; `inventory|publish|published|reconcile|opening-check|relink-status --pass d [--out d]`; `output|redeliver|relink-approve|-restore --pass d --files a,b` +--unit
+- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check` (a new `absent[]` path: `added`)
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`

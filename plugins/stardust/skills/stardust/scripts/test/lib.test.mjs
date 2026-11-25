@@ -10,7 +10,8 @@
 // The cross-implementation pins live in contracts-characterize.test.mjs; the project-copy layout in layout.test.mjs. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -217,13 +218,32 @@ check('documents: replaceIfUnchanged writes only over the bytes read; a save lan
   assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), saveFirst), /changed since it was read — left as it is/);
   assert.equal(readFileSync(f, 'utf8'), 'owner save', 'the owner\'s save survives');
   writeFileSync(f, 'read');
-  const eperm = { ...real, linkSync: (a, b) => { if (a.includes('.replace-')) throw Object.assign(new Error('nope'), { code: 'EPERM' }); return linkSync(a, b); } };
+  const eperm = { ...real, linkSync: (a, b) => { if (a.endsWith('.replace')) throw Object.assign(new Error('nope'), { code: 'EPERM' }); return linkSync(a, b); } };
   assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eperm), /replacing failed \(EPERM\)/);
   assert.equal(readFileSync(f, 'utf8'), 'read', 'the original is back');
-  const eexist = { ...real, linkSync: (a, b) => { if (a.includes('.replace-')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
+  const eexist = { ...real, linkSync: (a, b) => { if (a.endsWith('.replace')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
   assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eexist), /saved again while it was replaced — the new file is kept/);
   assert.equal(readFileSync(f, 'utf8'), 'saved meanwhile');
-  assert.deepEqual(readdirSync(root).filter((n) => n.includes('.replace-')), [], 'no replacement left behind');
+  assert.deepEqual(readdirSync(root).filter((n) => n.endsWith('.replace')), [], 'no replacement left behind');
+  rmSync(root, { recursive: true });
+});
+check('documents: replaceIfUnchanged in a git project — a tracked symlink is refused (its mode stays 120000); a kept file lives in the git dir, so a checkpoint (`git add -A`) stages nothing of it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lib-rep-git-'));
+  const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
+  const h = (t) => createHash('sha256').update(t).digest('hex');
+  writeFileSync(join(root, '.gitignore'), '/private-draft.html\n/generated/\n');
+  mkdirSync(join(root, 'generated')); writeFileSync(join(root, 'generated', 'body.html'), 'ignored body');
+  symlinkSync('generated/body.html', join(root, 'linked.html'));
+  writeFileSync(join(root, 'private-draft.html'), 'read');
+  git('init', '-q'); git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'c');
+  assert.match(documents.replaceIfUnchanged(join(root, 'linked.html'), h('ignored body'), Buffer.from('new')), /a symbolic link — left as it is/);
+  assert.match(git('ls-files', '-s', 'linked.html').stdout, /^120000 /);
+  assert.equal(readFileSync(join(root, 'generated', 'body.html'), 'utf8'), 'ignored body');
+  const eexist = { renameSync, rmSync, writeFileSync, readFileSync, linkSync: (a, b) => { if (a.endsWith('.replace')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
+  const why = documents.replaceIfUnchanged(join(root, 'private-draft.html'), h('read'), Buffer.from('new'), eexist);
+  assert.match(why, /the bytes read are in .*\.git\/stardust-replace\//, 'kept in the git dir');
+  git('add', '-A');
+  assert.equal(git('status', '--porcelain', '--untracked-files=all').stdout, '', 'the checkpoint stages nothing');
   rmSync(root, { recursive: true });
 });
 

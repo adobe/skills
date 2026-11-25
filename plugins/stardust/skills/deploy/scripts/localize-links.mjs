@@ -33,7 +33,7 @@
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
  *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
- *        [--dry-run] [--check] [--json] [--receipt <file>] [--targets <file>]
+ *        [--dry-run] [--check] [--json] [--receipt <file>] [--targets <file>] [--rewrite <file>]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
@@ -56,6 +56,9 @@
  *                  targets — a source link to any other document stays as it is (the extend
  *                  pass's targets.paths: delivered documents and the pass's own). Every document
  *                  is still read as a page.
+ *   --rewrite      a file of content file paths: the ONLY documents this run may rewrite; any other
+ *                  is left exactly as it is (the extend pass's rewrite.paths: its own documents, and
+ *                  an older one only when its published bytes are in a commit).
  *
  * Every page is written through lib/documents.mjs replaceIfUnchanged: a file saved between this
  * run's read and its write (an editor) is kept, reported as a conflict on stderr and in the summary
@@ -92,10 +95,10 @@ function parseArgs(argv) {
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
     else if (a === '--json') opts.json = true;
-    else if (a === '--receipt' || a === '--targets') {
+    else if (a === '--receipt' || a === '--targets' || a === '--rewrite') {
       const v = rest[i += 1];
       if (!v || !v.trim() || v.startsWith('--')) { console.error(`${a} needs a file`); process.exit(1); }
-      opts[a === '--receipt' ? 'receipt' : 'targets'] = v;
+      opts[a.slice(2)] = v;
     }
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
@@ -104,7 +107,7 @@ function parseArgs(argv) {
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
   if (opts.receipt && opts.dryRun) { console.error('--receipt records what a run wrote: not with --dry-run / --check'); process.exit(1); }
   if (opts.receipt && existsSync(opts.receipt)) { console.error(`--receipt ${opts.receipt} exists — one receipt per run`); process.exit(1); }
-  if (opts.targets && !existsSync(opts.targets)) { console.error(`--targets ${opts.targets} not found`); process.exit(1); }
+  for (const f of ['targets', 'rewrite']) if (opts[f] && !existsSync(opts[f])) { console.error(`--${f} ${opts[f]} not found`); process.exit(1); }
   return opts;
 }
 
@@ -221,6 +224,7 @@ function main() {
   const files = docs.map((d) => path.join(opts.content, d.file));
   const allowed = opts.targets ? new Set(readFileSync(opts.targets, 'utf8').split('\n').map((l) => l.trim().replace(/^\/+/, '')).filter(Boolean)) : null;
   const targets = docs.filter((d) => !allowed || allowed.has(d.file)).map((d) => path.join(opts.content, d.file));
+  const rewritable = opts.rewrite ? new Set(readFileSync(opts.rewrite, 'utf8').split('\n').map((l) => l.trim().replace(/^\/+/, '')).filter(Boolean)) : null;
   const { map, redirects, pending } = buildMap(targets, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
@@ -234,6 +238,7 @@ function main() {
     const r = processFile(f, ctx, buf.toString('utf8'));
     r.kept.forEach((k) => keptAll.set(k, (keptAll.get(k) || 0) + 1));
     if (!r.changed) continue;
+    if (rewritable && !rewritable.has(path.relative(opts.content, f).split(path.sep).join('/'))) continue; // not this run's to rewrite
     filesChanged += 1;
     localized += r.counts.localized; normalized += r.counts.normalized;
     const key = `/${path.relative(opts.content, f).split(path.sep).join('/')}`;

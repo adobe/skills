@@ -16,8 +16,12 @@
  *   replaceIfUnchanged(path, sha, bytes)  write `bytes` over a file only while it still holds the bytes whose sha256 is
  *                                   `sha`: the replacement is prepared first, the file moved aside atomically and
  *                                   checked, the replacement linked in (a link never replaces a file). A save made
- *                                   meanwhile is kept; on any other failure the original is put back. Returns null when
- *                                   written, else why not. Used by localize-links and extend-roster relink-restore.
+ *                                   meanwhile is kept; on any other failure the original is put back. A symbolic link
+ *                                   is refused, never replaced by its target's bytes. The replacement and the moved-
+ *                                   aside file live in the repository's git dir (`<git dir>/stardust-replace/`, never
+ *                                   staged, same filesystem) — outside a repository, beside the file — and a kept one
+ *                                   is named. Returns null when written, else why not. Used by localize-links and
+ *                                   extend-roster relink-restore.
  *   resolveEntry(entry, webPaths)   what one list entry names among those webPaths (a Set): its literal form (a web
  *                                   path, `/changelog.html` for changelog.html.html), its content-file form (one `.html`
  *                                   dropped) or a folder (`/x/` → `/x/index`). { match } for one, { ambiguous: [forms] }
@@ -26,11 +30,12 @@
  *                                   sheets); a destination at or under it belongs to the authoring library, never to a
  *                                   page. Pure.
  * Library, no CLI; nothing runs on import; the filesystem is read only by contentDocuments, contentFile and
- * replaceIfUnchanged.
+ * replaceIfUnchanged, which also asks `git rev-parse --absolute-git-dir` where to keep its files.
  */
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { linkSync, readdirSync, readFileSync, renameSync, rmSync, statSync, existsSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, existsSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { documentPath, pathKey } from './paths.mjs';
 
 export const isDocumentName = (name) => String(name).endsWith('.html');
@@ -76,8 +81,24 @@ export function contentFile(root, p) {
 }
 
 const sha = (b) => createHash('sha256').update(b).digest('hex');
+// Where the replacement and the moved-aside file live: the repository's git dir, which a checkpoint never stages.
+const stashes = new Map();
+function stashFor(path) {
+  const dir = dirname(path);
+  if (!stashes.has(dir)) {
+    const r = spawnSync('git', ['-C', dir, 'rev-parse', '--absolute-git-dir'], { encoding: 'utf8' });
+    const stash = r.status === 0 && r.stdout.trim() ? join(r.stdout.trim(), 'stardust-replace') : dir;
+    mkdirSync(stash, { recursive: true });
+    stashes.set(dir, stash);
+  }
+  return stashes.get(dir);
+}
 export function replaceIfUnchanged(path, expected, bytes, fs = { renameSync, linkSync, rmSync, writeFileSync, readFileSync }) {
-  const tmp = `${path}.replace-${process.pid}`; const aside = `${path}.aside-${process.pid}`;
+  let st;
+  try { st = lstatSync(path); } catch (e) { return `cannot read it (${e.code || e.message}) — left as it is`; }
+  if (st.isSymbolicLink()) return 'a symbolic link — left as it is (its target is never rewritten through it)';
+  const stash = stashFor(path); const id = `${basename(path)}.${process.pid}.${Date.now()}`;
+  const tmp = join(stash, `${id}.replace`); const aside = join(stash, `${id}.aside`);
   try { fs.writeFileSync(tmp, bytes); } catch (e) { return `cannot prepare the new bytes (${e.code || e.message}) — left as it is`; }
   try { fs.renameSync(path, aside); } catch (e) { fs.rmSync(tmp, { force: true }); return `cannot move it aside (${e.code || e.message}) — left as it is`; }
   const putBack = (why) => {

@@ -117,7 +117,7 @@ let n = 0;
 const localize = ({ targets = true } = {}) => {
   n += 1;
   const t = join(proj, X, 'targets.paths');
-  const r = spawnSync(process.execPath, [LOCALIZE, '--source-host', 'src.test', '--content', 'content', '--receipt', `${X}/receipts/run-${String(n).padStart(2, '0')}.json`, ...(targets && existsSync(t) ? ['--targets', `${X}/targets.paths`] : [])], { cwd: proj, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [LOCALIZE, '--source-host', 'src.test', '--content', 'content', '--receipt', `${X}/receipts/run-${String(n).padStart(2, '0')}.json`, ...(targets && existsSync(t) ? ['--targets', `${X}/targets.paths`] : []), ...(existsSync(join(proj, X, 'rewrite.paths')) ? ['--rewrite', `${X}/rewrite.paths`] : [])], { cwd: proj, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
 };
 const X = 'stardust/replica/extend/x1';
@@ -211,6 +211,9 @@ await check('publish: the recorded outputs and also.paths only — a draft at a 
   assert.match(r.err, /held \/visit\.html — roster page \/visit has its output \/visit\/index\.html/);
   assert.match(r.err, /held \/draft\.html — new, neither a unit's output nor in also\.paths/);
   assert.equal(pr(`${X}/targets.paths`), '/about.html\n/index.html\n/nav.htm.html\n/private-draft.html\n/team.html\n/visit/index.html\n');
+  // rewrite inputs: the pass's own and the opening documents whose published bytes are in a commit — never one whose
+  // only proven copy is its working file (git-ignored), nor one whose live version is unknown or a draft
+  assert.equal(pr(`${X}/rewrite.paths`), '/about.html\n/index.html\n/team.html\n/visit/index.html\n');
   pw(`${X}/also.paths`, '/fragments/visit-hours.html\n');
   r = prun('publish', '--pass', X);
   assert.equal(pr(`${X}/publish.paths`), '/fragments/visit-hours.html\n/visit/index.html\n');
@@ -231,7 +234,8 @@ await check('publish: the recorded outputs and also.paths only — a draft at a 
   assert.doesNotMatch(pr(`${X}/targets.paths`), /^\/old-draft\.html$/m);
 });
 
-await check('relink: the localizer\'s receipt is the evidence — its own edit is a candidate; an owner edit before or after it a conflict; a held draft is no link target; never published, a pre-digest live row, git-ignored are held', () => {
+await check('relink: the localizer\'s receipt is the evidence — its own edit is a candidate; an owner edit before or after it a conflict; a held draft is no link target; a document never published, with a pre-digest live row or git-ignored is not rewritten at all', () => {
+  const untouched = ['nav.htm.html', 'old-draft.html', 'private-draft.html'].map((f) => [f, pr(`content/${f}`)]);
   pw('content/about.html', ABOUT.replace('https://src.test/contact/', 'https://src.test/contact-us/'));
   localize();
   pw('content/team.html', pr('content/team.html').replace('/visit/', '/visit/#owner'));
@@ -240,9 +244,10 @@ await check('relink: the localizer\'s receipt is the evidence — its own edit i
   assert.match(r.out, /^candidate +\/index\.html — links only/m);
   assert.match(r.out, /^conflict +\/about\.html — edited before the localizer ran/m);
   assert.match(r.out, /^conflict +\/team\.html — edited after the localizer ran/m);
-  assert.match(r.out, /^held +\/old-draft\.html — no deploy ledger records it live: never published/m);
-  assert.match(r.out, /^held +\/nav\.htm\.html — its newest live row has no digest/m);
-  assert.match(r.out, /^held +\/private-draft\.html — git-ignored/m);
+  for (const [f, before] of untouched) {
+    assert.equal(pr(`content/${f}`), before, `${f}: its source link stays — not this pass's to rewrite`);
+    assert.doesNotMatch(r.out, new RegExp(`/${f.replace(/\./g, '\\.')}`), `${f}: in no receipt`);
+  }
   assert.match(pr('content/index.html'), /href="https:\/\/src\.test\/draft"/, 'a held draft stays a source link');
   assert.match(pr('content/index.html'), /href="\/visit\/"/);
 });
@@ -269,6 +274,12 @@ await check('a deploy ledger that cannot be read stops select and inventory (exi
   const inv = prun('inventory', '--pass', 'stardust/replica/extend/x9');
   assert.equal(inv.code, 2); assert.equal(existsSync(join(proj, 'stardust/replica/extend/x9/inventory.tsv')), false);
   for (const f of ['stardust/deploy/ledger-truncated.json', 'cand-t.txt', 'stardust/state.json', 'stardust/rollout/coverage/pages.json']) rmSync(join(proj, f));
+  // a ledger key becomes a file path: one that is no canonical DA document path stops the command before anything is written
+  pw('stardust/deploy/ledger-evil.json', JSON.stringify({ '/../../escape': { status: 'live', published: { sha256: hash('x'), at: '2026-11-01T00:00:00Z' } } }));
+  const ev = prun('published', '--pass', X, '--out', `${X}/library-evil`);
+  assert.equal(ev.code, 2); assert.match(ev.err, /"\/\.\.\/\.\.\/escape" is not a DA document path/);
+  assert.equal(existsSync(join(proj, X, 'library-evil')), false);
+  rmSync(join(proj, 'stardust/deploy/ledger-evil.json'));
   assert.equal(prun('reconcile', '--pass', X).code, 0, 'media-ledger.json alone is never read');
   rmSync(join(proj, 'stardust/deploy/media-ledger.json'));
 });
@@ -348,22 +359,30 @@ await check('published: the library\'s input holds each document at bytes known 
   pw('content/team.html', TEAM.replace('/visit/', '/visit/#owner'));
 });
 
-await check('opening-check: every delivered document — a coverage row or a ledger row — whose published bytes cannot be recovered is listed for --adopt (exit 1); proven, it passes (exit 0)', () => {
-  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [{ slug: 'home', path: '/', delivery: { status: 'verified' } }, { slug: 'about', path: '/about', delivery: { status: 'verified' } }, { slug: 'later', path: '/later', delivery: { status: 'pending' } }] }));
+await check('opening-check: the library\'s inputs — coverage pages — whose published bytes cannot be recovered are listed (exit 1); a page recoverable from a commit though its file is gone passes; a ledger-only document is no input; redeliver freezes the committed bytes', () => {
+  pw('content/handmade.html', '<main>delivered by hand</main>\n');   // in the opening commit, verified in coverage, no ledger row
+  git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'handmade');
+  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [
+    { slug: 'about', path: '/about', delivery: { status: 'verified' } }, { slug: 'handmade', path: '/handmade', delivery: { status: 'verified' } },
+    { slug: 'later', path: '/later', delivery: { status: 'pending' } }] }));
   const x3 = 'stardust/replica/extend/x3'; pw(`${x3}/base.txt`, `${git('rev-parse', 'HEAD').stdout.trim()}\n`);
+  const aboutNow = pr('content/about.html'); rmSync(join(proj, 'content', 'about.html'));   // gone from the checkout
   let r = prun('opening-check', '--pass', x3);
   assert.equal(r.code, 1, r.err);
-  const listed = pr(`${x3}/unproven.paths`);
-  assert.match(listed, /^\/nav\.htm\.html$/m, 'a ledger row without a digest');
-  assert.match(r.err, /unproven \/nav\.html \(ledger \/nav\) — /, 'a ledger-only document with no file: named, not adoptable');
-  assert.doesNotMatch(listed, /^\/about\.html$/m, 'about: x1 opening blob matches its digest');
-  // a page delivered by hand: verified in coverage, no ledger row
-  pw('content/handmade.html', '<main>delivered by hand</main>\n');
-  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [{ slug: 'handmade', path: '/handmade', delivery: { status: 'verified' } }] }));
-  r = prun('opening-check', '--pass', x3);
-  assert.match(pr(`${x3}/unproven.paths`), /^\/handmade\.html$/m);
+  assert.equal(pr(`${x3}/unproven.paths`), '/handmade.html\n', 'about recovered from the opening blob; /nav (ledger-only) is no input');
   assert.match(r.err, /unproven \/handmade\.html \(coverage \/handmade\) — no deploy ledger records it live/);
-  rmSync(join(proj, 'content', 'handmade.html')); rmSync(join(proj, 'stardust/rollout/coverage/pages.json')); rmSync(join(proj, x3), { recursive: true });
+  pw('content/handmade.html', '<main>edited while the owner decides</main>\n');
+  r = prun('redeliver', '--pass', x3, '--files', 'handmade.html');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(pr(`${x3}/approved/r1/handmade.html`), '<main>delivered by hand</main>\n', 'the committed bytes, never the working file');
+  assert.equal(pr(`${x3}/approved/r1.paths`), '/handmade.html\n');
+  assert.equal(prun('redeliver', '--pass', x3, '--files', 'never-committed.html').code, 1, 'no committed bytes: refused');
+  pw(`${x3}/approved/r1/.deploy-ledger.json`, JSON.stringify({ '/handmade': { status: 'live', published: { sha256: hash('<main>delivered by hand</main>\n'), at: '2026-11-26T00:00:00Z' } } }));
+  r = prun('opening-check', '--pass', x3);
+  assert.equal(r.code, 0, r.err);
+  pw('content/about.html', aboutNow);
+  for (const f of ['content/handmade.html', 'stardust/rollout/coverage/pages.json']) rmSync(join(proj, f));
+  rmSync(join(proj, x3), { recursive: true });
 });
 
 await check('a shallow clone of the last checkpoint resumes: publish and reconcile need only tracked files; a document whose opening blob is missing is held with the fetch that brings it', () => {

@@ -18,8 +18,8 @@
  *        [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs output --pass <dir> --unit <name> --files <a.html,b.html>
  *        [--content content]
- *   node stardust/scripts/replica/extend-roster.mjs relink-approve|relink-restore --pass <dir> --files <a.html,b.html>
- *        [--content content]
+ *   node stardust/scripts/replica/extend-roster.mjs relink-approve|relink-restore|redeliver --pass <dir>
+ *        --files <a.html,b.html> [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs published --pass <dir> --out <dir> [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs opening-check --pass <dir> [--content content]
  *        [--coverage stardust/rollout/coverage/pages.json]
@@ -40,15 +40,19 @@
  *   .deploy-ledger.json. A row's `published` (the last verified publication: sha256 and time) is the evidence, else a
  *   row reading `live` (its `sha256`, when it has one). A ledger that cannot be parsed stops every command (exit 2).
  *
- *   opening-check  before the first PUT: lists every delivered document — a coverage row `deployed`/`verified`
- *             (lib/documents.mjs deliveredRows, contentFile) or a ledger's live row — whose published bytes cannot be
- *             recovered, in <pass>/unproven.paths (those on disk, for `deploy-batch.mjs --adopt --paths`); the rest
- *             (no file anywhere) named. Exit 1 while any is left, 0 when none.
+ *   opening-check  the library's inputs: every page rollout coverage delivers (lib/documents.mjs deliveredRows,
+ *             contentFile) whose published bytes cannot be recovered as `published` recovers them (its file, else any
+ *             committed copy) is listed in <pass>/unproven.paths. Exit 1 while any is left, 0 when none. A document no
+ *             coverage row names (a ledger-only nav) is no input: it stays reserved.
+ *   redeliver the owner-approved fallback for an unproven page: freezes the opening commit's bytes of the named files
+ *             (never the working file) as <pass>/approved/r<k>/ with r<k>.sha256 and r<k>.paths; a file with no
+ *             committed bytes is refused (exit 1, nothing frozen). Commit it, then deploy-batch.mjs --content <it>
+ *             --allow <it>.paths.
  *
  *   inventory writes <pass>/inventory.tsv once, at the opening: `<sha256>\t<file>\t<tracked|ignored>\t<published>`
  *             for every document under --content (`tracked` per `git ls-files`). `published` is what the ledgers
  *             say of THESE bytes: `live` (the newest live row's sha256 is theirs), `live-unverified` (a live row from
- *             before ledgers kept a sha256 — `deploy-batch.mjs --adopt` records one), `differs` (another version
+ *             before ledgers kept a sha256), `differs` (another version
  *             landed last, or an earlier pass ended with it a conflict or held), `unpublished` (no live row). It is
  *             the record of what existed, tracked by git; the bytes it names are never needed on disk. Written once,
  *             with <pass>/reserved.paths: every DA document a ledger records live, whether or not its file is in the
@@ -62,8 +66,9 @@
  *             <pass>/also.paths (a fragment the pages need, written
  *             by the unit that creates it), each checked with the deployer's own entry rule — and <pass>/targets.paths:
  *             the link targets (every opening document a ledger records live or coverage delivers, and the publish
- *             list) for `localize-links.mjs
- *             --targets`. Any other new document (an owner's draft, one at a roster page whose capture failed) is
+ *             list), and <pass>/rewrite.paths: what the localizer may rewrite (the publish list, and an opening
+ *             document only when its published bytes are in a commit), for `localize-links.mjs --targets / --rewrite`.
+ *             Any other new document (an owner's draft, one at a roster page whose capture failed) is
  *             held and named. An entry that is missing, existed at the opening, sits under /library or would resolve
  *             to another document, or is reserved, exits 2, nothing written.
  *   published writes into --out (a new dir) every document — in the working tree, the opening inventory or a
@@ -253,13 +258,13 @@ function committedCopies(o, file, missing) {
 function lastPublished(o, file, entry, cache = {}, current = null) {
   const newest = liveRows(o, file, cache)[0];
   if (!newest) return { bytes: null, why: 'no deploy ledger records it live: never published — not a republish' };
-  if (!newest.sha256) return { bytes: null, why: 'its newest live row has no digest: which version DA holds is not known — `deploy-batch.mjs --adopt` records it when the status proves it' };
-  if (current && sha(current) === newest.sha256) return { bytes: current };
+  if (!newest.sha256) return { bytes: null, why: newest.unverified ? 'an unverified live publication is its newest: which version is live is not known — re-drive it' : 'its newest live row has no digest: which version DA holds is not known — re-deliver it from its committed bytes (`redeliver`) on the owner\'s yes' };
+  if (current && sha(current) === newest.sha256) return { bytes: current, from: 'working' };
   if (entry && entry.ignored) return { bytes: null, why: 'git-ignored: its published bytes are in no commit — never restored or re-published by the pass' };
   const missing = [];
   for (const read of committedCopies(o, file, missing)) {
     const b = read();
-    if (b && sha(b) === newest.sha256) return { bytes: b };
+    if (b && sha(b) === newest.sha256) return { bytes: b, from: 'committed' };
   }
   if (missing.length) return { bytes: null, why: `the opening commit ${missing[0].slice(0, 12)} is not in this clone — \`git fetch --depth 1 origin ${missing[0]}\`, then again` };
   return { bytes: null, why: `DA holds the version ${newest.sha256.slice(0, 12)}, whose bytes are in no commit here` };
@@ -286,6 +291,11 @@ function relinkRecords(pass) {
 // not one), <content>/.deploy-ledger.json (deploy-batch's default), every pass's approved/r<k>/.deploy-ledger.json —
 // and the publications they record for one document, newest first. A ledger that cannot be read stops the command
 // (exit 2, named): a reservation or a published version is never decided from incomplete evidence.
+const isDocPath = (w) => typeof w === 'string' && /^\/[^\\\0]*$/.test(w) && w.slice(1).split('/').every((seg) => seg && seg !== '.' && seg !== '..');
+const docFile = (w) => `${w.slice(1)}.html`;
+// a path inside root, or a usage error: no ledger key or list entry writes outside the tree it names
+const inside = (root, f) => { const p = resolve(root, f); if (p !== resolve(root) && !p.startsWith(`${resolve(root)}${sep}`)) usage(`${f} resolves outside ${root}`); return p; };
+
 function ledgerFiles(o) {
   const out = [];
   if (existsSync('stardust/deploy')) for (const n of readdirSync('stardust/deploy').sort()) if (/^ledger-.*\.json$/.test(n)) out.push(join('stardust/deploy', n));
@@ -306,13 +316,16 @@ function liveRows(o, file, cache) {
       if (!l || typeof l !== 'object' || Array.isArray(l)) usage(`deploy ledger ${lf} is not a ledger (an object of web paths) — repair or restore it`);
       for (const [doc, rec] of Object.entries(l)) {
         if (!rec || typeof rec !== 'object') continue;
-        // `published` is the last verified publication, kept apart from a later attempt's status (deploy-batch)
-        let row = null;
-        if (rec.published && rec.published.sha256) row = { sha256: rec.published.sha256, ts: rec.published.at || rec.ts || '' };
-        else if (rec.status === 'live') row = { sha256: rec.sha256 || null, ts: rec.ts || '' };
-        if (!row) continue;
+        // a key becomes a file path (published, opening-check): a canonical DA document path or the ledger is refused
+        if (!isDocPath(doc)) usage(`deploy ledger ${lf}: ${JSON.stringify(doc)} is not a DA document path (/a/b, no '.', '..' or empty segment) — repair it`);
+        // `published` is the last verified publication, kept apart from a later attempt's status; `liveAttempt` a
+        // publication not yet verified, which makes the version live unknown until it is (deploy-batch)
+        const rows = [];
+        if (rec.published && rec.published.sha256) rows.push({ sha256: rec.published.sha256, ts: rec.published.at || rec.ts || '' });
+        else if (rec.status === 'live') rows.push({ sha256: rec.sha256 || null, ts: rec.ts || '' });
+        if (rec.liveAttempt && rec.liveAttempt.at) rows.push({ sha256: null, unverified: true, ts: rec.liveAttempt.at });
         if (!cache.rows.has(doc)) cache.rows.set(doc, []);
-        cache.rows.get(doc).push({ ...row, ledger: lf });
+        for (const row of rows) cache.rows.get(doc).push({ ...row, ledger: lf });
       }
     }
     for (const rows of cache.rows.values()) rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
@@ -352,6 +365,7 @@ const FLAGS = {
   reconcile: ['--pass', '--content'],
   output: ['--pass', '--content', '--unit', '--files'],
   'opening-check': ['--pass', '--content', '--coverage'],
+  redeliver: ['--pass', '--content', '--files'],
   published: ['--pass', '--content', '--out'],
   'relink-status': ['--pass', '--content'],
   'relink-approve': ['--pass', '--content', '--files'],
@@ -370,7 +384,7 @@ export function parseArgs(argv) {
     if (v === undefined || !v.trim() || v.startsWith('--')) usage(`${f} needs a value`);
     if (f === '--max') { if (!/^\d+$/.test(v)) usage('--max needs a whole number'); o.max = Number(v) === 0 ? Infinity : Number(v); } else o[f.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
   }
-  const need = cmd === 'select' ? ['candidates', 'out'] : cmd === 'output' ? ['pass', 'unit', 'files'] : ['relink-approve', 'relink-restore'].includes(cmd) ? ['pass', 'files'] : cmd === 'published' ? ['pass', 'out'] : ['pass'];
+  const need = cmd === 'select' ? ['candidates', 'out'] : cmd === 'output' ? ['pass', 'unit', 'files'] : ['relink-approve', 'relink-restore', 'redeliver'].includes(cmd) ? ['pass', 'files'] : cmd === 'published' ? ['pass', 'out'] : ['pass'];
   for (const n of need) if (!o[n]) usage(`${cmd} needs --${n}`);
   if (o.files) o.files = o.files.split(',').map((s) => s.trim().replace(/^\/+/, '')).filter(Boolean);
   return o;
@@ -382,36 +396,60 @@ function liveDocuments(o) {
   return [...cache.rows.keys()].sort();
 }
 
-// Before the first PUT: every delivered document — a coverage row delivered (lib/documents.mjs deliveredRows, as
-// da-library reads them) or a ledger's live row — whose published bytes cannot be recovered, written to
-// <pass>/unproven.paths for `deploy-batch.mjs --adopt --paths`. Exit 1 while any is left (the pass cannot close:
-// da-library refuses a library that misses a delivered page), 0 when none.
+// The library's inputs — every page rollout coverage delivers (lib/documents.mjs deliveredRows, as da-library reads them)
+// — whose published bytes cannot be recovered the way `published` recovers them (the working file, then every
+// committed copy). Written to <pass>/unproven.paths for `redeliver`; exit 1 while any is left, 0 when none. An untouched
+// document no coverage row names (a ledger-only nav) is not an input: it stays reserved, and is held only if a revision
+// is proposed for it.
 function openingCheck(o) {
   const inv = existsSync(join(o.pass, 'inventory.tsv')) ? readInventory(o.pass) : new Map();
-  const cache = {}; liveRows(o, 'x.html', cache);
-  const want = new Map();
+  const cache = {};
   const cov = existsSync(o.coverage) ? readJson(o.coverage, '--coverage') : null;
+  const unproven = []; let pages = 0;
   for (const row of deliveredRows(cov)) {
-    const f = contentFile(o.content, row.path);
-    if (f) want.set(relative(o.content, f).split(sep).join('/'), `coverage ${row.path}`);
-    else console.error(`unproven ${row.path} — delivered (coverage) but no content file: restore its body first`);
+    pages += 1;
+    const rel = row.path === '/' || row.path === '' ? 'index' : String(row.path).replace(/^\/|\/$/g, '');
+    const onDisk = contentFile(o.content, row.path);
+    const candidates = onDisk ? [relative(o.content, onDisk).split(sep).join('/')] : [`${rel}.html`, `${rel}/index.html`];
+    const tried = candidates.map((f) => ({ f, ...lastPublished(o, f, inv.get(f) || null, cache, existsSync(join(o.content, f)) ? readFileSync(join(o.content, f)) : null) }));
+    if (tried.some((t) => t.bytes)) continue;
+    unproven.push(`/${candidates[0]}`);
+    console.error(`unproven /${candidates[0]} (coverage ${row.path}) — ${tried[0].why}`);
   }
-  for (const w of cache.rows.keys()) want.set(`${w.replace(/^\/+/, '')}.html`, `ledger ${w}`);
-  const unproven = []; let missingFile = 0;
-  for (const [f, from] of [...want.entries()].sort()) {
-    const p = join(o.content, f);
-    const cur = existsSync(p) ? readFileSync(p) : null;
-    const { bytes, why } = lastPublished(o, f, inv.get(f) || null, cache, cur);
-    if (bytes) continue;
-    if (cur) unproven.push(`/${f}`); else missingFile += 1;
-    console.error(`unproven /${f} (${from}) — ${why}`);
-  }
-  const noFile = deliveredRows(cov).filter((r) => !contentFile(o.content, r.path)).length;
   writeAtomic(join(o.pass, 'unproven.paths'), lines(unproven));
-  const left = unproven.length + missingFile + noFile;
-  console.error(`opening-check: ${want.size} delivered document(s), ${left} unproven → ${join(o.pass, 'unproven.paths')} (${unproven.length} on disk for --adopt)`);
-  if (left) throw new Refused(`extend-roster: ${left} delivered document(s) without recoverable published bytes`);
+  console.error(`opening-check: ${pages} delivered page(s), ${unproven.length} unproven → ${join(o.pass, 'unproven.paths')}`);
+  if (unproven.length) throw new Refused(`extend-roster: ${unproven.length} delivered page(s) without recoverable published bytes`);
   return 0;
+}
+
+// The owner-approved fallback for an unproven page: its committed bytes (the opening commit's blob) frozen as a revision,
+// deployed from that dir and its own ledger — never the working file, which may have changed since.
+function redeliver(o) {
+  const baseFile = join(o.pass, 'base.txt');
+  if (!existsSync(baseFile)) usage(`${baseFile} not found`);
+  const base = readFileSync(baseFile, 'utf8').trim();
+  const frozen = []; const refused = [];
+  for (const f of o.files) {
+    let b = null;
+    try { b = execFileSync('git', ['show', `${base}:./${relative(process.cwd(), inside(o.content, f)).split(sep).join('/')}`], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { b = null; }
+    if (b) frozen.push({ file: f, bytes: b }); else refused.push(`/${f} — not in the opening commit ${base.slice(0, 12)} (git-ignored, new, or a clone without it: \`git fetch --depth 1 origin ${base}\`)`);
+  }
+  for (const r of refused) console.error(`refused ${r}`);
+  if (refused.length) throw new Refused(`extend-roster: ${refused.length} file(s) without committed bytes; nothing frozen`);
+  freezeRevision(o, frozen, 'redeliver');
+  return 0;
+}
+
+// A frozen revision: approved/r<k>/<file> with r<k>.sha256 and r<k>.paths — deployed with `deploy-batch.mjs --content
+// <it> --allow <it>.paths` (its own ledger inside it), committed before it is sent.
+function freezeRevision(o, docs, what) {
+  const dir = join(o.pass, 'approved');
+  const k = (existsSync(dir) ? readdirSync(dir).filter((n) => /^r\d+$/.test(n)).map((n) => Number(n.slice(1))) : []).reduce((m, x) => Math.max(m, x), 0) + 1;
+  const rev = join(dir, `r${k}`);
+  for (const d of docs) writeAtomic(inside(rev, d.file), d.bytes);
+  writeAtomic(`${rev}.sha256`, lines(docs.map((d) => `${sha(d.bytes)}  ${d.file}`)));
+  writeAtomic(`${rev}.paths`, lines(docs.map((d) => `/${d.file}`)));
+  console.error(`${what} r${k}: ${docs.length} document(s) frozen in ${rev} — on the owner's yes, commit it, then deploy-batch.mjs --content ${rev} --allow ${rev}.paths`);
 }
 
 function select(o) {
@@ -551,6 +589,10 @@ function publish(o) {
   const deliveredFiles = new Set(deliveredRows(cov).map((r) => contentFile(o.content, r.path)).filter(Boolean).map((f) => relative(o.content, f).split(sep).join('/')));
   const targets = [...[...inv.keys()].filter((f) => liveRows(o, f, cache).length || deliveredFiles.has(f)), ...keep];
   writeAtomic(join(o.pass, 'targets.paths'), lines([...new Set(targets)].sort().map((f) => `/${f}`)));
+  // rewrite inputs: the pass's own documents, and an opening document only when its published bytes are in a committed
+  // copy — rewriting one whose only proven copy is its working file would destroy what the library and a restore need
+  const rewrite = [...keep, ...[...inv.entries()].filter(([f, e]) => !e.ignored && lastPublished(o, f, e, cache, null).from === 'committed').map(([f]) => f)];
+  writeAtomic(join(o.pass, 'rewrite.paths'), lines([...new Set(rewrite)].sort().map((f) => `/${f}`)));
   writeAtomic(join(o.pass, 'publish.paths'), lines([...keep].sort().map((f) => `/${f}`)));
   console.error(`publish: ${keep.size} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held} new held); targets.paths: ${new Set(targets).size} link target(s)`);
   return 0;
@@ -565,15 +607,16 @@ function published(o) {
   // the working tree, the opening inventory and every document a ledger records live: a delivered document whose file
   // is gone from content/ is recovered from its committed copies, or named withheld — never silently left out
   liveRows(o, 'x.html', cache);
-  const known = new Set([...documents(o.content), ...inv.keys(), ...[...cache.rows.keys()].map((w) => `${w.replace(/^\/+/, '')}.html`)]);
+  const known = new Set([...documents(o.content), ...inv.keys(), ...[...cache.rows.keys()].map(docFile)]);
   for (const f of [...known].sort()) {
-    const p = join(o.content, f);
+    const p = inside(o.content, f);
     const cur = existsSync(p) ? readFileSync(p) : null;
     if (!cur && !liveRows(o, f, cache).length) continue;
     const { bytes, why } = lastPublished(o, f, inv.get(f) || null, cache, cur);
     if (!bytes) { withheld.push(`/${f} — ${why}`); continue; }
-    mkdirSync(dirname(join(o.out, f)), { recursive: true });
-    writeFileSync(join(o.out, f), bytes); n += 1;
+    const target = inside(o.out, f);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, bytes); n += 1;
   }
   for (const w of withheld) console.error(`withheld ${w}`);
   console.error(`published: ${n} document(s) at their delivered bytes → ${o.out}; ${withheld.length} withheld (da-library --content ${o.out} refuses when a delivered page is among them)`);
@@ -590,7 +633,7 @@ function reconcile(o) {
     if (!existsSync(p)) { console.error(`missing ${entry} — on the list, not on disk`); continue; }
     const newest = liveRows(o, f, cache)[0];
     const now = sha(readFileSync(p));
-    if (!newest || newest.sha256 !== now) { redrive.push(entry); console.error(`redrive ${entry} — ${!newest ? 'no delivery recorded' : !newest.sha256 ? 'its newest live row has no digest' : 'changed since its last verified delivery'}`); }
+    if (!newest || newest.sha256 !== now) { redrive.push(entry); console.error(`redrive ${entry} — ${!newest ? 'no delivery recorded' : newest.unverified ? 'an unverified live publication is its newest — what is live is not known' : !newest.sha256 ? 'its newest live row has no digest' : 'changed since its last verified delivery'}`); }
   }
   writeAtomic(join(o.pass, 'redrive.paths'), lines(redrive));
   console.error(`reconcile: ${redrive.length} document(s) → ${join(o.pass, 'redrive.paths')}`);
@@ -619,18 +662,8 @@ function relinkAct(o, act) {
       if (why) refused.push(`/${s.file} — conflict: ${why}`); else console.error(`restored /${s.file} to its last published bytes`);
     }
   } else if (ok.length) {
-    const dir = join(o.pass, 'approved');
-    const k = (existsSync(dir) ? readdirSync(dir).filter((n) => /^r\d+$/.test(n)).map((n) => Number(n.slice(1))) : []).reduce((m, x) => Math.max(m, x), 0) + 1;
-    const rev = join(dir, `r${k}`);
-    const sums = [];
-    for (const s of ok) {
-      // the exact bytes classified and shown to the owner — never a second read of the working file
-      writeAtomic(join(rev, s.file), s.current);
-      sums.push(`${sha(s.current)}  ${s.file}`);
-    }
-    writeAtomic(`${rev}.sha256`, lines(sums));
-    writeAtomic(`${rev}.paths`, lines(ok.map((s) => `/${s.file}`)));
-    console.error(`approved r${k}: ${ok.length} document(s) frozen in ${rev} — commit it, then deploy-batch.mjs --content ${rev} --allow ${rev}.paths`);
+    // the exact bytes classified and shown to the owner — never a second read of the working file
+    freezeRevision(o, ok.map((st) => ({ file: st.file, bytes: st.current })), 'approved');
   }
   for (const r of refused) console.error(`refused ${r}`);
   if (refused.length) throw new Refused(`extend-roster: ${refused.length} named file(s) refused`);
@@ -644,7 +677,7 @@ export function main(argv) {
   try {
     const o = parseArgs(argv);
     const run = {
-      select, inventory, output, publish, published, reconcile, 'opening-check': openingCheck, 'relink-status': relinkStatus,
+      select, inventory, output, publish, published, reconcile, 'opening-check': openingCheck, redeliver, 'relink-status': relinkStatus,
       'relink-approve': (x) => relinkAct(x, 'approve'), 'relink-restore': (x) => relinkAct(x, 'restore'),
     }[o.cmd];
     return run(o);

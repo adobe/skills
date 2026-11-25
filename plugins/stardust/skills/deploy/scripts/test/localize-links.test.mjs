@@ -107,5 +107,17 @@ check("an entry whose name starts with `.` (`.drafts/`) is no document, as on ma
   assert.equal(readFileSync(join(c, ".drafts", "offer.html"), "utf8"), '<a href="https://example.com/">h</a>');
   rmSync(root, { recursive: true });
 });
+check("--rewrite: only the listed documents are rewritten; another one with a source link is left exactly as it is (and stays out of the receipt)", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-rw-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
+  const kept = '<a href="https://example.com/about">a</a>';
+  writeFileSync(join(c, "index.html"), kept); writeFileSync(join(c, "new.html"), kept); writeFileSync(join(c, "about.html"), "<p>about</p>");
+  writeFileSync(join(root, "rewrite.paths"), "/new.html\n");
+  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, "--rewrite", join(root, "rewrite.paths"), "--receipt", join(root, "r.json")], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), kept, "not this run's to rewrite");
+  assert.equal(readFileSync(join(c, "new.html"), "utf8"), '<a href="/about">a</a>');
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(root, "r.json"), "utf8")).files), ["/new.html"]);
+  rmSync(root, { recursive: true });
+});
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });
 process.exit(failed ? 1 : 0);

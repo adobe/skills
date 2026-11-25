@@ -79,17 +79,13 @@
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     re-drive every selected page, whatever the ledger says; its rows, and the last verified
  *             publication each keeps (`published`), stay — a forced attempt that fails or halts never erases it.
- * --adopt     send nothing (needs --paths): for each listed page whose ledger row has no verified digest — a
- *             row written before ledgers kept one, or none (a page delivered by hand) — record it as live
- *             (`published: { sha256, at }`, `adoptedAt`) only on proof: DA's source is exactly the local file's
- *             bytes AND its Last-Modified equals the admin status's `live.sourceLastModified` (the source
- *             time a preview recorded, copied to live by the publish; a later save in DA moves the source
- *             past it). A source match alone is kept apart as `sourceSha256`. Read-only (GET
- *             admin.da.live/source, GET admin.hlx.page/status).
+ * Every run merges only the rows it drove into the ledger (under its lock), and its exit status covers only the
+ * pages it selected and its list errors.
  * A page the ledger reads `live` and the delivered origin still serves is skipped, as on every re-run: a retry
  * re-drives the failures only. The ledger also records `sha256` — the bytes verified delivered —, `published: {
- * sha256, at }` — the last verified publication, never moved by a later failed or halted attempt — and `putSha256`, the bytes
- * the last PUT sent, for a caller that compares them (replica's extend pass re-drives its own list with --force
+ * sha256, at }` — the last verified publication, never moved by a later failed or halted attempt —, `liveAttempt: {
+ * sha256, at }` — a live publication not yet verified (a reader must not take `published` as current while it
+ * stands) — and `putSha256`, the bytes the last PUT sent, for a caller that compares them (replica's extend pass re-drives its own list with --force
  * --paths).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
@@ -158,13 +154,11 @@ function parseArgs(argv) {
     else if (k === '--backoff-ms') a.backoffMs = Math.max(0, +next() || 500);
     else if (k === '--no-publish') a.publish = false;
     else if (k === '--force') a.force = true;
-    else if (k === '--adopt') a.adopt = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
-  if (a.adopt && !a.paths) throw new Error('--adopt needs --paths <file>: the pages to prove (extend-roster opening-check writes the list)');
   // a misspelled --content must not read as an empty, successful batch (nor get a ledger created in it)
   if (!existsSync(a.content) || !statSync(a.content).isDirectory()) throw new Error(`--content ${a.content} is not a directory — nothing was sent`);
   // The token source (daTokenSource, lib/da-token.mjs — the uploader's rule): one file or one variable, never
@@ -287,6 +281,8 @@ async function deployOne(page, args, ledger, logLine) {
     const live = await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, args);
     if (live.status === 401) return tokenHalt('live', live);
     rec.live = live.status;
+    // published, not yet verified: until verify confirms it, no earlier `published` reads as what is live now
+    if (ok2xx(live.status)) rec.liveAttempt = { sha256, at: new Date().toISOString() };
     if (!ok2xx(live.status)) {
       rec.status = 'live-fail';
       rec.lastError = `live ${live.status} ${live.text}`;
@@ -301,7 +297,7 @@ async function deployOne(page, args, ledger, logLine) {
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
   if (v.ok) rec.sha256 = sha256; // the bytes verified delivered: a halt or failure before here never moves it
   // the last verified publication, apart from the attempt's status: a later failed or halted attempt never moves it
-  if (v.ok && publish) rec.published = { sha256, at: new Date().toISOString() };
+  if (v.ok && publish) { rec.published = { sha256, at: new Date().toISOString() }; delete rec.liveAttempt; }
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };
@@ -379,53 +375,6 @@ async function main() {
       console.error(`[deploy-batch] --force: ledger ${args.ledger} unreadable (${e.message}) — starting from an empty one`);
     }
   }
-  const persistNow = async () => { try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); } catch (e) { console.error(`[deploy-batch] ${e.message}`); } };
-
-  if (args.adopt) {
-    // Proof that the local bytes are what is live, for a page whose ledger has no verified digest (a row written
-    // before digests, or no row at all — a page delivered by hand): DA's source holds exactly these bytes, AND the live
-    // copy was built from that source as it is now — a preview stores the source's Last-Modified as the page's
-    // x-source-last-modified, a publish copies it to live, and the admin status reports it as live.sourceLastModified;
-    // a save in DA since moves the source's Last-Modified past it. Anything less adopts nothing.
-    let adopted = 0; let kept = 0;
-    const get = async (url) => {
-      try {
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${args.token}` } });
-        return { status: res.status, lastModified: res.headers.get('last-modified'), body: res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null };
-      } catch { return { status: 0, lastModified: null, body: null }; }
-    };
-    for (const p of pages) {
-      const rec = ledger[p.webPath];
-      if (rec && (rec.published?.sha256 || (rec.status === 'live' && rec.sha256))) continue; // already proven
-      const local = createHash('sha256').update(await readFile(p.file)).digest('hex');
-      const enc = encodeURI(p.webPath);
-      const src = await get(`${DA_SRC}/${args.org}/${args.repo}${enc}.html`);
-      const st = src.status === 200 ? await get(`${ADMIN}/status/${args.org}/${args.repo}/${args.branch}${enc}`) : { status: 0, body: null };
-      if (src.status === 401 || st.status === 401) { console.error(`[deploy-batch] --adopt: 401 on ${p.webPath} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`); await persistNow(); process.exit(TOKEN_EXIT); }
-      const srcSha = src.body && createHash('sha256').update(src.body).digest('hex');
-      let status = null;
-      try { status = st.body && JSON.parse(st.body.toString('utf8')); } catch { status = null; }
-      const sourceAt = Date.parse(src.lastModified); const builtFrom = Date.parse(status?.live?.sourceLastModified);
-      const liveFromSource = status?.live?.status === 200 && Number.isFinite(sourceAt) && Number.isFinite(builtFrom) && sourceAt === builtFrom;
-      if (srcSha === local && liveFromSource) {
-        const row = rec || (ledger[p.webPath] = { attempts: 0 });
-        const at = new Date().toISOString();
-        Object.assign(row, { status: 'live', sha256: local, published: { sha256: local, at }, adoptedAt: at, ts: row.ts || at });
-        adopted += 1;
-      } else {
-        kept += 1;
-        if (srcSha === local && rec) rec.sourceSha256 = local; // DA's source holds these bytes — not proof they are live
-        const why = !src.body ? `source GET ${src.status}` : srcSha !== local ? 'DA holds other bytes than the local file'
-          : !status ? `status GET ${st.status}` : status.live?.status !== 200 ? `not live (status ${status.live?.status ?? 'unknown'})`
-            : !Number.isFinite(sourceAt) || !Number.isFinite(builtFrom) ? 'no source Last-Modified or live.sourceLastModified to compare — no proof'
-              : 'the source was saved after the live copy was built — a draft in DA, not what is live';
-        console.error(`[deploy-batch] --adopt: ${p.webPath} not adopted — ${why}`);
-      }
-    }
-    await persistNow();
-    console.error(`[deploy-batch] --adopt: ${adopted} proven live and recorded, ${kept} not; nothing sent.`);
-    process.exit(0);
-  }
 
   // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
   const todo = [];
@@ -441,8 +390,12 @@ async function main() {
 
   // Shared file: lock + re-read + merge (this run's rows win) + tmp/rename, so a second batch or a
   // kill mid-write never loses rows or leaves a ledger the next run refuses to parse.
+  // Only the rows this run drove are merged: a row it merely read (another batch's, or history) is never written back
+  // from this run's stale copy.
+  const touched = new Set();
   const persist = async () => {
-    try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); }
+    const own = Object.fromEntries([...touched].map((w) => [w, ledger[w]]));
+    try { mergeLedger(args.ledger, own, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); }
     catch (e) { console.error(`[deploy-batch] ${e.message}`); }
   };
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
@@ -452,6 +405,7 @@ async function main() {
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries
   const results = [];
   await pool(todo, args.concurrency, async (p) => {
+    touched.add(p.webPath);
     const { rec, halt } = await deployOne(p, args, ledger, logLine);
     done += 1;
     results.push({ path: p.webPath, rec, halt });
@@ -482,8 +436,9 @@ async function main() {
     process.exit(TOKEN_EXIT);
   }
 
-  const fails = Object.entries(ledger).filter(([, r]) => !['live', 'previewed'].includes(r.status));
-  console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  // this invocation's verdict: the pages it selected, never a history row of a page it was not asked about
+  const fails = pages.map((p) => [p.webPath, ledger[p.webPath] || {}]).filter(([, r]) => !['live', 'previewed'].includes(r.status));
+  console.error(`[deploy-batch] done. ${todo.length - fails.filter(([w]) => todo.some((t) => t.webPath === w)).length} ok, ${fails.length} failed.`);
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);
