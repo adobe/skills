@@ -96,6 +96,15 @@ check('captureGaps: first-level targets under a captured locale root minus the c
   ]);
   assert.equal(detail, 'uncaptured first-level targets: ca/en 3, fr/fr 0');
 });
+check('gapRecords (incremental, --skip-captured): an earlier locale root keeps its outstanding children — capturing one of two leaves the other as a gap, not `roots: []`', () => {
+  const prior = [{ slug: 'fr', url: 'https://example.com/fr/', links: ['https://example.com/fr/a', 'https://example.com/fr/b'] }, { slug: 'index', url: 'https://example.com/' }];
+  const now = [{ slug: 'fr-a', url: 'https://example.com/fr/a', links: [] }];
+  const { roots, detail } = captureGaps(crawl.gapRecords(now, prior), ['https://example.com/', 'https://example.com/fr/']);
+  assert.deepEqual(roots, [{ root: '/fr', slug: 'fr', linked: 2, uncaptured: ['/fr/b'] }]);
+  assert.equal(detail, 'uncaptured first-level targets: fr 1');
+  assert.deepEqual(captureGaps(now, ['https://example.com/fr/']).roots, [], 'this run\'s records alone (the bug)');
+  assert.equal(crawl.gapRecords([{ slug: 'fr', url: 'https://example.com/fr/', links: [] }], prior).filter((r) => r.slug === 'fr').length, 1, 'a re-captured record replaces the earlier one');
+});
 check('captureGaps: no locale root captured → no roots and a detail that says so; a root page without links lists 0 of 0; records without links or with an unparsable url survive', () => {
   assert.deepEqual(captureGaps([{ slug: 'index', url: 'https://example.com/', links: ['https://example.com/en/x'] }, { slug: 'about', url: 'https://example.com/about' }]), { roots: [], detail: 'uncaptured first-level targets: none (no locale root captured)' });
   assert.deepEqual(captureGaps([{ slug: 'en', url: 'https://example.com/en' }, { slug: 'junk', url: 'nope' }]).roots, [{ root: '/en', slug: 'en', linked: 0, uncaptured: [] }]);

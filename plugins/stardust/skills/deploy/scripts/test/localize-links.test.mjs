@@ -3,6 +3,7 @@
 // Run: node plugins/stardust/skills/deploy/scripts/test/localize-links.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -43,6 +44,33 @@ check("a content tree: links to a folder index get /x/, links to a leaf lose .ht
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="/en/news/story">s</a>');
   assert.equal(readFileSync(join(c, "story.html"), "utf8"), '<a href="/en/news/">n</a> <a href="/en/news/">n2</a>');
+  rmSync(root, { recursive: true });
+});
+check("--receipt: the sha256 of the bytes READ and WRITTEN for each file the run rewrote, nothing else; one receipt per run; not with --check", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-rc-")); const c = join(root, "content"); mkdirSync(join(c, "visit"), { recursive: true });
+  const home = '<a href="https://example.com/visit/">v</a>';
+  writeFileSync(join(c, "index.html"), home); writeFileSync(join(c, "about.html"), '<p>no source link</p>'); writeFileSync(join(c, "visit", "index.html"), "<p>visit</p>");
+  const L = (...a) => spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, ...a], { encoding: "utf8" });
+  const r = L("--receipt", join(root, "r1.json"));
+  assert.equal(r.status, 0, r.stderr);
+  const rc = JSON.parse(readFileSync(join(root, "r1.json"), "utf8"));
+  const sha = (t) => createHash("sha256").update(t).digest("hex");
+  assert.deepEqual(Object.keys(rc.files), ["/index.html"], "only the file it rewrote — about.html untouched is not in it");
+  assert.deepEqual(rc.files["/index.html"], { input: sha(home), output: sha('<a href="/visit/">v</a>') });
+  assert.equal(rc.tool, "localize-links"); assert.match(rc.at, /^\d{4}-/);
+  assert.equal(L("--receipt", join(root, "r1.json")).status, 1, "an existing receipt is never overwritten");
+  assert.equal(L("--check", "--receipt", join(root, "r2.json")).status, 1);
+  rmSync(root, { recursive: true });
+});
+check("--exclude-targets: a held document is no link target — the source link to it stays; it is still read as a page", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-ex-")); const c = join(root, "content"); mkdirSync(c, { recursive: true });
+  writeFileSync(join(c, "index.html"), '<a href="https://example.com/draft">d</a> <a href="https://example.com/about">a</a>');
+  writeFileSync(join(c, "draft.html"), '<a href="https://example.com/about">a</a>'); writeFileSync(join(c, "about.html"), "<p>about</p>");
+  writeFileSync(join(root, "held.paths"), "/draft.html\n");
+  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, "--exclude-targets", join(root, "held.paths")], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="https://example.com/draft">d</a> <a href="/about">a</a>');
+  assert.equal(readFileSync(join(c, "draft.html"), "utf8"), '<a href="/about">a</a>', "its own links are still localized");
   rmSync(root, { recursive: true });
 });
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });

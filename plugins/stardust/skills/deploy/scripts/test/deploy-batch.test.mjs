@@ -281,6 +281,23 @@ await check('a page the ledger reads live is driven again when its file changed 
   assert.match(r.err, /2 pages, 1 already live, 1 to drive \(1 changed since their PUT\)/);
   assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/a.html`]);
 });
+await check('a token halt on live during a changed-page re-drive never marks the new bytes live: the retry drives it again (PUT, preview, live), not a GET on the old version', async () => {
+  site('site-th', ['p-dead-live']);
+  assert.equal((await run(['--content', 'site-th'], { token: FRESH_TOKEN })).code, 0, 'v1 live with a fresh token');
+  const v1 = ledgerOf('site-th')['/p-dead-live'].sha256;
+  writeFileSync(join(proj, 'site-th', 'p-dead-live.html'), '<div><p>v2</p></div>\n');
+  const halted = await run(['--content', 'site-th', '--retries', '0']);   // PUT + preview pass, live answers 401
+  assert.equal(halted.code, 3, halted.out + halted.err);
+  const rec = ledgerOf('site-th')['/p-dead-live'];
+  assert.equal(rec.sha256, v1, 'the verified digest is still v1');
+  assert.notEqual(rec.putSha256, v1, 'v2 was sent');
+  const from = requests.length;
+  const retry = await run(['--content', 'site-th'], { token: FRESH_TOKEN });
+  assert.equal(retry.code, 0, retry.out + retry.err);
+  assert.match(retry.err, /1 to drive \(1 changed since their PUT\)/);
+  assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
+  assert.notEqual(ledgerOf('site-th')['/p-dead-live'].sha256, v1);
+});
 await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
   site('site-fold', ['visit/index', 'other']);
   writeFileSync(join(proj, 'site-fold.allow'), '/visit/\n');

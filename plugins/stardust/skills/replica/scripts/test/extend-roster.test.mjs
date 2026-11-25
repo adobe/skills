@@ -3,10 +3,11 @@
 // whose EDS destination is new (not captured, not a coverage path, not an existing content document — nav and
 // fragments included), one slot per destination with a query-less url preferred so the roster replays exactly,
 // --max, --named refusals (query, delivered, document) that write nothing, --slugs-out written before the roster;
-// in a git project: `inventory` (tracked or ignored), `publish` (new documents of the roster only — an owner's draft
-// and a `.htm` file held), the relink records and their classes (candidate, conflict — an owner edit before, after
-// or beside the localizer's —, held), restore and approve on candidates only, a landed revision as the last
-// published bytes, and a resume from a shallow checkpoint clone; usage errors exit 2.
+// in a git project: `inventory` (tracked or ignored; the ledgers' word on each document), `publish` (new documents of
+// the roster only — an owner's draft held, two claimants of one page refused, held.paths), the real localizer's
+// receipts and their classes (candidate, conflict — an owner edit before or after its run —, held), restore and
+// approve on candidates only, a landed revision as the last published bytes, reconcile, a resume from a shallow
+// checkpoint clone, and the next pass's inventory; usage errors exit 2.
 // Run: node plugins/stardust/skills/replica/scripts/test/extend-roster.test.mjs   (under 1 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -90,46 +91,61 @@ check('select: an empty roster is written and exits 0 (discovery found nothing n
 });
 
 check('usage: unknown command, missing or flag-shaped value, bad --max, unreadable input exit 2 with one line; --help exits 0', () => {
-  for (const args of [['nope'], ['select', '--out', 'x'], ['select', '--candidates', '--out'], ['select', '--candidates', 'cand.txt', '--out', 'x', '--max', 'two'], ['select', '--candidates', 'missing.txt', '--out', 'x'], ['publish', '--pass', 'nowhere'], ['relink-approve', '--pass', 'p'], ['relink-after', '--pass', 'nowhere'], ['select', '--candidates', 'cand.txt', '--out', 'x', '--state', 'missing.json']]) {
+  for (const args of [['nope'], ['select', '--out', 'x'], ['select', '--candidates', '--out'], ['select', '--candidates', 'cand.txt', '--out', 'x', '--max', 'two'], ['select', '--candidates', 'missing.txt', '--out', 'x'], ['publish', '--pass', 'nowhere'], ['relink-approve', '--pass', 'p'], ['reconcile', '--pass', 'nowhere'], ['relink-before', '--pass', 'p'], ['select', '--candidates', 'cand.txt', '--out', 'x', '--state', 'missing.json']]) {
     const r = run(...args); assert.equal(r.code, 2, `${args.join(' ')}: ${r.err}`); assert.equal(r.err.trim().split('\n').length, 1, r.err);
   }
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /^skills\/replica\/scripts\/extend-roster\.mjs/);
 });
 
-// ---- a pass in a git project: inventory, publish, relink ----------------------------------------------------------
+// ---- a pass in a git project: inventory, publish, reconcile, relink ----------------------------------------------
 const proj = realpathSync(mkdtempSync(join(tmpdir(), 'extend-roster-pass-')));
 const git = (...a) => spawnSync('git', a, { cwd: proj, encoding: 'utf8' });
 const pw = (rel, text) => { mkdirSync(dirname(join(proj, rel)), { recursive: true }); writeFileSync(join(proj, rel), text); };
 const pr = (rel) => readFileSync(join(proj, rel), 'utf8');
 const prun = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: proj, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const hash = (t) => createHash('sha256').update(t).digest('hex');
+const LOCALIZE = join(HERE, '..', '..', '..', 'deploy', 'scripts', 'localize-links.mjs');
+let n = 0;
+// the real localizer, with a receipt per run (the extend pass's rule); --exclude-targets the pass's held list
+const localize = ({ exclude = true } = {}) => {
+  n += 1;
+  mkdirSync(join(proj, X, 'receipts'), { recursive: true });
+  const held = join(proj, X, 'held.paths');
+  const r = spawnSync(process.execPath, [LOCALIZE, '--source-host', 'src.test', '--content', 'content', '--receipt', `${X}/receipts/run-${String(n).padStart(2, '0')}.json`, ...(exclude && existsSync(held) ? ['--exclude-targets', `${X}/held.paths`] : [])], { cwd: proj, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+};
 const X = 'stardust/replica/extend/x1';
 const ABOUT = '<main><p>About us.</p><a href="https://src.test/visit/">Visit</a> <a href="https://src.test/contact/">Contact</a></main>\n';
+const INDEX = '<main><a href="https://src.test/visit/">Visit</a> <a href="https://src.test/draft">Draft</a></main>\n';
+const TEAM = '<main><p>Team.</p><a href="https://src.test/visit/">Visit</a></main>\n';
 pw('.gitignore', '/content/private-draft.html\n');
-pw('content/index.html', '<main><a href="https://src.test/visit/">Visit</a></main>\n');
+pw('content/index.html', INDEX);
 pw('content/about.html', ABOUT);
-pw('content/team.html', '<main><p>Team.</p><a href="https://src.test/visit/">Visit</a></main>\n');
+pw('content/team.html', TEAM);
 pw('content/nav.htm.html', '<nav>the delivered nav</nav>\n');
+pw('content/old-draft.html', '<main><a href="https://src.test/visit/">Visit</a></main>\n');   // committed, never published
 pw('content/private-draft.html', '<main><a href="https://src.test/visit/">Visit</a></main>\n');
+// the first pass's deploy ledgers: verified digests for the pages, a pre-digest row for the nav, nothing for the drafts
+pw('stardust/deploy/ledger-c1.json', JSON.stringify({
+  '/index': { status: 'live', sha256: hash(INDEX), ts: '2026-11-01T00:00:00Z' },
+  '/about': { status: 'live', sha256: hash(ABOUT), ts: '2026-11-01T00:00:00Z' },
+  '/team': { status: 'live', sha256: hash(TEAM), ts: '2026-11-01T00:00:00Z' },
+  '/nav.htm': { status: 'live', ts: '2026-11-01T00:00:00Z' },
+  '/private-draft': { status: 'live', sha256: hash('an older version'), ts: '2026-11-01T00:00:00Z' },
+}));
 git('init', '-q'); git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'delivered');
 pw(`${X}/base.txt`, `${git('rev-parse', 'HEAD').stdout.trim()}\n`);
 pw(`${X}/urls.txt`, 'https://src.test/visit/\n');
-// the localizer's stand-in: what localize-links does — repoint the source /visit/ link to the new local page
-const localize = () => {
-  for (const f of ['index.html', 'about.html', 'team.html', 'private-draft.html', 'visit/index.html']) {
-    const p = join(proj, 'content', f);
-    if (existsSync(p)) writeFileSync(p, readFileSync(p, 'utf8').replaceAll('https://src.test/visit/', '/visit/'));
-  }
-};
 
-check('inventory: every document as deploy-batch enumerates them (`.html` names), tracked or git-ignored; written once', () => {
+check('inventory: every document as deploy-batch enumerates them, tracked or git-ignored, with what the ledgers say of its bytes; written once', () => {
   const r = prun('inventory', '--pass', X);
   assert.equal(r.code, 0, r.err);
   const rows = pr(`${X}/inventory.tsv`).trim().split('\n').map((l) => l.split('\t').slice(1));
-  assert.deepEqual(rows, [['about.html', 'tracked'], ['index.html', 'tracked'], ['nav.htm.html', 'tracked'], ['private-draft.html', 'ignored'], ['team.html', 'tracked']]);
+  assert.deepEqual(rows, [['about.html', 'tracked', 'live'], ['index.html', 'tracked', 'live'], ['nav.htm.html', 'tracked', 'live-unverified'], ['old-draft.html', 'tracked', 'unpublished'], ['private-draft.html', 'ignored', 'differs'], ['team.html', 'tracked', 'live']]);
   assert.equal(prun('inventory', '--pass', X).code, 2, 'never rewritten');
 });
 
-check('publish: only new documents whose destination is a roster page (or also.paths); an owner\'s new draft and a new `.htm` file are held; `/visit/index.html` round-trips', () => {
+check('publish: only new documents of roster pages (or also.paths); an owner\'s draft held; held.paths names every no-link-target (new drafts, never-published existing ones); two new documents for one roster page exit 2', () => {
   pw('content/visit/index.html', '<main>new visit page</main>\n');
   pw('content/draft.html', '<main>an owner draft, made during the pass</main>\n');
   pw('content/nav.htm', '<nav>not a document for deploy-batch</nav>\n');
@@ -137,78 +153,101 @@ check('publish: only new documents whose destination is a roster page (or also.p
   let r = prun('publish', '--pass', X);
   assert.equal(r.code, 0, r.err);
   assert.equal(pr(`${X}/publish.paths`), '/visit/index.html\n');
+  assert.equal(pr(`${X}/held.paths`), '/draft.html\n/fragments/visit-hours.html\n/old-draft.html\n/private-draft.html\n');
   assert.match(r.err, /held \/draft\.html — new, but not a page of the roster/);
-  assert.match(r.err, /held \/fragments\/visit-hours\.html/);
-  assert.doesNotMatch(r.err + pr(`${X}/publish.paths`), /nav\.htm\b(?!\.html)/, 'nav.htm is no document: neither listed nor held');
   pw(`${X}/also.paths`, '/fragments/visit-hours.html\n');
   r = prun('publish', '--pass', X);
   assert.equal(pr(`${X}/publish.paths`), '/fragments/visit-hours.html\n/visit/index.html\n');
-  rmSync(join(proj, 'content', 'draft.html')); rmSync(join(proj, 'content', 'nav.htm'));
+  pw('content/visit.html', '<main>a competing leaf draft</main>\n');
+  const before = pr(`${X}/publish.paths`);
+  r = prun('publish', '--pass', X);
+  assert.equal(r.code, 2, r.err);
+  assert.match(r.err, /collision \/visit — \/visit\.html and \/visit\/index\.html both claim this roster page/);
+  assert.equal(pr(`${X}/publish.paths`), before, 'nothing written');
+  rmSync(join(proj, 'content', 'visit.html')); rmSync(join(proj, 'content', 'nav.htm'));
+  assert.equal(prun('publish', '--pass', X).code, 0);
 });
 
-check('relink: the localizer\'s own edit is a candidate; an owner link edit made BEFORE it is a conflict (href-only diff, checksum after the run fine); an edit after, or a paragraph edit, is a conflict; an ignored document is held', () => {
+check('relink: the localizer\'s receipt is the evidence — its own edit is a candidate; an owner link edit before it, or made between another run\'s read and the check, is a conflict; a held draft is no link target; a never-published or differing document is held', () => {
   // the owner changed one contact link on about.html before the pass's localizer rewrote the visit link
   pw('content/about.html', ABOUT.replace('https://src.test/contact/', 'https://src.test/contact-us/'));
-  assert.equal(prun('relink-after', '--pass', X).code, 2, 'no pending record: relink-before first');
-  assert.equal(prun('relink-before', '--pass', X).code, 0);
   localize();
-  assert.equal(prun('relink-after', '--pass', X).code, 0);
-  assert.equal(existsSync(join(proj, X, 'relink-pending.json')), false);
-  pw('content/team.html', pr('content/team.html').replace('Team.', 'Our team.'));   // edited after the run
+  // a concurrent cluster's localizer receipt does not cover an edit no run made: the owner edits team.html's href now
+  pw('content/team.html', pr('content/team.html').replace('/visit/', '/visit/#owner'));
   const r = prun('relink-status', '--pass', X);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^candidate +\/index\.html — links only/m);
   assert.match(r.out, /^conflict +\/about\.html — edited before the localizer ran/m);
   assert.match(r.out, /^conflict +\/team\.html — edited after the localizer ran/m);
+  assert.match(r.out, /^held +\/old-draft\.html — no deploy ledger records it live: never published/m);
   assert.match(r.out, /^held +\/private-draft\.html — git-ignored/m);
-  assert.doesNotMatch(r.out, /nav\.htm/, 'unchanged by the localizer: not listed');
+  assert.match(pr('content/index.html'), /href="https:\/\/src\.test\/draft"/, 'a held draft stays a source link');
+  assert.match(pr('content/index.html'), /href="\/visit\/"/);
 });
 
 check('relink-restore: a candidate gets its last published bytes back; a conflict is refused (exit 1) and kept exactly as it is', () => {
   const aboutNow = pr('content/about.html');
   const r = prun('relink-restore', '--pass', X, '--files', '/index.html,/about.html');
   assert.equal(r.code, 1, r.err);
-  assert.equal(pr('content/index.html'), '<main><a href="https://src.test/visit/">Visit</a></main>\n', 'the opening commit\'s bytes');
+  assert.equal(pr('content/index.html'), INDEX, 'the opening commit\'s bytes');
   assert.equal(pr('content/about.html'), aboutNow, 'the owner\'s edit stays');
   assert.match(r.err, /refused \/about\.html — conflict: edited before the localizer ran/);
   assert.match(prun('relink-status', '--pass', X).out, /^unchanged +\/index\.html/m);
 });
 
-check('relink-approve: a frozen revision with .sha256 and .paths; once its ledger records those bytes live they are the last published bytes; a later localizer run on top is a candidate again', () => {
-  prun('relink-before', '--pass', X); localize(); prun('relink-after', '--pass', X);
+check('relink-approve: a frozen revision; once its ledger records those bytes live they are the last published bytes; a declined later change goes back to the revision', () => {
+  localize();
   const a = prun('relink-approve', '--pass', X, '--files', 'index.html');
-  assert.equal(a.code, 0, a.err);
-  assert.equal(pr(`${X}/approved/r1/index.html`), '<main><a href="/visit/">Visit</a></main>\n');
+  assert.equal(a.code, 0, `${a.err}\n${prun('relink-status', '--pass', X).out}`);
+  assert.match(pr(`${X}/approved/r1/index.html`), /href="\/visit\/"/);
   assert.equal(pr(`${X}/approved/r1.paths`), '/index.html\n');
   assert.match(pr(`${X}/approved/r1.sha256`), /^[0-9a-f]{64} {2}index\.html$/m);
-  // not landed yet: still a candidate against the opening bytes
-  assert.match(prun('relink-status', '--pass', X).out, /^candidate +\/index\.html/m);
-  const landed = createHash('sha256').update(readFileSync(join(proj, X, 'approved/r1/index.html'))).digest('hex');
-  pw(`${X}/approved/r1/.deploy-ledger.json`, JSON.stringify({ '/index': { status: 'live', sha256: landed } }));
+  assert.match(prun('relink-status', '--pass', X).out, /^candidate +\/index\.html/m, 'not landed yet');
+  pw(`${X}/approved/r1/.deploy-ledger.json`, JSON.stringify({ '/index': { status: 'live', sha256: hash(pr(`${X}/approved/r1/index.html`)), ts: '2026-11-25T00:00:00Z' } }));
   assert.match(prun('relink-status', '--pass', X).out, /^unchanged +\/index\.html/m, 'r1 is now the last published bytes');
-  // a declined later change goes back to r1, not to the opening bytes
-  prun('relink-before', '--pass', X);
-  writeFileSync(join(proj, 'content', 'index.html'), pr('content/index.html').replace('/visit/', '/visit/#top'));
-  prun('relink-after', '--pass', X);
+  localize({ exclude: false });   // a later run in which the draft is a target: its own edit from r1's bytes is a candidate
+  assert.match(pr('content/index.html'), /href="\/draft"/);
+  assert.match(prun('relink-status', '--pass', X).out, /^candidate +\/index\.html/m);
   assert.equal(prun('relink-restore', '--pass', X, '--files', 'index.html').code, 0);
-  assert.equal(pr('content/index.html'), '<main><a href="/visit/">Visit</a></main>\n');
+  assert.equal(pr('content/index.html'), pr(`${X}/approved/r1/index.html`));
 });
 
-check('a shallow clone of the last checkpoint resumes: publish needs only the tracked inventory; a document whose opening blob is missing is held with the fetch that brings it', () => {
+check('reconcile: every pass document whose bytes are not its newest verified delivery is listed for a re-drive (a page relinked after its PUT, a fragment never sent); one delivered as it is, is not', () => {
+  pw('stardust/deploy/ledger-visit-x1.json', JSON.stringify({ '/visit/index': { status: 'live', sha256: hash(pr('content/visit/index.html')), ts: '2026-11-25T00:00:00Z' } }));
+  let r = prun('reconcile', '--pass', X);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(pr(`${X}/redrive.paths`), '/fragments/visit-hours.html\n', 'the fragment: no verified delivery');
+  pw('content/visit/index.html', '<main>new visit page, relinked by a later cluster</main>\n');
+  r = prun('reconcile', '--pass', X);
+  assert.equal(pr(`${X}/redrive.paths`), '/fragments/visit-hours.html\n/visit/index.html\n');
+  assert.match(r.err, /redrive \/visit\/index\.html — changed since its last verified delivery/);
+});
+
+check('a shallow clone of the last checkpoint resumes: publish and reconcile need only tracked files; a document whose opening blob is missing is held with the fetch that brings it', () => {
   git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'checkpoint');
   const clone = realpathSync(mkdtempSync(join(tmpdir(), 'extend-roster-clone-')));
   try {
     assert.equal(spawnSync('git', ['clone', '-q', '--depth', '1', `file://${proj}`, clone]).status, 0);
     const crun = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: clone, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
-    assert.equal(existsSync(join(clone, X, 'opening')), false, 'no snapshot dir to need');
-    const p = crun('publish', '--pass', X);
-    assert.equal(p.code, 0, p.err);
+    assert.equal(crun('publish', '--pass', X).code, 0);
     assert.equal(readFileSync(join(clone, X, 'publish.paths'), 'utf8'), '/fragments/visit-hours.html\n/visit/index.html\n');
+    assert.equal(crun('reconcile', '--pass', X).code, 0);
     const st = crun('relink-status', '--pass', X);
     assert.equal(st.code, 0, st.err);
-    assert.match(st.out, /^held +\/team\.html — the opening commit [0-9a-f]{12} is not in this clone — `git fetch --depth 1 origin [0-9a-f]{40}`/m);
-    assert.match(st.out, /^unchanged +\/index\.html/m, `a landed revision is committed with its ledger: readable from the clone\n${st.out}${st.err}`);
+    assert.match(st.out, /^held +\/about\.html — the opening commit [0-9a-f]{12} is not in this clone — `git fetch --depth 1 origin [0-9a-f]{40}`/m);
+    assert.match(st.out, /^unchanged +\/index\.html/m, 'a landed revision is committed with its ledger: readable from the clone');
   } finally { rmSync(clone, { recursive: true, force: true }); }
+});
+
+check('the next pass: a document the last pass ended with as a conflict is `differs` in the new inventory — held, never a fresh baseline', () => {
+  prun('relink-status', '--pass', X);   // x1's final status, kept in its relink-status.json
+  const X2 = 'stardust/replica/extend/x2';
+  pw(`${X2}/base.txt`, `${git('rev-parse', 'HEAD').stdout.trim()}\n`);
+  assert.equal(prun('inventory', '--pass', X2).code, 0);
+  const about = pr(`${X2}/inventory.tsv`).split('\n').find((l) => l.includes('\tabout.html\t'));
+  assert.match(about, /\ttracked\tdiffers$/);
+  const draft = pr(`${X2}/inventory.tsv`).split('\n').find((l) => l.includes('\tdraft.html\t'));
+  assert.match(draft, /\tunpublished$/, 'x1\'s held draft: still never published');
 });
 
 rmSync(proj, { recursive: true, force: true });

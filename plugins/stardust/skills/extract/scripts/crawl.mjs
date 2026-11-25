@@ -684,6 +684,15 @@ export function localeRootPath(href) {
 const hostKey = (u) => u.host.toLowerCase().replace(/^www\./, '');
 const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
 // a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
+/**
+ * The records the capture-gap post-pass reads on an incremental run (--skip-captured): this run's, then every earlier
+ * record on disk under <out>/pages/ it did not replace (same slug) — so a locale root captured by an earlier run keeps
+ * its outstanding children as gaps, minus the ones this run captured. Pure.
+ */
+export function gapRecords(results, prior = []) {
+  const slugs = new Set(results.map((r) => r && r.slug).filter(Boolean));
+  return [...results, ...prior.filter((r) => r && r.url && !slugs.has(r.slug))];
+}
 const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
 export function captureGaps(records, alsoCaptured = []) {
   const captured = new Set();
@@ -1484,6 +1493,7 @@ async function main() {
       try { return [JSON.parse(readFileSync(path.join(dir, f), 'utf8'))]; } catch { return [{ slug: f.slice(0, -5) }]; }
     }) : [];
     const onDisk = addCapturedRecords(args.captured, records);
+    args.priorRecords = records; // the capture-gap post-pass reads earlier locale roots from them
     // named, so the caller adds exactly these rows to state.json (extract Phase 6) instead of reading the whole tree
     for (const r of args.captured.recovered || []) console.error(`[crawl] --skip-captured: record not in state.json: ${r.slug} ${r.url}`);
     // the crawl log's history: earlier failures (--skip-failed) and the first run's order (--first-run-order)
@@ -1681,7 +1691,8 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean), args.captured?.urls); // an earlier pass's pages are not gaps
+  // an earlier pass's pages are not gaps, and an earlier locale root keeps its outstanding children (gapRecords)
+  log.captureGaps = captureGaps(gapRecords(results.filter(Boolean), args.priorRecords), args.captured?.urls);
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
   }

@@ -32,7 +32,7 @@
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
  *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
- *        [--dry-run] [--check] [--json]
+ *        [--dry-run] [--check] [--json] [--receipt <file>] [--exclude-targets <file>]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
@@ -43,6 +43,14 @@
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
  *   --json         machine-readable summary
+ *   --receipt      write this run's receipt to <file> (a new file; an existing one is a usage
+ *                  error): { tool, at, content, files: { "/<file>": { input, output } } } — the
+ *                  sha256 of the bytes this run READ and WROTE for every file it rewrote, nothing
+ *                  else. A caller attributes an edit to the localizer only through its receipt
+ *                  (replica's extend pass). Not with --dry-run / --check.
+ *   --exclude-targets  a file of content file paths (`/draft.html`, one per line) that are not
+ *                  link targets: a link to one stays as it is (a document not delivered yet —
+ *                  the extend pass's held drafts). They are still read as pages.
  *
  * Writes: the rewritten *.html files IN PLACE under --content (nothing with
  * --dry-run or --check; the summary is stdout).
@@ -51,7 +59,8 @@
  * 1 usage/IO error. Dependency-free (regex over the authored HTML, the same
  * technique as davids-model-lint.mjs — content pages are machine-generated).
  */
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, renameSync } from 'fs';
+import { createHash } from 'crypto';
 import path from 'path';
 import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 
@@ -66,11 +75,19 @@ function parseArgs(argv) {
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
     else if (a === '--json') opts.json = true;
+    else if (a === '--receipt' || a === '--exclude-targets') {
+      const v = rest[i += 1];
+      if (!v || !v.trim() || v.startsWith('--')) { console.error(`${a} needs a file`); process.exit(1); }
+      opts[a === '--receipt' ? 'receipt' : 'excludeTargets'] = v;
+    }
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
   }
   if (!opts.hosts.length) { console.error('--source-host is required'); usage(); process.exit(1); }
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
+  if (opts.receipt && opts.dryRun) { console.error('--receipt records what a run wrote: not with --dry-run / --check'); process.exit(1); }
+  if (opts.receipt && existsSync(opts.receipt)) { console.error(`--receipt ${opts.receipt} exists — one receipt per run`); process.exit(1); }
+  if (opts.excludeTargets && !existsSync(opts.excludeTargets)) { console.error(`--exclude-targets ${opts.excludeTargets} not found`); process.exit(1); }
   return opts;
 }
 
@@ -168,8 +185,7 @@ export function localizeHref(href, { map, hosts }) {
 
 const HREF_RE = /(<a\b[^>]*?\bhref=)(["'])([^"']*)\2/gi;
 
-function processFile(file, ctx) {
-  const src = readFileSync(file, 'utf8');
+function processFile(file, ctx, src = readFileSync(file, 'utf8')) {
   const counts = { localized: 0, normalized: 0 };
   const kept = [];
   const out = src.replace(HREF_RE, (whole, pre, q, href) => {
@@ -194,20 +210,31 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
+  const excluded = new Set(opts.excludeTargets ? readFileSync(opts.excludeTargets, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => (l.startsWith('/') ? l : `/${l}`)) : []);
+  const targets = files.filter((f) => !excluded.has(`/${path.relative(opts.content, f).split(path.sep).join('/')}`));
+  const { map, redirects, pending } = buildMap(targets, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
   const keptAll = new Map();
   let localized = 0; let normalized = 0; let filesChanged = 0;
+  const digest = (b) => createHash('sha256').update(b).digest('hex');
+  const receipt = {};
   for (const f of files.sort()) {
-    const r = processFile(f, ctx);
+    const buf = readFileSync(f);
+    const r = processFile(f, ctx, buf.toString('utf8'));
     r.kept.forEach((k) => keptAll.set(k, (keptAll.get(k) || 0) + 1));
     if (!r.changed) continue;
     filesChanged += 1;
     localized += r.counts.localized; normalized += r.counts.normalized;
-    perFile[`/${path.relative(opts.content, f).split(path.sep).join('/')}`] = r.counts;
-    if (!opts.dryRun) writeFileSync(f, r.out);
+    const key = `/${path.relative(opts.content, f).split(path.sep).join('/')}`;
+    perFile[key] = r.counts;
+    if (!opts.dryRun) { writeFileSync(f, r.out); receipt[key] = { input: digest(buf), output: digest(Buffer.from(r.out, 'utf8')) }; }
+  }
+  if (opts.receipt) {
+    const tmp = `${opts.receipt}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify({ tool: 'localize-links', at: new Date().toISOString(), content: opts.content, files: receipt }, null, 2)}\n`);
+    renameSync(tmp, opts.receipt);
   }
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
   const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };

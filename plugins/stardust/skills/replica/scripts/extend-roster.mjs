@@ -14,9 +14,8 @@
  *   node stardust/scripts/replica/extend-roster.mjs select --candidates <urls.txt> --out <roster.txt>
  *        [--named] [--max <n>] [--state stardust/state.json] [--coverage stardust/rollout/coverage/pages.json]
  *        [--content content] [--slugs-out <file>]
- *   node stardust/scripts/replica/extend-roster.mjs inventory --pass <dir> [--content content]
- *   node stardust/scripts/replica/extend-roster.mjs publish --pass <dir> [--content content]
- *   node stardust/scripts/replica/extend-roster.mjs relink-before|relink-after|relink-status --pass <dir> [--content content]
+ *   node stardust/scripts/replica/extend-roster.mjs inventory|publish|reconcile|relink-status --pass <dir>
+ *        [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs relink-approve|relink-restore --pass <dir> --files <a.html,b.html>
  *        [--content content]
  *
@@ -31,29 +30,41 @@
  *             file (`crawl.mjs --pages-file`): a url may hold a comma. --named (urls the owner named): a url with a
  *             query string, or one whose destination is delivered or an existing document — captured or not —
  *             exits 2 and writes nothing; one captured but not delivered (an interrupted capture) is dropped.
- *   inventory writes <pass>/inventory.tsv once, at the opening: `<sha256>\t<file>\t<tracked|ignored>` for every
- *             document under --content (`file` relative to it; `tracked` per `git ls-files`). It is the record of
- *             what existed, tracked by git, so the bytes it names are never needed on disk. Refuses to overwrite.
+ *   Deploy ledgers read (the publication evidence): stardust/deploy/*.json (rollout's unit ledgers),
+ *   <content>/.deploy-ledger.json (deploy-batch's default) and every pass's approved/r<k>/.deploy-ledger.json; a
+ *   row is evidence when it reads `live`, its `sha256` (the bytes verified delivered) naming the version.
+ *
+ *   inventory writes <pass>/inventory.tsv once, at the opening: `<sha256>\t<file>\t<tracked|ignored>\t<published>`
+ *             for every document under --content (`tracked` per `git ls-files`). `published` is what the ledgers
+ *             say of THESE bytes: `live` (the newest live row's sha256 is theirs), `live-unverified` (a live row from
+ *             before ledgers kept a sha256), `differs` (another version landed last, or an earlier pass ended with
+ *             the document a conflict or held — its relink-status.json), `unpublished` (no live row: a draft). It is
+ *             the record of what existed, tracked by git; the bytes it names are never needed on disk. Written once.
  *   publish   writes <pass>/publish.paths: the content file path (`/visit/index.html`, `/nav.html.html` — what
  *             `deploy-batch.mjs --allow` reads without ambiguity) of every document absent from the inventory whose
  *             destination is a page of the roster (<pass>/urls.txt) or that <pass>/also.paths lists (a fragment the
- *             pass's pages need; content file paths). Any other new document — an owner's draft — is named as held.
- *   relink-before  records the sha256 of every inventory document now, in <pass>/relink-pending.json; run it right
- *             before each localize-links run of the pass.
- *   relink-after   right after it: appends one line per inventory document whose bytes the run changed to
- *             <pass>/relink.jsonl — `{ file, input, output, at }`, the localizer's input AND output — and removes
- *             the pending file. Without a pending file it exits 2.
- *   relink-status  classifies every inventory document the localizer changed, against its LAST PUBLISHED BYTES
- *             (the newest <pass>/approved/r<k>/<file> whose deploy ledger records that exact sha256 live, else the
- *             opening commit's blob, `git show $(cat <pass>/base.txt):<content>/<file>`):
- *               candidate  the localizer's own edit and nothing else: its first recorded input is the last
- *                          published bytes, each later input the previous output, the file still the last output,
+ *             pass's pages need; content file paths). Two new documents with one roster destination (`visit/
+ *             index.html` and `visit.html`) exit 2, nothing written: one page, one document. Also writes
+ *             <pass>/held.paths — every document that is no link target yet: a new one that is neither (an owner's
+ *             draft, named on stderr) and an existing one never published — for `localize-links.mjs
+ *             --exclude-targets`.
+ *   reconcile writes <pass>/redrive.paths: every document of publish.paths whose bytes are not the newest live
+ *             row's sha256 in any ledger — a pass page relinked after its PUT, a C-archetype representative a
+ *             sibling's localizer changed, a fragment never sent — for `deploy-batch.mjs --paths <it> --allow
+ *             <pass>/publish.paths`.
+ *   relink-status  classifies every inventory document a localize-links receipt of the pass names
+ *             (<pass>/receipts/*.json, written by `localize-links.mjs --receipt`: the input and output digest of
+ *             each file that run itself rewrote), against its LAST PUBLISHED BYTES (the newest <pass>/approved/
+ *             r<k>/<file> whose ledger records that exact sha256 live, else — when the inventory says `live` or
+ *             `live-unverified` — the opening commit's blob, `git show $(cat <pass>/base.txt):./<content>/<file>`):
+ *               candidate  the localizer's own edit and nothing else: a receipt's input is the last published bytes,
+ *                          each later receipt's input (by `at`) the previous output, the file still the last output,
  *                          and the difference href values only — the owner may approve or decline it
  *               conflict   anything else (an edit before, between or after the localizer's runs, or changes other
  *                          than links): held, the file kept as it is, the reason named
- *               held       its last published bytes are not here: an ignored document (in no commit — never
- *                          restored or re-published by the pass), or a shallow clone without the opening commit
- *                          (the line names the `git fetch` that brings it)
+ *               held       its last published bytes are not here or not known: an ignored document (in no commit),
+ *                          one never published or whose published version is another, or a shallow clone without the
+ *                          opening commit (the line names the `git fetch` that brings it)
  *               unchanged  the file is its last published bytes
  *             Prints one line per document and writes <pass>/relink-status.json. Exit 0.
  *   relink-approve  for the named candidates: copies their bytes to <pass>/approved/r<k>/<file> (k the next free
@@ -69,7 +80,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync,
+  existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,7 +166,7 @@ export const withoutHrefs = (html) => String(html).replace(/\bhref\s*=\s*("[^"]*
 
 /**
  * One inventory document's relink state. `published` is its last published bytes (null when unavailable), `current`
- * its bytes now, `records` its relink.jsonl lines in order. Returns { state, why }. Pure.
+ * its bytes now, `records` its receipt records in order. Returns { state, why }. Pure.
  */
 export function classify({ published, unavailable, current, records }) {
   if (published === null) return { state: 'held', why: unavailable || 'its last published bytes cannot be read' };
@@ -178,14 +189,16 @@ const readJson = (file, what) => {
 const writeAtomic = (file, data) => { mkdirSync(dirname(file), { recursive: true }); const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, data); renameSync(tmp, file); };
 const lines = (arr) => (arr.length ? `${arr.join('\n')}\n` : '');
 
+const PUBLISHED = ['live', 'live-unverified', 'differs', 'unpublished'];
+const isPublished = (e) => e.pub === 'live' || e.pub === 'live-unverified';
 function readInventory(pass) {
   const f = join(pass, 'inventory.tsv');
   if (!existsSync(f)) usage(`${f} not found — run \`inventory\` at the opening`);
   const map = new Map();
   for (const l of readFileSync(f, 'utf8').split('\n').filter(Boolean)) {
-    const [hash, file, kind] = l.split('\t');
-    if (!/^[0-9a-f]{64}$/.test(hash) || !file || !['tracked', 'ignored'].includes(kind)) usage(`${f}: malformed line ${JSON.stringify(l)}`);
-    map.set(file, { sha: hash, ignored: kind === 'ignored' });
+    const [hash, file, kind, pub] = l.split('\t');
+    if (!/^[0-9a-f]{64}$/.test(hash) || !file || !['tracked', 'ignored'].includes(kind) || !PUBLISHED.includes(pub)) usage(`${f}: malformed line ${JSON.stringify(l)}`);
+    map.set(file, { sha: hash, ignored: kind === 'ignored', pub });
   }
   return map;
 }
@@ -205,6 +218,8 @@ function lastPublished(o, file, entry) {
     if (rec && rec.status === 'live' && rec.sha256 === sha(bytes)) return { bytes };
   }
   if (entry.ignored) return { bytes: null, why: 'git-ignored: its published bytes are in no commit — never restored or re-published by the pass' };
+  if (entry.pub === 'unpublished') return { bytes: null, why: 'no deploy ledger records it live: never published — not a republish' };
+  if (entry.pub === 'differs') return { bytes: null, why: 'another version than the opening commit\'s was published last, or an earlier pass ended with it held — DA\'s bytes are not known here' };
   const baseFile = join(o.pass, 'base.txt');
   if (!existsSync(baseFile)) usage(`${baseFile} not found`);
   const base = readFileSync(baseFile, 'utf8').trim();
@@ -217,16 +232,64 @@ function lastPublished(o, file, entry) {
   return sha(bytes) === entry.sha ? { bytes } : { bytes: null, why: `the opening commit's blob differs from the inventory (${spec})` };
 }
 
+// The localizer's receipts of this pass, in order: one record per file a run itself rewrote.
 function relinkRecords(pass) {
-  const f = join(pass, 'relink.jsonl');
-  const by = new Map();
-  if (!existsSync(f)) return by;
-  for (const l of readFileSync(f, 'utf8').split('\n').filter(Boolean)) {
-    const r = JSON.parse(l);
-    if (!by.has(r.file)) by.set(r.file, []);
-    by.get(r.file).push(r);
+  const dir = join(pass, 'receipts'); const by = new Map();
+  if (!existsSync(dir)) return by;
+  const receipts = readdirSync(dir).filter((n) => n.endsWith('.json')).map((n) => ({ n, r: readJson(join(dir, n), 'receipt') }))
+    .filter(({ r }) => r && r.tool === 'localize-links' && r.files && typeof r.files === 'object')
+    .sort((a, b) => String(a.r.at).localeCompare(String(b.r.at)) || a.n.localeCompare(b.n));
+  for (const { n, r } of receipts) {
+    for (const [key, d] of Object.entries(r.files)) {
+      const file = key.replace(/^\/+/, '');
+      if (!by.has(file)) by.set(file, []);
+      by.get(file).push({ input: d.input, output: d.output, at: r.at, receipt: n });
+    }
   }
   return by;
+}
+
+// Every deploy ledger the project keeps; the live rows for one document across them, newest first.
+function ledgerFiles(o) {
+  const out = [];
+  if (existsSync('stardust/deploy')) for (const n of readdirSync('stardust/deploy')) if (n.endsWith('.json')) out.push(join('stardust/deploy', n));
+  if (existsSync(join(o.content, '.deploy-ledger.json'))) out.push(join(o.content, '.deploy-ledger.json'));
+  const ext = 'stardust/replica/extend';
+  if (existsSync(ext)) {
+    for (const pass of readdirSync(ext)) {
+      const ap = join(ext, pass, 'approved');
+      if (!existsSync(ap)) continue;
+      for (const r of readdirSync(ap)) if (/^r\d+$/.test(r) && existsSync(join(ap, r, '.deploy-ledger.json'))) out.push(join(ap, r, '.deploy-ledger.json'));
+    }
+  }
+  return out;
+}
+function liveRows(o, file, cache) {
+  if (!cache.rows) {
+    cache.rows = new Map();
+    for (const lf of ledgerFiles(o)) {
+      let l; try { l = JSON.parse(readFileSync(lf, 'utf8')); } catch { continue; }
+      for (const [doc, rec] of Object.entries(l || {})) {
+        if (!rec || rec.status !== 'live') continue;
+        if (!cache.rows.has(doc)) cache.rows.set(doc, []);
+        cache.rows.get(doc).push({ sha256: rec.sha256 || null, ts: rec.ts || '', ledger: lf });
+      }
+    }
+    for (const rows of cache.rows.values()) rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+  }
+  return cache.rows.get(documentPath(file)) || [];
+}
+
+// Documents an earlier pass ended with as a conflict or held: what DA holds is not their committed bytes.
+function unresolvedEarlier(o) {
+  const ext = 'stardust/replica/extend'; const out = new Set();
+  if (!existsSync(ext)) return out;
+  for (const pass of readdirSync(ext)) {
+    const f = join(ext, pass, 'relink-status.json');
+    if (resolve(ext, pass) === resolve(o.pass) || !existsSync(f)) continue;
+    try { for (const s of JSON.parse(readFileSync(f, 'utf8'))) if (s.state === 'conflict' || s.state === 'held') out.add(s.file); } catch { /* unreadable: no evidence */ }
+  }
+  return out;
 }
 
 function statusAll(o) {
@@ -246,8 +309,7 @@ const FLAGS = {
   select: ['--candidates', '--out', '--max', '--state', '--coverage', '--content', '--slugs-out'],
   inventory: ['--pass', '--content'],
   publish: ['--pass', '--content'],
-  'relink-before': ['--pass', '--content'],
-  'relink-after': ['--pass', '--content'],
+  reconcile: ['--pass', '--content'],
   'relink-status': ['--pass', '--content'],
   'relink-approve': ['--pass', '--content', '--files'],
   'relink-restore': ['--pass', '--content', '--files'],
@@ -300,9 +362,16 @@ function inventory(o) {
     tracked = new Set(execFileSync('git', ['ls-files', '-z', '--', o.content], { encoding: 'utf8' }).split('\0').filter(Boolean)
       .map((f) => relative(resolve(o.content), resolve(f)).split(sep).join('/')));
   } catch (e) { return usage(`git ls-files failed (${e.message.split('\n')[0]}) — the project is a git repository`); }
-  const rows = documents(o.content).map((f) => `${sha(readFileSync(join(o.content, f)))}\t${f}\t${tracked.has(f) ? 'tracked' : 'ignored'}`);
+  const cache = {}; const earlier = unresolvedEarlier(o); const count = {};
+  const rows = documents(o.content).map((f) => {
+    const h = sha(readFileSync(join(o.content, f)));
+    const newest = liveRows(o, f, cache)[0];
+    const pub = earlier.has(f) ? 'differs' : !newest ? 'unpublished' : !newest.sha256 ? 'live-unverified' : newest.sha256 === h ? 'live' : 'differs';
+    count[pub] = (count[pub] || 0) + 1;
+    return `${h}\t${f}\t${tracked.has(f) ? 'tracked' : 'ignored'}\t${pub}`;
+  });
   writeAtomic(out, lines(rows));
-  console.error(`inventory: ${rows.length} document(s) → ${out} (${rows.filter((r) => r.endsWith('\tignored')).length} ignored)`);
+  console.error(`inventory: ${rows.length} document(s) → ${out} (${rows.filter((r) => r.includes('\tignored\t')).length} ignored; ${Object.entries(count).map(([k, n]) => `${n} ${k}`).join(', ')})`);
   return 0;
 }
 
@@ -313,39 +382,41 @@ function publish(o) {
   const pages = new Set(readFileSync(rosterFile, 'utf8').split('\n').filter(Boolean).map((u) => destinationOf(u)));
   const alsoFile = join(o.pass, 'also.paths');
   const also = new Set(existsSync(alsoFile) ? readFileSync(alsoFile, 'utf8').split('\n').map((l) => l.trim().replace(/^\/+/, '')).filter(Boolean) : []);
-  const keep = []; const held = [];
+  const keep = []; const held = []; const claims = new Map();
   for (const f of documents(o.content)) {
     if (inv.has(f)) continue;
-    if (pages.has(pathKey(`/${f}`)) || also.has(f)) keep.push(`/${f}`);
-    else held.push(f);
+    const dest = pathKey(`/${f}`);
+    if (also.has(f)) keep.push(`/${f}`);
+    else if (pages.has(dest)) { keep.push(`/${f}`); claims.set(dest, [...(claims.get(dest) || []), f]); } else held.push(f);
+  }
+  const collisions = [...claims.entries()].filter(([, fs]) => fs.length > 1);
+  if (collisions.length) {
+    for (const [dest, fs] of collisions) console.error(`collision ${dest} — ${fs.map((f) => `/${f}`).join(' and ')} both claim this roster page`);
+    console.error(`extend-roster: ${collisions.length} roster page(s) claimed by two new documents — one page, one document: move or remove the other; nothing written`);
+    return 2;
   }
   for (const f of held) console.error(`held /${f} — new, but not a page of the roster nor in also.paths`);
-  writeAtomic(join(o.pass, 'publish.paths'), lines(keep));
-  console.error(`publish: ${keep.length} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held.length} new held)`);
+  const neverPublished = [...inv.entries()].filter(([, e]) => !isPublished(e)).map(([f]) => f);
+  writeAtomic(join(o.pass, 'held.paths'), lines([...held, ...neverPublished].sort().map((f) => `/${f}`)));
+  writeAtomic(join(o.pass, 'publish.paths'), lines(keep.sort()));
+  console.error(`publish: ${keep.length} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held.length} new held; held.paths: ${held.length + neverPublished.length} no link target)`);
   return 0;
 }
 
-function relinkBefore(o) {
-  const inv = readInventory(o.pass); const now = {};
-  for (const f of inv.keys()) { const p = join(o.content, f); if (existsSync(p)) now[f] = sha(readFileSync(p)); }
-  writeAtomic(join(o.pass, 'relink-pending.json'), `${JSON.stringify(now)}\n`);
-  console.error(`relink-before: ${Object.keys(now).length} document(s) recorded`);
-  return 0;
-}
-
-function relinkAfter(o) {
-  const pendingFile = join(o.pass, 'relink-pending.json');
-  if (!existsSync(pendingFile)) usage(`${pendingFile} not found — run relink-before right before localize-links`);
-  const before = readJson(pendingFile, 'pending');
-  const at = new Date().toISOString(); const out = [];
-  for (const [f, input] of Object.entries(before)) {
+function reconcile(o) {
+  const listFile = join(o.pass, 'publish.paths');
+  if (!existsSync(listFile)) usage(`${listFile} not found — run publish first`);
+  const cache = {}; const redrive = [];
+  for (const entry of readFileSync(listFile, 'utf8').split('\n').filter(Boolean)) {
+    const f = entry.replace(/^\/+/, '');
     const p = join(o.content, f);
-    const output = existsSync(p) ? sha(readFileSync(p)) : null;
-    if (output !== input) out.push(JSON.stringify({ file: f, input, output, at }));
+    if (!existsSync(p)) { console.error(`missing ${entry} — on the list, not on disk`); continue; }
+    const newest = liveRows(o, f, cache).find((r) => r.sha256);
+    const now = sha(readFileSync(p));
+    if (!newest || newest.sha256 !== now) { redrive.push(entry); console.error(`redrive ${entry} — ${newest ? 'changed since its last verified delivery' : 'no verified delivery recorded'}`); }
   }
-  if (out.length) appendFileSync(join(o.pass, 'relink.jsonl'), lines(out));
-  rmSync(pendingFile);
-  console.error(`relink-after: ${out.length} existing document(s) changed by the localizer`);
+  writeAtomic(join(o.pass, 'redrive.paths'), lines(redrive));
+  console.error(`reconcile: ${redrive.length} document(s) → ${join(o.pass, 'redrive.paths')}`);
   return 0;
 }
 
@@ -393,7 +464,7 @@ export function main(argv) {
   try {
     const o = parseArgs(argv);
     const run = {
-      select, inventory, publish, 'relink-before': relinkBefore, 'relink-after': relinkAfter, 'relink-status': relinkStatus,
+      select, inventory, publish, reconcile, 'relink-status': relinkStatus,
       'relink-approve': (x) => relinkAct(x, 'approve'), 'relink-restore': (x) => relinkAct(x, 'restore'),
     }[o.cmd];
     return run(o);

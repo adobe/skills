@@ -78,9 +78,10 @@
  *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
- * A page the ledger reads `live` is skipped only while its file still holds the bytes its last PUT sent (the
- * ledger's `sha256`; a row written before it existed is checked on the delivered origin alone): a page changed
- * locally since — a later localize-links run — is driven again, named in the count line.
+ * A page the ledger reads `live` is skipped only while its file still holds the bytes last VERIFIED delivered (the
+ * ledger's `sha256`, written only after live and verify succeed — `putSha256` is what the last PUT sent; a row
+ * written before either existed is checked on the delivered origin alone): a page changed locally since — a later
+ * localize-links run, or a re-drive a token halt interrupted — is driven again, named in the count line.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -261,7 +262,7 @@ async function deployOne(page, args, ledger, logLine) {
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
   if (put.status === 401) return tokenHalt('put', put);
   rec.put = put.status;
-  if (ok2xx(put.status)) rec.sha256 = sha256; // the bytes this document now holds in DA
+  if (ok2xx(put.status)) rec.putSha256 = sha256; // sent; `sha256` (what the skip trusts) waits for live + verify
   // only a 2xx answer moves a page on: an exhausted transport failure (status 0) is a failure, never a success
   if (!ok2xx(put.status)) {
     rec.status = 'put-fail';
@@ -298,6 +299,7 @@ async function deployOne(page, args, ledger, logLine) {
   const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
+  if (v.ok) rec.sha256 = sha256; // the bytes verified delivered: a halt or failure before here never moves it
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };

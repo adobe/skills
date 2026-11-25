@@ -128,9 +128,13 @@ script already skips what is delivered. **The publish list** is `$R publish --pa
 deploy: `$X/publish.paths` lists the content file path (`/visit/index.html`) of every document absent from the
 opening inventory whose destination is a roster page, or that `$X/also.paths` lists (a fragment the pass's pages
 need, written there by the unit that creates it). A document that existed at opening — the nav, an older page —
-is never on it, and a new document that is neither (an owner's draft) is named as held. Every `deploy-batch.mjs`
-run of the pass — a cluster's, G's re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends
-nothing outside it. An older page is sent only as an approved revision, below; a finding on one is reported.
+is never on it; a new document that is neither (an owner's draft) is held, and two new documents for one roster
+page stop the unit (exit 2: one page, one document). Every `deploy-batch.mjs` run of the pass — a cluster's, G's
+re-deploy, an E2 fix — carries `--allow $X/publish.paths`, so the script sends nothing outside it. Every
+`localize-links.mjs` run of the pass carries `--exclude-targets $X/held.paths` (written by `publish`: drafts, and
+documents never published, are no link target — the source link stays) and `--receipt
+$X/receipts/<unit>-<UTC time>.json` (a new file per run). An older page is sent only as an approved revision,
+below; a finding on one is reported.
 
 - **Migrate,** one render unit at a time on the main agent (`state.mjs` and `migrate.mjs` each rewrite the whole
   `state.json` — never two at once), never `--all` and never `--force`, which re-render delivered pages. A new type's
@@ -148,32 +152,39 @@ nothing outside it. An older page is sent only as an approved revision, below; a
   `reuse`, never `convert`). **B2:** the new pages' dynamic surface — `dynamic-features.md` gains rows, never loses
   one.
 - **Relinked pages — published only on the owner's yes, in every mode.** A page this pass delivers can be a link
-  target an earlier pass pointed to the source, so `localize-links.mjs` rewrites older documents too. Every run of
-  it in the pass sits between `$R relink-before --pass $X` and `$R relink-after --pass $X`, which record each changed
-  older document's input and output. `$R relink-status --pass $X` then names each one:
+  target an earlier pass pointed to the source, so `localize-links.mjs` rewrites older documents too. Its receipts
+  are the only evidence of what it changed — each names the bytes that run read and wrote, so concurrent clusters
+  never share a record. `$R relink-status --pass $X` names each older document a receipt covers:
   - `candidate` — the localizer's own edit and nothing else, measured against the document's last published bytes
-    (the opening commit's blob, or a landed approved revision). Show the owner the exact list and say that a re-PUT
-    replaces the DA document, so an edit made in DA since delivery is lost.
-  - `conflict` — an edit before, between or after the localizer's runs, or changes other than links (the owner's
-    work): held, the file kept exactly as it is, named to the owner.
-  - `held` — a git-ignored document (its published bytes are in no commit), or a clone without the opening commit
-    (the line names the `git fetch` that brings it).
+    (the opening commit's blob when the deploy ledgers show those bytes live, or a landed approved revision). Show
+    the owner the exact list and say that a re-PUT replaces the DA document, so an edit made in DA since delivery is
+    lost.
+  - `conflict` — an edit before or after the localizer's runs, or changes other than links (the owner's work):
+    held, the file kept exactly as it is, named to the owner.
+  - `held` — no known published bytes: git-ignored, never published, another version published last (or left held
+    by an earlier pass), or a clone without the opening commit (the line names the `git fetch` that brings it).
 
-  Approved candidates: `$R relink-approve --pass $X --files <them>` freezes their bytes in `$X/approved/r<k>/`, then
-  `deploy-batch.mjs --content $X/approved/r<k> --allow $X/approved/r<k>.paths` sends that copy — a retry is the same
-  command, resuming from the revision's own ledger; both are committed with the next checkpoint. Declined,
-  unanswered or hands-off candidates: `$R relink-restore --pass $X --files <them>`. The script acts on candidates
-  only. Held documents and conflicts are named in `replica extend blocked --track x<N> --detail "republish awaits
-  the owner: <n> pages"`. The question is asked at C-final, before its final units, and again at E2 when its run
-  rewrites more. After an approved revision lands, its slugs are gated again in each final unit's own mode:
-  `gate-all.mjs --width <w> --only <slugs>`, then `--width <w> --compare-only`, for each delivery width;
-  `gate-all.mjs --wide --only <slugs>`, then `--wide --compare-only`, for the advisory report. Then
+  Approved candidates: `$R relink-approve --pass $X --files <them>` freezes their bytes in `$X/approved/r<k>/`;
+  **commit that checkpoint before sending**, then `deploy-batch.mjs --content $X/approved/r<k> --allow
+  $X/approved/r<k>.paths`, then commit its ledger. A resume that finds a revision without a live ledger runs that
+  same command again. Declined candidates: `$R relink-restore --pass $X --files <them>`. Unanswered (hands-off)
+  candidates are restored too, and counted. The script acts on candidates only. `replica extend blocked --track x<N>
+  --detail "republish awaits the owner: <n> pages"` counts held documents, conflicts and unanswered candidates. The
+  question is asked at C-final, before its final units, and again at E2 when its run rewrites more; `relink-status`
+  runs once more last, so its `relink-status.json` tells the next pass what was left. After an approved revision
+  lands, it is gated again in each final unit's own mode. A page document: `gate-all.mjs --width <w> --only <slugs>`
+  then `--width <w> --compare-only` per delivery width, and `--wide --only` then `--wide --compare-only` for the
+  advisory report. A shared document (nav, footer: no coverage row, no slug): the three final units again over
+  every delivered page with `--skip-existing` (the nav and footer are in every page's reuse key). Then
   `update-coverage.mjs --gate` on the delivery tables only (`all-<w>`, never `wide-<w>`).
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
-  published gate re-run on every affected archetype, any pass's; every cluster's deploy command run once more as it
-  was (its `--paths`, `--ledger`, `--allow`), which drives again each pass page a later cluster's localizer changed
-  after its PUT (the ledger keeps the sha256 it sent); the relinked older pages, above; then the final units
+  published gate re-run on every affected archetype, any pass's; `$R reconcile --pass $X`, which lists in
+  `$X/redrive.paths` every document of the publish list whose bytes are not its newest verified delivery in any
+  ledger — a page a later cluster's localizer changed after its PUT, a C-archetype representative a sibling's run
+  relinked, a declared fragment never sent — and `deploy-batch.mjs --paths $X/redrive.paths --allow
+  $X/publish.paths --ledger stardust/deploy/ledger-x<N>-reconcile.json`; the relinked older pages, above; then the
+  final units
   exactly as `handoff-contract.md` § 3, row C (C-final), names them, each name suffixed: `gate-all-1440-x<N>`,
   `gate-all-360-x<N>`, `gate-all-wide-x<N>`, then `update-coverage.mjs --gate` per width. Over every delivered page
   with `--skip-existing`, the new pages are gated, and an earlier page too when an input of its reuse key changed
@@ -183,4 +194,4 @@ nothing outside it. An older page is sent only as an approved revision, below; a
   fix: the foundation is frozen), the re-deploy with `--allow`. Then `done-check.mjs --track x<N>` exit 0 — the
   pass's own `I-dashboard end`, never an earlier pass's — `replica handoff end --track x<N>`, `$F check` on the spec
   manifest, `replica extend end --track x<N> --detail "<n> pages delivered (x<N>), <total> live[; republish awaits
-  the owner: <n>]"`.
+  the owner: <n> (held, conflicts, unanswered)]"`.
