@@ -73,7 +73,7 @@ How much space and rhythm the design uses. Often stated as "airy" vs
   | `balanced` | 64–72px | brand-register default; multi-audience or short sections |
   | `packed` | 40–48px | `product` register or data-dense sites |
 
-  See `direct/SKILL.md` § Phase 1 for the one-shot prompt direct
+  See `skills/direct/reference/phase-1-tuning.md` § Density tuning for the one-shot prompt direct
   uses when the user's phrase doesn't move the density axis.
 
   **Hard floor for brand-register multi-audience sites.** When the
@@ -345,7 +345,7 @@ contains an unambiguous signal.
 
 When the phrase is ambiguous (the typical *"refresh the home page"*
 case), direct's Phase 1 asks the one-shot `ia-fidelity` question; see
-`direct/SKILL.md` § Phase 1.
+`skills/direct/reference/phase-1-tuning.md` § IA-fidelity tuning.
 
 #### Intersection with § 8 (IA-priority preservation)
 

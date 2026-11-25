@@ -389,7 +389,7 @@ Refuse the page if:
 
 This is the cinematic equivalent of the Variant-C overshoot
 failure mode documented in
-`skills/direct/SKILL.md` § The C-cliff. "More motion = more
+`skills/direct/reference/multi-variant.md` § The C-cliff failure mode. "More motion = more
 cinematic" is the same kind of escalation trap the C-cliff
 warns about.
 

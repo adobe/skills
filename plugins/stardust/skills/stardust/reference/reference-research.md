@@ -68,7 +68,7 @@ one retry, and the run proceeds.
    the defaults is rubber-stamping, and a variant whose references
    are all in-toolbox refuses.
 5. **Extract implied dimensions** per Mode B's mapping
-   (`direct/SKILL.md` § Mode B): decade, craft, register,
+   (`skills/direct/reference/phase-2-modes.md` § Mode B): decade, craft, register,
    ground-family implied by each anchor — plus typography strategy,
    palette strategy, section rhythm, imagery treatment.
 6. **Synthesize, don't copy**: pick one primary anchor for mood and

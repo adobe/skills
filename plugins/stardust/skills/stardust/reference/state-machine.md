@@ -380,7 +380,7 @@ include a **`live: yes/no` column** in its summary report so the
 user can eyeball provenance coverage before the next phase runs.
 A column of `live: yes` across every row is the visible signal
 that the validator will pass downstream. See
-`skills/extract/SKILL.md` § Phase 6 for the report format.
+`skills/extract/reference/phase-6-report.md` for the report format.
 
 ### Surfacing validation in reports
 

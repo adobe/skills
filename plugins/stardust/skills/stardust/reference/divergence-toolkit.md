@@ -107,7 +107,7 @@ section rather than scanning the prototype HTML.
 - **Variant homogeneity** — two variants in the same fork that
   differ by fewer than 2 substantive changes (section sequence,
   section presence, layout strategy of a major section, IA priority).
-  Per `direct/SKILL.md` § Variant differentiation contract,
+  Per `skills/direct/reference/multi-variant.md` § Variant differentiation contract,
   variants that differ by < 2 changes are the same variant under
   different chrome. Refuse render and either collapse the redundant
   pair into one variant or redefine one of them against a different

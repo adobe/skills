@@ -632,7 +632,7 @@ pages — search, 404, login — legitimately have no hero).
 Downstream `prototype` reads `heroImage.url` /
 `heroImage.localPath` directly when composing the hero slot
 under Mode A's image-reuse contract (per
-`skills/direct/SKILL.md` § Mode A).
+`skills/direct/reference/phase-2-modes.md` § Mode A).
 
 ### `heroMedium` resolution (signature hero medium)
 

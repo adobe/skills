@@ -122,7 +122,7 @@ specific.`)
   value was a deliberate choice, not a defaulted reflex).
 
   When direct enters Mode A (brand-faithful) per
-  `direct/SKILL.md` § Phase 2 — Mode A, scan the captured brand
+  `skills/direct/reference/phase-2-modes.md` § Mode A, scan the captured brand
   surface for each `applies-when` and emit the matching inversion
   lines automatically. Brand-specific specialization (the actual
   brand name in the sample line) is the only authored component;

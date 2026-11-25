@@ -87,7 +87,7 @@ substitute table.
 The check fires only on rendered files whose `font-family`
 declarations the agent had freedom to pick. **Mode A renders with
 captured display + body families pinned (per
-`direct/SKILL.md` § Mode A — Brand-faithful mode) bypass the
+`skills/direct/reference/phase-2-modes.md` § Mode A — Brand-faithful mode) bypass the
 check** — the inherited families are not a reflex choice. Record
 the bypass reason in `_provenance.reflexRejectAudit.bypassed` with
 the captured families named.

@@ -350,16 +350,17 @@ Inherited from the underlying skills — `uplift` does not re-state
 them but relies on them being enforced:
 
 - **Mode A pinning** — palette + typography from captured brand
-  surface. Enforced by `direct/SKILL.md` § Mode A.
+  surface. Enforced by `../direct/reference/phase-2-modes.md` § Mode A.
 - **IA priority preservation** — configurator stays above the
   fold, crisis affordances stay first-viewport, etc. Enforced
-  by `direct/SKILL.md` § IA-priority preservation audit.
+  by `../direct/reference/phase-4-design-files.md` § IA-priority
+  preservation audit (Mode A).
 - **Density floor** — brand-register pages with > 5 sections cap
   `sectionPadding.desktop` at ≤ 64px. Enforced by
-  `direct/SKILL.md` § Hard floor enforcement.
+  `../direct/reference/phase-4-design-files.md` § Hard floor enforcement.
 - **Variant differentiation** — each variant differs from the
-  others by ≥ 2 changes. Enforced by `direct/SKILL.md` § Variant
-  differentiation contract.
+  others by ≥ 2 changes. Enforced by `../direct/reference/multi-variant.md`
+  § Variant differentiation contract.
 - **Captured images reused in semantic positions** — hero stays
   hero, story image stays story image. Enforced by
   `prototype/reference/proposed-file-shell.md` § Content sourcing

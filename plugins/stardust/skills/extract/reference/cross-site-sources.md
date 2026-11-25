@@ -56,7 +56,7 @@ extracted separately and its design system becomes the fixed
 The stardust `direct` skill reads this stamp and pins the donor system as the
 target: Mode A's brand-faithful pins transfer to the **donor**
 surface while content stays with the primary origin — see
-`skills/direct/SKILL.md` § Mode A. The donor records
+`skills/direct/reference/phase-2-modes.md` § Mode A. The donor records
 `role: "design-source"` in its own
 `canon-source/_brand-extraction.json#origins[]`; donor evidence never
 aggregates into the primary `_brand-extraction.json`.

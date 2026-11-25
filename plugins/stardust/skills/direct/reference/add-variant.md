@@ -149,7 +149,7 @@ variant like B → B3):**
   changing them produces a sibling variant, not a surface fork.
 
 When the user's add-variant request would violate one of the
-forbidden rules, refuse with the same § Failure modes (c) hard
+forbidden rules, refuse with the same `skills/direct/reference/failure-modes.md` (c) hard
 rule conflict pattern: name the conflict, propose targeted
 alternatives (rebrand mode via `--rebrand`, or a Mode A
 expression that fits within the pins).
