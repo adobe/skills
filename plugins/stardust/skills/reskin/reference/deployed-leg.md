@@ -131,7 +131,8 @@ A check not run is `unresolved: <why>` (any of the three): the verdict is NOT-RU
 removes. `verdict` is FAIL on an eyeball `fail`, a CLS ≥ 0.1 or a header `fail`, else NOT-RUN on an unresolved check,
 else PASS; like any gate it blocks the predicate unless PASS or covered by a residual accepted `--by user`. An agent
 (any `--by` but `user`, or none in a hands-off run) cannot pass `--header` (`pass` or `n/a`) unless `gates.deployed`
-shows the chrome measured and PASS; a header it could not check is `unresolved: <why>`, left for the user. `record` keeps an
+shows the chrome measured and PASS; a header it could not check is `unresolved: <why>`, left for the user. Each call counts `attempts`; a hands-off
+run that still fails after the second may record a `step10` residual `--verdict fallback` (gates.md § Fallback ladder). `record` keeps an
 existing `gates.step10` (it is entered, never read from a report).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s

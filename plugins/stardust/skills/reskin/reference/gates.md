@@ -546,7 +546,7 @@ The ledger is written by script, never by hand:
 ```bash
 node stardust/scripts/reskin/reskin-ledger.mjs record <slug> [--stage migrated]
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
-node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <who>]
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked|fallback [--note "…"] [--by <who>]
 node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
 node stardust/scripts/reskin/reskin-ledger.mjs flag <slug> --note "…"
 node stardust/scripts/reskin/reskin-ledger.mjs delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "…"
@@ -562,6 +562,50 @@ when it carries `by: "user"`, so an older ledger with no `by` fails
 closed, and `state.mjs --to approved --by hands-off` refuses while
 `gatesOk` is false. `delivery`'s `runner` is a scope the hosting runner
 imposed (a page cap), named in the handoff like a user's opt-out.
+
+### Fallback ladder (hands-off)
+
+In a hands-off run (`state.json` `handsOff: true`) nobody can accept an
+owner-only residual, so a section still failing (d) `figma.join`,
+`figma.geometry` or `figma.ramp` after its fix iteration is remapped
+instead of recorded `needs-owner`. No gate is lowered: each step renders the new mapping and
+re-runs every gate. A step is not a fix iteration.
+
+1. **Closest kit module.** Remap the slot in `mapping.md` to the included
+   module, other than the failing one and its `variantOf` rows, that the
+   slot's content fits best (`mapping-brief.md` § Content fit). Rewrite
+   its checks-file entries from `figma-gate.mjs boxes --module <new>`.
+   One remap per slot.
+2. **The source's own block.** If no module is left or the remap fails
+   too, the row becomes `new-module`: the source section's own layout,
+   composed from donor tokens (name them, as for any new-module row), its
+   checks-file entries removed. (d) joins it as `out-of-kit` (B4), B3's
+   `:root` block still holds, and (a) to (c) hold as for any section.
+3. **Record each step** before re-rendering:
+   `reskin-ledger.mjs flag <slug> --note "fallback <slot>: <from> → <to> (<gate>: <cause>)"`.
+   The handoff lists every fallback and the share of content slots that
+   left the kit.
+
+A header or footer failing (d) takes the kit's other Header / Footer
+module if there is one, then a `chrome` row naming no module (`—`): the
+source's own header or footer, restyled with donor tokens.
+
+A section failing (a) after its fix iteration takes step 2 directly:
+the source's block, its text carried verbatim.
+
+What no section remap fixes takes a recorded fallback,
+`reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict fallback --note "<what was used>"`
+(hands-off only; the script refuses any other gate):
+
+- **`figma.ramp`** on a `:root` token or a font: that one token takes
+  the source page's computed value; the note names the token and both values.
+- **`exact`**: the section carries the source's text verbatim, never
+  donor or filler copy.
+- **`step10`**: re-run `step10` once after a fix; if it still fails or
+  stays unresolved, the run finishes on it (the script needs two runs).
+
+A fallback covers its gate; the handoff lists each one under "Fallbacks"
+with its note, so the owner sees every check the run finished past.
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,slot-coverage,donor-probe}.md` or
 `gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the prototype's
@@ -594,7 +638,7 @@ The resulting `stardust/reskin/ledger.json`, per page:
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
 `figma.ramp` | `font.unserved`, an UNSERVED ramp result or tokens line); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
-`blocked`). The Phase 6 handoff report lists every residual and flag.
+`blocked` | `fallback`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes
 

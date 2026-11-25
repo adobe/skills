@@ -141,6 +141,13 @@ check('owner-only gates: an accepted residual covers figma/exact/step10/chrome o
   assert.equal(gatesOk(gates, res('user')), true);
   assert.equal(gatesOk({ 'font.unserved': { verdict: 'FAIL' } }, [{ gate: 'font.unserved', verdict: 'accepted', by: 'hands-off' }]), true, 'an agent may accept a non-owner gate');
   assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'FAIL 1/4' }, inherited: 'PASS' } }, [{ gate: 'deployed.sanity', verdict: 'accepted', by: 'user' }]), false, 'deployed.sanity is never accepted');
+  const fb = (gate) => [{ gate, verdict: 'fallback', by: 'hands-off', note: 'x' }];
+  assert.equal(gatesOk({ figma: { join: 'PASS', geometry: 'PASS', ramp: 'FAIL 1/4' } }, fb('figma.ramp')), true, 'a fallback covers figma.ramp');
+  assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', figma: { join: 'PASS', geometry: 'PASS', ramp: 'FAIL 1/4' } } }, fb('figma.ramp')), true, 'and its deployed re-run');
+  assert.equal(gatesOk({ step10: { eyeball: 'fail', cls: '0.02', header: 'pass' } }, fb('step10')), true);
+  assert.equal(gatesOk({ exact: { verdict: 'FAIL' } }, fb('exact')), true);
+  assert.equal(gatesOk(gates, fb('figma.geometry')), false, 'a section\'s geometry is remapped, never a fallback');
+  assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'FAIL 1/4', inherited: 'PASS' } }, fb('deployed.sanity')), false);
 });
 check('chromeVerdict: no fragment / parity header crop n/a is NOT-RUN, FAIL is FAIL, explicit chrome keys win over parity', () => {
   assert.equal(chromeVerdict(undefined).verdict, 'NOT-RUN');
@@ -182,6 +189,23 @@ check('CLI: owner-only residuals, step10 header refusal for an agent, flag, deli
   assert.equal(s10('pass', '--by', 'user').status, 0, 'the user passes it');
   const L2 = read(); L2.pages.login.gates.deployed = { parity: 'PASS' }; w('stardust/reskin/ledger.json', JSON.stringify(L2));
   assert.equal(s10('pass', '--by', 'hands-off').status, 0, 'an agent may pass the header when the chrome evidence passes');
+
+  // fallback: hands-off only, figma.ramp|exact|step10 only, a --note, step10 after a second run
+  const fbk = (gate, ...extra) => run(['residual', 'login', '--gate', gate, '--cause', 'still fails', '--verdict', 'fallback', ...extra], root);
+  assert.match(fbk('figma.geometry', '--note', 'x').stderr, /takes no fallback/);
+  assert.match(fbk('deployed.chrome', '--note', 'x').stderr, /takes no fallback/);
+  assert.match(fbk('figma.ramp').stderr, /needs --note/);
+  const L3 = read(); L3.pages.login.gates.step10 = { ...L3.pages.login.gates.step10, attempts: 1 }; w('stardust/reskin/ledger.json', JSON.stringify(L3));
+  assert.match(fbk('step10', '--note', 'finished on a failing eyeball').stderr, /step10 run twice/);
+  assert.equal(s10('unresolved: header not measured', '--by', 'hands-off').status, 0);
+  assert.equal(read().pages.login.gates.step10.attempts, 2);
+  const f10 = fbk('step10', '--note', 'header unchecked after two runs', '--by', 'hands-off'); assert.equal(f10.status, 0, f10.stderr);
+  assert.deepEqual(read().pages.login.residuals.filter((r) => r.gate === 'step10').map((r) => r.verdict), ['fallback'], 'replaces the needs-owner one');
+  assert.equal(fbk('figma.ramp', '--note', 'source value for --heading-color').status, 0);
+  assert.equal(fbk('exact', '--note', 'source text kept').status, 0);
+  w('stardust/state.json', JSON.stringify(state));
+  assert.match(fbk('figma.ramp', '--note', 'x').stderr, /hands-off run/, 'not outside hands-off');
+  w('stardust/state.json', JSON.stringify({ ...state, handsOff: true }));
 
   assert.equal(run(['flag', 'login'], root).status, 2);
   for (let i = 0; i < 2; i++) assert.equal(run(['flag', 'login', '--note', 'coverage.absent: color.accent'], root).status, 0);

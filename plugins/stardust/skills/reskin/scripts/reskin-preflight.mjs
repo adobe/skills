@@ -38,7 +38,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { codeStamp } from './deployed/stamp.mjs';
-import { gateVerdicts, residualAccepted } from './reskin-ledger.mjs';
+import { fallbackGate, gateVerdicts, residualAccepted } from './reskin-ledger.mjs';
 import { MARKUP_VARS } from './stream-render.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
@@ -102,7 +102,7 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
   else if (approvals.length) ok('approval', `${approvals.length} approval(s): ${[...new Set(approvals.map((a) => a.by || 'user'))].join(', ')}`);
 
   // The flow: reskin predicate (spec § 4.6): each type's archetype is gated in reskin/ledger.json —
-  // every gate PASS or a residual accepted, no needs-owner/blocked residual, the eyeball recorded and
+  // every gate PASS or a residual accepted (or a hands-off fallback), no needs-owner/blocked residual, the eyeball recorded and
   // passing, the recorded prototype still the file on disk, and M2's gates.figma / gates.deployed families PASS
   // (or a residual accepted; never deployed.sanity) when recorded.
   const ledger = json(`${dir}/reskin/ledger.json`);
@@ -118,7 +118,7 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
         // reskin's gates plus M2's fragments (gates.figma B0/B1/B3, gates.deployed A1–A5 + its figma re-run)
         const bad = gateVerdicts(e.gates).filter((v) => v.verdict !== 'PASS' && !accepted(v.gate)).map((v) => `${v.gate} ${v.verdict}`);
         if (e.status !== 'gated' || bad.length) problems.push(`${t}/${a}: ${bad.join(', ') || e.status}`);
-        const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted');
+        const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted' && !(r.verdict === 'fallback' && fallbackGate(r.gate)));
         if (open.length) problems.push(`${t}/${a}: residual(s) ${open.map((r) => `${r.gate} ${r.verdict}`).join(', ')}`);
         if (!e.eyeball) problems.push(`${t}/${a}: no eyeball verdict (reskin-ledger.mjs eyeball ${a} --verdict pass|fail)`);
         else if (e.eyeball.verdict !== 'pass') problems.push(`${t}/${a}: eyeball ${e.eyeball.verdict}`);

@@ -104,6 +104,19 @@ mapping decision is atomic. The split is a brief-level construct —
 the content model is not edited — and slot-coverage still asserts the
 parent slot's full text, so a split can't shed content.
 
+## Content fit
+
+Pick a `mapped` row's module by the parts the slot has, not its role
+alone. List the slot's parts from `content-model.json` (kicker, heading,
+subhead, body, CTA, image, items) and each candidate frame's text and
+image parts (`figma-gate.mjs boxes --module Mn`). Prefer the module or
+composition variant whose every part the slot fills; among those, the
+one leaving fewest of the slot's parts without a place. Name the parts
+compared in the row's rationale. Never write content to fill a frame
+part: an empty part is a coverage-floor item the page cannot meet, and
+in a hands-off run the section falls back (`gates.md` § Fallback
+ladder).
+
 ## Composition variants
 
 Canon keeps one composition per module. When two slots use the same

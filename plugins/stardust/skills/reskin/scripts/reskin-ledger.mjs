@@ -32,8 +32,9 @@
  *       one too). verdict FAIL beats NOT-RUN beats PASS. `record` keeps an existing gates.step10. An agent
  *       (--by hands-off|autopilot|agent, or no --by in a handsOff run) passing the header (pass or n/a) is
  *       refused unless the page's gates.deployed shows the chrome PASS.
- *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <who>]
+ *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked|fallback [--note "…"] [--by <who>]
  *       accepted on an owner-only gate (AGENT_NEVER_ACCEPTS, or chrome/header/footer) needs --by user.
+ *       fallback: a hands-off run's figma.ramp, exact or step10 (after step10 ran twice), --note required.
  *   flag <slug> --note "<text>"                          appends to pages[slug].flags (deduped)
  *   delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
  *       → ledger.delivery { scope, pages?, requestedBy, reason, at } (default scope full-site; pages for subset
@@ -61,9 +62,11 @@ human judgments. reskin-preflight and migrate read it.
       which records NOT-RUN and a needs-owner residual); --header-toggle is an alias of --header
       An agent passing the header (pass or n/a) needs gates.deployed to show the chrome PASS; a header
       other than pass adds a needs-owner residual on step10.
-  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <who>]
+  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked|fallback [--note "…"] [--by <who>]
       figma.join|geometry|ramp, exact, step10 and chrome/header/footer gates are the owner's: an agent
       records --verdict needs-owner; only --by user accepts. deployed.sanity is never accepted.
+      fallback (hands-off runs only; figma.ramp, exact or step10; --note says what was used; step10 after a
+      second step10 run) covers the gate and is listed in the handoff.
   flag <slug> --note "<text>"                  appends to pages[slug].flags (identical text once)
   delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
       → ledger.delivery { scope, pages?, requestedBy, reason, at }; --pages with subset only. reason: the
@@ -80,7 +83,7 @@ export const GATE_FILES = {
 // Prototype gate-stack items a registered reskin page does not run (spec D4): the human waives them by
 // approving; the tier record lists them so nobody reads `approved` as "the full prototype stack passed".
 export const WAIVED = ['critique', 'audit', 'anti-template', 'content-sourcing', 'motion-validation'];
-const VERDICTS = ['accepted', 'needs-owner', 'blocked'];
+const VERDICTS = ['accepted', 'needs-owner', 'blocked', 'fallback'];
 
 // M2 evidence. M2b (figma-gate all) and M2a (deployed-gate all) each write
 // <dir>/.work/reskin/gates/<slug>/{figma,deployed}/summary.json with a ledgerFragment that lands in
@@ -99,6 +102,10 @@ export const ownerOnly = (gate) => {
 };
 // An agent's say-so: --by hands-off|autopilot|agent (anything but user), or no --by in a handsOff run.
 export const agentBy = (by, state) => (by ? String(by).toLowerCase() !== 'user' : state?.handsOff === true);
+// What a hands-off run uses when an owner-only failure is not one section's to remap (gates.md § Fallback ladder):
+// the source's value for a figma.ramp token, the source's text for an exact check, a finish after a second step10.
+// residual --verdict fallback, hands-off only, --note naming what was used; it covers its gate and the handoff lists it.
+export const fallbackGate = (gate) => { const g = String(gate || '').replace(/^deployed\./, ''); return ['figma.ramp', 'step10'].includes(g) || /(^|\.)exact(\.|$)/.test(g); };
 export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
   if (s == null) return 'NOT-RUN';
@@ -199,7 +206,7 @@ export function mobileStatic(html) {
 // An accepted residual covers a gate, never a NEVER_ACCEPTED one, and an owner-only one only when the user
 // accepted it (by "user"; a residual without by fails closed).
 export const residualAccepted = (residuals, g) => !NEVER_ACCEPTED.includes(g)
-  && (residuals || []).some((r) => residualCovers(r, g) && r.verdict === 'accepted' && (!ownerOnly(g) || r.by === 'user'));
+  && (residuals || []).some((r) => residualCovers(r, g) && ((r.verdict === 'accepted' && (!ownerOnly(g) || r.by === 'user')) || (r.verdict === 'fallback' && fallbackGate(g))));
 // The gates neither PASS nor covered by an accepted residual.
 export const openGates = (gates, residuals = []) => gateVerdicts(gates).filter(({ gate, verdict }) => verdict !== 'PASS' && !residualAccepted(residuals, gate));
 export const gatesOk = (gates, residuals = []) => openGates(gates, residuals).length === 0;
@@ -214,7 +221,7 @@ export function applyStep10(ledger, { slug, eyeball, cls, header, note = null, b
   for (const k of ['eyeball', 'header']) if (/^(pass|fail)$/i.test(s[k])) s[k] = s[k].toLowerCase();
   const { open } = step10Problems(s);
   if (s.header !== 'pass' && !open.includes('header')) open.push('header');
-  const step10 = { ...s, verdict: step10Verdict(s), note, by, at };
+  const step10 = { ...s, verdict: step10Verdict(s), attempts: (Number(entry.gates?.step10?.attempts) || 1) + (entry.gates?.step10 ? 1 : 0), note, by, at };
   const hadGates = !!entry.gates;
   entry.gates = { ...(entry.gates || {}), step10 };
   entry.residuals = (entry.residuals || []).filter((r) => !(r.gate === 'step10' && r.source === 'step10'));
@@ -355,6 +362,14 @@ export function main(argv) {
     if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard sanity): fix the page and re-run deployed-gate`); return 1; }
     if (o.verdict === 'accepted' && ownerOnly(o.gate) && o.by !== 'user') {
       console.error(`reskin-ledger: a ${o.gate} residual is the owner's to accept, not the agent's: record it with --verdict needs-owner; only --by user accepts it`); return 1;
+    }
+    if (o.verdict === 'fallback') {
+      const why = !state.handsOff ? 'a fallback is for a hands-off run (state.json handsOff: true); record --verdict needs-owner'
+        : !fallbackGate(o.gate) ? `${o.gate} takes no fallback (figma.ramp, exact or step10 only; a section's figma.join/geometry or chrome failure is remapped, gates.md § Fallback ladder)`
+          : !o.note?.trim() ? 'a fallback needs --note "<what was used instead>"'
+            : o.gate.replace(/^deployed\./, '') === 'step10' && !(Number(ledger.pages[slug]?.gates?.step10?.attempts) >= 2) ? 'a step10 fallback needs step10 run twice (re-run it once first)'
+              : null;
+      if (why) { console.error(`reskin-ledger: residual ${slug} --gate ${o.gate} --verdict fallback refused: ${why}`); return 1; }
     }
     const cls = /^(figma|deployed)\./.test(o.gate) ? { class: o.gate } : {};
     const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, by: o.by || null, note: o.note || null, at }];

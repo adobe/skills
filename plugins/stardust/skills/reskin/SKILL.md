@@ -266,7 +266,9 @@ looped on. **The ledger is written by script, never by hand:**
 (`reference/gates.md` § Residual logging). **An agent never accepts
 its own blocking failure**: a (d) `figma.*`, `exact`, `step10` or
 header/footer residual is `--verdict needs-owner`; only `--by user`
-accepts one, and the script refuses otherwise.
+accepts one. A hands-off run remaps the failing section instead: the
+closest other kit module, then the source's own block
+(`reference/gates.md` § Fallback ladder).
 
 ### Phase 6 — HANDOFF
 
@@ -331,7 +333,8 @@ the archetype and, through the bridge, moves siblings to `directed`.
   prototypes dir unservable) — surface extract's error verbatim.
 - **Mapping ratio < 80%** — the donor vocabulary can't carry this
   content. Ask: widen the donor capture (more donor pages → more
-  modules) or accept a larger explicit new-module list.
+  modules) or accept a larger explicit new-module list. Hands-off
+  takes the list and flags the ratio.
 - **Scope undecidable** — the content page's visible content cannot be
   covered by any selector set (heavy shadow-DOM, iframe-embedded
   content). Surface with the screenshot evidence.
