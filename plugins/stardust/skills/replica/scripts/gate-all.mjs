@@ -218,9 +218,10 @@ export function budgetLine(o, { capture = 0, probe = 0 } = {}) {
   return `browser budget: ${Math.max(1, e, p)} at once (default for this job: the larger of min(${capture} page(s) to capture, --eds-concurrency ${o.ec}) and min(${probe} page(s) to probe, --probe-concurrency ${o.pc})), plus one per origin capture that opens a browser (a freeze or a live stitch; at most ${o.oc}) — what the phases held in turn; --max-browsers or STARDUST_MAX_BROWSERS sets one cap`;
 }
 // The deadline hint (--help § Deadline hint): seconds = fixed + perPage × pages ÷ c, held between floor and ceiling.
-// perPage is per page-execution at concurrency 1: the worst recorded job above 15 pages took 170 s × c per page
-// (published stage), the worst prototype-stage one 10 s × c. c is capped at the default 2: nothing faster was recorded.
-export const HINT = { fixed: 300, perPage: { published: 180, prototype: 20 }, floor: 900, ceiling: 14400, maxConcurrency: 2 };
+// perPage is per page-execution at concurrency 1: the worst recorded job above 15 pages took 216 s × c per page
+// (published stage: a 75-page roster job at 360 px), the worst prototype-stage one 10 s × c. c is capped at the default
+// 2: nothing faster was recorded.
+export const HINT = { fixed: 300, perPage: { published: 240, prototype: 20 }, floor: 900, ceiling: 14400, maxConcurrency: 2 };
 /** deadlineHint(pages, { stage, oc, ec, pc }) → the seconds a job over `pages` selected pages may take. Pure. */
 export function deadlineHint(pages, { stage = 'published', oc = 2, ec = 4, pc = 2 } = {}) {
   const c = Math.max(1, Math.min(...[oc, ec, pc, HINT.maxConcurrency].map((n) => (Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1))));
@@ -352,7 +353,8 @@ Deadline hint (--deadline-hint): the larger of ${HINT.floor} and ${HINT.fixed} +
   page counts in full: how many recorded passes a run reused was never recorded, so no discount could be calibrated.
   Calibration, 1,149 completed jobs of 23 recorded sessions with a known page count: the worst job above 15 pages took
   170 s × c a page (published), 10 s × c (prototype); the hint covers every one of them and 99 % or more of each
-  smaller size class (1, 2–5, 6–15 pages). 20 pages → 2100 s, 53 → 5070 s, 100 → 9300 s (c = 2).
+  smaller size class (1, 2–5, 6–15 pages). A later 75-page roster job at 360 px went at 216 s × c a page (39 pages in
+  6000 s at the default c = 2), so B leaves room above it. 20 pages → 2700 s, 53 → 6660 s, 75 → 9300 s, 100 → 12300 s (c = 2).
 Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.`;
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */

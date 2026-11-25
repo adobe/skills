@@ -1981,12 +1981,12 @@ check('reuse × roster tolerance: a pass under the tolerance is recorded with it
 });
 // ---- the deadline hint (run-bg.mjs's convention: --deadline-hint prints the seconds the job may take) ----
 check('deadlineHint: fixed + per-page budget × pages ÷ concurrency, floor 900, ceiling 14400; the prototype stage has its own budget; concurrency is the slowest pool, at most 2', () => {
-  assert.deepEqual(HINT, { fixed: 300, perPage: { published: 180, prototype: 20 }, floor: 900, ceiling: 14400, maxConcurrency: 2 });
-  assert.deepEqual([0, 1, 6, 7, 20, 53, 100, 156, 157, 5000].map((n) => deadlineHint(n)), [900, 900, 900, 930, 2100, 5070, 9300, 14340, 14400, 14400]);
-  assert.deepEqual([1, 20, 100].map((n) => deadlineHint(n, { oc: 1, ec: 1, pc: 1 })), [900, 3900, 14400], 'concurrency 1: twice the per-page time');
-  assert.equal(deadlineHint(20, { oc: 1, ec: 4, pc: 2 }), 3900, 'the slowest pool paces the job');
-  assert.equal(deadlineHint(20, { oc: 8, ec: 8, pc: 8 }), 2100, 'nothing faster than the default is credited');
-  assert.equal(deadlineHint(20, { oc: NaN, ec: 0, pc: 2 }), 3900, 'an unusable concurrency reads as 1');
+  assert.deepEqual(HINT, { fixed: 300, perPage: { published: 240, prototype: 20 }, floor: 900, ceiling: 14400, maxConcurrency: 2 });
+  assert.deepEqual([0, 1, 5, 6, 20, 53, 75, 100, 117, 118, 5000].map((n) => deadlineHint(n)), [900, 900, 900, 1020, 2700, 6660, 9300, 12300, 14340, 14400, 14400]);
+  assert.deepEqual([1, 20, 100].map((n) => deadlineHint(n, { oc: 1, ec: 1, pc: 1 })), [900, 5100, 14400], 'concurrency 1: twice the per-page time');
+  assert.equal(deadlineHint(20, { oc: 1, ec: 4, pc: 2 }), 5100, 'the slowest pool paces the job');
+  assert.equal(deadlineHint(20, { oc: 8, ec: 8, pc: 8 }), 2700, 'nothing faster than the default is credited');
+  assert.equal(deadlineHint(20, { oc: NaN, ec: 0, pc: 2 }), 5100, 'an unusable concurrency reads as 1');
   assert.deepEqual([53, 100, 250].map((n) => deadlineHint(n, { stage: 'prototype' })), [900, 1300, 2800]);
 });
 check('gate-all --deadline-hint prints the formula\'s value for 1, 20 and 100 selected pages and launches nothing (no capture, no probe, no file)', () => {
@@ -1996,10 +1996,10 @@ check('gate-all --deadline-hint prints the formula\'s value for 1, 20 and 100 se
     const before = readdirSync(join(root, 'stardust')).sort();
     const hint = (args, env) => { const r = gateAll(['--deadline-hint', ...args], env); assert.equal(r.status, 0, r.stderr); assert.deepEqual([shots(), spawned()], [[], []], 'nothing launched'); return r.stdout; };
     assert.equal(hint(['--only', 'p7']), '900\n');
-    assert.equal(hint(['--only', slugs.slice(0, 20).join(',')]), '2100\n');
-    assert.equal(hint([]), '9300\n');
-    assert.equal(hint(['--skip-existing', '--width', '360']), '9300\n', 'a --skip-existing page counts in full');
-    assert.equal(hint(['--only', slugs.slice(0, 20).join(','), '--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1']), '3900\n');
+    assert.equal(hint(['--only', slugs.slice(0, 20).join(',')]), '2700\n');
+    assert.equal(hint([]), '12300\n');
+    assert.equal(hint(['--skip-existing', '--width', '360']), '12300\n', 'a --skip-existing page counts in full');
+    assert.equal(hint(['--only', slugs.slice(0, 20).join(','), '--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1']), '5100\n');
     assert.equal(hint(['--only', 'not-a-page']), '900\n', 'no page selected: the floor');
     assert.equal(hint(['--stage', 'prototype']), '900\n');
     assert.equal(existsSync(out), false, 'the table dir is not created');
@@ -2012,7 +2012,7 @@ check('gate-all carries run-bg\'s marker, and --help states the hint formula', (
   const src = readFileSync(join(HERE, '..', 'gate-all.mjs'), 'utf8');
   assert.ok(src.includes('run-bg:deadline-hint'), 'the marker run-bg.mjs reads before it asks');
   const r = spawnSync(process.execPath, [join(HERE, '..', 'gate-all.mjs'), '--help'], { encoding: 'utf8', cwd: tmpdir() });
-  assert.equal(r.status, 0); assert.match(r.stdout, /--deadline-hint/); assert.match(r.stdout, /the larger of 900 and 300 \+ B × pages ÷ c seconds, at most 14400/); assert.match(r.stdout, /B = 180 s a page at the published stage/);
+  assert.equal(r.status, 0); assert.match(r.stdout, /--deadline-hint/); assert.match(r.stdout, /the larger of 900 and 300 \+ B × pages ÷ c seconds, at most 14400/); assert.match(r.stdout, /B = 240 s a page at the published stage/);
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
