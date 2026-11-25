@@ -183,14 +183,15 @@ check('parseArgs: --skip-captured takes a path; a missing value is a usage error
   assert.throws(() => parse('--skip-captured'), /--skip-captured needs a state\.json path/);
   assert.throws(() => parse('--skip-captured', '--max', '3'), /--skip-captured needs a state\.json path/);
   assert.equal(parse('--select-only').selectOnly, true);
-  assert.equal(parse('--skip-captured', 's.json', '--skip-urls', 'failed.txt').skipUrls, 'failed.txt');
-  assert.throws(() => parse('--skip-urls', 'failed.txt'), /--skip-urls goes with --skip-captured/);
-  assert.throws(() => parse('--skip-captured', 's.json', '--skip-urls'), /--skip-urls needs a file of urls/);
+  const ext = parse('--skip-captured', 's.json', '--delivered', 'pages.json', '--skip-failed', '--first-run-order');
+  assert.deepEqual([ext.delivered, ext.skipFailed, ext.firstRunOrder], ['pages.json', true, true]);
+  for (const f of [['--delivered', 'x.json'], ['--skip-failed'], ['--first-run-order']]) assert.throws(() => parse(...f), new RegExp(`${f[0]} goes with --skip-captured`));
+  assert.throws(() => parse('--skip-captured', 's.json', '--delivered'), /--delivered needs a coverage pages\.json/);
   assert.equal(parse().selectOnly, undefined);
 });
 check('capturedFromState: url and finalUrl keys slash-folded, every slug reserved (an unparsable url too); a valid empty pages[] is empty; no pages[] array throws', () => {
   const c = crawl.capturedFromState(STATE);
-  assert.deepEqual([...c.keys].sort(), ['https://ex.test', 'https://ex.test/about', 'https://ex.test/about-us']);
+  assert.deepEqual([...c.keys].sort(), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/about-us']);
   assert.deepEqual([...c.slugs].sort(), ['about', 'blog-a', 'index']);
   assert.equal(c.urls.length, 3);
   assert.equal(crawl.capturedFromState({ pages: [] }).keys.size, 0);
@@ -199,7 +200,7 @@ check('capturedFromState: url and finalUrl keys slash-folded, every slug reserve
 check('capturedFromState: relative urls (the golden migrate fixture\'s shape) resolve against site.originUrl', () => {
   const c = crawl.capturedFromState({ site: { originUrl: 'https://ex.test' }, pages: [
     { slug: 'index', url: '/' }, { slug: 'docs', url: '/docs/' }, { slug: 'start', url: '/docs/getting-started.html' }] });
-  assert.deepEqual([...c.keys].sort(), ['https://ex.test', 'https://ex.test/docs', 'https://ex.test/docs/getting-started.html']);
+  assert.deepEqual([...c.keys].sort(), ['https://ex.test/', 'https://ex.test/docs', 'https://ex.test/docs/getting-started']);
   assert.equal(crawl.capturedFromState({ pages: [{ slug: 'x', url: '/x' }] }).keys.size, 0, 'no origin: unresolvable, slug still reserved');
 });
 check('precheckPages: off-origin listed urls are named; fresh is the uncaptured listed pages plus the entry when it is new', () => {
@@ -290,17 +291,55 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     const resumed = spawnSync(process.execPath, [...base, '--pages', '/visit'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.match(resumed.stderr, /0 new pages .*1 record\(s\) under .*pages not in it/);
-    // a page an earlier pass could not capture, listed in --skip-urls, is not selected again
-    writeFileSync(join(root, 'failed.txt'), 'https://www.example.com/broken\n');
-    const failedOnce = spawnSync(process.execPath, [...base, '--pages', '/broken', '--skip-urls', join(root, 'failed.txt')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    // a page an earlier run could not capture (the crawl log's runs[]) is not selected again with --skip-failed
+    writeFileSync(join(root, 'out', '_crawl-log.json'), JSON.stringify({ runs: [{ crawl: { failures: [{ url: 'https://www.example.com/broken' }] } }], crawl: { failures: [] } }));
+    const failedOnce = spawnSync(process.execPath, [...base, '--pages', '/broken', '--skip-failed'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(failedOnce.status, 0, failedOnce.stderr);
-    assert.match(failedOnce.stderr, /0 new pages .*1 url\(s\) from .*failed\.txt/);
+    assert.match(failedOnce.stderr, /0 new pages .*1 url\(s\) earlier runs failed/);
+    // a named page whose delivery path coverage already holds (a page built outside the capture): exit 2
+    writeFileSync(join(root, 'coverage.json'), JSON.stringify({ pages: [{ slug: 'search', path: '/search' }] }));
+    const taken = spawnSync(process.execPath, [...base, '--pages', '/search/', '--delivered', join(root, 'coverage.json')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(taken.status, 2, taken.stderr);
+    assert.match(taken.stderr, /--delivered: --pages lists 1 url\(s\) whose delivery path is already delivered: https:\/\/www\.example\.com\/search\//);
+    const query = spawnSync(process.execPath, [...base, '--pages', '/visit/?utm_source=news'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(query.status, 2, query.stderr);
+    assert.match(query.stderr, /with a query string — name the page without it/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-check('captureKey: a folder\'s index.html is the folder; a query string stays part of the identity', () => {
+check('captureKey / destinationKey: one delivery path — a folder\'s index.html is the folder, `.html` and the query string dropped; coverage paths compare the same way', () => {
   assert.equal(crawl.captureKey('https://ex.test/visit/index.html'), crawl.captureKey('https://ex.test/visit/'));
   assert.equal(crawl.captureKey('https://ex.test/index.html'), crawl.captureKey('https://ex.test/'));
-  assert.notEqual(crawl.captureKey('https://ex.test/visit/?utm_source=news'), crawl.captureKey('https://ex.test/visit/'));
+  assert.equal(crawl.captureKey('https://ex.test/visit/?utm_source=news'), crawl.captureKey('https://ex.test/visit/'));
+  for (const [a, b] of [['/search', '/search/'], ['/', '/index'], ['/a/b', '/a/b.html'], ['/a/', '/a/index.html']]) assert.equal(crawl.destinationKey(a), crawl.destinationKey(b), `${a} ${b}`);
+  assert.deepEqual([...crawl.deliveredPaths({ pages: [{ path: '/search/' }, { path: '/' }, { slug: 'no-path' }] })], ['/search', '/']);
+  assert.throws(() => crawl.deliveredPaths({}), /no pages\[\] array/);
+});
+check('selectPages strict: one slot per delivery path — /visit/ and /visit/index.html are one page, a query variant of a captured page is no new page, a delivered path is a collision', () => {
+  const exclude = new Set([crawl.captureKey('https://ex.test/')]);
+  const discovered = ['https://ex.test/?utm_source=email', 'https://ex.test/visit/', 'https://ex.test/visit/index.html', 'https://ex.test/search', 'https://ex.test/shop?x=1', 'https://ex.test/about'];
+  const r = selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 3, linkFirst: false, strict: true, exclude, reserved: new Set(['/search']) });
+  assert.deepEqual(r.urls, ['https://ex.test/visit/', 'https://ex.test/shop', 'https://ex.test/about']);
+  assert.deepEqual(r.collisions, ['https://ex.test/search']);
+});
+check('selectPages strict with an EMPTY captured set (a valid `pages: []`) still keeps assets and other hosts out', () => {
+  const discovered = ['https://ex.test/report.pdf', 'https://ex.test/logo.png', 'https://ex.test/visit'];
+  assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 2, linkFirst: false, strict: true }).urls, ['https://ex.test/', 'https://ex.test/visit']);
+});
+check('crawl log history: appendRun keeps the latest fields at the top and every run in runs[]; a log from before runs[] becomes runs[0]; firstRunOrder and failedUrls read it', () => {
+  const legacy = { _provenance: { writtenAt: 't0' }, discovery: { capSource: '--cap', count: 1 }, crawl: { failures: [{ url: 'https://ex.test/a' }] }, captureGaps: { roots: [] } };
+  const one = crawl.appendRun(legacy, { discovery: { selection: 'pages', count: 1 }, crawl: { failures: [{ url: 'https://ex.test/b' }] } }, 't1');
+  assert.equal(one.discovery.selection, 'pages', 'latest at the top level');
+  assert.deepEqual(one.runs.map((r) => r.at), ['t0', 't1']);
+  assert.equal(one.runs[0].discovery.capSource, '--cap', 'the first run survives the second crawl');
+  assert.deepEqual(one.captureGaps, { roots: [] }, 'other top-level fields kept');
+  const two = crawl.appendRun(one, { discovery: { selection: 'discovered' }, crawl: { failures: [] } }, 't2');
+  assert.equal(two.runs.length, 3);
+  assert.deepEqual(crawl.firstRunOrder(two), { order: 'link-first', evidence: 'capSource --cap' });
+  assert.deepEqual(crawl.failedUrls(two).sort(), ['https://ex.test/a', 'https://ex.test/b']);
+  assert.deepEqual(crawl.firstRunOrder({ runs: [{ discovery: { selection: 'link-first' } }] }).order, 'link-first');
+  assert.deepEqual(crawl.firstRunOrder({ discovery: { capSource: 'default', cap: 100 } }), { order: 'discovered', evidence: 'capSource default' }, 'a numeric cap is no evidence');
+  assert.deepEqual(crawl.firstRunOrder({}), { order: 'discovered', evidence: 'no first run recorded' });
+  assert.deepEqual(crawl.appendRun({}, { discovery: { x: 1 }, crawl: {} }, 't').runs.length, 1, 'a first log starts runs[] with its own run');
 });
 check('captureKey / precheckPages: a `www.` prefix is one site and one page — a roster that followed the apex → www redirect replays against the apex entry', () => {
   assert.equal(crawl.captureKey('https://www.ex.test/visit/'), crawl.captureKey('https://ex.test/visit'));
@@ -321,12 +360,13 @@ check('selectPages: a plain capped crawl (no --link-first, nothing excluded) kee
   assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 3, linkFirst: false }).urls,
     ['https://ex.test/', 'https://ex.test/annual-report.pdf', 'https://ex.test/about']);
 });
-check('selectPages: under --skip-captured (exclude set) or --link-first, assets and other hosts never take a slot — filtered before the cap', () => {
+check('selectPages: in strict mode (--skip-captured) or with --link-first, assets and other hosts never take a slot — filtered before the cap', () => {
   const discovered = ['https://ex.test/report.pdf', 'https://ex.test.evil.test/x', 'https://ex.test/visit', 'https://ex.test/shop'];
   const exclude = new Set([crawl.captureKey('https://ex.test/')]);
   for (const linkFirst of [false, true]) {
-    assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 1, linkFirst, exclude }).urls, ['https://ex.test/visit'], String(linkFirst));
+    assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 1, linkFirst, strict: true, exclude }).urls, ['https://ex.test/visit'], String(linkFirst));
   }
+  assert.deepEqual(selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: [], discovered, max: 2, linkFirst: true, exclude }).urls, ['https://ex.test/visit', 'https://ex.test/shop'], '--link-first alone');
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);

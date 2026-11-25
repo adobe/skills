@@ -29,7 +29,8 @@
  *            error) — a set that differs by project, such as a design spec — and records the
  *            others as `absent[]`: one that exists at `check` time reads `added <path>`. --from re-hashes the
  *            `paths` of an earlier manifest (each must still exist), so a re-freeze keeps a
- *            project's own set instead of falling back to the defaults. The three are exclusive.
+ *            project's own set instead of falling back to the defaults; an `absent[]` entry that
+ *            exists now joins the paths (one `now present <path>` line on stderr). The three are exclusive.
  *   check    recompute over the manifest's `paths`. Exit 0 and `foundation unchanged (N files)`
  *            when every recorded file exists with the same hash and no new file appeared under
  *            a frozen directory; otherwise one line per `changed <path>` / `missing <path>` /
@@ -176,7 +177,11 @@ export function freeze({ root, out, paths, pathsIfPresent, from }) {
   else if (from) {
     const earlier = readManifest(from);
     list = frozenEntries(rootAbs, earlier.paths, { flag: `--from ${from}` });
-    absent = (earlier.absent || []).filter((p) => !existsSync(join(rootAbs, p)));
+    // a path recorded absent that exists now is frozen from here on (hashed), never dropped from view
+    for (const p of earlier.absent || []) {
+      if (!existsSync(join(rootAbs, p))) absent.push(p);
+      else { list.push(p); console.error(`now present ${p}`); }
+    }
   } else list = DEFAULT_PATHS.filter((p) => existsSync(join(rootAbs, p)));
   const files = snapshot(rootAbs, list);
   const manifest = { frozenAt: new Date().toISOString(), root, paths: list, ...(absent.length ? { absent } : {}), files };

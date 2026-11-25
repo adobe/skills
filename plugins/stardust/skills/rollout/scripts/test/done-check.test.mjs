@@ -83,6 +83,17 @@ check('the rollout is ended only when its LAST I-dashboard line is an end', () =
   assert.equal(rolloutEnded([{ skill: 'stardust:replica', phase: 'I-dashboard', event: 'end' }]), false);
   assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [] }).gaps.includes('rollout_incomplete'));
 });
+check('--track: an earlier pass\'s I-dashboard end never completes this pass; only its own track\'s last line counts', () => {
+  const dash = (event, track) => ({ skill: 'stardust:rollout', phase: 'I-dashboard', event, ...(track ? { track } : {}) });
+  const opened = [dash('start'), dash('end'), { skill: 'stardust:replica', phase: 'extend', event: 'start', track: 'x1' }];
+  assert.equal(rolloutEnded(opened), true, 'untracked: the first pass\'s end');
+  assert.equal(rolloutEnded(opened, 'x1'), false, 'x1 has no I-dashboard line yet');
+  assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: opened, notLive: [], track: 'x1' }).gaps.includes('rollout_incomplete'));
+  const done = [...opened, dash('start', 'x1'), dash('end', 'x1')];
+  assert.equal(rolloutEnded(done, 'x1'), true);
+  assert.equal(rolloutEnded([...done, dash('start', 'x2')], 'x1'), true, 'another track re-opening does not touch x1');
+  assert.equal(rolloutEnded([...done, dash('start', 'x2')], 'x2'), false);
+});
 
 check('library_missing fires only when a page was delivered and the library is not published', () => {
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['library_missing']);

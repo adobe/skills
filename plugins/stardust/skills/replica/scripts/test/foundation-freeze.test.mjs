@@ -184,6 +184,14 @@ check('--paths-if-present keeps the entries that exist, names each missing one o
   assert.match(created.out, /^added stardust\/current\/PRODUCT\.md$/m);
   rmSync(join(root, 'stardust/current/PRODUCT.md'));
   assert.equal(run('check', '--manifest', out).code, 0, 'removed again: unchanged');
+  write('stardust/current/PRODUCT.md', '# now real\n');
+  const re = run('freeze', '--from', out, '--out', join(root, 'spec-2.json'));
+  assert.equal(re.code, 0, re.err); assert.equal(re.err, 'now present stardust/current/PRODUCT.md\n');
+  const m2 = JSON.parse(readFileSync(join(root, 'spec-2.json'), 'utf8'));
+  assert.ok(m2.paths.includes('stardust/current/PRODUCT.md') && !m2.absent, 'frozen from here on');
+  write('stardust/current/PRODUCT.md', '# edited\n');
+  assert.match(run('check', '--manifest', join(root, 'spec-2.json')).out, /^changed stardust\/current\/PRODUCT\.md$/m);
+  rmSync(join(root, 'stardust/current/PRODUCT.md'));
   const none = run('freeze', '--paths-if-present', 'nope.md,also-nope/', '--out', join(root, 'never.json'));
   assert.equal(none.code, 2); assert.match(none.err, /--paths-if-present: none of the listed entries exists/);
   assert.equal(existsSync(join(root, 'never.json')), false);

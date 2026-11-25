@@ -37,10 +37,19 @@ source-fidelity gate** against the live site before anything ships.
 - `--first-page <url|home>` — optional; hands-off `home`. The page a
   full-site run delivers first (`reference/first-page-first.md`).
 - `--extend <url,...>` / `--extend-next <n>` — optional, a delivered run
-  only. One more pass of named pages, or the next `n` (§ After handoff).
+  only. One more pass of named pages, or the next `n` (Setup step 0).
 
 ## Setup
 
+0. **A delivered run first, read-only.** With `stardust/status.jsonl`
+   present, its last replica line (`node stardust/scripts/stardust/ledger.mjs
+   last replica`) decides before anything is installed, copied or stamped:
+   after `handoff end` or `extend end`, a session without `--extend*`
+   renders the state report and stops — nothing re-runs from Phase 1, the
+   spec is never re-promoted; with them it is an extend pass,
+   `reference/extend-pass.md` (the new pages only, spec and foundation
+   frozen; not a `bounded-single` pilot, which re-runs Phase 1 with
+   `--prep`).
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup). **Flow
    guard:** if `state.json.flow` is `redesign`, refuse — print the never-mix
    line and the switch command (`$stardust replica --switch-flow`; master
@@ -272,16 +281,6 @@ sibling SKILL.md files whole.
   [--only <slug,…>] [--skip-existing] [--eds-host <host>]` — pixel, height,
   clipped text and missing or hidden content; a page without a row is
   ungated. C-final ends with `update-coverage.mjs --gate`.
-
-### After handoff — a delivered run takes more pages only through an extend pass
-
-Once `replica handoff end` is written, a resumed session renders the state
-report and stops: nothing re-runs from Phase 1 and the spec is never
-re-promoted. `--extend` / `--extend-next` opens pass `x<N>` — the new
-pages only, the spec and the foundation frozen, new units with the pass
-suffix, Phases 3–4 for new page types only: `reference/extend-pass.md`.
-Not a bounded pilot (`bounded-single`): it grows by re-running Phase 1
-with `--prep` (`reference/preserve-direction.md` § 1a).
 
 ## What replica never does
 

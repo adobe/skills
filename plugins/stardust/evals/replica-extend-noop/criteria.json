@@ -10,7 +10,7 @@
     {
       "name": "nothing_written",
       "max_score": 40,
-      "description": "Nothing of the project changes: `git status` shows no modified or new file outside `stardust/scripts/` (the scripts setup copied, and a refreshed copy of them, are allowed) and outside `stardust/.work/`; stardust/status.jsonl is byte-identical (no `start`, `end`, `blocked` or `extend` line); no stardust/replica/extend/ directory; stardust/current/ unchanged (no capture, no synthesis); no promotion; every progress.json unchanged."
+      "description": "Nothing of the project changes: `git status` shows no modified or new file outside `stardust/scripts/` (the scripts setup copied, and a refreshed copy of them, are allowed) and outside `stardust/.work/`; stardust/status.jsonl is byte-identical (no `start`, `end`, `blocked` or `extend` line); no stardust/replica/extend/ directory; stardust/current/ unchanged (no capture, no synthesis); no promotion; every progress.json unchanged; state.json unchanged (no flow stamp); no dependency installed — no package.json, package-lock.json or node_modules appears, because the delivered-run check comes before Setup's installs and copies."
     },
     {
       "name": "no_rerun",

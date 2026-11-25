@@ -52,7 +52,7 @@
  *
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
- *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
+ *     --content content [--paths list.txt] [--allow publish.paths] [--concurrency 4] [--no-publish] \
  *     [--force] [--ledger path] [--log path] [--retries 4] [--backoff-ms 500] \
  *     [--token-env DA_TOKEN | --token-file <path>]
  *
@@ -62,6 +62,11 @@
  *             restrict the run to a subset (re-drive only these); a `.html` entry —
  *             a content file path as localize-links.mjs --json lists it — counts as
  *             the same page without its extension.
+ * --allow     optional file of web paths, same format as --paths: no page outside it is ever
+ *             sent, whatever --paths, --force or the ledger say — each held page is named
+ *             on stderr (`held /x — not in <file>`), and a held page listed in --paths
+ *             exits 1. Replica's extend pass passes its publish list on every deploy.
+ *             A missing or unreadable file exits 2 before anything is sent.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
@@ -118,6 +123,7 @@ function parseArgs(argv) {
     else if (k === '--branch') a.branch = next();
     else if (k === '--content') a.content = next();
     else if (k === '--paths') a.paths = next();
+    else if (k === '--allow') a.allow = next();
     else if (k === '--ledger') a.ledger = next();
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
@@ -293,11 +299,28 @@ async function main() {
     console.error(`[deploy-batch] ${tokenLabel(args)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
+  const pathList = async (file) => new Set((await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
+    .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '')));
+  // --allow is read before anything is walked or sent: a publish list that cannot be read sends nothing
+  let allow = null;
+  if (args.allow) {
+    try { allow = await pathList(args.allow); } catch (e) {
+      console.error(`[deploy-batch] --allow: cannot read ${args.allow} (${e.code || e.message}); nothing was sent.`);
+      process.exit(2);
+    }
+  }
   let pages = await walkHtml(args.content);
+  let want = null;
   if (args.paths) {
-    const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-      .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '')));
+    want = await pathList(args.paths);
     pages = pages.filter((p) => want.has(p.webPath));
+  }
+  let heldListed = 0;
+  if (allow) {
+    const held = pages.filter((p) => !allow.has(p.webPath));
+    for (const p of held) console.error(`[deploy-batch] held ${p.webPath} — not in ${args.allow}`);
+    heldListed = want ? held.length : 0;
+    pages = pages.filter((p) => allow.has(p.webPath));
   }
   const ledger = (!args.force && existsSync(args.ledger))
     ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
@@ -362,6 +385,10 @@ async function main() {
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);
+    process.exit(1);
+  }
+  if (heldListed) {
+    console.error(`[deploy-batch] ${heldListed} listed page(s) held by --allow ${args.allow} — not sent`);
     process.exit(1);
   }
 }

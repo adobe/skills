@@ -426,8 +426,13 @@ informational output.
 }
 ```
 
-This file is descriptive and append-only. Re-running `extract` adds a
-new top-level entry under `runs[]` rather than overwriting.
+This file is descriptive and append-only. The top-level `discovery` and
+`crawl` are the latest run's (`crawl.mjs` adds `discovery.selection` —
+`link-first`, `discovered` or `pages` — and `max`); every run is also
+appended to `runs[]` as `{ at, discovery, crawl }`, and a log written
+before `runs[]` existed becomes `runs[0]` on the next crawl, so the first
+run's selection and every failure stay readable (`crawl.mjs
+--first-run-order`, `--skip-failed`).
 
 ## Incremental re-runs
 

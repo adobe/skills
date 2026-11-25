@@ -178,6 +178,26 @@ await check('--paths takes web paths and content file paths alike (`/x.html` is 
   assert.match(r.err, /^\[deploy-batch\] 2 pages, 0 already live, 2 to drive/m);
   assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/deep/p3.html`, `${SRC}/p1.html`]);
 });
+await check('--allow: no page outside the publish list is sent, whatever --paths and --force say — held pages named, a held listed page exits 1; an unreadable list sends nothing (exit 2)', async () => {
+  site('site-al', ['new-1', 'new-2', 'old', 'deep/old-2']);
+  writeFileSync(join(proj, 'site-al.allow'), '/new-1\nnew-2.html\n');
+  const from = requests.length;
+  const all = await run(['--content', 'site-al', '--allow', 'site-al.allow', '--force']);
+  assert.equal(all.code, 0, all.out + all.err);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/new-1.html`, `${SRC}/new-2.html`], 'the actual PUT paths');
+  assert.match(all.err, /^\[deploy-batch\] held \/deep\/old-2 — not in site-al\.allow$/m); assert.match(all.err, /^\[deploy-batch\] held \/old — not in site-al\.allow$/m);
+  writeFileSync(join(proj, 'site-al.paths'), '/old.html\n/new-1\n');
+  const from2 = requests.length;
+  const listed = await run(['--content', 'site-al', '--paths', 'site-al.paths', '--allow', 'site-al.allow', '--force']);
+  assert.equal(listed.code, 1, listed.out + listed.err);
+  assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/new-1.html`]);
+  assert.match(listed.err, /1 listed page\(s\) held by --allow site-al\.allow — not sent/);
+  const from3 = requests.length;
+  const missing = await run(['--content', 'site-al', '--allow', 'nope.allow', '--force']);
+  assert.equal(missing.code, 2, missing.out + missing.err);
+  assert.match(missing.err, /--allow: cannot read nope\.allow .*nothing was sent/);
+  assert.equal(since(from3).length, 0, 'no request at all');
+});
 await check('re-run skips pages already live (re-verified on the delivered origin, no admin call); --force re-drives them', async () => {
   const from = requests.length;
   const r = await run(['--content', 'site-a']);
