@@ -109,8 +109,11 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 ```json
 { "regime": "preview", "url": "<preview url>", "content": "PASS", "tokens": "PASS", "parity": "FAIL 1/8",
   "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "figma": { "regime": "preview" },
-  "codeStamp": "<16 hex>", "invocation": "deployed-gate.mjs all --page <slug> …" }
+  "chrome": { "navDepth": "PASS" }, "codeStamp": "<16 hex>", "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
+
+`chrome.navDepth` is `PASS`, `FAIL source N nav groups, delivered M[, K open at load]` (also counted in `parity`),
+`n/a: <why>` (no source nav groups, header or content model), `ERROR (exit 124): …` or `not run: …`.
 
 `codeStamp` hashes the project's `blocks/`, `styles/`, `scripts/` and `head.html` as the run starts. Before handoff,
 `deployed-gate stamp --page <slug>` prints `current`, or `stale: summary <a>, now <b>` (exit 1): a block or CSS change
@@ -126,7 +129,9 @@ Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, written
 A check not run is `unresolved: <why>` (any of the three): the verdict is NOT-RUN and the command adds a
 `residuals[]` entry on `step10` (`needs-owner`, `source: "step10"`), which a later `step10` with nothing unresolved
 removes. `verdict` is FAIL on an eyeball `fail`, a CLS ≥ 0.1 or a header `fail`, else NOT-RUN on an unresolved check,
-else PASS; like any gate it blocks the predicate unless PASS or covered by an accepted residual. `record` keeps an
+else PASS; like any gate it blocks the predicate unless PASS or covered by a residual accepted `--by user`. An agent
+(any `--by` but `user`, or none in a hands-off run) cannot pass `--header` (`pass` or `n/a`) unless `gates.deployed`
+shows the chrome measured and PASS; a header it could not check is `unresolved: <why>`, left for the user. `record` keeps an
 existing `gates.step10` (it is entered, never read from a report).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s

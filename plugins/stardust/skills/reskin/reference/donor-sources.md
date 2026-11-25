@@ -172,6 +172,15 @@ API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
    never stop; a frame Figma cannot render is recorded as not
    renderable. `--list` prints every page's top-level nodes;
    `--frames <id,…>` narrows; `--max-frames <n>` caps and lists the cut.
+   **Scope a large file before capturing it.** When `--list` shows
+   many pages, pass `--frames` with the frames that carry the design
+   system or a page design (variables, text and colour styles,
+   component sets, full-width page frames), judged by content, not page
+   name. When the file holds several brands or font families, keep the
+   one the page designs use. Record the cut in the handoff. Run the
+   whole ingest (`capture`, rules, `curate`, `stamp`) in one subagent
+   that returns only the artifact paths, the frame list and warnings;
+   the main context never reads the raw capture.
    Changing the selection of an existing capture needs `--refresh`, a
    second full nodes fetch. Read the source page's module markers
    (`data-component` names) when mapping its sections onto the captured

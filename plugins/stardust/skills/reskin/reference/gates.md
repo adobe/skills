@@ -89,6 +89,16 @@ two callers — capture and gate cannot drift on image counts.
 the area of it the source shows: at most `--crop-tolerance` (default
 10%) of what it shows lies outside the source's region, and an
 off-centre anchor the source sets is kept.
+**Measured with behaviour kept** (`measurePrep` in
+`source-normalize.mjs`, both gates, page restored after): closed
+`<details>`, closed dialogs and `aria-controls` panels are opened on
+both sides; on the rendered side a `/fragments/` or `/modals/` link is
+resolved as EDS `fragment.js` does, and EDS sections outside `main`
+(a sticky tray) join the scope. Revealed content is optional: it
+counts only where the other side has the same words or images there,
+so content visible at load can never be skipped. The report names what
+was normalised (one line). An accordion hidden only by `display:none`
+is not opened.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.
@@ -207,6 +217,12 @@ localizes any failure to a named slot. It asserts, from the model:
 - every CTA present as a (text, **absolute** href) pair;
 - every image present (host+path normalized);
 - every present image **painted** (§ Image paint below);
+- every embed in `content-model.json#embeds` (iframe, `<video>`,
+  YouTube, Vimeo, Wistia, Brightcove) has a counterpart, matched by
+  provider and video id, else host and path: a missing one is a FAIL
+  (a video re-hosted on purpose is a residual);
+- `altFlags` (generic, file-name or repeated alt text) listed as
+  advisory, never a FAIL;
 - metadata carried **verbatim**: title, description, canonical, each
   OG tag, each Twitter tag; JSON-LD block count. Verbatim includes
   source garbage — fidelity over repair; flag, don't fix
@@ -427,9 +443,14 @@ raises the share; `summary.json` and the fragment record it.
   that family covering the element's weight and style, an installed
   family, or a generic one). A declared family rendered from a fallback is
   `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
-  out of `ramp PASS n/n` and counted as `(j unserved)`; log each as a
-  `font.unserved` residual (`accepted` when the donor supplies no font
-  files, `needs-owner` when the licensed font is meant to be served).
+  out of `ramp PASS n/n` and counted as `(j unserved)`. First serve
+  it: when the family's licence is open (OFL or Apache, from the
+  Google Fonts metadata or the donor's licence file), self-host the
+  weights used as woff2 under `/fonts/` with `font-display: swap` and
+  re-run the gate. Otherwise log a `font.unserved` residual
+  (`accepted` when a licensed face's files aren't supplied,
+  `needs-owner` when it is meant to be served or the licence is
+  unknown).
 - **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
   for large text) in a root the section's checks name, its alpha composited over
   the solid ground behind it; gradient and image grounds are skipped. A
@@ -478,6 +499,12 @@ fetches `.plain.html` without a browser.
 
 - **Protected preview.** Out of scope: the preview must be reachable without
   auth. A 401 or 403 stops `preview` with exit 2 (`deployed-leg.md`).
+- **Nav depth.** `parity` also counts the source header's nav groups
+  (a list item holding a nested list, or a labelled toggle with 2+
+  links) against the preview's `.nav-sections` items holding a list,
+  at 1440 (`nav-depth.json`, `chrome.navDepth`). Fewer groups, a flat
+  list of the group links, or a dropdown open at load is a parity
+  FAIL; a source with no groups is n/a.
 - **Step 10 stays.** The verdict replaces only `deploy` Step 10's automated
   reconcile; its eyeball, CLS and header-behavior checks stay mandatory before
   handoff (`deployed-leg.md` § Recipe, step 7).
@@ -519,9 +546,22 @@ The ledger is written by script, never by hand:
 ```bash
 node stardust/scripts/reskin/reskin-ledger.mjs record <slug> [--stage migrated]
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
-node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <who>]
 node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
+node stardust/scripts/reskin/reskin-ledger.mjs flag <slug> --note "…"
+node stardust/scripts/reskin/reskin-ledger.mjs delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "…"
 ```
+
+**An agent never accepts its own blocking failure.** A residual on a
+(d) `figma.join`, `figma.geometry` or `figma.ramp` class, an `exact`
+check, `step10`, or the header or footer (chrome) is accepted only
+`--by user`; any other `--by`, or none in a hands-off run, exits 1:
+record it `--verdict needs-owner`. The
+predicate (`gatesOk`) counts such a residual as covering its gate only
+when it carries `by: "user"`, so an older ledger with no `by` fails
+closed, and `state.mjs --to approved --by hands-off` refuses while
+`gatesOk` is false. `delivery`'s `runner` is a scope the hosting runner
+imposed (a page cap), named in the handoff like a user's opt-out.
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,slot-coverage,donor-probe}.md` or
 `gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the prototype's

@@ -46,5 +46,8 @@ migrated tree.
 Archetypes-only delivery (`rollout` archetypes-only mode, the rest
 `content-pending`) is an opt-out the user asks for in words. Record it
 as `ledger.json#delivery = { scope: "archetypes-only", requestedBy:
-"user", reason, at }` (default `scope: "full-site"`) and name it in the
-handoff report.
+"user", reason, at }` (default `scope: "full-site"`) with
+`reskin-ledger.mjs delivery --scope archetypes-only --requested-by user
+--reason "<the user's words>"`, never by hand, and name it in the
+handoff report. A cap the hosting runner imposes is the same record
+with `--requested-by runner` and `--scope subset --pages …`.

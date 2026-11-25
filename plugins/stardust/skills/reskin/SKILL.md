@@ -74,6 +74,9 @@ fidelity then holds by construction.
    `stardust/scripts/{reskin,stardust,diff,replica,deploy,prototype}/`: every
    reskin gate script resolves the master skill's `browser.mjs` there
    and exits 2 without it. List: `reference/gates.md` § Project copies.
+   Never edit a copied script (or `stardust/rollout/encoder/`): a
+   script that can't handle the page is a residual. Read image sizes
+   with node (`pngjs`, Playwright); python PIL is not assumed.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -104,7 +107,8 @@ content site, always `--all` and never `--prep`
   `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
   (the whole file), author `stardust/reskin/curation-rules.json`,
   then `curate` and `stamp`. Judge the result against the frame
-  screenshots; fix it in the rules. Recipe:
+  screenshots; fix it in the rules. Run this ingest in one subagent
+  that returns only the artifacts and frame list. Recipe and scope:
   `reference/donor-sources.md` § Figma.
 
 **Type every inventory page** before Phase 2 and print the count per
@@ -220,6 +224,13 @@ slot in `<section data-slot data-module>`, and writes
 `stardust/reskin/pages/<slug>.html`. A text parse that does not
 reproduce its node throws. Rules: `reference/render.md`.
 
+**Keep behaviour.** A source pattern keeps its behaviour: sticky or
+fixed trays (an ISI), modals, collapsed
+accordions, fragment-loaded content. The content gate measures them
+expanded and resolved, so never inline, open or un-stick one to pass
+a gate; if a gate still can't read it, log a `gate.limitation`
+residual. Content the source keeps on screen stays on screen.
+
 ### Phase 5 — GATES
 
 Three gate families per page, plus (d) for a Figma donor and (e) for
@@ -251,8 +262,11 @@ a deployed page. Commands, pass bars, tolerances and failure modes:
 **One fix iteration per gate family** ((e) has its own budget), then
 re-run all gates. Failures left are `residuals[]`, never absorbed or
 looped on. **The ledger is written by script, never by hand:**
-`reskin-ledger.mjs record|eyeball|residual|step10`
-(`reference/gates.md` § Residual logging).
+`reskin-ledger.mjs record|eyeball|residual|step10|flag|delivery`
+(`reference/gates.md` § Residual logging). **An agent never accepts
+its own blocking failure**: a (d) `figma.*`, `exact`, `step10` or
+header/footer residual is `--verdict needs-owner`; only `--by user`
+accepts one, and the script refuses otherwise.
 
 ### Phase 6 — HANDOFF
 
@@ -264,8 +278,10 @@ delivery is an opt-out the user asks for in words, recorded in
 - **Approve, bridge, check** (`reference/handoff.md`). The user
   approves the archetype (`state.mjs advance <slug> --to approved
   --by user`); an agent may only in a hands-off run (`handsOff: true`,
-  `--by hands-off`), once every gate is PASS or accepted and the
-  eyeball recorded. Then `reskin-ledger.mjs record <archetype>`,
+  `--by hands-off`), once every gate is PASS or covered by a residual
+  the script lets it accept, and the eyeball recorded; `state.mjs`
+  refuses otherwise. A `needs-owner` residual stops the run at
+  handoff with the report. Then `reskin-ledger.mjs record <archetype>`,
   `canon-from-reskin.mjs <archetype>`, render the siblings, and
   `reskin-preflight.mjs` must exit 0. Never run `prepare-migration` or
   `direct` under `flow: reskin`.
@@ -298,11 +314,14 @@ the archetype and, through the bridge, moves siblings to `directed`.
   content-model slot; every module traces to `donor-modules.md` or an
   explicit new-module entry in `mapping.md`.
 - **No donor-token drift.** No colors, fonts, radii, or spacing
-  outside `donor-tokens.json`. Licensed donor fonts are adopted as the
-  family *token string* with local fallback, never rebundled.
+  outside `donor-tokens.json`. An open-licence donor font (OFL, Apache)
+  is self-hosted; a licensed one is adopted as the family *token
+  string* with local fallback, never rebundled (`reference/gates.md` § (d)).
 - **No silent slot drops.** Anything excluded from the gate scope is a
   declared chrome delta or a ledger normalization — declared in
   `mapping.md`, executable in the normalize module.
+- **No hand-written ledger or state.** `flags`, `delivery`, residuals
+  and approvals go through `reskin-ledger.mjs` and `state.mjs` only.
 - **No partial site.** No capped content crawl, and no page of the
   inventory left unmigrated unless the user opted out (Phase 6).
 
@@ -321,24 +340,7 @@ the archetype and, through the bridge, moves siblings to `directed`.
 
 ## Outputs
 
-| Path | Purpose |
-|---|---|
-| `stardust/canon-source/` | Donor capture + descriptive DESIGN.md/json (extract `--design-source`, unchanged; or `figma-donor.mjs` for Figma) |
-| `stardust/canon-source/foundation/`, `{role,module}-candidates.json`, `spec-tables.json` | Figma donor only: normalized Figma values with node ids, and the candidates the agent curates from |
-| `stardust/reskin/curation-rules.json` | Figma donor only: the authored rules, the one non-mechanical `curate` input |
-| `stardust/reskin/donor-tokens.json` | Curated probe-able token sheet, pinned to one reference page |
-| `stardust/reskin/donor-modules.md` | Enumerated donor module vocabulary (M1..Mn) with screenshot evidence |
-| `stardust/reskin/content-model/<slug>/content-model.json` | Byte-oriented per-page content model (+ source screenshot) |
-| `stardust/reskin/normalize/<slug>.mjs` | Per-page executable normalization ledger (shared capture ↔ gates) |
-| `stardust/reskin/mapping.md` | The mapping brief: every slot → donor module, status, rationale |
-| `stardust/reskin/mapping.json` | Per-section decisions the renderer reads |
-| `stardust/reskin/renderers/<archetype>.mjs` | Programmatic renderers (model in, HTML out) |
-| `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
-| `stardust/reskin/reports/` | Per-page gate reports + screenshots |
-| `stardust/reskin/figma-checks/<slug>.json`, `deltas/<slug>.json` | Figma checks (d); declared preview differences (e) |
-| `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
-| `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
-| `stardust/.work/reskin/` | Git-ignored: Figma REST cache, frame PNGs, per-leg gate evidence |
+Every path a run writes: `reference/outputs.md`.
 
 ## References
 
