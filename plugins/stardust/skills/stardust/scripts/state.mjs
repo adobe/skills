@@ -23,10 +23,14 @@
 // Top-level key order on write (state-machine.md § File): _provenance, site, direction, handsOff,
 // flow, flowChosenAt, flowSource, pages; a key this script does not know keeps its place relative
 // to the known keys around it (never pushed behind pages).
-// Exit codes: 0 ok · 2 usage, unknown slug, or illegal transition (nothing written in every 2 case).
+// Reskin (state flow "reskin"): an agent approval (--to approved --by anything but user, or no --by in a
+// handsOff run) needs every named page gatesOk in <dir>/reskin/ledger.json, read with reskin-ledger.mjs;
+// a missing ledger or script refuses (exit 1).
+// Exit codes: 0 ok · 1 refused agent approval · 2 usage, unknown slug, or illegal transition (nothing
+// written in every 1 or 2 case).
 import { existsSync, readFileSync, renameSync, writeFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DEFAULT_DIR = 'stardust';
 export const FILE_NAME = 'state.json';
@@ -43,6 +47,15 @@ export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
 export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// reskin-ledger.mjs beside the reskin scripts: the plugin tree (skills/reskin/scripts/) or the project
+// copy (stardust/scripts/reskin/). Not found or not loadable: null, and a reskin agent approval refuses.
+export const RESKIN_LEDGER = await (async () => {
+  for (const rel of [['..', '..', 'reskin', 'scripts'], ['..', 'reskin']]) {
+    const f = join(HERE, ...rel, 'reskin-ledger.mjs');
+    if (existsSync(f)) { try { return await import(pathToFileURL(f).href); } catch { return null; } }
+  }
+  return null;
+})();
 const SELF = fileURLToPath(import.meta.url);
 const PLUGIN_MANIFEST = join(HERE, '..', '..', '..', '.claude-plugin', 'plugin.json');
 const HELP = `Usage:
@@ -55,6 +68,8 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          sets prototypePath / migratedPath when given, clears stale on prototyped|approved|migrated,
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
          --by is only valid with --to approved (it becomes approvedBy, e.g. "hands-off").
+         flow reskin: an agent approval (--by other than user, or no --by with handsOff) is refused
+         (exit 1) unless every named page is gatesOk in <dir>/reskin/ledger.json; --by user is not.
          Backward moves exit 2 unless --force. All-or-nothing: one bad slug, nothing is written.
          --history-only appends the history entry and leaves status untouched (re-running prototype
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
@@ -62,7 +77,7 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          A value flag followed by nothing or by another --flag is a usage error.
 summary  prints page counts by status (and the slugs per status with --slugs).
 Writes: advance rewrites <dir>/${FILE_NAME} in place (atomic temp file + rename); summary writes nothing.
-Exit codes: 0 ok, 2 usage / illegal transition.`;
+Exit codes: 0 ok, 1 refused agent approval (reskin gates open), 2 usage / illegal transition.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -176,6 +191,22 @@ export function advance(state, slugs, { to, by = null, prototype = null, migrate
   return { plan, cleared };
 }
 
+// Reskin: the reasons an agent may not approve these pages (empty: it may). Fail closed on a missing
+// ledger or reskin-ledger.mjs.
+export function reskinApprovalRefusals(state, slugs, { to, by = null, dir = DEFAULT_DIR, lib = RESKIN_LEDGER } = {}) {
+  if (to !== 'approved' || state?.flow !== 'reskin') return [];
+  if (!(by ? String(by).toLowerCase() !== 'user' : state.handsOff === true)) return [];
+  if (!lib?.openGates) return ['reskin-ledger.mjs not found beside the reskin scripts (skills/reskin/scripts/ or stardust/scripts/reskin/): the gates cannot be checked'];
+  const f = join(dir, 'reskin', 'ledger.json');
+  let ledger; try { ledger = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { return [`${f} missing or unreadable (${e.code || e.message}): run reskin-ledger.mjs record <slug> first`]; }
+  return slugs.flatMap((slug) => {
+    const e = ledger?.pages?.[slug];
+    if (!e?.gates) return [`${slug}: no gates in ${f} (reskin-ledger.mjs record ${slug})`];
+    const open = lib.openGates(e.gates, e.residuals || []);
+    return open.length ? [`${slug}: ${open.map((g) => `${g.gate} ${g.verdict}`).join(', ')}`] : [];
+  });
+}
+
 export function summarise(state) {
   const counts = Object.fromEntries(ORDER.map((s) => [s, []]));
   const other = {};
@@ -244,6 +275,10 @@ export function main(argv) {
     const { state, file } = readState(opts.dir);
     const at = nowIso();
     const { plan, cleared } = advance(state, rest, { to: opts.to, by: opts.by, prototype: opts.prototype, migrated: opts.migrated, force: opts.force, historyOnly: opts.historyOnly, at });
+    const refused = reskinApprovalRefusals(state, rest, { to: opts.to, by: opts.by, dir: opts.dir });
+    if (refused.length) {
+      throw new UsageError(`advance --to approved --by ${opts.by || '(none, handsOff run)'} refused: an agent approves a reskin page only when its gates are ok (reskin-ledger.mjs; an owner-only failure needs the user's accepted residual):\n  ${refused.join('\n  ')}\nRecord the open failures as needs-owner residuals and stop for the user, who approves with --by user.`, 1);
+    }
     const writtenBy = normaliseSkill(opts.skill || SET_BY[opts.to]);
     state._provenance = stampProvenance(state._provenance, writtenBy, at);
     writeState(file, state);

@@ -140,9 +140,12 @@ check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A5
   assert.equal(ag(gated({ gates: { figma: fig, deployed: dep } })).level, 'ok');
   assert.match(ag(gated({ gates: { figma: { ...fig, geometry: 'FAIL 3/12' } } })).detail, /figma\.geometry FAIL/);
   assert.match(ag(gated({ gates: { figma: { missing: 'figma-gate all not run' } } })).detail, /figma\.join NOT-RUN/);
-  assert.equal(ag(gated({ gates: { figma: { ...fig, ramp: 'FAIL 1/4' } }, residuals: [{ gate: 'figma.ramp', verdict: 'accepted' }] })).level, 'ok');
+  assert.equal(ag(gated({ gates: { figma: { ...fig, ramp: 'FAIL 1/4' } }, residuals: [{ gate: 'figma.ramp', verdict: 'accepted', by: 'user' }] })).level, 'ok');
+  // an agent-accepted (or legacy, no by) owner-only residual does not cover the gate
+  assert.match(ag(gated({ gates: { figma: { ...fig, ramp: 'FAIL 1/4' } }, residuals: [{ gate: 'figma.ramp', verdict: 'accepted', by: 'hands-off' }] })).detail, /figma\.ramp FAIL/);
+  assert.match(ag(gated({ gates: { figma: { ...fig, ramp: 'FAIL 1/4' } }, residuals: [{ gate: 'figma.ramp', verdict: 'accepted' }] })).detail, /figma\.ramp FAIL/);
   assert.match(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } } })).detail, /deployed\.figma\.join FAIL/);
-  assert.equal(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } }, residuals: [{ gate: 'figma.join', verdict: 'accepted' }] })).level, 'ok');
+  assert.equal(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } }, residuals: [{ gate: 'figma.join', verdict: 'accepted', by: 'user' }] })).level, 'ok');
   assert.match(ag(gated({ gates: { deployed: { ...dep, sanity: 'FAIL 1/9' } }, residuals: [{ gate: 'deployed.sanity', verdict: 'accepted' }] })).detail, /deployed\.sanity FAIL/);
 });
 check('approval: an agent approval fails unless the run is hands-off and says so', () => {

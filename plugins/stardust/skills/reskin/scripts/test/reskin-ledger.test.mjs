@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRecord, applyStep10, fragmentVerdict, gateVerdicts, mobileStatic, overall, step10Verdict, WAIVED } from '../reskin-ledger.mjs';
+import { applyRecord, applyStep10, chromeVerdict, fragmentVerdict, gateVerdicts, gatesOk, mobileStatic, overall, ownerOnly, step10Verdict, WAIVED } from '../reskin-ledger.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
@@ -77,7 +77,7 @@ check('M2 fragments: verdict strings, flattening, figmaRequired, kept fragment, 
   assert.equal(applyRecord({}, base).pages.login.gates.figma, undefined, 'no M2 → no figma gate');
   assert.equal(fragmentVerdict('CHALLENGE: bot wall'), 'NOT-RUN'); assert.equal(fragmentVerdict('ERROR (exit 3)'), 'NOT-RUN');
   assert.deepEqual(gateVerdicts({ domEquality: 'PASS', slotCoverage: 'FAIL 1/9' }).map((v) => v.verdict), ['PASS', 'FAIL'], 'hand-written string gates');
-  const withClass = applyRecord({ pages: { login: { residuals: [{ gate: 'figma', class: 'figma.geometry', verdict: 'accepted' }] } } }, { ...base, m2: { figma: fig } });
+  const withClass = applyRecord({ pages: { login: { residuals: [{ gate: 'figma', class: 'figma.geometry', verdict: 'accepted', by: 'user' }] } } }, { ...base, m2: { figma: fig } });
   assert.equal(withClass.pages.login.status, 'gated', 'a residual names its family by class (M2b SKILL)');
 });
 check('step10: verdicts (FAIL beats NOT-RUN beats PASS), unresolved adds a needs-owner residual, record keeps gates.step10', () => {
@@ -93,7 +93,9 @@ check('step10: verdicts (FAIL beats NOT-RUN beats PASS), unresolved adds a needs
   assert.equal(L.pages.login.status, 'failing');
   assert.deepEqual(L.pages.login.residuals.map((r) => [r.gate, r.verdict, r.cause]), [['step10', 'needs-owner', 'cls unresolved: probe not run']]);
   L = applyStep10(L, { slug: 'login', eyeball: 'pass', cls: '0.02', header: 'n/a: static header', at: 't3' });
-  assert.equal(L.pages.login.gates.step10.verdict, 'PASS'); assert.deepEqual(L.pages.login.residuals, []); assert.equal(L.pages.login.status, 'gated');
+  assert.equal(L.pages.login.gates.step10.verdict, 'PASS'); assert.equal(L.pages.login.status, 'gated');
+  assert.deepEqual(L.pages.login.residuals.map((r) => [r.gate, r.verdict, r.cause]), [['step10', 'needs-owner', 'header n/a: static header']], 'a header other than pass is the owner\'s to see');
+  assert.deepEqual(applyStep10(L, { slug: 'login', eyeball: 'pass', cls: '0.02', header: 'pass', at: 't3' }).pages.login.residuals, [], 'a clean pass drops it');
   const re = applyRecord(L, { ...base, at: 't4' });
   assert.deepEqual(re.pages.login.gates.step10, L.pages.login.gates.step10, 'a re-record keeps the step10 receipts');
   assert.equal(re.pages.login.status, 'gated');
@@ -127,6 +129,79 @@ check('CLI: refuses without reports, then record → eyeball → residual → sh
   assert.equal(run(['record', 'login'], root).status, 0);
   const L2 = JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8'));
   assert.deepEqual([L2.pages.login.gates.step10.verdict, L2.pages.login.gates.step10.header, L2.pages.login.gates.step10.by], ['PASS', 'pass', 'user']);
+});
+
+check('owner-only gates: an accepted residual covers figma/exact/step10/chrome only when by user; legacy (no by) fails closed', () => {
+  for (const g of ['figma.join', 'figma.geometry', 'figma.ramp', 'deployed.figma.geometry', 'exact', 'step10', 'deployed.chrome', 'A6 header crop', 'footer']) assert.ok(ownerOnly(g), g);
+  for (const g of ['font.unserved', 'reskin-dom-equality', 'deployed.content', 'mobile-adapt-runtime']) assert.ok(!ownerOnly(g), g);
+  const gates = { figma: { join: 'PASS', geometry: 'FAIL 2/9', ramp: 'PASS' } };
+  const res = (by) => [{ gate: 'figma.geometry', class: 'figma.geometry', verdict: 'accepted', ...(by === undefined ? {} : { by }) }];
+  assert.equal(gatesOk(gates, res(undefined)), false, 'legacy residual without by');
+  assert.equal(gatesOk(gates, res('hands-off')), false);
+  assert.equal(gatesOk(gates, res('user')), true);
+  assert.equal(gatesOk({ 'font.unserved': { verdict: 'FAIL' } }, [{ gate: 'font.unserved', verdict: 'accepted', by: 'hands-off' }]), true, 'an agent may accept a non-owner gate');
+  assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'FAIL 1/4' }, inherited: 'PASS' } }, [{ gate: 'deployed.sanity', verdict: 'accepted', by: 'user' }]), false, 'deployed.sanity is never accepted');
+});
+check('chromeVerdict: no fragment / parity header crop n/a is NOT-RUN, FAIL is FAIL, explicit chrome keys win over parity', () => {
+  assert.equal(chromeVerdict(undefined).verdict, 'NOT-RUN');
+  assert.equal(chromeVerdict({ parity: 'PASS' }).verdict, 'PASS');
+  assert.equal(chromeVerdict({ parity: 'PASS (n/a: header crop, section-height)' }).verdict, 'NOT-RUN');
+  assert.equal(chromeVerdict({ parity: 'PASS (n/a: section-height)' }).verdict, 'PASS');
+  assert.equal(chromeVerdict({ parity: 'FAIL 1/9' }).verdict, 'FAIL');
+  assert.equal(chromeVerdict({ parity: 'PASS', chrome: 'FAIL 2/4' }).verdict, 'FAIL');
+  assert.equal(chromeVerdict({ parity: 'FAIL 1/9', chrome: { verdict: 'PASS' } }).verdict, 'PASS');
+  // deployed-gate's chrome.navDepth adds a row; parity's crops still count
+  assert.equal(chromeVerdict({ parity: 'PASS', chrome: { navDepth: 'PASS' } }).verdict, 'PASS');
+  assert.equal(chromeVerdict({ parity: 'PASS', chrome: { navDepth: 'n/a: the source header has no nav groups' } }).verdict, 'PASS');
+  assert.equal(chromeVerdict({ parity: 'PASS', chrome: { navDepth: 'FAIL source 3 nav groups, delivered 0' } }).verdict, 'FAIL');
+  assert.equal(chromeVerdict({ parity: 'PASS (n/a: header crop)', chrome: { navDepth: 'PASS' } }).verdict, 'NOT-RUN');
+});
+check('CLI: owner-only residuals, step10 header refusal for an agent, flag, delivery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  const read = () => JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8'));
+  w('stardust/state.json', JSON.stringify({ ...state, handsOff: true }));
+  const res = (gate, ...extra) => run(['residual', 'login', '--gate', gate, '--cause', 'off by 3px', '--verdict', 'accepted', ...extra], root);
+  const r1 = res('figma.geometry', '--by', 'hands-off'); assert.equal(r1.status, 1); assert.match(r1.stderr, /--verdict needs-owner; only --by user accepts/);
+  assert.equal(res('figma.ramp').status, 1, 'no --by is not the user');
+  assert.equal(res('deployed.chrome', '--by', 'hands-off').status, 1);
+  assert.equal(res('step10', '--by', 'hands-off').status, 1);
+  assert.equal(res('font.unserved', '--by', 'hands-off').status, 0);
+  const u = res('figma.geometry', '--by', 'user'); assert.equal(u.status, 0, u.stderr);
+  assert.equal(run(['residual', 'login', '--gate', 'figma.join', '--cause', 'x', '--verdict', 'needs-owner', '--by', 'hands-off'], root).status, 0);
+  assert.deepEqual(read().pages.login.residuals.map((r) => [r.gate, r.verdict, r.by]), [['font.unserved', 'accepted', 'hands-off'], ['figma.geometry', 'accepted', 'user'], ['figma.join', 'needs-owner', 'hands-off']]);
+
+  const s10 = (header, ...extra) => run(['step10', 'login', '--eyeball', 'pass', '--cls', '0.01', '--header', header, ...extra], root);
+  const h1 = s10('pass', '--by', 'hands-off'); assert.equal(h1.status, 1); assert.match(h1.stderr, /refused.*NOT-RUN.*no gates\.deployed/);
+  assert.equal(s10('n/a: no header', '--by', 'hands-off').status, 1);
+  assert.equal(s10('pass').status, 1, 'no --by in a handsOff run is the agent');
+  const L = read(); L.pages.login.gates = { deployed: { parity: 'FAIL 1/9 header crop 4% > 2%' } }; w('stardust/reskin/ledger.json', JSON.stringify(L));
+  assert.match(s10('pass', '--by', 'hands-off').stderr, /chrome evidence is FAIL/);
+  const unres = s10('unresolved: header differs from donor', '--by', 'hands-off'); assert.equal(unres.status, 0, unres.stderr);
+  assert.ok(read().pages.login.residuals.some((r) => r.gate === 'step10' && r.verdict === 'needs-owner'));
+  assert.equal(s10('pass', '--by', 'user').status, 0, 'the user passes it');
+  const L2 = read(); L2.pages.login.gates.deployed = { parity: 'PASS' }; w('stardust/reskin/ledger.json', JSON.stringify(L2));
+  assert.equal(s10('pass', '--by', 'hands-off').status, 0, 'an agent may pass the header when the chrome evidence passes');
+
+  assert.equal(run(['flag', 'login'], root).status, 2);
+  for (let i = 0; i < 2; i++) assert.equal(run(['flag', 'login', '--note', 'coverage.absent: color.accent'], root).status, 0);
+  assert.equal(run(['flag', 'login', '--note', 'font fallback'], root).status, 0);
+  assert.deepEqual(read().pages.login.flags, ['coverage.absent: color.accent', 'font fallback']);
+
+  const d = (...a) => run(['delivery', ...a], root);
+  assert.equal(d('--scope', 'archetypes-only', '--requested-by', 'user').status, 2, '--reason required');
+  assert.equal(d('--scope', 'archetypes-only', '--reason', 'x').status, 2, '--requested-by required');
+  assert.equal(d('--scope', 'subset', '--requested-by', 'user', '--reason', 'x').status, 2, 'subset needs --pages');
+  assert.equal(d('--scope', 'full-site', '--pages', 'a', '--requested-by', 'user', '--reason', 'x').status, 2, '--pages with subset only');
+  assert.equal(d('--scope', 'everything', '--requested-by', 'user', '--reason', 'x').status, 2);
+  assert.equal(d('login', '--scope', 'full-site', '--requested-by', 'user', '--reason', 'x').status, 2, 'no slug');
+  assert.equal(d('--requested-by', 'runner', '--reason', 'default').status, 0);
+  assert.equal(read().delivery.scope, 'full-site');
+  const ok = d('--scope', 'subset', '--pages', 'login, reg', '--requested-by', 'runner', '--reason', 'runner page cap 2'); assert.equal(ok.status, 0, ok.stderr);
+  const { at, ...rest } = read().delivery; assert.match(at, /Z$/);
+  assert.deepEqual(rest, { scope: 'subset', pages: ['login', 'reg'], requestedBy: 'runner', reason: 'runner page cap 2' });
+  assert.equal(d('--scope', 'archetypes-only', '--requested-by', 'user', '--reason', '"just the archetypes"').status, 0);
+  assert.equal(read().delivery.pages, undefined);
 });
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }

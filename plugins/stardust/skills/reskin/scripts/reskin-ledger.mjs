@@ -28,9 +28,17 @@
  *       deploy's Step 10 receipts on the preview (reference/deployed-leg.md § The ledger) → gates.step10
  *       { eyeball, cls, header, verdict, note, by, at }: eyeball pass|fail, cls the measured CLS (< 0.1
  *       passes), header pass|fail|"n/a: <why>" (--header-toggle is an alias); any of them may be
- *       "unresolved: <why>" — NOT-RUN, plus a needs-owner residual on step10. verdict FAIL beats NOT-RUN
- *       beats PASS. `record` keeps an existing gates.step10.
- *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"]
+ *       "unresolved: <why>" — NOT-RUN, plus a needs-owner residual on step10 (a header other than pass adds
+ *       one too). verdict FAIL beats NOT-RUN beats PASS. `record` keeps an existing gates.step10. An agent
+ *       (--by hands-off|autopilot|agent, or no --by in a handsOff run) passing the header (pass or n/a) is
+ *       refused unless the page's gates.deployed shows the chrome PASS.
+ *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <who>]
+ *       accepted on an owner-only gate (AGENT_NEVER_ACCEPTS, or chrome/header/footer) needs --by user.
+ *   flag <slug> --note "<text>"                          appends to pages[slug].flags (deduped)
+ *   delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
+ *       → ledger.delivery { scope, pages?, requestedBy, reason, at } (default scope full-site; pages for subset
+ *       only). requestedBy user: the user asked in words (reason quotes them); runner: the hosting runner
+ *       imposed it (a page cap), reason names the setting.
  *   show [<slug>]
  *
  * Exit 0 ok, 1 refused (missing page, report or prototype), 2 usage.
@@ -51,7 +59,15 @@ human judgments. reskin-preflight and migrate read it.
   step10 <slug> --eyeball pass|fail --cls <n> --header pass|fail|"n/a: <why>" [--note "…"] [--by <who>]
       deploy's Step 10 receipts → gates.step10 (CLS < 0.1 passes; any value may be "unresolved: <why>",
       which records NOT-RUN and a needs-owner residual); --header-toggle is an alias of --header
-  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"]
+      An agent passing the header (pass or n/a) needs gates.deployed to show the chrome PASS; a header
+      other than pass adds a needs-owner residual on step10.
+  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <who>]
+      figma.join|geometry|ramp, exact, step10 and chrome/header/footer gates are the owner's: an agent
+      records --verdict needs-owner; only --by user accepts. deployed.sanity is never accepted.
+  flag <slug> --note "<text>"                  appends to pages[slug].flags (identical text once)
+  delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
+      → ledger.delivery { scope, pages?, requestedBy, reason, at }; --pages with subset only. reason: the
+      user's words, or the runner setting that capped it (runner = imposed by the hosting runner, not the user)
   show [<slug>]
 
 Exit 0 ok, 1 refused, 2 usage.`;
@@ -74,6 +90,15 @@ const VERDICTS = ['accepted', 'needs-owner', 'blocked'];
 export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited'] };
 // A residual that may never be accepted (M2a D7: a deployed hard-sanity failure is fixed, not waived).
 export const NEVER_ACCEPTED = ['deployed.sanity'];
+// Blocking failures only the owner accepts (residual --by user): never the agent that produced them.
+export const AGENT_NEVER_ACCEPTS = ['figma.join', 'figma.geometry', 'figma.ramp', 'exact', 'step10'];
+export const CHROME_GATE = /chrome|header|footer/i;
+export const ownerOnly = (gate) => {
+  const g = String(gate || ''); const base = g.replace(/^deployed\./, '');
+  return AGENT_NEVER_ACCEPTS.includes(g) || AGENT_NEVER_ACCEPTS.includes(base) || /(^|\.)exact(\.|$)/.test(g) || CHROME_GATE.test(g);
+};
+// An agent's say-so: --by hands-off|autopilot|agent (anything but user), or no --by in a handsOff run.
+export const agentBy = (by, state) => (by ? String(by).toLowerCase() !== 'user' : state?.handsOff === true);
 export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
   if (s == null) return 'NOT-RUN';
@@ -101,6 +126,27 @@ export function step10Verdict(s = {}) {
   const fails = [/^fail$/i.test(s.eyeball) && 'eyeball fail', !UNRESOLVED.test(String(s.cls)) && Number(s.cls) >= CLS_MAX && `CLS ${s.cls} ≥ ${CLS_MAX}`, /^fail$/i.test(s.header) && 'header fail'].filter(Boolean);
   if (fails.length) return 'FAIL';
   return step10Problems(s).open.length ? 'NOT-RUN' : 'PASS';
+}
+// The chrome evidence on the preview: the deployed fragment's chrome/header/footer keys when it has any, else
+// parity (its header and footer crops), a crop left n/a counting as not measured. No fragment is NOT-RUN.
+export function chromeVerdict(dep) {
+  if (!dep || typeof dep !== 'object') return { verdict: 'NOT-RUN', detail: 'no gates.deployed fragment (deployed-gate all, then record)' };
+  // A chrome key with its own verdict covers the header and footer; one holding sub-checks ({ navDepth }) adds rows
+  // beside parity, which keeps the header and footer crops.
+  const rows = []; let explicit = false;
+  for (const k of Object.keys(dep).filter((x) => CHROME_GATE.test(x))) {
+    const v = dep[k];
+    if (v && typeof v === 'object' && v.verdict == null) for (const [sub, sv] of Object.entries(v)) rows.push([`deployed.${k}.${sub}`, sv]);
+    else { rows.push([`deployed.${k}`, v]); explicit = true; }
+  }
+  if (!explicit) rows.unshift(['deployed.parity', dep.parity]);
+  const vs = rows.map(([k, v]) => {
+    const s = typeof v === 'string' ? v : v?.verdict;
+    const unmeasured = k === 'deployed.parity' && /n\/a:[^)]*\b(header|footer)\b/i.test(String(s ?? ''));
+    return [k, unmeasured ? 'NOT-RUN' : fragmentVerdict(v), s ?? 'absent'];
+  });
+  const worst = vs.find(([, v]) => v === 'FAIL') || vs.find(([, v]) => v !== 'PASS');
+  return { verdict: worst ? (worst[1] === 'FAIL' ? 'FAIL' : 'NOT-RUN') : 'PASS', detail: vs.map(([k, , s]) => `${k} ${s}`).join('; ') };
 }
 const step10Detail = (s) => `eyeball ${s?.eyeball}, CLS ${s?.cls}, header ${s?.header}`;
 // Flat [{ gate, verdict, detail? }] over reskin's own gates and the M2 fragments.
@@ -150,21 +196,24 @@ export function mobileStatic(html) {
   return { pass: issues.length === 0, issues };
 }
 
-// Every gate PASS, or covered by an accepted residual (never a NEVER_ACCEPTED one).
-export function gatesOk(gates, residuals = []) {
-  const accepted = (g) => residuals.some((r) => residualCovers(r, g) && r.verdict === 'accepted' && !NEVER_ACCEPTED.includes(g));
-  return gateVerdicts(gates).every(({ gate, verdict }) => verdict === 'PASS' || accepted(gate));
-}
+// An accepted residual covers a gate, never a NEVER_ACCEPTED one, and an owner-only one only when the user
+// accepted it (by "user"; a residual without by fails closed).
+export const residualAccepted = (residuals, g) => !NEVER_ACCEPTED.includes(g)
+  && (residuals || []).some((r) => residualCovers(r, g) && r.verdict === 'accepted' && (!ownerOnly(g) || r.by === 'user'));
+// The gates neither PASS nor covered by an accepted residual.
+export const openGates = (gates, residuals = []) => gateVerdicts(gates).filter(({ gate, verdict }) => verdict !== 'PASS' && !residualAccepted(residuals, gate));
+export const gatesOk = (gates, residuals = []) => openGates(gates, residuals).length === 0;
 
 // Pure: the ledger with deploy's Step 10 receipts for one page in pages[slug].gates.step10. An unresolved
-// check adds (or refreshes) a needs-owner residual on step10 (source "step10"); a record with none open
-// drops that residual, never one entered with `residual`. A recorded page's status follows its gates.
+// check, or a header other than pass, adds (or refreshes) a needs-owner residual on step10 (source "step10");
+// a record with none open drops that residual, never one entered with `residual`. A recorded page's status follows its gates.
 export function applyStep10(ledger, { slug, eyeball, cls, header, note = null, by = null, at }) {
   const L = structuredClone(ledger || {}); L.pages ||= {};
   const entry = { ...(L.pages[slug] || {}) };
   const s = { eyeball: String(eyeball), cls: String(cls).trim(), header: String(header) };
   for (const k of ['eyeball', 'header']) if (/^(pass|fail)$/i.test(s[k])) s[k] = s[k].toLowerCase();
   const { open } = step10Problems(s);
+  if (s.header !== 'pass' && !open.includes('header')) open.push('header');
   const step10 = { ...s, verdict: step10Verdict(s), note, by, at };
   const hadGates = !!entry.gates;
   entry.gates = { ...(entry.gates || {}), step10 };
@@ -220,7 +269,7 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') o.help = true;
-    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause', '--eyeball', '--cls', '--header', '--header-toggle', '--by'].includes(a)) {
+    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause', '--eyeball', '--cls', '--header', '--header-toggle', '--by', '--scope', '--pages', '--requested-by', '--reason'].includes(a)) {
       const v = argv[++i]; if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`); o[a === '--header-toggle' ? 'header' : a.slice(2)] = v;
     } else if (a.startsWith('--')) throw new Error(`unknown option ${a}`);
     else o.pos.push(a);
@@ -255,7 +304,17 @@ export function main(argv) {
   const ledgerFile = join(o.dir, 'reskin', 'ledger.json');
   let ledger; try { ledger = readJson(ledgerFile) || {}; } catch { console.error(`reskin-ledger: ${ledgerFile} is not valid JSON`); return 1; }
   if (cmd === 'show') { console.log(JSON.stringify(slug ? ledger.pages?.[slug] ?? null : ledger, null, 2)); return 0; }
-  if (!['record', 'eyeball', 'residual', 'step10'].includes(cmd)) { console.error(`reskin-ledger: unknown command ${cmd}\n\n${HELP}`); return 2; }
+  if (!['record', 'eyeball', 'residual', 'step10', 'flag', 'delivery'].includes(cmd)) { console.error(`reskin-ledger: unknown command ${cmd}\n\n${HELP}`); return 2; }
+  if (cmd === 'delivery') {
+    if (slug) { console.error('reskin-ledger: delivery takes no <slug> (it is the run\'s scope)'); return 2; }
+    const scope = o.scope || 'full-site';
+    const pages = o.pages ? o.pages.split(',').map((p) => p.trim()).filter(Boolean) : null;
+    if (!['full-site', 'archetypes-only', 'subset'].includes(scope) || !['user', 'runner'].includes(o['requested-by']) || !o.reason?.trim() || (scope === 'subset') !== !!pages?.length) {
+      console.error('reskin-ledger: delivery needs --scope full-site|archetypes-only|subset (--pages a,b with subset only), --requested-by user|runner and --reason "<the user\'s words, or the runner setting that capped it>"'); return 2;
+    }
+    ledger.delivery = { scope, ...(scope === 'subset' ? { pages } : {}), requestedBy: o['requested-by'], reason: o.reason, at: new Date().toISOString().replace(/\.\d+Z$/, 'Z') };
+    save(ledgerFile, ledger); console.log(`delivery: ${scope}${pages ? ` (${pages.join(', ')})` : ''}, requested by ${o['requested-by']}`); return 0;
+  }
   if (!slug) { console.error(`reskin-ledger: ${cmd} needs a <slug>`); return 2; }
   let state; try { state = readJson(join(o.dir, 'state.json')); } catch { state = null; }
   if (!state?.pages) { console.error(`reskin-ledger: ${join(o.dir, 'state.json')} missing or invalid`); return 1; }
@@ -269,9 +328,22 @@ export function main(argv) {
     ledger.pages[slug] = { ...(ledger.pages[slug] || {}), eyeball: { verdict: o.verdict, note: o.note || null, at } };
     save(ledgerFile, ledger); console.log(`eyeball ${slug}: ${o.verdict}`); return 0;
   }
+  if (cmd === 'flag') {
+    if (!o.note?.trim()) { console.error('reskin-ledger: flag needs --note "<text>"'); return 2; }
+    const e = { ...(ledger.pages[slug] || {}) }; e.flags = [...(e.flags || [])];
+    if (!e.flags.includes(o.note)) e.flags.push(o.note);
+    ledger.pages[slug] = e; save(ledgerFile, ledger); console.log(`flag ${slug}: ${e.flags.length} flag(s)`); return 0;
+  }
   if (cmd === 'step10') {
     const { bad } = step10Problems({ eyeball: o.eyeball, cls: o.cls, header: o.header });
     if (bad.length) { console.error(`reskin-ledger: step10 needs --eyeball, --cls and --header:\n  ${bad.join('\n  ')}`); return 2; }
+    if (agentBy(o.by, state) && !/^fail$/i.test(o.header) && !UNRESOLVED.test(o.header)) {
+      const c = chromeVerdict(ledger.pages[slug]?.gates?.deployed);
+      if (c.verdict !== 'PASS') {
+        console.error(`reskin-ledger: step10 ${slug} --header ${JSON.stringify(o.header)} refused for ${o.by || 'a hands-off run'}: the preview's chrome evidence is ${c.verdict} (${c.detail}). An agent does not pass the header over its own gate: record --header "unresolved: <why>" (a needs-owner residual on step10) or --header fail; only the user (--by user) passes it.`);
+        return 1;
+      }
+    }
     const next = applyStep10(ledger, { slug, eyeball: o.eyeball, cls: o.cls, header: o.header, note: o.note || null, by: o.by || null, at });
     save(ledgerFile, next);
     const s = next.pages[slug].gates.step10;
@@ -281,8 +353,11 @@ export function main(argv) {
   if (cmd === 'residual') {
     if (!o.gate || !o.cause || !VERDICTS.includes(o.verdict)) { console.error(`reskin-ledger: residual needs --gate, --cause and --verdict ${VERDICTS.join('|')}`); return 2; }
     if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard sanity): fix the page and re-run deployed-gate`); return 1; }
+    if (o.verdict === 'accepted' && ownerOnly(o.gate) && o.by !== 'user') {
+      console.error(`reskin-ledger: a ${o.gate} residual is the owner's to accept, not the agent's: record it with --verdict needs-owner; only --by user accepts it`); return 1;
+    }
     const cls = /^(figma|deployed)\./.test(o.gate) ? { class: o.gate } : {};
-    const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, note: o.note || null, at }];
+    const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, by: o.by || null, note: o.note || null, at }];
     ledger.pages[slug] = e; save(ledgerFile, ledger); console.log(`residual ${slug}: ${o.gate} ${o.verdict}`); return 0;
   }
 

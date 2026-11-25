@@ -11,7 +11,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, stampProvenance, summarise } from '../state.mjs';
+import { ORDER, RESKIN_LEDGER, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, reskinApprovalRefusals, stampProvenance, summarise } from '../state.mjs';
+import { gatesOk } from '../../../reskin/scripts/reskin-ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -192,6 +193,33 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
   const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — extract creates it/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/); assert.match(h.out, /--history-only/);
+});
+
+// ---- reskin: an agent approval needs the ledger's gates ok --------------------------------------
+check('reskin flow: hands-off approval refused on an open figma failure or no ledger; allowed when gates pass or the user accepted; --by user never blocked', () => {
+  assert.ok(RESKIN_LEDGER?.openGates, 'reskin-ledger.mjs resolves from the plugin tree');
+  const rdir = join(root, 'reskin-run'); mkdirSync(join(rdir, 'reskin'), { recursive: true });
+  const rfile = join(rdir, 'state.json');
+  const ledgerFile = join(rdir, 'reskin', 'ledger.json');
+  writeFileSync(rfile, JSON.stringify({ flow: 'reskin', handsOff: true, pages: [mkPage('login', 'prototyped'), mkPage('reg', 'prototyped')] }));
+  const r = (...a) => { const x = spawnSync(process.execPath, [SCRIPT, ...a, '--dir', rdir], { encoding: 'utf8' }); return { code: x.status, err: x.stderr }; };
+  const before = readFileSync(rfile, 'utf8');
+  const none = r('advance', 'login', '--to', 'approved', '--by', 'hands-off'); assert.equal(none.code, 1); assert.match(none.err, /ledger\.json missing or unreadable/);
+  const fig = { join: 'PASS', geometry: 'FAIL 2/9', ramp: 'PASS' };
+  const L = (residuals) => ({ pages: { login: { gates: { figma: fig }, residuals }, reg: { gates: { figma: { ...fig, geometry: 'PASS' } } } } });
+  const selfAccepted = [{ gate: 'figma.geometry', class: 'figma.geometry', verdict: 'accepted', by: 'hands-off' }];
+  writeFileSync(ledgerFile, JSON.stringify(L(selfAccepted)));
+  const open = r('advance', 'login', 'reg', '--to', 'approved', '--by', 'hands-off'); assert.equal(open.code, 1); assert.match(open.err, /login: figma\.geometry FAIL/); assert.doesNotMatch(open.err, /reg:/);
+  assert.equal(r('advance', 'login', '--to', 'approved').code, 1, 'no --by in a handsOff run is the agent');
+  assert.equal(r('advance', 'login', '--to', 'approved', '--by', 'hands-off', '--history-only').code, 1);
+  assert.equal(readFileSync(rfile, 'utf8'), before, 'nothing written on a refusal');
+  assert.equal(gatesOk({ figma: fig }, selfAccepted), false); assert.deepEqual(reskinApprovalRefusals(JSON.parse(before), ['reg'], { to: 'approved', by: 'hands-off', dir: rdir }), []);
+  const ok = r('advance', 'reg', '--to', 'approved', '--by', 'hands-off'); assert.equal(ok.code, 0, ok.err);
+  const user = r('advance', 'login', '--to', 'approved', '--by', 'user'); assert.equal(user.code, 0, user.err);
+  writeFileSync(ledgerFile, JSON.stringify(L([{ ...selfAccepted[0], by: 'user' }])));
+  const accepted = r('advance', 'login', '--to', 'approved', '--by', 'hands-off'); assert.equal(accepted.code, 0, accepted.err);
+  assert.deepEqual(reskinApprovalRefusals({ flow: 'replica', pages: [] }, ['x'], { to: 'approved', by: 'hands-off', dir: rdir }), [], 'other flows are not gated here');
+  assert.match(reskinApprovalRefusals({ flow: 'reskin', pages: [] }, ['x'], { to: 'approved', by: 'hands-off', dir: rdir, lib: null })[0], /reskin-ledger\.mjs not found/);
 });
 
 rmSync(root, { recursive: true, force: true });
