@@ -100,7 +100,7 @@ pin('spec/scripts/lib.mjs', '!(top && CHROME_IDS.has(A.tag(k)))');
 const specChrome = libKinds.CHROME_IDS;
 // lib/documents.mjs contentDocuments (deploy-batch, localize-links, extend-roster) — its webPath is lib/paths.mjs documentPath (pinned use)
 pin('stardust/scripts/lib/documents.mjs', 'out.push({ file, webPath: documentPath(file) });');
-pin('deploy/scripts/deploy-batch.mjs', 'contentDocuments(args.content).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }))');
+pin('deploy/scripts/deploy-batch.mjs', 'contentDocuments(args.content, { hidden: true }).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }))');
 pin('deploy/scripts/localize-links.mjs', 'const docs = contentDocuments(opts.content);');
 pin('replica/scripts/extend-roster.mjs', 'export const documents = (dir) => contentDocuments(dir).map((d) => d.file);');
 const deployBatchWebPath = libPaths.documentPath;

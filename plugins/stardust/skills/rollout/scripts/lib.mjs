@@ -16,7 +16,7 @@ const C = await import(CONTRACTS.href);
 export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;
 export const { pathKey, safePath, sidecarName, treePath, rosterPath, pathSlug, sitemapKey, servedPath, isFolderIndexFile } = C;
 export const { daTokenSource, readDaToken, jwtExpiry } = C;
-export const { LIBRARY_ROOT } = C;
+export const { LIBRARY_ROOT, deliveredRows, contentFile } = C;
 
 /**
  * The block library's proof of publication (#160): da-library.mjs writes it once every DA write of a run succeeded and

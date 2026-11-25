@@ -21,6 +21,8 @@
  *   node stardust/scripts/replica/extend-roster.mjs relink-approve|relink-restore --pass <dir> --files <a.html,b.html>
  *        [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs published --pass <dir> --out <dir> [--content content]
+ *   node stardust/scripts/replica/extend-roster.mjs opening-check --pass <dir> [--content content]
+ *        [--coverage stardust/rollout/coverage/pages.json]
  *
  *   select    reads the candidate urls (one per line, in the crawler's order) and keeps those whose EDS destination
  *             (pathKey(deliveredUrl(path)): case, `.html`, `/index`, trailing slash, query and `_` folded) is new: not
@@ -33,9 +35,15 @@
  *             file (`crawl.mjs --pages-file`): a url may hold a comma. --named (urls the owner named): a url with a
  *             query string, or one whose destination is delivered, an existing document or the library — captured or not —
  *             exits 2 and writes nothing; one captured but not delivered (an interrupted capture) is dropped.
- *   Deploy ledgers read (the publication evidence): stardust/deploy/*.json (rollout's unit ledgers),
- *   <content>/.deploy-ledger.json (deploy-batch's default) and every pass's approved/r<k>/.deploy-ledger.json; a
- *   row is evidence when it reads `live`, its `sha256` (the bytes verified delivered) naming the version.
+ *   Deploy ledgers read (the publication evidence): stardust/deploy/ledger-*.json (rollout's unit ledgers; not
+ *   media-ledger.json), <content>/.deploy-ledger.json (deploy-batch's default) and every pass's approved/r<k>/
+ *   .deploy-ledger.json. A row's `published` (the last verified publication: sha256 and time) is the evidence, else a
+ *   row reading `live` (its `sha256`, when it has one). A ledger that cannot be parsed stops every command (exit 2).
+ *
+ *   opening-check  before the first PUT: lists every delivered document — a coverage row `deployed`/`verified`
+ *             (lib/documents.mjs deliveredRows, contentFile) or a ledger's live row — whose published bytes cannot be
+ *             recovered, in <pass>/unproven.paths (those on disk, for `deploy-batch.mjs --adopt --paths`); the rest
+ *             (no file anywhere) named. Exit 1 while any is left, 0 when none.
  *
  *   inventory writes <pass>/inventory.tsv once, at the opening: `<sha256>\t<file>\t<tracked|ignored>\t<published>`
  *             for every document under --content (`tracked` per `git ls-files`). `published` is what the ledgers
@@ -46,18 +54,22 @@
  *             with <pass>/reserved.paths: every DA document a ledger records live, whether or not its file is in the
  *             checkout (an ignored nav) — no pass output or also.paths entry may name one or share its destination.
  *   output    a unit that succeeded records the exact files it wrote for its roster pages in its own
- *             <pass>/outputs/<unit>.paths (one writer per file: concurrent units never share a record). Refused (exit
+ *             <pass>/outputs/<unit>.paths (one writer per file: concurrent units never share a record); a record only
+ *             grows — a resumed unit reporting a subset keeps the rest, an identical replay is a no-op. Refused (exit
  *             2, nothing written): a file that is no document, existed at the opening, is reserved, sits under
- *             /library, is no roster page's, or a second file for a page another record gives an output.
+ *             /library, is no roster page's, or a second file for a page any record (this unit's too) gives an output.
  *   publish   writes <pass>/publish.paths — the union of outputs/*.paths (two files for one page exit 2) plus
  *             <pass>/also.paths (a fragment the pages need, written
  *             by the unit that creates it), each checked with the deployer's own entry rule — and <pass>/targets.paths:
- *             the link targets (every opening document with a live row, and the publish list) for `localize-links.mjs
+ *             the link targets (every opening document a ledger records live or coverage delivers, and the publish
+ *             list) for `localize-links.mjs
  *             --targets`. Any other new document (an owner's draft, one at a roster page whose capture failed) is
  *             held and named. An entry that is missing, existed at the opening, sits under /library or would resolve
  *             to another document, or is reserved, exits 2, nothing written.
- *   published writes into --out (a new dir) every document at bytes known delivered — the bytes, working file or any
- *             committed copy, whose digest is its NEWEST live row's — and names the rest withheld: the
+ *   published writes into --out (a new dir) every document — in the working tree, the opening inventory or a
+ *             ledger's live rows, so a delivered document whose file is gone is not left out — at bytes known delivered:
+ *             the bytes, working file or any committed copy, whose digest is its NEWEST live row's; names the rest
+ *             withheld: the
  *             input of `da-library.mjs --content <out>`, so a held or conflicted working file never reaches the library.
  *   reconcile writes <pass>/redrive.paths: every document of publish.paths whose bytes are not the newest live
  *             row's sha256 in any ledger — a pass page relinked after its PUT, a C-archetype representative a
@@ -85,8 +97,8 @@
  *             <pass>/approved/r<k> --allow <pass>/approved/r<k>.paths` (a retry is the same command; its ledger is
  *             r<k>/.deploy-ledger.json, committed with it).
  *   relink-restore  for the named candidates: writes the last published bytes back only while the file still holds the
- *             bytes classified — moved aside, checked, the restored bytes linked in; a file saved meanwhile is kept
- *             and refused as a conflict.
+ *             bytes classified (lib/documents.mjs replaceIfUnchanged); a file saved meanwhile is kept and refused as a
+ *             conflict; any other failure puts the original back.
  *             approve and restore act only on candidates; a named file that is not one is refused (exit 1).
  *
  * Exit codes: 0 ok (an empty roster is ok) · 1 a named file refused · 2 usage, an unreadable input, a --named url
@@ -95,7 +107,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync,
+  existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,7 +117,7 @@ const SELF = fileURLToPath(import.meta.url);
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 if (!CONTRACTS) { console.error('extend-roster: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/) — copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(2); }
-const { pathKey, deliveredUrl, documentPath, contentDocuments, resolveEntry, isLibraryPath } = await import(CONTRACTS.href);
+const { pathKey, deliveredUrl, documentPath, contentDocuments, resolveEntry, isLibraryPath, deliveredRows, contentFile, replaceIfUnchanged } = await import(CONTRACTS.href);
 
 class UsageError extends Error {}
 class Refused extends Error {}
@@ -270,18 +282,18 @@ function relinkRecords(pass) {
   return by;
 }
 
-// Every deploy ledger the project keeps; the live rows for one document across them, newest first.
+// Every deploy ledger the project keeps — stardust/deploy/ledger-*.json (rollout's unit ledgers; media-ledger.json is
+// not one), <content>/.deploy-ledger.json (deploy-batch's default), every pass's approved/r<k>/.deploy-ledger.json —
+// and the publications they record for one document, newest first. A ledger that cannot be read stops the command
+// (exit 2, named): a reservation or a published version is never decided from incomplete evidence.
 function ledgerFiles(o) {
   const out = [];
-  if (existsSync('stardust/deploy')) for (const n of readdirSync('stardust/deploy')) if (n.endsWith('.json')) out.push(join('stardust/deploy', n));
+  if (existsSync('stardust/deploy')) for (const n of readdirSync('stardust/deploy').sort()) if (/^ledger-.*\.json$/.test(n)) out.push(join('stardust/deploy', n));
   if (existsSync(join(o.content, '.deploy-ledger.json'))) out.push(join(o.content, '.deploy-ledger.json'));
-  const ext = 'stardust/replica/extend';
-  if (existsSync(ext)) {
-    for (const pass of readdirSync(ext)) {
-      const ap = join(ext, pass, 'approved');
-      if (!existsSync(ap)) continue;
-      for (const r of readdirSync(ap)) if (/^r\d+$/.test(r) && existsSync(join(ap, r, '.deploy-ledger.json'))) out.push(join(ap, r, '.deploy-ledger.json'));
-    }
+  for (const pass of passDirs()) {
+    const ap = join(EXT, pass, 'approved');
+    if (!existsSync(ap)) continue;
+    for (const r of readdirSync(ap)) if (/^r\d+$/.test(r) && existsSync(join(ap, r, '.deploy-ledger.json'))) out.push(join(ap, r, '.deploy-ledger.json'));
   }
   return out;
 }
@@ -289,11 +301,18 @@ function liveRows(o, file, cache) {
   if (!cache.rows) {
     cache.rows = new Map();
     for (const lf of ledgerFiles(o)) {
-      let l; try { l = JSON.parse(readFileSync(lf, 'utf8')); } catch { continue; }
-      for (const [doc, rec] of Object.entries(l || {})) {
-        if (!rec || rec.status !== 'live') continue;
+      let l;
+      try { l = JSON.parse(readFileSync(lf, 'utf8')); } catch (e) { usage(`deploy ledger ${lf} cannot be read (${e.message.split('\n')[0]}) — repair or restore it; nothing is decided without it`); }
+      if (!l || typeof l !== 'object' || Array.isArray(l)) usage(`deploy ledger ${lf} is not a ledger (an object of web paths) — repair or restore it`);
+      for (const [doc, rec] of Object.entries(l)) {
+        if (!rec || typeof rec !== 'object') continue;
+        // `published` is the last verified publication, kept apart from a later attempt's status (deploy-batch)
+        let row = null;
+        if (rec.published && rec.published.sha256) row = { sha256: rec.published.sha256, ts: rec.published.at || rec.ts || '' };
+        else if (rec.status === 'live') row = { sha256: rec.sha256 || null, ts: rec.ts || '' };
+        if (!row) continue;
         if (!cache.rows.has(doc)) cache.rows.set(doc, []);
-        cache.rows.get(doc).push({ sha256: rec.sha256 || null, ts: rec.ts || '', ledger: lf });
+        cache.rows.get(doc).push({ ...row, ledger: lf });
       }
     }
     for (const rows of cache.rows.values()) rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
@@ -329,9 +348,10 @@ function statusAll(o) {
 const FLAGS = {
   select: ['--candidates', '--out', '--max', '--state', '--coverage', '--content', '--slugs-out'],
   inventory: ['--pass', '--content'],
-  publish: ['--pass', '--content'],
+  publish: ['--pass', '--content', '--coverage'],
   reconcile: ['--pass', '--content'],
   output: ['--pass', '--content', '--unit', '--files'],
+  'opening-check': ['--pass', '--content', '--coverage'],
   published: ['--pass', '--content', '--out'],
   'relink-status': ['--pass', '--content'],
   'relink-approve': ['--pass', '--content', '--files'],
@@ -360,6 +380,38 @@ export function parseArgs(argv) {
 function liveDocuments(o) {
   const cache = {}; liveRows(o, 'x.html', cache);
   return [...cache.rows.keys()].sort();
+}
+
+// Before the first PUT: every delivered document — a coverage row delivered (lib/documents.mjs deliveredRows, as
+// da-library reads them) or a ledger's live row — whose published bytes cannot be recovered, written to
+// <pass>/unproven.paths for `deploy-batch.mjs --adopt --paths`. Exit 1 while any is left (the pass cannot close:
+// da-library refuses a library that misses a delivered page), 0 when none.
+function openingCheck(o) {
+  const inv = existsSync(join(o.pass, 'inventory.tsv')) ? readInventory(o.pass) : new Map();
+  const cache = {}; liveRows(o, 'x.html', cache);
+  const want = new Map();
+  const cov = existsSync(o.coverage) ? readJson(o.coverage, '--coverage') : null;
+  for (const row of deliveredRows(cov)) {
+    const f = contentFile(o.content, row.path);
+    if (f) want.set(relative(o.content, f).split(sep).join('/'), `coverage ${row.path}`);
+    else console.error(`unproven ${row.path} — delivered (coverage) but no content file: restore its body first`);
+  }
+  for (const w of cache.rows.keys()) want.set(`${w.replace(/^\/+/, '')}.html`, `ledger ${w}`);
+  const unproven = []; let missingFile = 0;
+  for (const [f, from] of [...want.entries()].sort()) {
+    const p = join(o.content, f);
+    const cur = existsSync(p) ? readFileSync(p) : null;
+    const { bytes, why } = lastPublished(o, f, inv.get(f) || null, cache, cur);
+    if (bytes) continue;
+    if (cur) unproven.push(`/${f}`); else missingFile += 1;
+    console.error(`unproven /${f} (${from}) — ${why}`);
+  }
+  const noFile = deliveredRows(cov).filter((r) => !contentFile(o.content, r.path)).length;
+  writeAtomic(join(o.pass, 'unproven.paths'), lines(unproven));
+  const left = unproven.length + missingFile + noFile;
+  console.error(`opening-check: ${want.size} delivered document(s), ${left} unproven → ${join(o.pass, 'unproven.paths')} (${unproven.length} on disk for --adopt)`);
+  if (left) throw new Refused(`extend-roster: ${left} delivered document(s) without recoverable published bytes`);
+  return 0;
 }
 
 function select(o) {
@@ -433,9 +485,10 @@ function output(o) {
   if (!/^[A-Za-z0-9._-]+$/.test(o.unit)) usage(`--unit ${o.unit}: letters, digits, '.', '_' and '-' only`);
   const inv = readInventory(o.pass); const pages = rosterDestinations(o.pass); const res = reservedOf(o.pass);
   const docs = new Set(documents(o.content));
-  const others = new Map();
-  for (const r of outputRecords(o.pass)) if (r.unit !== o.unit) for (const f of r.files) others.set(pathKey(`/${f}`), { f, unit: r.unit });
-  const claim = new Map(); const problems = [];
+  // every record's claims, this unit's included: a record only grows (a resumed unit that reports a subset keeps the rest)
+  const others = new Map(); const own = [];
+  for (const r of outputRecords(o.pass)) for (const f of r.files) { others.set(pathKey(`/${f}`), { f, unit: r.unit }); if (r.unit === o.unit) own.push(f); }
+  const claim = new Map(own.map((f) => [pathKey(`/${f}`), f])); const problems = [];
   for (const f of o.files) {
     const dest = pathKey(`/${f}`);
     if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends)`);
@@ -453,7 +506,7 @@ function output(o) {
   }
   const file = join(o.pass, 'outputs', `${o.unit}.paths`);
   writeAtomic(file, lines([...new Set(claim.values())].sort().map((f) => `/${f}`)));
-  console.error(`output: ${claim.size} file(s) of unit ${o.unit} → ${file}`);
+  console.error(`output: unit ${o.unit} now records ${claim.size} file(s) (${claim.size - own.length} new) → ${file}`);
   return 0;
 }
 
@@ -492,8 +545,11 @@ function publish(o) {
     const dest = pathKey(`/${f}`);
     console.error(`held /${f} — ${owner.has(dest) ? `roster page ${dest} has its output /${owner.get(dest).f}` : pages.has(dest) ? `no unit recorded it as the output of roster page ${dest}` : 'new, neither a unit\'s output nor in also.paths'}`);
   }
-  // link targets: what was published before the pass (any live row) and what the pass publishes
-  const targets = [...[...inv.entries()].filter(([, e]) => e.pub !== 'unpublished').map(([f]) => f), ...keep];
+  // link targets: an opening document a ledger records live or coverage delivers (a page delivered by hand has no
+  // ledger row), and what the pass publishes — never a draft
+  const cache = {}; const cov = existsSync(o.coverage) ? readJson(o.coverage, '--coverage') : null;
+  const deliveredFiles = new Set(deliveredRows(cov).map((r) => contentFile(o.content, r.path)).filter(Boolean).map((f) => relative(o.content, f).split(sep).join('/')));
+  const targets = [...[...inv.keys()].filter((f) => liveRows(o, f, cache).length || deliveredFiles.has(f)), ...keep];
   writeAtomic(join(o.pass, 'targets.paths'), lines([...new Set(targets)].sort().map((f) => `/${f}`)));
   writeAtomic(join(o.pass, 'publish.paths'), lines([...keep].sort().map((f) => `/${f}`)));
   console.error(`publish: ${keep.size} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held} new held); targets.paths: ${new Set(targets).size} link target(s)`);
@@ -506,8 +562,14 @@ function published(o) {
   if (existsSync(o.out)) usage(`--out ${o.out} exists — one tree per refresh: a new dir (mktemp -d)`);
   const inv = readInventory(o.pass); const cache = {};
   let n = 0; const withheld = [];
-  for (const f of documents(o.content)) {
-    const cur = readFileSync(join(o.content, f));
+  // the working tree, the opening inventory and every document a ledger records live: a delivered document whose file
+  // is gone from content/ is recovered from its committed copies, or named withheld — never silently left out
+  liveRows(o, 'x.html', cache);
+  const known = new Set([...documents(o.content), ...inv.keys(), ...[...cache.rows.keys()].map((w) => `${w.replace(/^\/+/, '')}.html`)]);
+  for (const f of [...known].sort()) {
+    const p = join(o.content, f);
+    const cur = existsSync(p) ? readFileSync(p) : null;
+    if (!cur && !liveRows(o, f, cache).length) continue;
     const { bytes, why } = lastPublished(o, f, inv.get(f) || null, cache, cur);
     if (!bytes) { withheld.push(`/${f} — ${why}`); continue; }
     mkdirSync(dirname(join(o.out, f)), { recursive: true });
@@ -544,28 +606,6 @@ function relinkStatus(o) {
   return 0;
 }
 
-// Restore one file only while it still holds the bytes that were classified. The replacement is written first; the file
-// is moved aside atomically and checked; the replacement is linked in (a link never replaces a file). On any failure the
-// original is put back, or kept beside it and named. Returns why it was not restored (null when it was). `fs` is for tests.
-export function guardedRestore(path, expected, bytes, fs = { renameSync, linkSync, rmSync, writeFileSync, readFileSync }) {
-  const tmp = `${path}.restore-${process.pid}`; const aside = `${path}.relink-${process.pid}`;
-  try { fs.writeFileSync(tmp, bytes); } catch (e) { return `cannot prepare the restored bytes (${e.code || e.message}) — left as it is`; }
-  try { fs.renameSync(path, aside); } catch (e) { fs.rmSync(tmp, { force: true }); return `cannot move it aside (${e.code || e.message}) — left as it is`; }
-  const putBack = (why) => {
-    try { fs.linkSync(aside, path); fs.rmSync(aside); return why; } catch (e) {
-      return `${why}; ${e.code === 'EEXIST' ? 'a new file took its place' : `putting it back failed (${e.code || e.message})`} — its bytes are kept in ${aside}`;
-    }
-  };
-  if (sha(fs.readFileSync(aside)) !== expected) { fs.rmSync(tmp, { force: true }); return putBack('changed since it was classified — left as it is'); }
-  try { fs.linkSync(tmp, path); } catch (e) {
-    fs.rmSync(tmp, { force: true });
-    if (e.code === 'EEXIST') return `saved again while it was restored — the new file is kept; the bytes classified are in ${aside}`;
-    return putBack(`restoring failed (${e.code || e.message}) — left as it is`);
-  }
-  fs.rmSync(tmp); fs.rmSync(aside);
-  return null;
-}
-
 function relinkAct(o, act) {
   const by = new Map(statusAll(o).map((s) => [s.file, s]));
   const ok = []; const refused = [];
@@ -575,7 +615,7 @@ function relinkAct(o, act) {
   }
   if (act === 'restore') {
     for (const s of ok) {
-      const why = guardedRestore(join(o.content, s.file), sha(s.current), s.published);
+      const why = replaceIfUnchanged(join(o.content, s.file), sha(s.current), s.published); // lib/documents.mjs
       if (why) refused.push(`/${s.file} — conflict: ${why}`); else console.error(`restored /${s.file} to its last published bytes`);
     }
   } else if (ok.length) {
@@ -604,7 +644,7 @@ export function main(argv) {
   try {
     const o = parseArgs(argv);
     const run = {
-      select, inventory, output, publish, published, reconcile, 'relink-status': relinkStatus,
+      select, inventory, output, publish, published, reconcile, 'opening-check': openingCheck, 'relink-status': relinkStatus,
       'relink-approve': (x) => relinkAct(x, 'approve'), 'relink-restore': (x) => relinkAct(x, 'restore'),
     }[o.cmd];
     return run(o);

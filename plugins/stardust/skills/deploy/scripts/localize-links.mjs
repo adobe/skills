@@ -57,8 +57,10 @@
  *                  pass's targets.paths: delivered documents and the pass's own). Every document
  *                  is still read as a page.
  *
- * A file whose bytes changed between this run's read and its write (an editor saving it) is
- * left as it is and named on stderr; its receipt record then matches neither side.
+ * Every page is written through lib/documents.mjs replaceIfUnchanged: a file saved between this
+ * run's read and its write (an editor) is kept, reported as a conflict on stderr and in the summary
+ * (`conflicts`), and not counted as rewritten; its receipt record then matches neither side.
+ * Entries whose name starts with `.` (`.drafts/`) are no documents (contentDocuments' default).
  *
  * Writes: the rewritten *.html files IN PLACE under --content (nothing with
  * --dry-run or --check; the summary is stdout).
@@ -77,7 +79,7 @@ import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 if (!CONTRACTS) throw Object.assign(new Error('localize-links: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
-const { contentDocuments } = await import(CONTRACTS.href);
+const { contentDocuments, replaceIfUnchanged } = await import(CONTRACTS.href);
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -237,7 +239,7 @@ function main() {
     const key = `/${path.relative(opts.content, f).split(path.sep).join('/')}`;
     perFile[key] = r.counts;
     receipt[key] = { input: digest(buf), output: digest(Buffer.from(r.out, 'utf8')) };
-    writes.push({ f, key, out: r.out });
+    writes.push({ f, key, out: r.out, counts: r.counts });
   }
   // the receipt before any page: a receipt that cannot be written leaves every page as it was
   if (opts.receipt) {
@@ -248,14 +250,16 @@ function main() {
       renameSync(tmp, opts.receipt);
     } catch (e) { console.error(`localize-links: --receipt ${opts.receipt}: ${e.code || e.message} — no page written`); process.exit(1); }
   }
+  // each page through lib/documents.mjs replaceIfUnchanged: a save made since this run read it is kept, never overwritten
+  const conflicts = [];
   if (!opts.dryRun) {
     for (const w of writes) {
-      if (digest(readFileSync(w.f)) !== receipt[w.key].input) { console.error(`localize-links: ${w.key} changed while this run read it — left as it is`); continue; }
-      writeFileSync(w.f, w.out);
+      const why = replaceIfUnchanged(w.f, receipt[w.key].input, Buffer.from(w.out, 'utf8'));
+      if (why) { conflicts.push(w.key); console.error(`localize-links: conflict ${w.key} — ${why}`); delete perFile[w.key]; filesChanged -= 1; localized -= w.counts.localized; normalized -= w.counts.normalized; }
     }
   }
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
-  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
+  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, conflicts: conflicts.length, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
 
   if (opts.json) {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));

@@ -97,5 +97,15 @@ check("--receipt is written before any page: its folder is created; a receipt th
   assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(root, "pass", "receipts", "r.json"), "utf8")).files), ["/index.html"]);
   rmSync(root, { recursive: true });
 });
+check("an entry whose name starts with `.` (`.drafts/`) is no document, as on main: not a link target, not rewritten", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-dot-")); const c = join(root, "content"); mkdirSync(join(c, ".drafts"), { recursive: true });
+  writeFileSync(join(c, "index.html"), '<a href="https://example.com/drafts/offer">o</a>');
+  writeFileSync(join(c, ".drafts", "offer.html"), '<a href="https://example.com/">h</a>');
+  const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(c, "index.html"), "utf8"), '<a href="https://example.com/drafts/offer">o</a>');
+  assert.equal(readFileSync(join(c, ".drafts", "offer.html"), "utf8"), '<a href="https://example.com/">h</a>');
+  rmSync(root, { recursive: true });
+});
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });
 process.exit(failed ? 1 : 0);

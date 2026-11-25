@@ -44,7 +44,8 @@ const count = { put: {}, preview: {}, live: {}, verify: {} };
 const bump = (kind, p) => { count[kind][p] = (count[kind][p] || 0) + 1; return count[kind][p]; };
 const putOk = new Set(); // pages whose fragment landed: the delivered origin answers 200 for these only
 const stored = new Map(); // the bytes each PUT sent: the source GET answers with them
-const statusOf = new Map(); // admin status per page: { edit: { lastModified }, live: { sourceLastModified } }
+const statusOf = new Map(); // admin status per page: { liveStatus, sourceLastModified } — the live copy's source time
+const sourceModified = new Map(); // DA source Last-Modified per page (a PUT sets it; a test moves it to model a later save)
 function parseMultipart(body, contentType) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType || ''); if (!m) return [];
   const delim = Buffer.from(`--${m[1] || m[2]}`);
@@ -82,7 +83,7 @@ const server = createServer((req, res) => {
       if (/-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the transport fails, every attempt
       if (/recover$/.test(p) && n <= 2) return reply(503, 'unavailable');
       if (!valid) return reply(401, 'bad token');
-      const created = () => { putOk.add(p); stored.set(p, requests[requests.length - 1].parts[0]?.data); reply(201, '{}', { 'content-type': 'application/json' }); };
+      const created = () => { putOk.add(p); stored.set(p, requests[requests.length - 1].parts[0]?.data); sourceModified.set(p, new Date().toUTCString()); reply(201, '{}', { 'content-type': 'application/json' }); };
       if (/slow$/.test(p)) { setTimeout(created, 800); return undefined; }
       return created();
     }
@@ -104,12 +105,17 @@ const server = createServer((req, res) => {
     if (req.method === 'GET' && url.startsWith(`/status/${ORG}/${REPO}/${BRANCH}/`)) {
       if (!valid) return reply(401, '');
       const p = url.slice(`/status/${ORG}/${REPO}/${BRANCH}`.length);
-      return statusOf.has(p) ? reply(200, JSON.stringify(statusOf.get(p)), { 'content-type': 'application/json' }) : reply(404, '');
+      // as helix-admin's status handler: `edit` is filled only on an edit lookup (?editUrl=…); a bare request gets {}
+      const q = new URL(req.url, 'http://x').searchParams;
+      const p2 = p.split('?')[0];
+      const st = statusOf.get(p2) || { liveStatus: 404 };
+      const live = st.liveStatus === 200 ? { status: 200, sourceLastModified: st.sourceLastModified } : { status: 404 };
+      return reply(200, JSON.stringify({ webPath: p2, live, preview: live, edit: q.get('editUrl') ? { status: 200, lastModified: sourceModified.get(p2) } : {} }), { 'content-type': 'application/json' });
     }
     if (req.method === 'GET' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
       if (!valid) return reply(401, '');
       const p = url.slice(SRC.length, -'.html'.length);
-      return stored.has(p) ? reply(200, stored.get(p), { 'content-type': 'text/html' }) : reply(404, '');
+      return stored.has(p) ? reply(200, stored.get(p), { 'content-type': 'text/html', 'last-modified': sourceModified.get(p) }) : reply(404, '');
     }
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
@@ -314,36 +320,55 @@ await check('a token halt on live during a forced re-drive never marks the new b
   const rec = ledgerOf('site-th')['/p-dead-live'];
   assert.notEqual(rec.sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 is not recorded as verified');
   assert.equal(rec.putSha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 was sent');
-  assert.ok(v1);
+  assert.equal(rec.published.sha256, v1, 'the last verified publication survives the forced attempt');
+  assert.equal(rec.status, 'live');
   const from = requests.length;
   const retry = await run(['--content', 'site-th', '--paths', 'site-th.redrive', '--force'], { token: FRESH_TOKEN });
   assert.equal(retry.code, 0, retry.out + retry.err);
   assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
   assert.equal(ledgerOf('site-th')['/p-dead-live'].sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'));
 });
-await check('--adopt: a digest is recorded only when DA\'s source is the local bytes AND the admin status shows the live page published from that source; a source-only match (a draft in DA) is kept apart as sourceSha256; nothing is PUT or published', async () => {
-  site('site-ad', ['p-a', 'p-b', 'p-c']);
+await check('--adopt (needs --paths): proven live only when DA\'s source is the local bytes AND its Last-Modified equals the status\'s live.sourceLastModified (a bare status request: no edit lookup); a DA draft saved after the live copy, other bytes or a page not live are not; a page delivered by hand (no row) gets one; nothing is sent', async () => {
+  site('site-ad', ['p-a', 'p-b', 'p-c', 'p-d', 'p-e']);
   assert.equal((await run(['--content', 'site-ad'])).code, 0);
   const led = ledgerOf('site-ad');
-  for (const r of Object.values(led)) { delete r.sha256; delete r.putSha256; }   // rows written before ledgers kept a digest
+  for (const r of Object.values(led)) { delete r.sha256; delete r.putSha256; delete r.published; }   // rows written before ledgers kept a digest
+  delete led['/p-d'];   // p-d delivered by hand: no row at all
   writeFileSync(join(proj, 'site-ad', '.deploy-ledger.json'), JSON.stringify(led));
   writeFileSync(join(proj, 'site-ad', 'p-b.html'), '<div><p>committed, never sent</p></div>\n');
-  statusOf.set('/p-a', { edit: { lastModified: '2026-11-01T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
-  statusOf.set('/p-b', { edit: { lastModified: '2026-11-01T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
-  // p-c: DA's source holds the local bytes, but it was saved after the live publication — v1 is live, v2 a DA draft
-  statusOf.set('/p-c', { edit: { lastModified: '2026-11-02T10:00:00Z' }, live: { sourceLastModified: '2026-11-01T10:00:00Z' } });
+  for (const p of ['/p-a', '/p-b', '/p-c', '/p-d']) statusOf.set(p, { liveStatus: 200, sourceLastModified: sourceModified.get(p) });
+  sourceModified.set('/p-c', new Date(Date.now() + 60000).toUTCString());   // saved in DA after the live copy was built
+  statusOf.set('/p-e', { liveStatus: 404 });
+  writeFileSync(join(proj, 'site-ad.paths'), '/p-a\n/p-b\n/p-c\n/p-d\n/p-e\n');
+  assert.equal((await run(['--content', 'site-ad', '--adopt'])).code, 2, 'no list: nothing adopted by default');
   const from = requests.length;
-  const r = await run(['--content', 'site-ad', '--adopt']);
+  const r = await run(['--content', 'site-ad', '--adopt', '--paths', 'site-ad.paths']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.deepEqual([...new Set(since(from).map((q) => q.method))], ['GET'], 'read-only');
+  assert.ok(since(from).filter((q) => q.url.startsWith('/status/')).every((q) => !q.url.includes('editUrl')), 'a bare status request');
   const after = ledgerOf('site-ad');
   const sha = (f) => createHash('sha256').update(readFileSync(join(proj, 'site-ad', f))).digest('hex');
-  assert.equal(after['/p-a'].sha256, sha('p-a.html')); assert.ok(after['/p-a'].adoptedAt);
-  assert.equal(after['/p-b'].sha256, undefined, 'DA holds other bytes: not adopted');
-  assert.match(r.err, /\/p-b not adopted — DA holds other bytes/);
-  assert.equal(after['/p-c'].sha256, undefined, 'a source edited after the live publication is not what is live');
-  assert.equal(after['/p-c'].sourceSha256, sha('p-c.html'));
-  assert.match(r.err, /\/p-c not adopted — the source was edited after the live publication/);
+  assert.equal(after['/p-a'].published.sha256, sha('p-a.html')); assert.equal(after['/p-a'].sha256, sha('p-a.html')); assert.ok(after['/p-a'].adoptedAt);
+  assert.equal(after['/p-d'].status, 'live'); assert.equal(after['/p-d'].published.sha256, sha('p-d.html'), 'a page delivered by hand gets its row');
+  assert.equal(after['/p-b'].published, undefined); assert.match(r.err, /\/p-b not adopted — DA holds other bytes/);
+  assert.equal(after['/p-c'].published, undefined, 'a DA draft is not what is live'); assert.equal(after['/p-c'].sourceSha256, sha('p-c.html'));
+  assert.match(r.err, /\/p-c not adopted — the source was saved after the live copy was built/);
+  assert.match(r.err, /\/p-e not adopted — not live \(status 404\)/);
+});
+await check('an interrupted forced reconcile: the retry list RECOMPUTED from disk still names the page — the newer verified publication (B) survives a 401 on live, so the older one (A) never reads as current', async () => {
+  const px = join(proj, 'pass-r'); mkdirSync(join(px, 'stardust', 'deploy'), { recursive: true }); mkdirSync(join(px, 'x1'), { recursive: true });
+  site('pass-r/content', ['p-dead-live']);
+  const A = readFileSync(join(px, 'content', 'p-dead-live.html'));
+  const h = (b) => createHash('sha256').update(b).digest('hex');
+  writeFileSync(join(px, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/p-dead-live': { status: 'live', sha256: h(A), published: { sha256: h(A), at: '2026-11-01T00:00:00Z' }, ts: '2026-11-01T00:00:00Z' } }));
+  writeFileSync(join(px, 'stardust/deploy/ledger-x1-reconcile.json'), JSON.stringify({ '/p-dead-live': { status: 'live', sha256: h('B'), published: { sha256: h('B'), at: '2026-11-20T00:00:00Z' }, ts: '2026-11-20T00:00:00Z' } }));
+  writeFileSync(join(px, 'x1', 'publish.paths'), '/p-dead-live.html\n');
+  const reconcile = () => { const r = spawnSync(process.execPath, [ROSTER, 'reconcile', '--pass', 'x1'], { cwd: px, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return readFileSync(join(px, 'x1', 'redrive.paths'), 'utf8'); };
+  assert.equal(reconcile(), '/p-dead-live.html\n', 'local A is not the newest verified B');
+  const r = await run(['--content', 'pass-r/content', '--paths', 'pass-r/x1/redrive.paths', '--allow', 'pass-r/x1/publish.paths', '--force', '--ledger', 'pass-r/stardust/deploy/ledger-x1-reconcile.json', '--retries', '0']);
+  assert.equal(r.code, 3, r.out + r.err);   // PUT and preview pass, live answers 401
+  assert.equal(JSON.parse(readFileSync(join(px, 'stardust/deploy/ledger-x1-reconcile.json'), 'utf8'))['/p-dead-live'].published.sha256, h('B'));
+  assert.equal(reconcile(), '/p-dead-live.html\n', 'recomputed after the halt: still to re-drive');
 });
 await check('a --content that is not a directory exits 2 before anything is sent or written (a misspelled dir never reads as an empty success)', async () => {
   const from = requests.length;
@@ -373,7 +398,7 @@ await check('re-run skips pages already live (re-verified on the delivered origi
   assert.equal(r2.code, 0, r2.out + r2.err);
   assert.match(r2.err, /2 pages, 0 already live, 2 to drive/);
   assert.equal(since(from2).filter((q) => q.method === 'PUT').length, 2);
-  assert.equal(ledgerOf('site-a')['/a1'].attempts, 1, '--force starts a fresh ledger');
+  assert.equal(ledgerOf('site-a')['/a1'].attempts, 2, '--force re-drives on the same ledger: its rows (and their last verified publication) are kept');
 });
 await check('--no-publish: PUT → preview → verify only, ledger `previewed`, no POST /live', async () => {
   site('site-np', ['np1']);

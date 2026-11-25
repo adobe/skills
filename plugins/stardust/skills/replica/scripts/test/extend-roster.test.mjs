@@ -17,7 +17,7 @@ import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { destinationOf, guardedRestore, selectRoster } from '../extend-roster.mjs';
+import { destinationOf, selectRoster } from '../extend-roster.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'extend-roster.mjs');
@@ -221,6 +221,14 @@ await check('publish: the recorded outputs and also.paths only — a draft at a 
   pw(`${X}/also.paths`, '/fragments/visit-hours.html\n');
   rmSync(join(proj, 'content', 'visit.html')); rmSync(join(proj, 'content', 'nav.htm')); rmSync(join(proj, 'content', 'missing.html'));
   assert.equal(prun('publish', '--pass', X).code, 0);
+  // a page delivered by hand (coverage verified, no ledger row) is a link target too; a draft still is not
+  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [{ slug: 'old-draft', path: '/old-draft', delivery: { status: 'verified' } }] }));
+  assert.equal(prun('publish', '--pass', X).code, 0);
+  assert.match(pr(`${X}/targets.paths`), /^\/old-draft\.html$/m);
+  assert.doesNotMatch(pr(`${X}/targets.paths`), /^\/draft\.html$/m);
+  rmSync(join(proj, 'stardust/rollout/coverage/pages.json'));
+  assert.equal(prun('publish', '--pass', X).code, 0);
+  assert.doesNotMatch(pr(`${X}/targets.paths`), /^\/old-draft\.html$/m);
 });
 
 await check('relink: the localizer\'s receipt is the evidence — its own edit is a candidate; an owner edit before or after it a conflict; a held draft is no link target; never published, a pre-digest live row, git-ignored are held', () => {
@@ -249,26 +257,33 @@ await check('relink-restore: a candidate gets its last published bytes back; a c
   assert.match(prun('relink-status', '--pass', X).out, /^unchanged +\/index\.html/m);
 });
 
-await check('guardedRestore: a file saved after it was classified is never overwritten — the newer bytes stay and the reason is returned', () => {
-  const f = join(proj, 'scratch.html');
-  writeFileSync(f, 'classified');
-  writeFileSync(f, 'saved by the owner since');
-  assert.match(guardedRestore(f, hash('classified'), Buffer.from('published')), /changed since it was classified — left as it is/);
-  assert.equal(readFileSync(f, 'utf8'), 'saved by the owner since');
-  assert.equal(guardedRestore(f, hash('saved by the owner since'), Buffer.from('published')), null);
-  assert.equal(readFileSync(f, 'utf8'), 'published');
-  rmSync(f);
+await check('a deploy ledger that cannot be read stops select and inventory (exit 2, named) — a reservation is never dropped silently; media-ledger.json is no deploy ledger', () => {
+  pw('stardust/deploy/media-ledger.json', '[1, 2');   // not a deploy ledger: never read
+  pw('stardust/deploy/ledger-truncated.json', '{"/nav": {"status": "li');
+  pw('cand-t.txt', 'https://src.test/nav.html\n');
+  pw('stardust/state.json', JSON.stringify({ site: { originUrl: 'https://src.test/' }, pages: [] }));
+  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [] }));
+  const sel = prun('select', '--candidates', 'cand-t.txt', '--out', 'roster-t.txt', '--named');
+  assert.equal(sel.code, 2); assert.match(sel.err, /deploy ledger stardust\/deploy\/ledger-truncated\.json cannot be read/);
+  assert.equal(existsSync(join(proj, 'roster-t.txt')), false, 'no roster from incomplete evidence');
+  const inv = prun('inventory', '--pass', 'stardust/replica/extend/x9');
+  assert.equal(inv.code, 2); assert.equal(existsSync(join(proj, 'stardust/replica/extend/x9/inventory.tsv')), false);
+  for (const f of ['stardust/deploy/ledger-truncated.json', 'cand-t.txt', 'stardust/state.json', 'stardust/rollout/coverage/pages.json']) rmSync(join(proj, f));
+  assert.equal(prun('reconcile', '--pass', X).code, 0, 'media-ledger.json alone is never read');
+  rmSync(join(proj, 'stardust/deploy/media-ledger.json'));
 });
 
-await check('guardedRestore: a failure other than a concurrent save (EPERM on the link) puts the original back and names the error — never an empty directory', () => {
-  const f = join(proj, 'scratch2.html');
-  writeFileSync(f, 'classified');
-  const fsx = { renameSync, rmSync, writeFileSync, readFileSync, linkSync: (a, b) => { if (a.includes('.restore-')) throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' }); return linkSync(a, b); } };
-  const why = guardedRestore(f, hash('classified'), Buffer.from('published'), fsx);
-  assert.match(why, /restoring failed \(EPERM\)/);
-  assert.equal(readFileSync(f, 'utf8'), 'classified', 'the original is back in place');
-  assert.deepEqual(readdirSync(proj).filter((n) => n.startsWith('scratch2.html.')), [], 'no temporary left');
-  rmSync(f);
+await check('output: a record only grows — a resumed unit that reports a subset keeps its earlier claims; a different file for a page it already claimed is refused', () => {
+  pw(`${X}/urls.txt`, `${pr(`${X}/urls.txt`)}https://src.test/other/\n`);
+  pw('content/other.html', '<main>other</main>\n'); pw('content/visit.html', '<main>a competing leaf</main>\n');
+  assert.equal(prun('output', '--pass', X, '--unit', 'c-visit', '--files', 'other.html').code, 0);
+  assert.equal(pr(`${X}/outputs/c-visit.paths`), '/other.html\n/visit/index.html\n', 'visit/index.html kept');
+  assert.equal(prun('output', '--pass', X, '--unit', 'c-visit', '--files', 'other.html').code, 0, 'an identical replay is fine');
+  const r = prun('output', '--pass', X, '--unit', 'c-visit', '--files', 'visit.html');
+  assert.equal(r.code, 2); assert.match(r.err, /roster page \/visit already has its output \/visit\/index\.html \(unit c-visit\)/);
+  pw(`${X}/outputs/c-visit.paths`, '/visit/index.html\n');
+  rmSync(join(proj, 'content', 'other.html')); rmSync(join(proj, 'content', 'visit.html'));
+  pw(`${X}/urls.txt`, 'https://src.test/visit/\nhttps://src.test/missing/\nhttps://src.test/nav/\n');
 });
 
 await check('a receipt whose run was interrupted before reaching a file does not count for it', () => {
@@ -323,6 +338,32 @@ await check('published: the library\'s input holds each document at bytes known 
   const r2 = prun('published', '--pass', X, '--out', `${X}/library-src`);
   assert.ok(!existsSync(join(out, 'team.html'))); assert.match(r2.err, /withheld \/team\.html — its newest live row has no digest/);
   rmSync(out, { recursive: true }); rmSync(join(proj, 'stardust/deploy/ledger-legacy-redeploy.json'));
+  // a delivered document whose working file is gone is recovered from its opening blob, never silently left out
+  rmSync(join(proj, 'content', 'team.html'));
+  const r3 = prun('published', '--pass', X, '--out', `${X}/library-src`);
+  assert.equal(r3.code, 0, r3.err);
+  assert.equal(readFileSync(join(out, 'team.html'), 'utf8'), TEAM, 'from the opening commit');
+  assert.match(r3.err, /withheld \/nav\.html — /, 'a ledger-only document with no copy anywhere is named');
+  rmSync(out, { recursive: true });
+  pw('content/team.html', TEAM.replace('/visit/', '/visit/#owner'));
+});
+
+await check('opening-check: every delivered document — a coverage row or a ledger row — whose published bytes cannot be recovered is listed for --adopt (exit 1); proven, it passes (exit 0)', () => {
+  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [{ slug: 'home', path: '/', delivery: { status: 'verified' } }, { slug: 'about', path: '/about', delivery: { status: 'verified' } }, { slug: 'later', path: '/later', delivery: { status: 'pending' } }] }));
+  const x3 = 'stardust/replica/extend/x3'; pw(`${x3}/base.txt`, `${git('rev-parse', 'HEAD').stdout.trim()}\n`);
+  let r = prun('opening-check', '--pass', x3);
+  assert.equal(r.code, 1, r.err);
+  const listed = pr(`${x3}/unproven.paths`);
+  assert.match(listed, /^\/nav\.htm\.html$/m, 'a ledger row without a digest');
+  assert.match(r.err, /unproven \/nav\.html \(ledger \/nav\) — /, 'a ledger-only document with no file: named, not adoptable');
+  assert.doesNotMatch(listed, /^\/about\.html$/m, 'about: x1 opening blob matches its digest');
+  // a page delivered by hand: verified in coverage, no ledger row
+  pw('content/handmade.html', '<main>delivered by hand</main>\n');
+  pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [{ slug: 'handmade', path: '/handmade', delivery: { status: 'verified' } }] }));
+  r = prun('opening-check', '--pass', x3);
+  assert.match(pr(`${x3}/unproven.paths`), /^\/handmade\.html$/m);
+  assert.match(r.err, /unproven \/handmade\.html \(coverage \/handmade\) — no deploy ledger records it live/);
+  rmSync(join(proj, 'content', 'handmade.html')); rmSync(join(proj, 'stardust/rollout/coverage/pages.json')); rmSync(join(proj, x3), { recursive: true });
 });
 
 await check('a shallow clone of the last checkpoint resumes: publish and reconcile need only tracked files; a document whose opening blob is missing is held with the fetch that brings it', () => {

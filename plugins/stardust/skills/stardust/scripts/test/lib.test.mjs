@@ -9,7 +9,8 @@
 // contracts.mjs re-exports every lib export (no name lost to a clash).
 // The cross-implementation pins live in contracts-characterize.test.mjs; the project-copy layout in layout.test.mjs. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -186,6 +187,44 @@ check('documents: /library and everything under it (any case, .html, trailing sl
   for (const p of ['/library', '/library/', '/Library/blocks/hero', '/library/templates/x.html']) assert.equal(documents.isLibraryPath(p), true, p);
   for (const p of ['/libraries', '/a/library', '/']) assert.equal(documents.isLibraryPath(p), false, p);
   assert.equal(documents.LIBRARY_ROOT, '/library');
+});
+
+check('documents: an entry whose name starts with `.` is skipped unless hidden: true (deploy-batch sends them, as on main)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lib-hidden-'));
+  for (const f of ['a.html', '.drafts/offer.html', '.x.html']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
+  assert.deepEqual(documents.contentDocuments(root).map((d) => d.file), ['a.html']);
+  assert.deepEqual(documents.contentDocuments(root, { hidden: true }).map((d) => d.file), ['.drafts/offer.html', '.x.html', 'a.html']);
+  rmSync(root, { recursive: true });
+});
+check('documents: deliveredRows keeps coverage rows deployed or verified with a path; contentFile finds a.html or a/index.html', () => {
+  assert.deepEqual(documents.deliveredRows({ pages: [{ path: '/', delivery: { status: 'verified' } }, { path: '/a', delivery: { status: 'deployed' } }, { path: '/b', delivery: { status: 'pending' } }, { delivery: { status: 'verified' } }] }).map((r) => r.path), ['/', '/a']);
+  assert.deepEqual(documents.deliveredRows(null), []);
+  const root = mkdtempSync(join(tmpdir(), 'lib-cf-'));
+  for (const f of ['index.html', 'a/index.html', 'b.html']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
+  assert.equal(documents.contentFile(root, '/'), join(root, 'index.html'));
+  assert.equal(documents.contentFile(root, '/a/'), join(root, 'a/index.html'));
+  assert.equal(documents.contentFile(root, '/b'), join(root, 'b.html'));
+  assert.equal(documents.contentFile(root, '/c'), null);
+  rmSync(root, { recursive: true });
+});
+check('documents: replaceIfUnchanged writes only over the bytes read; a save landing right after the last read is kept; a link failing with EPERM puts the original back; a concurrent new file (EEXIST) is kept', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lib-rep-'));
+  const f = join(root, 'p.html'); const h = (t) => createHash('sha256').update(t).digest('hex');
+  const real = { renameSync, linkSync, rmSync, writeFileSync, readFileSync };
+  writeFileSync(f, 'read'); assert.equal(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new')), null); assert.equal(readFileSync(f, 'utf8'), 'new');
+  writeFileSync(f, 'read');
+  const saveFirst = { ...real, renameSync: (a, b) => { if (a === f) writeFileSync(f, 'owner save'); return renameSync(a, b); } };
+  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), saveFirst), /changed since it was read — left as it is/);
+  assert.equal(readFileSync(f, 'utf8'), 'owner save', 'the owner\'s save survives');
+  writeFileSync(f, 'read');
+  const eperm = { ...real, linkSync: (a, b) => { if (a.includes('.replace-')) throw Object.assign(new Error('nope'), { code: 'EPERM' }); return linkSync(a, b); } };
+  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eperm), /replacing failed \(EPERM\)/);
+  assert.equal(readFileSync(f, 'utf8'), 'read', 'the original is back');
+  const eexist = { ...real, linkSync: (a, b) => { if (a.includes('.replace-')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
+  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eexist), /saved again while it was replaced — the new file is kept/);
+  assert.equal(readFileSync(f, 'utf8'), 'saved meanwhile');
+  assert.deepEqual(readdirSync(root).filter((n) => n.includes('.replace-')), [], 'no replacement left behind');
+  rmSync(root, { recursive: true });
 });
 
 // ---- contracts.mjs ---------------------------------------------------------------------------------------------------

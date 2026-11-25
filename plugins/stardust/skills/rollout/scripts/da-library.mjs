@@ -53,7 +53,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSyn
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
-import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath, LIBRARY_ROOT } from './lib.mjs'; // lib/da-token.mjs; the marker path
+import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath, LIBRARY_ROOT, deliveredRows, contentFile } from './lib.mjs'; // lib/da-token.mjs; the marker path
 // the DA folder this script writes: lib/documents.mjs owns it, so a page can never be published there
 const LIB = LIBRARY_ROOT.slice(1);
 
@@ -204,11 +204,8 @@ export function mergeLibraryConfig(existing, rows) {
 }
 
 /** Content file of a delivered path under the content dir (`/` → index.html). Pure path logic, checks existence. */
-export function contentFile(root, p) {
-  const rel = p === '/' || p === '' ? 'index' : p.replace(/^\/|\/$/g, '');
-  for (const c of [`${rel}.html`, `${rel}/index.html`]) { const f = join(root, c); if (existsSync(f) && statSync(f).isFile()) return f; }
-  return null;
-}
+// lib/documents.mjs owns the content file of a delivered path (the extend pass's opening check reads it too)
+export { contentFile };
 
 // ---- CLI ------------------------------------------------------------------------------------------------------
 
@@ -249,7 +246,7 @@ function sources(a) {
   const tplDoc = readJSON(join(a.coverage, 'templates.json'));
   const pages = []; const templates = []; const missing = [];
   if (pagesDoc && Array.isArray(pagesDoc.pages)) {
-    const delivered = pagesDoc.pages.filter((p) => p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
+    const delivered = deliveredRows(pagesDoc); // lib/documents.mjs
     const bySlug = new Map(delivered.map((p) => [p.slug, p]));
     const all = ((tplDoc && tplDoc.templates) || []).map((t) => ({ t, page: bySlug.get(t.representativeSlug) }));
     for (const x of all) if (!x.page) console.error(`da-library: template ${templateName(x.t)}: representative ${x.t.representativeSlug || '(none)'} not delivered yet — skipped; re-run after it is`);

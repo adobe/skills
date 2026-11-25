@@ -77,18 +77,20 @@
  *             anything is sent. A `/x/` entry (here and in --paths) is the folder's index
  *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
- * --force     ignore the ledger; re-drive every page.
- * --adopt     send nothing: for each selected page the ledger reads `live` without a `sha256` (a row
- *             written before ledgers kept one), GET its DA source and its admin status. `sha256` (+
- *             `adoptedAt`) is recorded only when DA's source is exactly the local file's bytes AND the
- *             status shows the live page was published from that source unchanged since
- *             (`live.sourceLastModified` not older than `edit.lastModified`). A source match alone is
- *             kept apart as `sourceSha256` — a draft in DA is not a publication. Read-only (GET
- *             admin.da.live/source, GET admin.hlx.page/status); honours --paths / --allow.
+ * --force     re-drive every selected page, whatever the ledger says; its rows, and the last verified
+ *             publication each keeps (`published`), stay — a forced attempt that fails or halts never erases it.
+ * --adopt     send nothing (needs --paths): for each listed page whose ledger row has no verified digest — a
+ *             row written before ledgers kept one, or none (a page delivered by hand) — record it as live
+ *             (`published: { sha256, at }`, `adoptedAt`) only on proof: DA's source is exactly the local file's
+ *             bytes AND its Last-Modified equals the admin status's `live.sourceLastModified` (the source
+ *             time a preview recorded, copied to live by the publish; a later save in DA moves the source
+ *             past it). A source match alone is kept apart as `sourceSha256`. Read-only (GET
+ *             admin.da.live/source, GET admin.hlx.page/status).
  * A page the ledger reads `live` and the delivered origin still serves is skipped, as on every re-run: a retry
- * re-drives the failures only. The ledger also records `sha256` — the bytes verified delivered, written only after
- * live and verify succeed — and `putSha256`, the bytes the last PUT sent, for a caller that compares them (replica's
- * extend pass re-drives its own list with --force --paths).
+ * re-drives the failures only. The ledger also records `sha256` — the bytes verified delivered —, `published: {
+ * sha256, at }` — the last verified publication, never moved by a later failed or halted attempt — and `putSha256`, the bytes
+ * the last PUT sent, for a caller that compares them (replica's extend pass re-drives its own list with --force
+ * --paths).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -162,6 +164,7 @@ function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
+  if (a.adopt && !a.paths) throw new Error('--adopt needs --paths <file>: the pages to prove (extend-roster opening-check writes the list)');
   // a misspelled --content must not read as an empty, successful batch (nor get a ledger created in it)
   if (!existsSync(a.content) || !statSync(a.content).isDirectory()) throw new Error(`--content ${a.content} is not a directory — nothing was sent`);
   // The token source (daTokenSource, lib/da-token.mjs — the uploader's rule): one file or one variable, never
@@ -297,6 +300,8 @@ async function deployOne(page, args, ledger, logLine) {
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
   if (v.ok) rec.sha256 = sha256; // the bytes verified delivered: a halt or failure before here never moves it
+  // the last verified publication, apart from the attempt's status: a later failed or halted attempt never moves it
+  if (v.ok && publish) rec.published = { sha256, at: new Date().toISOString() };
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };
@@ -350,7 +355,7 @@ async function main() {
     }
   }
   // lib/documents.mjs: the documents of --content and the DA path each PUTs to (`a/index.html` → /a/index)
-  let pages = contentDocuments(args.content).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }));
+  let pages = contentDocuments(args.content, { hidden: true }).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }));
   const webPaths = new Set(pages.map((p) => p.webPath));
   const allow = allowEntries && resolveList(allowEntries, '--allow', webPaths);
   let want = null;
@@ -366,41 +371,59 @@ async function main() {
     heldListed = want ? held.length : 0;
     pages = pages.filter((p) => allow.has(p.webPath));
   }
-  const ledger = (!args.force && existsSync(args.ledger))
-    ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
+  // --force bypasses the skip below, never the ledger: each row keeps the last verified publication (`published`)
+  let ledger = {};
+  if (existsSync(args.ledger)) {
+    try { ledger = JSON.parse(await readFile(args.ledger, 'utf8')); } catch (e) {
+      if (!args.force) throw e;
+      console.error(`[deploy-batch] --force: ledger ${args.ledger} unreadable (${e.message}) — starting from an empty one`);
+    }
+  }
   const persistNow = async () => { try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); } catch (e) { console.error(`[deploy-batch] ${e.message}`); } };
 
   if (args.adopt) {
-    // a legacy live row says SOME version is live; DA's own source bytes say which — adopted only on an exact match
+    // Proof that the local bytes are what is live, for a page whose ledger has no verified digest (a row written
+    // before digests, or no row at all — a page delivered by hand): DA's source holds exactly these bytes, AND the live
+    // copy was built from that source as it is now — a preview stores the source's Last-Modified as the page's
+    // x-source-last-modified, a publish copies it to live, and the admin status reports it as live.sourceLastModified;
+    // a save in DA since moves the source's Last-Modified past it. Anything less adopts nothing.
     let adopted = 0; let kept = 0;
+    const get = async (url) => {
+      try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${args.token}` } });
+        return { status: res.status, lastModified: res.headers.get('last-modified'), body: res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null };
+      } catch { return { status: 0, lastModified: null, body: null }; }
+    };
     for (const p of pages) {
       const rec = ledger[p.webPath];
-      if (!rec || rec.status !== 'live' || rec.sha256) continue;
+      if (rec && (rec.published?.sha256 || (rec.status === 'live' && rec.sha256))) continue; // already proven
       const local = createHash('sha256').update(await readFile(p.file)).digest('hex');
-      const get = async (url) => {
-        try { const res = await fetch(url, { headers: { Authorization: `Bearer ${args.token}` } }); return { status: res.status, body: res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null }; } catch { return { status: 0, body: null }; }
-      };
       const enc = encodeURI(p.webPath);
       const src = await get(`${DA_SRC}/${args.org}/${args.repo}${enc}.html`);
       const st = src.status === 200 ? await get(`${ADMIN}/status/${args.org}/${args.repo}/${args.branch}${enc}`) : { status: 0, body: null };
       if (src.status === 401 || st.status === 401) { console.error(`[deploy-batch] --adopt: 401 on ${p.webPath} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`); await persistNow(); process.exit(TOKEN_EXIT); }
       const srcSha = src.body && createHash('sha256').update(src.body).digest('hex');
-      if (srcSha === local) rec.sourceSha256 = local; // DA's source holds these bytes — not yet proof they are live
       let status = null;
       try { status = st.body && JSON.parse(st.body.toString('utf8')); } catch { status = null; }
-      const edited = Date.parse(status?.edit?.lastModified); const published = Date.parse(status?.live?.sourceLastModified);
-      const liveFromSource = Number.isFinite(edited) && Number.isFinite(published) && published >= edited;
+      const sourceAt = Date.parse(src.lastModified); const builtFrom = Date.parse(status?.live?.sourceLastModified);
+      const liveFromSource = status?.live?.status === 200 && Number.isFinite(sourceAt) && Number.isFinite(builtFrom) && sourceAt === builtFrom;
       if (srcSha === local && liveFromSource) {
-        rec.sha256 = local; rec.adoptedAt = new Date().toISOString(); adopted += 1;
+        const row = rec || (ledger[p.webPath] = { attempts: 0 });
+        const at = new Date().toISOString();
+        Object.assign(row, { status: 'live', sha256: local, published: { sha256: local, at }, adoptedAt: at, ts: row.ts || at });
+        adopted += 1;
       } else {
         kept += 1;
+        if (srcSha === local && rec) rec.sourceSha256 = local; // DA's source holds these bytes — not proof they are live
         const why = !src.body ? `source GET ${src.status}` : srcSha !== local ? 'DA holds other bytes than the local file'
-          : !status ? `status GET ${st.status}` : !liveFromSource ? 'the source was edited after the live publication (or the status names no dates) — a draft in DA, not what is live' : '';
+          : !status ? `status GET ${st.status}` : status.live?.status !== 200 ? `not live (status ${status.live?.status ?? 'unknown'})`
+            : !Number.isFinite(sourceAt) || !Number.isFinite(builtFrom) ? 'no source Last-Modified or live.sourceLastModified to compare — no proof'
+              : 'the source was saved after the live copy was built — a draft in DA, not what is live';
         console.error(`[deploy-batch] --adopt: ${p.webPath} not adopted — ${why}`);
       }
     }
     await persistNow();
-    console.error(`[deploy-batch] --adopt: ${adopted} digest(s) recorded, ${kept} left without; nothing sent.`);
+    console.error(`[deploy-batch] --adopt: ${adopted} proven live and recorded, ${kept} not; nothing sent.`);
     process.exit(0);
   }
 
