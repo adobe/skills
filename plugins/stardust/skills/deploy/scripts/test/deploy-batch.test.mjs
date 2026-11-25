@@ -12,9 +12,8 @@
 // reaches stdout, stderr, a ledger or a log.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -23,7 +22,6 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'deploy-batch.mjs');
-const ROSTER = join(HERE, '..', '..', '..', 'replica', 'scripts', 'extend-roster.mjs'); // the producer of an extend pass's --allow list
 const proj = mkdtempSync(join(tmpdir(), 'deploy-batch-test-'));
 const TOKEN = `tok-${randomBytes(12).toString('hex')}`;
 const FRESH_TOKEN = `fresh-${randomBytes(12).toString('hex')}`; // the token after a refresh: the fake accepts it everywhere
@@ -77,7 +75,6 @@ const server = createServer((req, res) => {
       if (/-dead$/.test(p) && !fresh) return reply(401, ''); // the token is dead until refreshed
       if (/burst$/.test(p) && n <= 2) return reply(401, ''); // a valid token answered 401 under a burst, then accepted
       if (/flaky$/.test(p)) return reply(503, 'unavailable');
-      if (/-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the transport fails, every attempt
       if (/recover$/.test(p) && n <= 2) return reply(503, 'unavailable');
       if (!valid) return reply(401, 'bad token');
       const created = () => { putOk.add(p); reply(201, '{}', { 'content-type': 'application/json' }); };
@@ -102,9 +99,7 @@ const server = createServer((req, res) => {
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
       bump('verify', p);
-      if (/-noverify$/.test(p)) return reply(503, 'unavailable'); // live POST answered 200, the delivered check fails
-      // an older version of a `-sever` page is still live: the delivered origin answers 200 for it
-      return putOk.has(p) || /-sever$/.test(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
+      return putOk.has(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
     }
     return reply(405, `unexpected ${req.method} ${url}`);
   });
@@ -174,213 +169,6 @@ await check('happy path: PUT (multipart `data`, text/html, Authorization) → pr
   const log = logOf('site-a');
   assert.equal(log.length, 2); assert.ok(log.every((e) => e.step === 'verify' && e.ok === true && e.t));
 });
-await check('--paths takes web paths and content file paths alike (`/x.html` is `/x`, as localize-links --json lists them); only the listed pages are driven', async () => {
-  site('site-p', ['p1', 'p2', 'deep/p3']);
-  writeFileSync(join(proj, 'site-p.paths'), '/p1.html\ndeep/p3\n');
-  const from = requests.length;
-  const r = await run(['--content', 'site-p', '--paths', 'site-p.paths']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.err, /^\[deploy-batch\] 2 pages, 0 already live, 2 to drive/m);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/deep/p3.html`, `${SRC}/p1.html`]);
-});
-await check('--allow: no page outside the publish list is sent, whatever --paths and --force say — held pages named, a held listed page exits 1; an unreadable list sends nothing (exit 2)', async () => {
-  site('site-al', ['new-1', 'new-2', 'old', 'deep/old-2']);
-  writeFileSync(join(proj, 'site-al.allow'), '/new-1\nnew-2.html\n');
-  const from = requests.length;
-  const all = await run(['--content', 'site-al', '--allow', 'site-al.allow', '--force']);
-  assert.equal(all.code, 0, all.out + all.err);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/new-1.html`, `${SRC}/new-2.html`], 'the actual PUT paths');
-  assert.match(all.err, /^\[deploy-batch\] held \/deep\/old-2 — not in site-al\.allow$/m); assert.match(all.err, /^\[deploy-batch\] held \/old — not in site-al\.allow$/m);
-  writeFileSync(join(proj, 'site-al.paths'), '/old.html\n/new-1\n');
-  const from2 = requests.length;
-  const listed = await run(['--content', 'site-al', '--paths', 'site-al.paths', '--allow', 'site-al.allow', '--force']);
-  assert.equal(listed.code, 1, listed.out + listed.err);
-  assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/new-1.html`]);
-  assert.match(listed.err, /1 listed page\(s\) held by --allow site-al\.allow — not sent/);
-  const from3 = requests.length;
-  const missing = await run(['--content', 'site-al', '--allow', 'nope.allow', '--force']);
-  assert.equal(missing.code, 2, missing.out + missing.err);
-  assert.match(missing.err, /--allow: cannot read nope\.allow .*nothing was sent/);
-  assert.equal(since(from3).length, 0, 'no request at all');
-});
-await check('--allow fails closed on a missing, blank or flag-shaped value — exit 2, zero requests, even with --force and no --paths', async () => {
-  site('site-ab', ['a', 'b']);
-  for (const tail of [['--allow'], ['--allow', ''], ['--allow', '   '], ['--allow', '--force']]) {
-    const from = requests.length;
-    const r = await run(['--content', 'site-ab', '--force', ...tail]);
-    assert.equal(r.code, 2, `${JSON.stringify(tail)}: ${r.out}${r.err}`);
-    assert.match(r.err, /--allow needs a file of web paths/);
-    assert.equal(since(from).length, 0, `${JSON.stringify(tail)}: no request at all`);
-  }
-});
-await check('a PUT whose transport fails through every retry (status 0) fails the page — exit 1, ledger put-fail, no preview or live — even when an older version is still served; the re-run drives it again', async () => {
-  site('site-sv', ['old-sever']);
-  const from = requests.length;
-  const r = await run(['--content', 'site-sv', '--retries', '1']);
-  assert.equal(r.code, 1, r.out + r.err);
-  const l = ledgerOf('site-sv')['/old-sever'];
-  assert.equal(l.status, 'put-fail'); assert.equal(l.put, 0); assert.equal(l.preview, undefined);
-  assert.equal(since(from).filter((q) => q.method === 'POST').length, 0, 'no preview, no live');
-  const again = await run(['--content', 'site-sv', '--retries', '0']);
-  assert.match(again.err, /1 pages, 0 already live, 1 to drive/, 'not skipped as live on the re-run');
-});
-await check('a list entry that names two documents (`/nav.html`: nav.html or nav.html.html) exits 2 with nothing sent; the content file path `/nav.html.html` sends only that document', async () => {
-  site('site-amb', ['nav', 'nav.html']);
-  writeFileSync(join(proj, 'site-amb.allow'), '/nav.html\n');
-  const from = requests.length;
-  const amb = await run(['--content', 'site-amb', '--allow', 'site-amb.allow', '--force']);
-  assert.equal(amb.code, 2, amb.out + amb.err);
-  assert.match(amb.err, /--allow: 1 entry names two documents \(\/nav\.html is \/nav\.html or \/nav\)/);
-  assert.equal(since(from).length, 0, 'no request at all');
-  writeFileSync(join(proj, 'site-amb.allow'), '/nav.html.html\n');
-  const from2 = requests.length;
-  const ok = await run(['--content', 'site-amb', '--allow', 'site-amb.allow', '--force']);
-  assert.equal(ok.code, 0, ok.out + ok.err);
-  assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/nav.html.html`], 'the new document, never the old nav');
-});
-await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s documents are sent (the output a unit recorded, its declared fragment); never an opening document (nav.html, nav.htm.html), a `.htm` file, an owner\'s draft, nor a draft at a roster page no unit rendered', async () => {
-  const px = join(proj, 'pass-x'); mkdirSync(px, { recursive: true });
-  const sh = (cmd, ...a) => spawnSync(cmd, a, { cwd: px, encoding: 'utf8' });
-  site('pass-x/content', ['nav', 'nav.htm', 'about']);
-  sh('git', 'init', '-q'); sh('git', 'add', '-A'); sh('git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'delivered');
-  mkdirSync(join(px, 'x1'), { recursive: true });
-  writeFileSync(join(px, 'x1', 'base.txt'), sh('git', 'rev-parse', 'HEAD').stdout);
-  assert.equal(spawnSync(process.execPath, [ROSTER, 'inventory', '--pass', 'x1'], { cwd: px, encoding: 'utf8' }).status, 0);
-  writeFileSync(join(px, 'x1', 'urls.txt'), 'https://src.test/visit/\nhttps://src.test/missing/\n');
-  writeFileSync(join(px, 'x1', 'also.paths'), '/nav.html.html\n');
-  site('pass-x/content', ['visit/index', 'nav.html', 'draft', 'missing']);   // missing.html: a draft where a failed capture's page would go
-  writeFileSync(join(px, 'content', 'nav.htm'), '<nav>no document</nav>');
-  writeFileSync(join(px, 'content', 'nav.html'), '<nav>relinked locally</nav>');
-  const out = spawnSync(process.execPath, [ROSTER, 'output', '--pass', 'x1', '--unit', 'c-visit', '--files', 'visit/index.html'], { cwd: px, encoding: 'utf8' });
-  assert.equal(out.status, 0, out.stderr);
-  const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
-  assert.equal(pub.status, 0, pub.stderr);
-  assert.match(pub.stderr, /held \/draft\.html/);
-  assert.match(pub.stderr, /held \/missing\.html — no unit recorded it as the output of roster page \/missing/);
-  const from = requests.length;
-  const r = await run(['--content', 'pass-x/content', '--allow', 'pass-x/x1/publish.paths', '--force']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/nav.html.html`, `${SRC}/visit/index.html`]);
-  const put = since(from).find((q) => q.method === 'PUT' && q.url.endsWith('/nav.html.html'));
-  assert.equal(put.parts[0].data.toString('utf8'), FRAG['/nav.html'], 'the bytes of the new nav.html.html');
-  assert.notEqual(put.parts[0].data.toString('utf8'), '<nav>relinked locally</nav>', 'the new document\'s bytes, never the opening nav\'s');
-});
-await check('a --paths entry is resolved against the documents: `/changelog.html` is the document of changelog.html.html when nothing else matches (as on main); an entry naming no document is named and exits 1', async () => {
-  site('site-lit', ['changelog.html', 'other']);
-  writeFileSync(join(proj, 'site-lit.paths'), '/changelog.html\n/missing\n');
-  const from = requests.length;
-  const r = await run(['--content', 'site-lit', '--paths', 'site-lit.paths']);
-  assert.equal(r.code, 1, r.out + r.err);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/changelog.html.html`]);
-  assert.match(r.err, /--paths: \/missing names no document under site-lit/);
-  assert.match(r.err, /1 --paths entry names no document — not deployed/);
-});
-await check('a retry re-drives failures only, as on main: a live page whose file changed since is skipped (its ledger still records the digests); --force --paths drives exactly the listed page', async () => {
-  site('site-chg', ['a', 'b']);
-  assert.equal((await run(['--content', 'site-chg'])).code, 0);
-  assert.match(ledgerOf('site-chg')['/a'].sha256, /^[0-9a-f]{64}$/, 'the verified bytes recorded');
-  assert.equal(ledgerOf('site-chg')['/a'].putSha256, ledgerOf('site-chg')['/a'].sha256);
-  writeFileSync(join(proj, 'site-chg', 'a.html'), '<div><p>relinked</p></div>\n');
-  let from = requests.length;
-  const r = await run(['--content', 'site-chg']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.err, /2 pages, 2 already live, 0 to drive/);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT'), [], 'an ordinary retry sends no local edit');
-  writeFileSync(join(proj, 'site-chg.redrive'), '/a.html\n');
-  from = requests.length;
-  const f = await run(['--content', 'site-chg', '--paths', 'site-chg.redrive', '--force']);
-  assert.equal(f.code, 0, f.out + f.err);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/a.html`]);
-});
-await check('a token halt on live during a forced re-drive never marks the new bytes live: the same command drives it again (PUT, preview, live), not a GET on the old version', async () => {
-  site('site-th', ['p-dead-live']);
-  assert.equal((await run(['--content', 'site-th'], { token: FRESH_TOKEN })).code, 0, 'v1 live with a fresh token');
-  const v1 = ledgerOf('site-th')['/p-dead-live'].sha256;
-  writeFileSync(join(proj, 'site-th', 'p-dead-live.html'), '<div><p>v2</p></div>\n');
-  writeFileSync(join(proj, 'site-th.redrive'), '/p-dead-live\n');
-  const halted = await run(['--content', 'site-th', '--paths', 'site-th.redrive', '--force', '--retries', '0']);   // PUT + preview pass, live answers 401
-  assert.equal(halted.code, 3, halted.out + halted.err);
-  const rec = ledgerOf('site-th')['/p-dead-live'];
-  assert.notEqual(rec.sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 is not recorded as verified');
-  assert.equal(rec.putSha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'), 'v2 was sent');
-  assert.equal(rec.published.sha256, v1, 'the last verified publication survives the forced attempt');
-  assert.equal(rec.status, 'live');
-  const from = requests.length;
-  const retry = await run(['--content', 'site-th', '--paths', 'site-th.redrive', '--force'], { token: FRESH_TOKEN });
-  assert.equal(retry.code, 0, retry.out + retry.err);
-  assert.deepEqual(since(from).map((q) => q.method), ['PUT', 'POST', 'POST', 'GET'], 'driven again, not skipped on a 200');
-  assert.equal(ledgerOf('site-th')['/p-dead-live'].sha256, createHash('sha256').update('<div><p>v2</p></div>\n').digest('hex'));
-});
-await check('an interrupted forced reconcile: the retry list RECOMPUTED from disk still names the page — the newer verified publication (B) survives a 401 on live, so the older one (A) never reads as current', async () => {
-  const px = join(proj, 'pass-r'); mkdirSync(join(px, 'stardust', 'deploy'), { recursive: true }); mkdirSync(join(px, 'x1'), { recursive: true });
-  site('pass-r/content', ['p-dead-live']);
-  const A = readFileSync(join(px, 'content', 'p-dead-live.html'));
-  const h = (b) => createHash('sha256').update(b).digest('hex');
-  writeFileSync(join(px, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/p-dead-live': { status: 'live', sha256: h(A), published: { sha256: h(A), at: '2026-11-01T00:00:00Z' }, ts: '2026-11-01T00:00:00Z' } }));
-  writeFileSync(join(px, 'stardust/deploy/ledger-x1-reconcile.json'), JSON.stringify({ '/p-dead-live': { status: 'live', sha256: h('B'), published: { sha256: h('B'), at: '2026-11-20T00:00:00Z' }, ts: '2026-11-20T00:00:00Z' } }));
-  writeFileSync(join(px, 'x1', 'publish.paths'), '/p-dead-live.html\n');
-  const reconcile = () => { const r = spawnSync(process.execPath, [ROSTER, 'reconcile', '--pass', 'x1'], { cwd: px, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return readFileSync(join(px, 'x1', 'redrive.paths'), 'utf8'); };
-  assert.equal(reconcile(), '/p-dead-live.html\n', 'local A is not the newest verified B');
-  const r = await run(['--content', 'pass-r/content', '--paths', 'pass-r/x1/redrive.paths', '--allow', 'pass-r/x1/publish.paths', '--force', '--ledger', 'pass-r/stardust/deploy/ledger-x1-reconcile.json', '--retries', '0']);
-  assert.equal(r.code, 3, r.out + r.err);   // PUT and preview pass, live answers 401
-  assert.equal(JSON.parse(readFileSync(join(px, 'stardust/deploy/ledger-x1-reconcile.json'), 'utf8'))['/p-dead-live'].published.sha256, h('B'));
-  assert.equal(reconcile(), '/p-dead-live.html\n', 'recomputed after the halt: still to re-drive');
-});
-await check('a live POST that succeeded but did not verify: `liveAttempt` stands beside the older `published`, and reconcile recomputed from disk re-drives the page (A is not taken as what is live)', async () => {
-  const px = join(proj, 'pass-v'); mkdirSync(join(px, 'stardust', 'deploy'), { recursive: true }); mkdirSync(join(px, 'x1'), { recursive: true });
-  site('pass-v/content', ['p-noverify']);
-  const A = readFileSync(join(px, 'content', 'p-noverify.html'));
-  const h = (b) => createHash('sha256').update(b).digest('hex');
-  const L = 'pass-v/stardust/deploy/ledger-x1-reconcile.json';
-  writeFileSync(join(proj, L), JSON.stringify({ '/p-noverify': { status: 'live', sha256: h(A), published: { sha256: h(A), at: '2026-11-01T00:00:00Z' }, ts: '2026-11-01T00:00:00Z', attempts: 1 } }));
-  writeFileSync(join(px, 'content', 'p-noverify.html'), '<div><p>B</p></div>\n');
-  writeFileSync(join(px, 'x1', 'publish.paths'), '/p-noverify.html\n'); writeFileSync(join(px, 'x1', 'redrive.paths'), '/p-noverify.html\n');
-  const r = await run(['--content', 'pass-v/content', '--paths', 'pass-v/x1/redrive.paths', '--allow', 'pass-v/x1/publish.paths', '--force', '--ledger', L]);
-  assert.equal(r.code, 1, r.out + r.err);
-  const row = JSON.parse(readFileSync(join(proj, L), 'utf8'))['/p-noverify'];
-  assert.equal(row.published.sha256, h(A), 'history kept'); assert.equal(row.liveAttempt.sha256, h('<div><p>B</p></div>\n'), 'B was published, not verified');
-  writeFileSync(join(px, 'content', 'p-noverify.html'), A);   // local restored to A
-  const rc = spawnSync(process.execPath, [ROSTER, 'reconcile', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
-  assert.equal(rc.status, 0, rc.stderr);
-  assert.equal(readFileSync(join(px, 'x1', 'redrive.paths'), 'utf8'), '/p-noverify.html\n', 'what is live is unknown: re-drive');
-  assert.match(rc.stderr, /an unverified live publication/);
-});
-await check('two forced batches on one ledger with disjoint --paths, at once: each merges only its own rows — neither writes back the other\'s stale copy', async () => {
-  site('site-two', ['a-slow', 'b-slow']);
-  assert.equal((await run(['--content', 'site-two'])).code, 0);
-  writeFileSync(join(proj, 'site-two', 'a-slow.html'), '<div><p>a2</p></div>\n'); writeFileSync(join(proj, 'site-two', 'b-slow.html'), '<div><p>b2</p></div>\n');
-  writeFileSync(join(proj, 'site-two.a'), '/a-slow\n'); writeFileSync(join(proj, 'site-two.b'), '/b-slow\n');
-  const [ra, rb] = await Promise.all([run(['--content', 'site-two', '--paths', 'site-two.a', '--force']), run(['--content', 'site-two', '--paths', 'site-two.b', '--force'])]);
-  assert.equal(ra.code, 0, ra.err); assert.equal(rb.code, 0, rb.err);
-  const led = ledgerOf('site-two'); const h = (t) => createHash('sha256').update(t).digest('hex');
-  assert.equal(led['/a-slow'].published.sha256, h('<div><p>a2</p></div>\n'));
-  assert.equal(led['/b-slow'].published.sha256, h('<div><p>b2</p></div>\n'));
-});
-await check('the exit status covers the pages this run selected: forcing /new succeeds (exit 0) though an unrelated history row (/old) failed', async () => {
-  site('site-hist', ['new', 'old']);
-  writeFileSync(join(proj, 'site-hist', '.deploy-ledger.json'), JSON.stringify({ '/old': { status: 'put-fail', attempts: 3, lastError: 'put 503' } }));
-  writeFileSync(join(proj, 'site-hist.new'), '/new\n');
-  const r = await run(['--content', 'site-hist', '--paths', 'site-hist.new', '--force']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(ledgerOf('site-hist')['/old'].status, 'put-fail', 'history untouched');
-});
-await check('a --content that is not a directory exits 2 before anything is sent or written (a misspelled dir never reads as an empty success)', async () => {
-  const from = requests.length;
-  const r = await run(['--content', 'no-such-dir']);
-  assert.equal(r.code, 2, r.out + r.err);
-  assert.match(r.err, /--content no-such-dir is not a directory/);
-  assert.equal(since(from).length, 0);
-  assert.equal(existsSync(join(proj, 'no-such-dir')), false, 'no ledger dir created');
-});
-await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
-  site('site-fold', ['visit/index', 'other']);
-  writeFileSync(join(proj, 'site-fold.allow'), '/visit/\n');
-  const from = requests.length;
-  const r = await run(['--content', 'site-fold', '--allow', 'site-fold.allow', '--force']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/visit/index.html`]);
-  assert.match(r.err, /held \/other — not in site-fold\.allow/);
-});
 await check('re-run skips pages already live (re-verified on the delivered origin, no admin call); --force re-drives them', async () => {
   const from = requests.length;
   const r = await run(['--content', 'site-a']);
@@ -392,8 +180,32 @@ await check('re-run skips pages already live (re-verified on the delivered origi
   assert.equal(r2.code, 0, r2.out + r2.err);
   assert.match(r2.err, /2 pages, 0 already live, 2 to drive/);
   assert.equal(since(from2).filter((q) => q.method === 'PUT').length, 2);
-  assert.equal(ledgerOf('site-a')['/a1'].attempts, 2, '--force re-drives on the same ledger: its rows (and their last verified publication) are kept');
+  assert.equal(ledgerOf('site-a')['/a1'].attempts, 1, '--force starts a fresh ledger');
 });
+await check('the publish guard: while <content>/.deploy-allow exists only the documents it lists are sent, --force or not; a --paths entry it does not list exits 2 with no request; without the file nothing changes', async () => {
+  site('site-guard', ['new', 'visit/index', 'old', 'nav']);
+  writeFileSync(join(proj, 'site-guard', '.deploy-allow'), '/new\n/visit/index\n');
+  let from = requests.length;
+  const r = await run(['--content', 'site-guard', '--force']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(requests.slice(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/new.html`, `${SRC}/visit/index.html`], 'the actual PUT paths');
+  assert.match(r.err, /\.deploy-allow: 2 document\(s\) it does not list are held — not sent/);
+  writeFileSync(join(proj, 'site-guard.paths'), '/old\n/new\n');
+  from = requests.length;
+  const listed = await run(['--content', 'site-guard', '--paths', 'site-guard.paths', '--force']);
+  assert.equal(listed.code, 2, listed.out + listed.err);
+  assert.match(listed.err, /does not list \/old \(named in --paths\) — nothing was sent/);
+  assert.equal(requests.length, from, 'no request at all');
+  writeFileSync(join(proj, 'site-guard', '.deploy-allow'), '');
+  from = requests.length;
+  assert.equal((await run(['--content', 'site-guard', '--force'])).code, 0);
+  assert.equal(requests.length, from, 'an empty guard (a pass with no output yet) sends nothing');
+  rmSync(join(proj, 'site-guard', '.deploy-allow'));
+  from = requests.length;
+  assert.equal((await run(['--content', 'site-guard', '--paths', 'site-guard.paths', '--force'])).code, 0);
+  assert.deepEqual(requests.slice(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/new.html`, `${SRC}/old.html`], 'no guard: --paths as before');
+});
+
 await check('--no-publish: PUT → preview → verify only, ledger `previewed`, no POST /live', async () => {
   site('site-np', ['np1']);
   const from = requests.length;

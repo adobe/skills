@@ -15,9 +15,8 @@
  * What it does (idempotent — run it after EVERY generator and before EVERY
  * deploy, over the WHOLE tree, because earlier waves' pages gain newly valid
  * internal targets as later waves ship them):
- *   1. Builds the URL map from the content tree: every document under --content
- *      (lib/documents.mjs contentDocuments: a lowercase `.html` — what deploy
- *      sends; `--targets` narrows it) is a page served at its URL (eds-path.mjs: extensionless; a folder index
+ *   1. Builds the URL map from the content tree: every *.html under --content
+ *      is a page served at its URL (eds-path.mjs: extensionless; a folder index
  *      `x/index.html` at `/x/`, a leaf at `/x/y`; root `/`), plus the entries of
  *      --redirects (source path → destination) when given.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
@@ -33,7 +32,7 @@
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
  *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
- *        [--dry-run] [--check] [--json] [--receipt <file>] [--targets <file>] [--rewrite <file>]
+ *        [--dry-run] [--check] [--json]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
@@ -44,26 +43,10 @@
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
  *   --json         machine-readable summary
- *   --receipt      write this run's receipt to <file> (a new file, its folder created; an existing
- *                  one is a usage error): { tool, at, content, files: { "/<file>": { input,
- *                  output } } } — the sha256 of the bytes this run READ and WILL WRITE for every
- *                  file it rewrites, nothing else. It is written BEFORE any page: a receipt that
- *                  cannot be written changes nothing (exit 1), and a run interrupted mid-batch
- *                  leaves a record for every file it touched (one still at its input was not
- *                  reached). A caller attributes an edit to the localizer only through its
- *                  receipt (replica's extend pass). Not with --dry-run / --check.
- *   --targets      a file of content file paths (`/about.html`, one per line): the ONLY link
- *                  targets — a source link to any other document stays as it is (the extend
- *                  pass's targets.paths: delivered documents and the pass's own). Every document
- *                  is still read as a page.
- *   --rewrite      a file of content file paths: the ONLY documents this run may rewrite; any other
- *                  is left exactly as it is (the extend pass's rewrite.paths: its own documents, and
- *                  an older one only when its published bytes are in a commit).
  *
- * Every page is written through lib/documents.mjs replaceIfUnchanged: a file saved between this
- * run's read and its write (an editor) is kept, reported as a conflict on stderr and in the summary
- * (`conflicts`), and not counted as rewritten; its receipt record then matches neither side.
- * Entries whose name starts with `.` (`.drafts/`) are no documents (contentDocuments' default).
+ * Publish guard: while <content>/.deploy-allow exists (replica's extend pass writes it),
+ * only the documents it lists are rewritten, counted and checked; every document is still
+ * a link target, and --json names the others in `held`. No guard file: nothing changes.
  *
  * Writes: the rewritten *.html files IN PLACE under --content (nothing with
  * --dry-run or --check; the summary is stdout).
@@ -72,17 +55,9 @@
  * 1 usage/IO error. Dependency-free (regex over the authored HTML, the same
  * technique as davids-model-lint.mjs — content pages are machine-generated).
  */
-import { readFileSync, writeFileSync, statSync, existsSync, renameSync, mkdirSync } from 'fs';
-import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
 import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
-
-// lib/documents.mjs (through contracts.mjs): which files are documents — the deployer's rule, so a link never points
-// to a file deploy does not send (`x.HTML`, `x.htm`)
-const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
-  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
-if (!CONTRACTS) throw Object.assign(new Error('localize-links: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
-const { contentDocuments, replaceIfUnchanged } = await import(CONTRACTS.href);
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -95,19 +70,11 @@ function parseArgs(argv) {
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
     else if (a === '--json') opts.json = true;
-    else if (a === '--receipt' || a === '--targets' || a === '--rewrite') {
-      const v = rest[i += 1];
-      if (!v || !v.trim() || v.startsWith('--')) { console.error(`${a} needs a file`); process.exit(1); }
-      opts[a.slice(2)] = v;
-    }
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
   }
   if (!opts.hosts.length) { console.error('--source-host is required'); usage(); process.exit(1); }
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
-  if (opts.receipt && opts.dryRun) { console.error('--receipt records what a run wrote: not with --dry-run / --check'); process.exit(1); }
-  if (opts.receipt && existsSync(opts.receipt)) { console.error(`--receipt ${opts.receipt} exists — one receipt per run`); process.exit(1); }
-  for (const f of ['targets', 'rewrite']) if (opts[f] && !existsSync(opts[f])) { console.error(`--${f} ${opts[f]} not found`); process.exit(1); }
   return opts;
 }
 
@@ -122,6 +89,15 @@ const bareHost = (h) => h.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '
 // Canonical lookup key for a path: eds-path.mjs pathKey (no query/fragment, .html, /index or trailing slash; lower case).
 export { canonicalPath };
 
+function collectHtml(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    if (entry.startsWith('.')) continue;
+    const p = path.join(dir, entry);
+    if (statSync(p).isDirectory()) collectHtml(p, out);
+    else if (/\.html$/i.test(entry)) out.push(p);
+  }
+  return out;
+}
 
 /**
  * [source, destination] pairs from a redirects file. Pure. Reads rollout's TSV (`source<TAB>destination`, `#`
@@ -196,7 +172,8 @@ export function localizeHref(href, { map, hosts }) {
 
 const HREF_RE = /(<a\b[^>]*?\bhref=)(["'])([^"']*)\2/gi;
 
-function processFile(file, ctx, src = readFileSync(file, 'utf8')) {
+function processFile(file, ctx) {
+  const src = readFileSync(file, 'utf8');
   const counts = { localized: 0, normalized: 0 };
   const kept = [];
   const out = src.replace(HREF_RE, (whole, pre, q, href) => {
@@ -220,54 +197,34 @@ function main() {
   }
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
-  const docs = contentDocuments(opts.content);
-  const files = docs.map((d) => path.join(opts.content, d.file));
-  const allowed = opts.targets ? new Set(readFileSync(opts.targets, 'utf8').split('\n').map((l) => l.trim().replace(/^\/+/, '')).filter(Boolean)) : null;
-  const targets = docs.filter((d) => !allowed || allowed.has(d.file)).map((d) => path.join(opts.content, d.file));
-  const rewritable = opts.rewrite ? new Set(readFileSync(opts.rewrite, 'utf8').split('\n').map((l) => l.trim().replace(/^\/+/, '')).filter(Boolean)) : null;
-  const { map, redirects, pending } = buildMap(targets, opts.content, opts.redirects);
+  const files = collectHtml(opts.content);
+  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
   const ctx = { map, hosts };
+  // The publish guard (deploy-batch.mjs reads the same file): a document it does not list is left as it is.
+  const guard = path.join(opts.content, '.deploy-allow');
+  const allow = existsSync(guard) ? new Set(readFileSync(guard, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean)) : null;
+  const guarded = (f) => allow && !allow.has(`/${path.relative(opts.content, f).split(path.sep).join('/').replace(/\.html$/, '')}`);
+  const held = [];
 
   const perFile = {};
   const keptAll = new Map();
   let localized = 0; let normalized = 0; let filesChanged = 0;
-  const digest = (b) => createHash('sha256').update(b).digest('hex');
-  const receipt = {}; const writes = [];
-  for (const f of files) {
-    const buf = readFileSync(f);
-    const r = processFile(f, ctx, buf.toString('utf8'));
+  for (const f of files.sort()) {
+    const r = processFile(f, ctx);
     r.kept.forEach((k) => keptAll.set(k, (keptAll.get(k) || 0) + 1));
     if (!r.changed) continue;
-    if (rewritable && !rewritable.has(path.relative(opts.content, f).split(path.sep).join('/'))) continue; // not this run's to rewrite
+    if (guarded(f)) { held.push(`/${path.relative(opts.content, f).split(path.sep).join('/')}`); continue; }
     filesChanged += 1;
     localized += r.counts.localized; normalized += r.counts.normalized;
-    const key = `/${path.relative(opts.content, f).split(path.sep).join('/')}`;
-    perFile[key] = r.counts;
-    receipt[key] = { input: digest(buf), output: digest(Buffer.from(r.out, 'utf8')) };
-    writes.push({ f, key, out: r.out, counts: r.counts });
+    perFile[`/${path.relative(opts.content, f).split(path.sep).join('/')}`] = r.counts;
+    if (!opts.dryRun) writeFileSync(f, r.out);
   }
-  // the receipt before any page: a receipt that cannot be written leaves every page as it was
-  if (opts.receipt) {
-    try {
-      mkdirSync(path.dirname(opts.receipt), { recursive: true });
-      const tmp = `${opts.receipt}.${process.pid}.tmp`;
-      writeFileSync(tmp, `${JSON.stringify({ tool: 'localize-links', at: new Date().toISOString(), content: opts.content, files: receipt }, null, 2)}\n`);
-      renameSync(tmp, opts.receipt);
-    } catch (e) { console.error(`localize-links: --receipt ${opts.receipt}: ${e.code || e.message} — no page written`); process.exit(1); }
-  }
-  // each page through lib/documents.mjs replaceIfUnchanged: a save made since this run read it is kept, never overwritten
-  const conflicts = [];
-  if (!opts.dryRun) {
-    for (const w of writes) {
-      const why = replaceIfUnchanged(w.f, receipt[w.key].input, Buffer.from(w.out, 'utf8'));
-      if (why) { conflicts.push(w.key); console.error(`localize-links: conflict ${w.key} — ${why}`); delete perFile[w.key]; filesChanged -= 1; localized -= w.counts.localized; normalized -= w.counts.normalized; }
-    }
-  }
+  if (held.length) console.error(`localize-links: ${guard}: ${held.length} document(s) it does not list keep their links — not rewritten`);
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
-  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, conflicts: conflicts.length, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
+  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
 
   if (opts.json) {
-    console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
+    console.log(JSON.stringify({ ...summary, perFile, ...(allow ? { held } : {}), kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
     console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);

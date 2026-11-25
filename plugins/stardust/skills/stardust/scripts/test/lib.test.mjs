@@ -5,14 +5,10 @@
 // for /widgets/…, any extension case, .htm included; reserved stems; pageWidgets drops a page link; widgetLinks' three
 // mount rules, origin filter and dedupe keys); kinds.mjs classifies documents and chrome; taxonomy.mjs labels every class;
 // resolve.mjs names the copy that fixes a missing sibling; da-token.mjs picks one token source and names it in every error;
-// documents.mjs lists a content tree's documents as deploy sends them, resolves a list entry to one, reserves /library;
 // contracts.mjs re-exports every lib export (no name lost to a clash).
 // The cross-implementation pins live in contracts-characterize.test.mjs; the project-copy layout in layout.test.mjs. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as paths from '../lib/paths.mjs';
@@ -21,7 +17,6 @@ import * as kinds from '../lib/kinds.mjs';
 import * as taxonomy from '../lib/taxonomy.mjs';
 import * as resolve from '../lib/resolve.mjs';
 import * as daToken from '../lib/da-token.mjs';
-import * as documents from '../lib/documents.mjs';
 import * as contracts from '../contracts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -29,14 +24,14 @@ const LIB = join(HERE, '..', 'lib');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
-check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs, da-token.mjs and documents.mjs (read when called)', () => {
+check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs and da-token.mjs (read when called)', () => {
   const files = readdirSync(LIB).filter((f) => f.endsWith('.mjs')).sort();
-  assert.deepEqual(files, ['da-token.mjs', 'documents.mjs', 'kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
+  assert.deepEqual(files, ['da-token.mjs', 'kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
   for (const f of files) {
     const src = readFileSync(join(LIB, f), 'utf8');
     assert.ok(src.startsWith('/**\n * skills/stardust/scripts/lib/'), `${f}: header`);
     assert.match(src.slice(0, 2500), /\bOwns?\b|\bowns\b|one copy/, `${f}: says what it owns`);
-    if (!['resolve.mjs', 'da-token.mjs', 'documents.mjs'].includes(f)) assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
+    if (f !== 'resolve.mjs' && f !== 'da-token.mjs') assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
   }
 });
 
@@ -168,91 +163,12 @@ check('da-token: jwtExpiry reads a numeric exp claim and nothing else', () => {
   assert.equal(daToken.jwtExpiry(jwt({ exp: 'soon' })), null); assert.equal(daToken.jwtExpiry('opaque'), null); assert.equal(daToken.jwtExpiry(undefined), null);
 });
 
-// ---- documents.mjs ---------------------------------------------------------------------------------------------------
-check('documents: a lowercase .html is a document (x.HTML, x.htm are not), its webPath documentPath; sorted; a missing root is empty', () => {
-  const root = mkdtempSync(join(tmpdir(), 'lib-docs-'));
-  for (const f of ['b.html', 'a/index.html', 'nav.html.html', 'Draft.HTML', 'old.htm', 'a/notes.txt']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
-  assert.deepEqual(documents.contentDocuments(root), [{ file: 'a/index.html', webPath: '/a/index' }, { file: 'b.html', webPath: '/b' }, { file: 'nav.html.html', webPath: '/nav.html' }]);
-  assert.deepEqual(documents.contentDocuments(join(root, 'none')), []);
-  rmSync(root, { recursive: true });
-});
-check('documents: resolveEntry — literal, content-file form, folder; two forms ambiguous; none unmatched', () => {
-  const w = new Set(['/a/index', '/b', '/nav.html', '/nav']);
-  assert.deepEqual(documents.resolveEntry('/a/index.html', w), { match: '/a/index' });
-  assert.deepEqual(documents.resolveEntry('a/', w), { match: '/a/index' });
-  assert.deepEqual(documents.resolveEntry('/b', w), { match: '/b' });
-  assert.deepEqual(documents.resolveEntry('/nav.html', w), { ambiguous: ['/nav.html', '/nav'] });
-  assert.deepEqual(documents.resolveEntry('/c', w), { unmatched: true });
-});
-check('documents: /library and everything under it (any case, .html, trailing slash) is the authoring library\'s; /libraries is not', () => {
-  for (const p of ['/library', '/library/', '/Library/blocks/hero', '/library/templates/x.html']) assert.equal(documents.isLibraryPath(p), true, p);
-  for (const p of ['/libraries', '/a/library', '/']) assert.equal(documents.isLibraryPath(p), false, p);
-  assert.equal(documents.LIBRARY_ROOT, '/library');
-});
-
-check('documents: an entry whose name starts with `.` is skipped unless hidden: true (deploy-batch sends them, as on main)', () => {
-  const root = mkdtempSync(join(tmpdir(), 'lib-hidden-'));
-  for (const f of ['a.html', '.drafts/offer.html', '.x.html']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
-  assert.deepEqual(documents.contentDocuments(root).map((d) => d.file), ['a.html']);
-  assert.deepEqual(documents.contentDocuments(root, { hidden: true }).map((d) => d.file), ['.drafts/offer.html', '.x.html', 'a.html']);
-  rmSync(root, { recursive: true });
-});
-check('documents: deliveredRows keeps coverage rows deployed or verified with a path; contentFile finds a.html or a/index.html', () => {
-  assert.deepEqual(documents.deliveredRows({ pages: [{ path: '/', delivery: { status: 'verified' } }, { path: '/a', delivery: { status: 'deployed' } }, { path: '/b', delivery: { status: 'pending' } }, { delivery: { status: 'verified' } }] }).map((r) => r.path), ['/', '/a']);
-  assert.deepEqual(documents.deliveredRows(null), []);
-  const root = mkdtempSync(join(tmpdir(), 'lib-cf-'));
-  for (const f of ['index.html', 'a/index.html', 'b.html']) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), ''); }
-  assert.equal(documents.contentFile(root, '/'), join(root, 'index.html'));
-  assert.equal(documents.contentFile(root, '/a/'), join(root, 'a/index.html'));
-  assert.equal(documents.contentFile(root, '/b'), join(root, 'b.html'));
-  assert.equal(documents.contentFile(root, '/c'), null);
-  rmSync(root, { recursive: true });
-});
-check('documents: replaceIfUnchanged writes only over the bytes read; a save landing right after the last read is kept; a link failing with EPERM puts the original back; a concurrent new file (EEXIST) is kept', () => {
-  const root = mkdtempSync(join(tmpdir(), 'lib-rep-'));
-  const f = join(root, 'p.html'); const h = (t) => createHash('sha256').update(t).digest('hex');
-  const real = { renameSync, linkSync, rmSync, writeFileSync, readFileSync };
-  writeFileSync(f, 'read'); assert.equal(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new')), null); assert.equal(readFileSync(f, 'utf8'), 'new');
-  writeFileSync(f, 'read');
-  const saveFirst = { ...real, renameSync: (a, b) => { if (a === f) writeFileSync(f, 'owner save'); return renameSync(a, b); } };
-  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), saveFirst), /changed since it was read — left as it is/);
-  assert.equal(readFileSync(f, 'utf8'), 'owner save', 'the owner\'s save survives');
-  writeFileSync(f, 'read');
-  const eperm = { ...real, linkSync: (a, b) => { if (a.endsWith('.replace')) throw Object.assign(new Error('nope'), { code: 'EPERM' }); return linkSync(a, b); } };
-  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eperm), /replacing failed \(EPERM\)/);
-  assert.equal(readFileSync(f, 'utf8'), 'read', 'the original is back');
-  const eexist = { ...real, linkSync: (a, b) => { if (a.endsWith('.replace')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
-  assert.match(documents.replaceIfUnchanged(f, h('read'), Buffer.from('new'), eexist), /saved again while it was replaced — the new file is kept/);
-  assert.equal(readFileSync(f, 'utf8'), 'saved meanwhile');
-  assert.deepEqual(readdirSync(root).filter((n) => n.endsWith('.replace')), [], 'no replacement left behind');
-  rmSync(root, { recursive: true });
-});
-check('documents: replaceIfUnchanged in a git project — a tracked symlink is refused (its mode stays 120000); a kept file lives in the git dir, so a checkpoint (`git add -A`) stages nothing of it', () => {
-  const root = mkdtempSync(join(tmpdir(), 'lib-rep-git-'));
-  const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
-  const h = (t) => createHash('sha256').update(t).digest('hex');
-  writeFileSync(join(root, '.gitignore'), '/private-draft.html\n/generated/\n');
-  mkdirSync(join(root, 'generated')); writeFileSync(join(root, 'generated', 'body.html'), 'ignored body');
-  symlinkSync('generated/body.html', join(root, 'linked.html'));
-  writeFileSync(join(root, 'private-draft.html'), 'read');
-  git('init', '-q'); git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'c');
-  assert.match(documents.replaceIfUnchanged(join(root, 'linked.html'), h('ignored body'), Buffer.from('new')), /a symbolic link — left as it is/);
-  assert.match(git('ls-files', '-s', 'linked.html').stdout, /^120000 /);
-  assert.equal(readFileSync(join(root, 'generated', 'body.html'), 'utf8'), 'ignored body');
-  const eexist = { renameSync, rmSync, writeFileSync, readFileSync, linkSync: (a, b) => { if (a.endsWith('.replace')) writeFileSync(b, 'saved meanwhile'); return linkSync(a, b); } };
-  const why = documents.replaceIfUnchanged(join(root, 'private-draft.html'), h('read'), Buffer.from('new'), eexist);
-  assert.match(why, /the bytes read are in .*\.git\/stardust-replace\//, 'kept in the git dir');
-  git('add', '-A');
-  assert.equal(git('status', '--porcelain', '--untracked-files=all').stdout, '', 'the checkpoint stages nothing');
-  rmSync(root, { recursive: true });
-});
-
 // ---- contracts.mjs ---------------------------------------------------------------------------------------------------
 check('contracts.mjs re-exports every export of every lib file, the same binding (an `export *` name clash would drop one silently)', () => {
-  const all = [paths, names, kinds, taxonomy, resolve, daToken, documents].flatMap((m) => Object.keys(m));
+  const all = [paths, names, kinds, taxonomy, resolve, daToken].flatMap((m) => Object.keys(m));
   assert.equal(new Set(all).size, all.length, 'two lib files export the same name');
   assert.deepEqual(Object.keys(contracts).sort(), [...all].sort());
-  for (const m of [paths, names, kinds, taxonomy, resolve, daToken, documents]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
+  for (const m of [paths, names, kinds, taxonomy, resolve, daToken]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
 });
 
 console.log(`\n${failed ? `${failed} check(s) failed` : 'all checks passed'}`);

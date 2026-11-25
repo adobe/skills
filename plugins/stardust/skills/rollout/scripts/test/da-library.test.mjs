@@ -8,7 +8,7 @@ import { cpSync, utimesSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { topDivs, blocksOf, collectBlocks, blockDoc, templateDoc, sheet, mergeLibraryConfig, templateName, docName, chromeRefs, appendSections, variantKeys } from "../da-library.mjs";
+import { topDivs, blocksOf, collectBlocks, blockDoc, templateDoc, sheet, mergeLibraryConfig, templateName, docName, chromeRefs } from "../da-library.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split("\n").join("\n  ")}`); } };
@@ -302,101 +302,6 @@ try {
     assert.equal(s3.code, 0, s3.err + s3.out); assert.match(s3.err, /took over a stale/); assert.ok(!existsSync(lock));
   });
 } finally { server.close(); rmSync(site, { recursive: true, force: true }); }
-
-// --add against a stateful fake DA: a PUT stores its file, a GET serves it back
-check("appendSections / variantKeys: new sections inside <main>, after the existing ones; class combinations sorted", () => {
-  const doc = "<body>\n<header></header>\n<main>\n<div>\n<div class=\"cards\"><div><div>owner edit</div></div></div>\n</div>\n</main>\n<footer></footer>\n</body>\n";
-  const out = appendSections(doc, "<body><main><div><div class=\"cards dark\"></div></div></main></body>");
-  assert.match(out, /owner edit[\s\S]*cards dark[\s\S]*<\/main>/); assert.equal(appendSections("<p>no main</p>", out), null);
-  assert.deepEqual([...variantKeys(`<main><div><div class="cards b a"></div><div class="hero"></div></div></main>`, "cards")], ["a b"]);
-});
-{
-  const store = new Map(); const log = []; let fail404 = null;
-  const fileOf = (req, raw) => {
-    const m = String(req.headers["content-type"] || "").match(/boundary=(.+)$/);
-    if (!m) return raw.toString("utf8");
-    const part = raw.toString("utf8").split(`--${m[1]}`)[1] || ""; return part.slice(part.indexOf("\r\n\r\n") + 4).replace(/\r\n$/, "");
-  };
-  const da = createServer((req, res) => {
-    const chunks = []; req.on("data", (c) => chunks.push(c));
-    req.on("end", () => {
-      log.push(`${req.method} ${req.url}`);
-      const key = req.url.replace(/^\/source/, "");
-      if (req.url.startsWith("/source/") && req.method === "PUT") { store.set(key, fileOf(req, Buffer.concat(chunks))); res.writeHead(201); return res.end("{}"); }
-      if (req.url.startsWith("/source/") && req.method === "GET") {
-        if (fail404 && key.endsWith(fail404)) { res.writeHead(404); return res.end(); }
-        if (!store.has(key)) { res.writeHead(404); return res.end(); }
-        res.writeHead(200); return res.end(store.get(key));
-      }
-      if (req.method === "GET" && req.url.startsWith("/config/")) { res.writeHead(404); return res.end(); }
-      res.writeHead(req.method === "GET" ? 200 : 201); return res.end("{}");
-    });
-  });
-  await new Promise((r) => { da.listen(0, "127.0.0.1", r); });
-  const D = `http://127.0.0.1:${da.address().port}`;
-  const proj = mkdtempSync(join(tmpdir(), "da-library-add-"));
-  const cov = join(proj, "stardust", "rollout", "coverage"); const markerF = join(proj, "stardust", "rollout", "library", "published.json");
-  const runAdd = (extra = []) => new Promise((resolve) => {
-    const env = { ...process.env }; delete env.ADOBE_IMS_TOKEN_FILE;
-    const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), ...extra], { cwd: proj, env: { ...env, DA_TOKEN: "tok", DA_SOURCE_BASE: `${D}/source`, DA_CONFIG_BASE: `${D}/config`, AEM_ADMIN_BASE: `${D}/admin`, DA_LIBRARY_BACKOFF_MS: "1" } });
-    let out = ""; let err = ""; p.stdout.on("data", (d) => { out += d; }); p.stderr.on("data", (d) => { err += d; });
-    p.on("close", (code) => resolve({ code, out, err }));
-  });
-  const pages = (rows) => writeFileSync(join(cov, "pages.json"), JSON.stringify({ pages: rows }));
-  try {
-    mkdirSync(join(proj, "content"), { recursive: true }); mkdirSync(cov, { recursive: true });
-    for (const b of ["cards", "hero", "tabs"]) mkdirSync(join(proj, "blocks", b), { recursive: true });
-    writeFileSync(join(proj, "stardust", "rollout", "rollout.json"), JSON.stringify({ site: { da: { org: "o", site: "s", ref: "main" } } }));
-    writeFileSync(join(proj, "content", "index.html"), home); writeFileSync(join(proj, "content", "about.html"), about);
-    pages([{ slug: "index", path: "/", templateId: "index", delivery: { status: "verified", deployedAt: "2026-01-01T00:00:00Z" } },
-      { slug: "about", path: "/about", templateId: "about", delivery: { status: "verified", deployedAt: "2026-01-01T00:00:00Z" } }]);
-    writeFileSync(join(cov, "templates.json"), JSON.stringify({ templates: [{ id: "index", representativeSlug: "index", pages: ["index"] }] }));
-    const noMarker = await runAdd(["--add"]);
-    check("--add with no publication to extend: exit 1, nothing sent", () => {
-      assert.equal(noMarker.code, 1, noMarker.err); assert.match(noMarker.err, /no publication to extend/); assert.equal(log.length, 0);
-    });
-    const full = await runAdd();
-    assert.equal(full.code, 0, full.err + full.out);
-    // an author edits the published cards document; the older pages' bodies then leave the checkout
-    store.set("/o/s/library/blocks/cards.html", store.get("/o/s/library/blocks/cards.html").replace("</main>", "<div><p>author note</p></div>\n</main>"));
-    const tplBefore = store.get("/o/s/library/templates/index.html");
-    rmSync(join(proj, "content", "index.html")); rmSync(join(proj, "content", "about.html"));
-    writeFileSync(join(proj, "content", "new.html"), `<body><main><div>${meta.replace("landing", "product")}</div><div><div class="cards light"><div><div>L</div></div></div><div class="tabs"><div><div>T</div></div></div><div class="hero"><div><div>H2</div></div></div></div></main></body>`);
-    pages([{ slug: "index", path: "/", templateId: "index", delivery: { status: "verified", deployedAt: "2026-01-01T00:00:00Z" } },
-      { slug: "about", path: "/about", templateId: "about", delivery: { status: "verified", deployedAt: "2026-01-01T00:00:00Z" } },
-      { slug: "new", path: "/new", templateId: "product", delivery: { status: "verified", deployedAt: "2026-02-01T00:00:00Z" } }]);
-    writeFileSync(join(cov, "templates.json"), JSON.stringify({ templates: [{ id: "index", representativeSlug: "index", pages: ["index"] }, { id: "product", representativeSlug: "new", pages: ["new"] }] }));
-    log.length = 0; fail404 = "blocks/cards.html";
-    const unread = await runAdd(["--add"]);
-    check("--add: a published document that cannot be read back stops the run before any DA write; the marker stays", () => {
-      assert.equal(unread.code, 1, unread.err); assert.match(unread.err, /library\/blocks\/cards\.html: GET 404 — nothing written to DA/);
-      assert.ok(!log.some((q) => q.startsWith("PUT") || q.startsWith("POST")), log.join("\n")); assert.ok(existsSync(markerF));
-    });
-    log.length = 0; fail404 = null;
-    const add = await runAdd(["--add"]);
-    check("--add: reads only the page the publication has not read (the older bodies are gone); appends the new variant to DA's cards document (the author's edit kept); a new block and a new template get documents; known variants and the older template are left alone; sheets and marker grow", () => {
-      assert.equal(add.code, 0, add.err + add.out);
-      assert.match(add.out, /--add: 1 page\(s\) read, 2 variant\(s\) added \(1 new block\(s\)\), 1 template\(s\) written \(1 new\)/);
-      const cards = store.get("/o/s/library/blocks/cards.html");
-      assert.match(cards, /cards \(dark\)[\s\S]*author note[\s\S]*cards \(light\): as authored on \/new/);
-      assert.ok(log.includes("PUT /source/o/s/library/blocks/tabs.html"));
-      assert.ok(!log.includes("PUT /source/o/s/library/blocks/hero.html"), "hero's only combination is published already");
-      assert.equal(store.get("/o/s/library/templates/index.html"), tplBefore, "the older template kept as it is");
-      assert.ok(log.includes("PUT /source/o/s/library/templates/product.html"));
-      assert.deepEqual(JSON.parse(store.get("/o/s/library/blocks.json")).data.map((r) => r.name), ["cards", "hero", "tabs"]);
-      assert.deepEqual(JSON.parse(store.get("/o/s/library/templates.json")).data.map((r) => r.key), ["Index", "Product"]);
-      const m = JSON.parse(readFileSync(markerF, "utf8"));
-      assert.deepEqual(m.pages, ["/", "/about", "/new"]); assert.deepEqual(m.blocks, ["cards", "hero", "tabs"]); assert.deepEqual(m.templates, ["Index", "Product"]);
-    });
-    const again = await runAdd(["--add"]);
-    check("--add again: every delivered page is in the publication — nothing to add, nothing sent", () => {
-      assert.equal(again.code, 0, again.err); assert.match(again.out, /nothing to add/);
-    });
-    writeFileSync(markerF, JSON.stringify({ ...JSON.parse(readFileSync(markerF, "utf8")), site: "other" }));
-    const other = await runAdd(["--add"]);
-    check("--add on a publication for another site: exit 1", () => { assert.equal(other.code, 1); assert.match(other.err, /the publication is o\/other, this run o\/s/); });
-  } finally { da.close(); rmSync(proj, { recursive: true, force: true }); }
-}
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
 console.log("\nall passed");

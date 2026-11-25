@@ -7,9 +7,9 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `deploy/build-harness.mjs` — structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/da-media-upload.mjs` — rehost images/mp4 — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content d [--allow f] [--force] [--no-publish] [--token-env|-file]`; exit 1 fail, 3 halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failures, 3 = token halt
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
-- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host h [--content d] [--check] [--receipt|--targets|--rewrite f]`
+- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
 - `deploy/martech-scaffold.mjs` — contract → martech.js + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
 - `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema eds-schema/<p>.json [--design DESIGN.json]`
 - `deploy/render-harness.mjs` — screenshot decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
@@ -43,7 +43,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/extend-roster.mjs` — extend — `select --candidates f --out f [--named] [--max n] [--slugs-out f]`; `inventory|publish|published|reconcile|opening-check|relink-status --pass d [--out d]`; `output|redeliver|relink-approve|-restore --pass d --files a,b` +--unit
+- `replica/extend-roster.mjs` — extend pass: roster, publish guard — `select --candidates f --out f [--named] [--max n] [--slugs-out f] [--reserved-out f]`; `output --pass d --unit u --files a,b`; `publish --pass d`
 - `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check` (a new `absent[]` path: `added`)
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
@@ -71,7 +71,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--canon <dir>] [--verify-origin <origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
-- `rollout/da-library.mjs` — DA library — `[--dry-run] [--add]`
+- `rollout/da-library.mjs` — DA library — `[--dry-run]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--track <x<N>>] [--json]`

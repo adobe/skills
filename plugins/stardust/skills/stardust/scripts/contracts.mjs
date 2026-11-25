@@ -1,6 +1,6 @@
 /**
  * skills/stardust/scripts/contracts.mjs — the rules more than one skill's scripts apply, behind one import: EDS paths,
- * names and the widget contract, kinds, the dynamics taxonomy, the DA token source, content documents (lib/*.mjs, lib/README.md has the
+ * names and the widget contract, kinds, the dynamics taxonomy, the DA token source (lib/*.mjs, lib/README.md has the
  * map) and the sibling-script resolver (lib/resolve.mjs). Library, no CLI; pure, nothing runs on import.
  *
  * It ships and resolves the way browser.mjs does: Setup step 7 (skills/stardust/SKILL.md) copies this scripts dir, lib/
@@ -18,4 +18,3 @@ export * from './lib/kinds.mjs';
 export * from './lib/taxonomy.mjs';
 export * from './lib/resolve.mjs';
 export * from './lib/da-token.mjs';
-export * from './lib/documents.mjs';

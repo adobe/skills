@@ -18,9 +18,9 @@ Playwright installed:
 
 - `ledger.mjs last replica` → the `handoff end` line; `ledger.mjs replica
   extend start --track x1 --detail "extend-next 1" --strict` exits 0.
-- `content/index.html` is the delivered home document; `extend-roster.mjs
-  inventory --pass stardust/replica/extend/x1` lists it as `<sha256>
-  index.html tracked` in `inventory.tsv`, and copies no content bytes.
+- `content/index.html` is the delivered home document. The selection below
+  records its destination `/` in `reserved.paths`: no output of the pass may
+  take it.
 - `foundation-freeze.mjs freeze --paths-if-present <the six spec files> --out
   stardust/replica/extend/x1/spec-freeze.json` → `frozen 6 files`;
   `freeze --from stardust/rollout/foundation-freeze.json` → `frozen 3 files`,
@@ -30,7 +30,8 @@ Playwright installed:
   --select-only` prints `--first-run-order: link-first (capSource --cap, …)`
   on stderr and `http://localhost:8780/visit/` on stdout, and writes
   nothing; `stardust/scripts/replica/extend-roster.mjs select --candidates
-  <that list> --max 1 --out stardust/replica/extend/x1/urls.txt` keeps it
+  <that list> --max 1 --out stardust/replica/extend/x1/urls.txt
+  --reserved-out stardust/replica/extend/x1/reserved.paths` keeps it
   (home is captured and delivered, no content document holds `/visit`).
 - the same crawler with `--pages http://localhost:8780/visit/ --dynamics
   --skip-captured stardust/state.json` captures `visit` only;
