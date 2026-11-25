@@ -61,7 +61,12 @@
  * --paths     optional newline-delimited file of web paths (no extension) to
  *             restrict the run to a subset (re-drive only these); a `.html` entry —
  *             a content file path as localize-links.mjs --json lists it — counts as
- *             the same page without its extension.
+ *             the same page without its extension (one `.html` dropped). An entry that
+ *             names two documents of --content (`/nav.html`: the file nav.html, or the
+ *             document of nav.html.html) exits 2 before anything is sent.
+ * A step succeeds only on a 2xx answer: a transport failure that outlasts --retries
+ * (status 0) fails the page like a 4xx/5xx, even when the delivered origin still serves
+ * an earlier version of it.
  * --allow     optional file of web paths, same format as --paths: no page outside it is ever
  *             sent, whatever --paths, --force or the ledger say — each held page is named
  *             on stderr (`held /x — not in <file>`), and a held page listed in --paths
@@ -185,6 +190,8 @@ const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
 // A 401 that survives every retry is the token, not the page — deployOne turns it into the batch halt.
 const ADMIN_RETRYABLE = new Set([...RETRYABLE, 401]);
 
+const ok2xx = (status) => status >= 200 && status < 300;
+
 async function call(method, url, { token, body } = {}, { retries = 4, backoffMs = 500, retryStatuses = ADMIN_RETRYABLE } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     let status = 0;
@@ -247,7 +254,8 @@ async function deployOne(page, args, ledger, logLine) {
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
   if (put.status === 401) return tokenHalt('put', put);
   rec.put = put.status;
-  if (put.status >= 400) {
+  // only a 2xx answer moves a page on: an exhausted transport failure (status 0) is a failure, never a success
+  if (!ok2xx(put.status)) {
     rec.status = 'put-fail';
     rec.lastError = `PUT ${put.status} ${put.text}`;
     await logLine({ path: page.webPath, step: 'put', status: put.status, text: put.text, attempts: put.attempts });
@@ -258,7 +266,7 @@ async function deployOne(page, args, ledger, logLine) {
   const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args);
   if (prev.status === 401) return tokenHalt('preview', prev);
   rec.preview = prev.status;
-  if (prev.status >= 400) {
+  if (!ok2xx(prev.status)) {
     rec.status = 'preview-fail';
     rec.lastError = `preview ${prev.status} ${prev.text}`;
     await logLine({ path: page.webPath, step: 'preview', status: prev.status, text: prev.text, attempts: prev.attempts });
@@ -270,7 +278,7 @@ async function deployOne(page, args, ledger, logLine) {
     const live = await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, args);
     if (live.status === 401) return tokenHalt('live', live);
     rec.live = live.status;
-    if (live.status >= 400) {
+    if (!ok2xx(live.status)) {
       rec.status = 'live-fail';
       rec.lastError = `live ${live.status} ${live.text}`;
       await logLine({ path: page.webPath, step: 'live', status: live.status, text: live.text, attempts: live.attempts });
@@ -305,20 +313,38 @@ async function main() {
     console.error(`[deploy-batch] ${tokenLabel(args)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
-  const pathList = async (file) => new Set((await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-    .map((p) => (p.startsWith('/') ? p : `/${p}`).replace(/\.html$/i, '').replace(/\/$/, '/index')));
+  const pathList = async (file) => (await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
+    .map((p) => (p.startsWith('/') ? p : `/${p}`));
+  // a list entry names a content file (`/x.html`, one `.html` dropped), a web path (`/x`) or a folder (`/x/` →
+  // `/x/index`). An entry that names two documents of this content dir — `/nav.html` is the file nav.html (`/nav`)
+  // and the document of nav.html.html (`/nav.html`) — is refused before anything is sent: write the content file path.
+  const resolveList = (entries, flag, webPaths) => {
+    const out = new Set(); const ambiguous = [];
+    for (const e of entries) {
+      const stripped = e.replace(/\.html$/i, '').replace(/\/$/, '/index');
+      if (stripped !== e && webPaths.has(stripped) && webPaths.has(e)) ambiguous.push(e);
+      out.add(stripped);
+    }
+    if (ambiguous.length) {
+      console.error(`[deploy-batch] ${flag}: ${ambiguous.length} entr${ambiguous.length === 1 ? 'y names' : 'ies name'} two documents (${ambiguous.map((e) => `${e} is ${e.replace(/\.html$/i, '')} or ${e}`).join('; ')}) — list the content file path (${ambiguous.map((e) => `${e}.html`).join(', ')} for the second); nothing was sent.`);
+      process.exit(2);
+    }
+    return out;
+  };
   // --allow is read before anything is walked or sent: a publish list that cannot be read sends nothing
-  let allow = null;
+  let allowEntries = null;
   if (args.allow) {
-    try { allow = await pathList(args.allow); } catch (e) {
+    try { allowEntries = await pathList(args.allow); } catch (e) {
       console.error(`[deploy-batch] --allow: cannot read ${args.allow} (${e.code || e.message}); nothing was sent.`);
       process.exit(2);
     }
   }
   let pages = await walkHtml(args.content);
+  const webPaths = new Set(pages.map((p) => p.webPath));
+  const allow = allowEntries && resolveList(allowEntries, '--allow', webPaths);
   let want = null;
   if (args.paths) {
-    want = await pathList(args.paths);
+    want = resolveList(await pathList(args.paths), '--paths', webPaths);
     pages = pages.filter((p) => want.has(p.webPath));
   }
   let heldListed = 0;

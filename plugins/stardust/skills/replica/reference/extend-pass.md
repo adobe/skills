@@ -47,7 +47,9 @@ L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/
 X=stardust/replica/extend/x1
 $L replica extend start --track x1 --detail "extend-next 300 @ $(git rev-parse HEAD)" --strict   # never a value starting with --
 mkdir -p $X; echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
+printf 'opening/\nopening.tmp/\napproved/r*/\n' > $X/.gitignore   # content bytes never reach a checkpoint commit
 rm -rf $X/opening.tmp; mkdir -p $X/opening.tmp && cp -Rp content $X/opening.tmp/ && mv $X/opening.tmp $X/opening   # every byte delivered, tracked or not
+(cd $X/opening && find content -type f -exec shasum -a 256 {} + | sort -k2) > $X/opening.sha256   # tracked: what the snapshot holds
 SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
 for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
 $F freeze --paths-if-present "$(echo $SPEC | tr ' ' ,)" --out $X/spec-freeze.json   # a missing one is recorded absent
@@ -56,7 +58,8 @@ cp $X/foundation-freeze.json stardust/rollout/.ff.tmp && mv stardust/rollout/.ff
 ```
 
 Resuming an open pass whose track has no `extract start` yet: re-make each missing piece — `request.txt` and
-`base.txt` from the `extend start` detail, `$X/opening/` (a leftover `opening.tmp` is discarded), the spec copy,
+`base.txt` from the `extend start` detail, `.gitignore`, `$X/opening/` and its `opening.sha256` (a leftover
+`opening.tmp` is discarded), the spec copy,
 `spec-freeze.json` — and never replace one that exists. `$X/foundation-freeze.json` is the evidence the foundation
 was re-frozen for this pass: missing, both foundation lines run again (the rollout manifest is replaced only after
 it exists); present, only the copy runs again. Once `extract start` is written, all of them exist; one missing is a
@@ -98,8 +101,9 @@ recorded user-named cap), `--skip-failed` leaves out every page a run failed on 
 empty `urls.txt` ends the pass: `extract end`, the spec check, `extend end --detail "0 new pages found by
 discovery"` — the report says discovery (sitemap, links) found nothing new, never that the site is complete.
 
-Then `$stardust extract <O> --prep --dynamics --pages <the urls.txt list>`, its crawl run with
-`$S --reserve-slugs $X/reserved-slugs.txt` (no new page takes a coverage row's slug): a roster page captured before an interruption is not captured again — a
+Then `$stardust extract <O> --prep --dynamics` over the roster, its crawl run with `--pages-file $X/urls.txt $S
+--reserve-slugs $X/reserved-slugs.txt` — the file, never a comma list (a URL may hold a comma), and no new page
+takes a coverage row's slug: a roster page captured before an interruption is not captured again — a
 record under `stardust/current/pages/` counts even before its `state.json` row, and the crawl names such records:
 add their rows (extract Phase 6) before going on. A new page never takes a slug an earlier pass holds; a
 re-captured delivered page would change its JSON, and `inventory.mjs` would flag it `stale`. The pass runs
@@ -121,8 +125,8 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
 script already skips what is delivered. **The publish list** is `$R publish --before $X/opening/content --out
-$X/publish.paths`, run again before each deploy: the DA document of every content file absent at opening
-(`content/visit/index.html` is `/visit/index`) — never one that existed, so a page of the pass can never replace the
+$X/publish.paths`, run again before each deploy: the content file path of every file absent at opening
+(`/visit/index.html`; `deploy-batch.mjs` drops exactly one `.html`) — never one that existed, so a page of the pass can never replace the
 nav or an older page. Every `deploy-batch.mjs` run of the pass — a cluster's, G's re-deploy, an E2 fix — carries
 `--allow $X/publish.paths`, so the script sends nothing outside it (a held page is named; a held page listed in
 `--paths` exits 1). An older page is sent only as an approved revision, below; a finding on one is reported.
@@ -136,7 +140,7 @@ nav or an older page. Every `deploy-batch.mjs` run of the pass — a cluster's, 
   `migrate.mjs render <sibling slugs> --archetype <slug>=<arch>`. Each of those sidecars reads `fidelityTier:
   "sibling"` and names its archetype; a sibling's that reads `archetype` stops the unit.
 - **Units:** every new unit in both `progress.json` files is named `<unit>-x<N>` (`archetype-<template>-x1`,
-  `<cluster>-x1`, `gate-all-x1`); a `done` unit of an earlier pass is never reopened, and a new page of a known
+  `<cluster>-x1`, `gate-all-1440-x1`); a `done` unit of an earlier pass is never reopened, and a new page of a known
   template joins a new cluster unit. No `foundation` unit: the foundation is delivered and frozen.
 - **A, B:** `inventory.mjs` keeps delivered rows and adds the new ones `pending`, so optimize, verify and
   `done-check.mjs` cover them; `blocks.mjs`, then `plan.mjs --pending-only` (a block a delivered page runs is
@@ -144,27 +148,31 @@ nav or an older page. Every `deploy-batch.mjs` run of the pass — a cluster's, 
   one.
 - **Relinked pages — published only on the owner's yes, in every mode.** Every `localize-links.mjs` run of the pass
   runs with `--json` and appends its `perFile` keys to `$X/relinked.paths`: a page this pass delivers can be a link
-  target an earlier pass repointed to the source. A file listed there that existed at opening is a candidate only
-  when `diff $X/opening/content/<file> content/<file>` shows href changes alone. Show the owner the exact list and
-  say that a re-PUT replaces the DA document, so an edit made in DA since delivery is lost. **An approval is a
+  target an earlier pass repointed to the source; right after each run, `shasum -a 256` of those files is appended to
+  `$X/relinked.sha256` (the localizer's output, latest line per file wins). A file listed there that existed at
+  opening is a candidate only when `diff` against its last published bytes (below) shows href changes alone; one
+  with other changes is a **conflict**: held, its working file kept as it is, named to the owner. Show the owner
+  the exact list and say that a re-PUT replaces the DA document, so an edit made in DA since delivery is lost. **An approval is a
   revision, not a path:** before the first PUT, copy the approved files to `V=$X/approved/r<k>` (k = 1, 2, …), write
   `(cd $V && shasum -a 256 $(find . -name '*.html')) > $V.sha256` and `(cd $V && find . -name '*.html' | sed
   's|^\.||') > $V.paths`, then `deploy-batch.mjs --content $V --allow $V.paths` — a retry is that same command, which
   sends the frozen copy and resumes from `$V`'s own ledger, never the live file. A file changed after approval is a
-  new revision, asked again. Every other candidate — declined, unanswered, hands-off, or with other changes — goes
-  back to its last published bytes: the newest `$V/<file>` whose ledger reads it live, else
-  `$X/opening/content/<file>`, copied to `content/<file>.tmp` and renamed over the file only once the copy succeeded.
-  They are named in `replica extend blocked --track x<N> --detail "republish awaits the owner: <n> pages"`. The
-  question is asked at C-final, before unit `gate-all-x<N>`, and again at E2 when its run rewrites more. After an
-  approved revision lands, `gate-all.mjs --only <their slugs>` captures them again (a recorded pass hashed the
-  relinked bytes before they were served; a fresh capture replaces it), then unit `gate-all-x<N>` again and
-  `update-coverage.mjs --gate` on its summary.
+  new revision, asked again. A candidate declined, unanswered or hands-off goes back to its **last published
+  bytes** — the newest `$V/<file>` whose ledger reads it live, else `$X/opening/content/<file>` — only while its
+  sha256 still equals its latest `relinked.sha256` line (the localizer's own output, nobody's edit): copied to
+  `content/<file>.tmp`, renamed over the file only once the copy succeeded. A file edited since is a conflict, as
+  above. Held candidates and conflicts are named in `replica extend blocked --track x<N> --detail "republish awaits
+  the owner: <n> pages"`. The question is asked at C-final, before its final units, and again at E2 when its run
+  rewrites more. After an approved revision lands, `gate-all.mjs --width <w> --only <their slugs>` at each width
+  of the final units captures them again (a recorded pass hashed the relinked bytes before they were served), then
+  `gate-all.mjs --width <w> --compare-only` rebuilds that width's summary and `update-coverage.mjs --gate` reads it.
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
   with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
-  published gate re-run on every affected archetype, any pass's; the relinked pages, above; unit `gate-all-x<N>` is
-  `gate-all.mjs --skip-existing` over every delivered page — the new pages are gated, and an earlier page too when
-  an input of its reuse key changed (#793: its content, a block, the frozen reference); the others' verdicts are
-  reused, and `summary.json` stays complete for `update-coverage.mjs --gate`.
+  published gate re-run on every affected archetype, any pass's; the relinked pages, above; then the final units
+  exactly as `handoff-contract.md` § 3, row C (C-final), names them, each name suffixed: `gate-all-1440-x<N>`,
+  `gate-all-360-x<N>`, `gate-all-wide-x<N>`, then `update-coverage.mjs --gate` per width. Over every delivered page
+  with `--skip-existing`, the new pages are gated, and an earlier page too when an input of its reuse key changed
+  (#793); the others' verdicts are reused, and each summary stays complete.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
 - **F–I** as in a first pass, except G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level
   fix: the foundation is frozen), the re-deploy with `--allow`. Then `done-check.mjs --track x<N>` exit 0 — the

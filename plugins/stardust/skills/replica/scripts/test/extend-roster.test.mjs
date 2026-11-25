@@ -73,20 +73,26 @@ check('select --named: a query url, a delivered or document destination exits 2 
   assert.match(ok2.err, /dropped https:\/\/ex\.test\/p — already captured \(\/p\)/, 'captured, not delivered (an interrupted capture): dropped');
 });
 
+check('select: the slug reservations are written before the roster — a failure writing them leaves no roster (resume selects again)', () => {
+  mkdirSync(join(root, 'slugs-dir'), { recursive: true }); write('slugs-dir/x', '');   // a directory where the file goes: its rename fails
+  const r = run('select', '--candidates', 'cand.txt', '--out', 'late-roster.txt', '--slugs-out', 'slugs-dir');
+  assert.equal(r.code, 2, r.err);
+  assert.equal(existsSync(join(root, 'late-roster.txt')), false, 'no roster without its reservations');
+});
 check('select: an empty roster is written and exits 0 (discovery found nothing new)', () => {
   write('none.txt', 'https://ex.test/nav.html\n');
   const r = run('select', '--candidates', 'none.txt', '--out', 'empty.txt');
   assert.equal(r.code, 0, r.err); assert.equal(read('empty.txt'), '');
 });
 
-check('publish: the DA document of every content file absent from the opening snapshot — `visit/index.html` is `/visit/index`; nav and older pages never listed', () => {
+check('publish: the content file path of every file absent from the opening snapshot — `/visit/index.html`, `/nav.html.html` (deploy-batch drops one `.html`); nav and older pages never listed', () => {
   mkdirSync(join(root, 'opening'), { recursive: true });
   spawnSync('cp', ['-Rp', join(root, 'content'), join(root, 'opening', 'content')]);
   write('content/visit/index.html', '<main>new</main>'); write('content/shop-now.html', '<main>new</main>');
-  write('content/nav.html', '<nav>relinked</nav>');
+  write('content/nav.html', '<nav>relinked</nav>'); write('content/nav.html.html', '<main>an exporter\'s new page</main>');
   const r = run('publish', '--before', 'opening/content', '--out', 'publish.paths');
   assert.equal(r.code, 0, r.err);
-  assert.equal(read('publish.paths'), '/shop-now\n/visit/index\n');
+  assert.equal(read('publish.paths'), '/nav.html.html\n/shop-now.html\n/visit/index.html\n');
 });
 
 check('usage: unknown command, missing or flag-shaped value, bad --max, unreadable input exit 2 with one line; --help exits 0', () => {

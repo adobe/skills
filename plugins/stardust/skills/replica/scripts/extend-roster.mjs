@@ -19,13 +19,16 @@
  *            folded) is new: not the destination of a captured page (state.json pages[] url / finalUrl), not a
  *            coverage row's `path`, and not an existing content document (every `*.html` under --content — nav,
  *            footer and fragments included, though no coverage row names them). One destination takes one slot, at
- *            its first candidate's place; a query-less url of that destination replaces a query one, so the roster
- *            replays exactly. --max n keeps the first n (0 or absent: all). Writes the roster through a temp file +
- *            rename only on success, and with --slugs-out every coverage `slug`, for `crawl.mjs --reserve-slugs`.
+ *            its first candidate's place; a query-less url of that destination replaces a query one. --max n keeps
+ *            the first n (0 or absent: all). With --slugs-out it writes every coverage `slug` (for `crawl.mjs
+ *            --reserve-slugs`) FIRST, then the roster, each through a temp file + rename: the roster appears last,
+ *            so its presence means the selection completed. Hand the roster to capture as a file (`crawl.mjs
+ *            --pages-file`): a url may hold a comma.
  *            stderr names what was dropped and why. --named (urls the owner named): a url with a query string,
  *            or one whose destination is delivered or an existing document — captured or not — exits 2 and
  *            writes nothing; one captured but not delivered (an interrupted capture) is named and dropped.
- *   publish  lists the DA document (`/a/index` for `a/index.html`) of every `*.html` under --content that is not
+ *   publish  lists the content file path (`/a/index.html`, `/nav.html.html` — what `deploy-batch.mjs --allow`
+ *            reads without ambiguity: it drops exactly one `.html`) of every `*.html` under --content that is not
  *            under --before (the opening snapshot of content/): the pass's new documents, the only ones its
  *            deploys may send. Written through temp + rename.
  *
@@ -41,7 +44,7 @@ const SELF = fileURLToPath(import.meta.url);
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 if (!CONTRACTS) { console.error('extend-roster: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/) — copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(2); }
-const { pathKey, deliveredUrl, documentPath } = await import(CONTRACTS.href);
+const { pathKey, deliveredUrl } = await import(CONTRACTS.href);
 
 class UsageError extends Error {}
 const usage = (m) => { throw new UsageError(`extend-roster: ${m}`); };
@@ -149,8 +152,9 @@ function select(o) {
     console.error(`extend-roster: ${r.refused.length} named url(s) refused; nothing written`);
     return 2;
   }
-  writeAtomic(o.out, r.urls.length ? `${r.urls.join('\n')}\n` : '');
+  // the reservations first, the roster last: a roster on disk means every output of the selection is written
   if (o.slugsOut) writeAtomic(o.slugsOut, cov.slugs.length ? `${cov.slugs.join('\n')}\n` : '');
+  writeAtomic(o.out, r.urls.length ? `${r.urls.join('\n')}\n` : '');
   console.error(`roster: ${r.urls.length} page(s) → ${o.out} (${candidates.length} candidate(s); ${captured.size} captured, ${cov.paths.size} delivered, ${documents.size} document destination(s) reserved)`);
   return 0;
 }
@@ -158,7 +162,7 @@ function select(o) {
 function publish(o) {
   if (!existsSync(o.before) || !statSync(o.before).isDirectory()) usage(`--before is not a directory: ${o.before}`);
   const before = new Set(htmlFiles(o.before));
-  const fresh = htmlFiles(o.content).filter((f) => !before.has(f)).map((f) => documentPath(f));
+  const fresh = htmlFiles(o.content).filter((f) => !before.has(f)).map((f) => `/${f}`);
   writeAtomic(o.out, fresh.length ? `${fresh.join('\n')}\n` : '');
   console.error(`publish: ${fresh.length} new document(s) → ${o.out} (${before.size} under ${o.before} held)`);
   return 0;

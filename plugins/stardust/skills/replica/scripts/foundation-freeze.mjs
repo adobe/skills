@@ -150,7 +150,8 @@ export function parseArgs(argv) {
 /** A manifest path: a non-empty string, relative, no `..` segment, no backslash or NUL. Pure. */
 export function isRootRelative(p) {
   if (typeof p !== 'string' || !p.trim() || /[\\\0]/.test(p) || isAbsolute(p)) return false;
-  return !posix(normalize(p)).split('/').includes('..');
+  // the segments as written: `styles/../head.html` is refused too, though it would normalize under root
+  return !p.split('/').includes('..');
 }
 
 // Root-relative frozen entries: strip a leading `./`; never absolute, never climbing out of root.

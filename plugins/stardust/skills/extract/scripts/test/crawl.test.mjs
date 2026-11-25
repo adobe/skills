@@ -39,6 +39,7 @@ process.env.TMPDIR = mkdtempSync(join(tmpdir(), 'crawl-live-state-')); // the sh
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
+const ROSTER = join(HERE, '..', '..', '..', 'replica', 'scripts', 'extend-roster.mjs'); // writes the roster --pages-file replays
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
@@ -306,6 +307,26 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     assert.doesNotMatch(plainQuery.stderr, /query string|0 new pages/);
     assert.match(plainQuery.stderr, /^\[crawl\] --skip-captured: /m);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('--pages-file: one url per line, taken whole — a roster url holding a comma replays exactly (composition with extend-roster select); exclusive with --pages; missing, empty or flag-shaped exits as a usage error', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crawl-pages-file-'));
+  try {
+    const roster = join(dir, 'urls.txt'); const cand = join(dir, 'cand.txt');
+    writeFileSync(join(dir, 'state.json'), JSON.stringify({ site: { originUrl: 'https://example.test' }, pages: [] }));
+    writeFileSync(join(dir, 'cov.json'), JSON.stringify({ pages: [] }));
+    writeFileSync(cand, 'https://example.test/search?tags=a,b\n');
+    const sel = spawnSync(process.execPath, [ROSTER, 'select', '--candidates', cand, '--out', roster, '--state', join(dir, 'state.json'), '--coverage', join(dir, 'cov.json'), '--content', join(dir, 'none')], { encoding: 'utf8' });
+    assert.equal(sel.status, 0, sel.stderr);
+    const a = parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--pages-file', roster]);
+    assert.deepEqual(a.pages, ['https://example.test/search?tags=a,b'], 'one page, as selected');
+    assert.deepEqual(parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--pages', 'https://example.test/search?tags=a,b']).pages.length, 2, '--pages splits on commas (unchanged)');
+    assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages-file', roster, '--pages', '/x']), /exclusive/);
+    assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages', '/x', '--pages-file', roster]), /exclusive/);
+    writeFileSync(join(dir, 'empty.txt'), '\n');
+    assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages-file', join(dir, 'empty.txt')]), /lists no url/);
+    assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages-file', join(dir, 'missing.txt')]), /cannot read/);
+    assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages-file', '--max']), /needs a file of urls/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 check('captureKey is the SOURCE page: a folder\'s index.html is the folder, `www.` folded, the query string kept (distinct `?` pages stay distinct)', () => {
   assert.equal(crawl.captureKey('https://ex.test/visit/index.html'), crawl.captureKey('https://ex.test/visit/'));

@@ -251,7 +251,7 @@ check('exported helpers: snapshot() is sorted, skips absent entries and records 
 
 check('a manifest naming a path outside --root (absent[], paths[] or a files key) is refused, exit 2, before anything is hashed or reported `added`', () => {
   write('outside-probe.txt', 'x');
-  for (const bad of [{ paths: [], absent: ['../outside.txt'], files: {} }, { paths: ['/etc/hosts'], files: {} }, { paths: [], files: { '../../x': 'h' } }, { paths: [], absent: 'x', files: {} }, { paths: ['a/../../b'], files: {} }]) {
+  for (const bad of [{ paths: [], absent: ['../outside.txt'], files: {} }, { paths: ['/etc/hosts'], files: {} }, { paths: [], files: { '../../x': 'h' } }, { paths: [], absent: 'x', files: {} }, { paths: ['a/../../b'], files: {} }, { paths: ['styles/../head.html'], files: {} }]) {
     writeFileSync(join(root, 'bad.json'), JSON.stringify(bad));
     for (const args of [['check', '--manifest', 'bad.json'], ['freeze', '--from', 'bad.json', '--out', 'bad-out.json']]) {
       const r = run(...args);

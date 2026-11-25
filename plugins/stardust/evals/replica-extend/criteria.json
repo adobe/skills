@@ -10,7 +10,7 @@
     {
       "name": "spec_frozen",
       "max_score": 20,
-      "description": "stardust/replica/extend/x1/ holds a copy of the spec files that exist (root and stardust/current/ PRODUCT.md, DESIGN.md, DESIGN.json), a foundation-freeze manifest over them, request.txt and base.txt (the opening commit, also in the `extend start` detail), a copy of content/ under opening/; x1/foundation-freeze.json is re-frozen with the same paths as the fixture's (styles/, head.html, blocks/header/), not the script's defaults. At the end the six spec files and stardust/direction.md are byte-identical to the fixture: no re-promotion, no extract synthesis (Phases 3–5 of extract) over the new page, no module added to DESIGN.json."
+      "description": "stardust/replica/extend/x1/ holds a copy of the spec files that exist (root and stardust/current/ PRODUCT.md, DESIGN.md, DESIGN.json), a foundation-freeze manifest over them, request.txt and base.txt (the opening commit, also in the `extend start` detail), a copy of content/ under opening/ whose content/index.html is byte-identical to the fixture's, listed in a tracked opening.sha256, with opening/ ignored by x1/.gitignore (the snapshot never enters a commit); x1/foundation-freeze.json is re-frozen with the same paths as the fixture's (styles/, head.html, blocks/header/), not the script's defaults. At the end the six spec files and stardust/direction.md are byte-identical to the fixture: no re-promotion, no extract synthesis (Phases 3–5 of extract) over the new page, no module added to DESIGN.json."
     },
     {
       "name": "roster_before_capture",

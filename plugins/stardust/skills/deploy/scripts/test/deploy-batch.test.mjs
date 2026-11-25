@@ -12,7 +12,7 @@
 // reaches stdout, stderr, a ledger or a log.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'deploy-batch.mjs');
+const ROSTER = join(HERE, '..', '..', '..', 'replica', 'scripts', 'extend-roster.mjs'); // the producer of an extend pass's --allow list
 const proj = mkdtempSync(join(tmpdir(), 'deploy-batch-test-'));
 const TOKEN = `tok-${randomBytes(12).toString('hex')}`;
 const FRESH_TOKEN = `fresh-${randomBytes(12).toString('hex')}`; // the token after a refresh: the fake accepts it everywhere
@@ -75,6 +76,7 @@ const server = createServer((req, res) => {
       if (/-dead$/.test(p) && !fresh) return reply(401, ''); // the token is dead until refreshed
       if (/burst$/.test(p) && n <= 2) return reply(401, ''); // a valid token answered 401 under a burst, then accepted
       if (/flaky$/.test(p)) return reply(503, 'unavailable');
+      if (/-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the transport fails, every attempt
       if (/recover$/.test(p) && n <= 2) return reply(503, 'unavailable');
       if (!valid) return reply(401, 'bad token');
       const created = () => { putOk.add(p); reply(201, '{}', { 'content-type': 'application/json' }); };
@@ -99,7 +101,8 @@ const server = createServer((req, res) => {
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
       bump('verify', p);
-      return putOk.has(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
+      // an older version of a `-sever` page is still live: the delivered origin answers 200 for it
+      return putOk.has(p) || /-sever$/.test(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
     }
     return reply(405, `unexpected ${req.method} ${url}`);
   });
@@ -207,6 +210,46 @@ await check('--allow fails closed on a missing, blank or flag-shaped value — e
     assert.match(r.err, /--allow needs a file of web paths/);
     assert.equal(since(from).length, 0, `${JSON.stringify(tail)}: no request at all`);
   }
+});
+await check('a PUT whose transport fails through every retry (status 0) fails the page — exit 1, ledger put-fail, no preview or live — even when an older version is still served; the re-run drives it again', async () => {
+  site('site-sv', ['old-sever']);
+  const from = requests.length;
+  const r = await run(['--content', 'site-sv', '--retries', '1']);
+  assert.equal(r.code, 1, r.out + r.err);
+  const l = ledgerOf('site-sv')['/old-sever'];
+  assert.equal(l.status, 'put-fail'); assert.equal(l.put, 0); assert.equal(l.preview, undefined);
+  assert.equal(since(from).filter((q) => q.method === 'POST').length, 0, 'no preview, no live');
+  const again = await run(['--content', 'site-sv', '--retries', '0']);
+  assert.match(again.err, /1 pages, 0 already live, 1 to drive/, 'not skipped as live on the re-run');
+});
+await check('a list entry that names two documents (`/nav.html`: nav.html or nav.html.html) exits 2 with nothing sent; the content file path `/nav.html.html` sends only that document', async () => {
+  site('site-amb', ['nav', 'nav.html']);
+  writeFileSync(join(proj, 'site-amb.allow'), '/nav.html\n');
+  const from = requests.length;
+  const amb = await run(['--content', 'site-amb', '--allow', 'site-amb.allow', '--force']);
+  assert.equal(amb.code, 2, amb.out + amb.err);
+  assert.match(amb.err, /--allow: 1 entry names two documents \(\/nav\.html is \/nav or \/nav\.html\)/);
+  assert.equal(since(from).length, 0, 'no request at all');
+  writeFileSync(join(proj, 'site-amb.allow'), '/nav.html.html\n');
+  const from2 = requests.length;
+  const ok = await run(['--content', 'site-amb', '--allow', 'site-amb.allow', '--force']);
+  assert.equal(ok.code, 0, ok.out + ok.err);
+  assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/nav.html.html`], 'the new document, never the old nav');
+});
+await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s new documents are sent (nav.html.html, visit/index.html), never the opening nav', async () => {
+  site('site-x', ['nav', 'about']);
+  mkdirSync(join(proj, 'site-x-opening'), { recursive: true });
+  spawnSync('cp', ['-Rp', join(proj, 'site-x'), join(proj, 'site-x-opening', 'content')]);
+  site('site-x', ['nav.html', 'visit/index']);
+  writeFileSync(join(proj, 'site-x', 'nav.html'), '<nav>relinked locally</nav>');
+  const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--before', join(proj, 'site-x-opening', 'content'), '--content', join(proj, 'site-x'), '--out', join(proj, 'site-x.publish')], { encoding: 'utf8' });
+  assert.equal(pub.status, 0, pub.stderr);
+  const from = requests.length;
+  const r = await run(['--content', 'site-x', '--allow', 'site-x.publish', '--force']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/nav.html.html`, `${SRC}/visit/index.html`]);
+  const put = since(from).find((q) => q.method === 'PUT' && q.url.endsWith('/nav.html.html'));
+  assert.equal(put.parts[0].data.toString('utf8'), FRAG['/nav.html'], 'the new document\'s bytes, not the nav\'s');
 });
 await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
   site('site-fold', ['visit/index', 'other']);

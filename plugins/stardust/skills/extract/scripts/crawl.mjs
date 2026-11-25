@@ -62,13 +62,15 @@
  *     the rollout link audit (15 × 404, then repointed to the source).
  *
  * Usage:
- *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
+ *   node crawl.mjs --url https://example.com [--pages a,b,c | --pages-file <file>] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
  *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--skip-captured stardust/state.json] \
  *     [--reserve-slugs <file>] [--skip-failed] [--first-run-order] [--select-only]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
+ *     --pages-file <file>     the same list, one url per line, taken whole — a url may hold a comma
+ *                             (`?tags=a,b`); a roster a script wrote replays exactly. Not with --pages
  *     --max <n>               discovery cap (default 25; 0 = no cap; listed --pages are never dropped)
  *     --link-first            the user named the page count: entry page, then its own same-origin page
  *                             links in document order, then the other discovered pages, up to --max
@@ -236,7 +238,20 @@ export function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
-    else if (k === '--pages') a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--pages') {
+      if (a.pagesFile !== undefined) throw new Error('--pages-file and --pages are exclusive');
+      a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    else if (k === '--pages-file') {
+      const f = argv[(i += 1)];
+      if (!f || !f.trim() || f.startsWith('--')) throw new Error('--pages-file needs a file of urls, one per line');
+      if (a.pagesFile !== undefined || a.pages) throw new Error('--pages-file and --pages are exclusive');
+      let text;
+      try { text = readFileSync(f, 'utf8'); } catch (e) { throw new Error(`--pages-file: cannot read ${f} (${e.code || e.message})`); }
+      a.pagesFile = f;
+      a.pages = text.split('\n').map((s) => s.trim()).filter(Boolean);
+      if (!a.pages.length) throw new Error(`--pages-file: ${f} lists no url`);
+    }
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max') a.max = maxPages(argv[(i += 1)]);
     else if (k === '--link-first') a.linkFirst = true;
