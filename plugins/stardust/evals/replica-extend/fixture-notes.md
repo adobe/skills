@@ -18,10 +18,9 @@ Playwright installed:
 
 - `ledger.mjs last replica` → the `handoff end` line; `ledger.mjs replica
   extend start --track x1 --detail "extend-next 1" --strict` exits 0.
-- `content/index.html` is the delivered home document; the opening copies it
-  to `stardust/replica/extend/x1/opening/content/index.html` byte for byte,
-  and `git status` shows `opening.sha256` but never `opening/` (ignored by
-  `x1/.gitignore`).
+- `content/index.html` is the delivered home document; `extend-roster.mjs
+  inventory --pass stardust/replica/extend/x1` lists it as `<sha256>
+  index.html tracked` in `inventory.tsv`, and copies no content bytes.
 - `foundation-freeze.mjs freeze --paths-if-present <the six spec files> --out
   stardust/replica/extend/x1/spec-freeze.json` → `frozen 6 files`;
   `freeze --from stardust/rollout/foundation-freeze.json` → `frozen 3 files`,

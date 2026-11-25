@@ -337,7 +337,8 @@ export function capturedFromState(state) {
 /**
  * Page records an interrupted run already wrote under <out>/pages/ (`{ slug, url, finalUrl }` each), merged into
  * a captured set from capturedFromState: their urls are captured and their slugs taken, so a resumed run neither
- * fetches them again nor writes over them. Returns the number of records added. Pure (mutates `captured`).
+ * fetches them again nor writes over them. Returns the number of records added and lists them ({ slug, url }) in
+ * `captured.recovered`. Pure (mutates `captured`).
  */
 export function addCapturedRecords(captured, records) {
   let n = 0;
@@ -348,19 +349,20 @@ export function addCapturedRecords(captured, records) {
       if (!u) continue;
       try { const k = captureKey(normalizeUrl(u)); if (!captured.keys.has(k)) { captured.keys.add(k); captured.urls.push(normalizeUrl(u)); hit = true; } } catch { /* not a url */ }
     }
-    if (hit) n += 1;
+    if (hit) { n += 1; (captured.recovered ||= []).push({ slug: r?.slug ?? null, url: r?.url ?? r?.finalUrl ?? null }); }
   }
   return n;
 }
 
 // The identity --skip-captured matches on — the SOURCE page: dedupeKey with a `www.` prefix folded (a capture
-// recorded on the apex host and a roster that followed the redirect to `www.` name one page) and a folder's
+// recorded on the apex host and a roster that followed the redirect to `www.` name one page; `http:` read as
+// `https:` likewise) and a folder's
 // `index.html` folded into the folder (`/visit/index.html` is `/visit/`). The query string stays: some sites serve
 // distinct pages at `?` values (ia-extraction.md § URL normalization).
 export function captureKey(href) {
   const u = new URL(href);
   const p = u.pathname.replace(/\/index\.html?$/i, '/').replace(/\/+$/, '');
-  return `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${p}${u.search}`;
+  return `${u.protocol === 'http:' ? 'https:' : u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${p}${u.search}`;
 }
 
 /** Every url a run of this crawl log failed to capture: runs[].crawl.failures and the latest crawl.failures. Pure. */
@@ -392,7 +394,10 @@ export function appendRun(prev, log, at) {
     : (prev?.discovery || prev?.crawl ? [{ at: prev._provenance?.writtenAt ?? null, discovery: prev.discovery ?? null, crawl: prev.crawl ?? null }] : []);
   return { ...prev, ...log, runs: [...runs, { at, discovery: log.discovery, crawl: log.crawl }] };
 }
-const sameSite = (a, b) => { const x = new URL(a); const y = new URL(b); return x.protocol === y.protocol && x.host.toLowerCase().replace(/^www\./, '') === y.host.toLowerCase().replace(/^www\./, ''); };
+// http and https are one site (a stored http entry whose site upgrades to https keeps its roster), as are `www.` and
+// the apex; another host, or another scheme than these two, is not.
+const webScheme = (p) => (p === 'http:' || p === 'https:' ? 'https:' : p);
+const sameSite = (a, b) => { const x = new URL(a); const y = new URL(b); return webScheme(x.protocol) === webScheme(y.protocol) && x.host.toLowerCase().replace(/^www\./, '') === y.host.toLowerCase().replace(/^www\./, ''); };
 
 /**
  * The --pages check that needs no browser (--skip-captured): `offOrigin`, the listed urls outside the entry's
@@ -1479,6 +1484,8 @@ async function main() {
       try { return [JSON.parse(readFileSync(path.join(dir, f), 'utf8'))]; } catch { return [{ slug: f.slice(0, -5) }]; }
     }) : [];
     const onDisk = addCapturedRecords(args.captured, records);
+    // named, so the caller adds exactly these rows to state.json (extract Phase 6) instead of reading the whole tree
+    for (const r of args.captured.recovered || []) console.error(`[crawl] --skip-captured: record not in state.json: ${r.slug} ${r.url}`);
     // the crawl log's history: earlier failures (--skip-failed) and the first run's order (--first-run-order)
     const logFile = path.join(args.out, '_crawl-log.json');
     let crawlLog = null;

@@ -292,6 +292,12 @@ check('CLI: --skip-captured with a --pages list that is all captured exits 0 wit
     const resumed = spawnSync(process.execPath, [...base, '--pages', '/visit'], { cwd: root, encoding: 'utf8', timeout: 10000 });
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.match(resumed.stderr, /0 new pages .*1 record\(s\) under .*pages not in it/);
+    assert.match(resumed.stderr, /^\[crawl\] --skip-captured: record not in state\.json: visit https:\/\/www\.example\.com\/visit\/$/m, 'named, slug and url');
+    // a roster discovered after an http → https upgrade replays against the stored http entry
+    const upgraded = spawnSync(process.execPath, [SCRIPT, '--url', 'http://www.example.com/', '--out', join(root, 'out'), '--skip-captured', join(root, 'state.json'), '--pages', 'https://www.example.com/visit/'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(upgraded.status, 0, upgraded.stderr);
+    assert.doesNotMatch(upgraded.stderr, /off the site/);
+    assert.match(upgraded.stderr, /0 new pages/, 'the https roster url is the captured visit record: same page across the scheme');
     // a page an earlier run could not capture (the crawl log's runs[]) is not selected again with --skip-failed
     writeFileSync(join(root, 'out', '_crawl-log.json'), JSON.stringify({ runs: [{ crawl: { failures: [{ url: 'https://www.example.com/broken' }] } }], crawl: { failures: [] } }));
     const failedOnce = spawnSync(process.execPath, [...base, '--pages', '/broken', '--skip-failed'], { cwd: root, encoding: 'utf8', timeout: 10000 });
@@ -328,7 +334,8 @@ check('--pages-file: one url per line, taken whole — a roster url holding a co
     assert.throws(() => parseArgs(['node', 'crawl.mjs', '--pages-file', '--max']), /needs a file of urls/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-check('captureKey is the SOURCE page: a folder\'s index.html is the folder, `www.` folded, the query string kept (distinct `?` pages stay distinct)', () => {
+check('captureKey is the SOURCE page: a folder\'s index.html is the folder, `www.` and http/https folded, the query string kept (distinct `?` pages stay distinct)', () => {
+  assert.equal(crawl.captureKey('http://ex.test/visit/'), crawl.captureKey('https://www.ex.test/visit/'));
   assert.equal(crawl.captureKey('https://ex.test/visit/index.html'), crawl.captureKey('https://ex.test/visit/'));
   assert.equal(crawl.captureKey('https://www.ex.test/'), crawl.captureKey('https://ex.test/index.html'));
   assert.notEqual(crawl.captureKey('https://ex.test/p?id=2'), crawl.captureKey('https://ex.test/p?id=1'));
@@ -374,7 +381,9 @@ check('crawl log history: appendRun keeps the latest fields at the top and every
 });
 check('captureKey / precheckPages: a `www.` prefix is one site and one page — a roster that followed the apex → www redirect replays against the apex entry', () => {
   assert.equal(crawl.captureKey('https://www.ex.test/visit/'), crawl.captureKey('https://ex.test/visit'));
-  assert.notEqual(crawl.captureKey('http://ex.test/visit'), crawl.captureKey('https://ex.test/visit'));
+  assert.equal(crawl.captureKey('http://ex.test/visit'), crawl.captureKey('https://ex.test/visit'), 'http → https is one page too');
+  assert.deepEqual(crawl.precheckPages({ url: 'http://ex.test/', pages: ['https://ex.test/visit/'], captured: crawl.capturedFromState({ pages: [] }) }).offOrigin, [], 'an upgraded roster stays on the site');
+  assert.deepEqual(crawl.precheckPages({ url: 'http://ex.test/', pages: ['ftp://ex.test/visit/', 'https://other.test/x'], captured: crawl.capturedFromState({ pages: [] }) }).offOrigin.length, 2, 'another scheme or host is not');
   const captured = crawl.capturedFromState({ pages: [{ slug: 'index', url: 'https://ex.test/' }] });
   const r = crawl.precheckPages({ url: 'https://ex.test/', pages: ['https://www.ex.test/visit/', 'https://www.ex.test/'], captured });
   assert.deepEqual(r.offOrigin, []);

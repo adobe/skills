@@ -61,9 +61,11 @@
  * --paths     optional newline-delimited file of web paths (no extension) to
  *             restrict the run to a subset (re-drive only these); a `.html` entry —
  *             a content file path as localize-links.mjs --json lists it — counts as
- *             the same page without its extension (one `.html` dropped). An entry that
- *             names two documents of --content (`/nav.html`: the file nav.html, or the
- *             document of nav.html.html) exits 2 before anything is sent.
+ *             the same page without its extension (one `.html` dropped). An entry is
+ *             resolved against the documents of --content: its literal form or that
+ *             content-file form, whichever names one; two (`/nav.html`: nav.html or
+ *             nav.html.html) exit 2 before anything is sent; none is named on stderr,
+ *             and a --paths entry that names none makes the run exit 1.
  * A step succeeds only on a 2xx answer: a transport failure that outlasts --retries
  * (status 0) fails the page like a 4xx/5xx, even when the delivered origin still serves
  * an earlier version of it.
@@ -76,6 +78,9 @@
  *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
  * --force     ignore the ledger; re-drive every page.
+ * A page the ledger reads `live` is skipped only while its file still holds the bytes its last PUT sent (the
+ * ledger's `sha256`; a row written before it existed is checked on the delivered origin alone): a page changed
+ * locally since — a later localize-links run — is driven again, named in the count line.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -96,6 +101,7 @@ import { readFile, appendFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { mergeLedger } from './file-lock.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
@@ -249,11 +255,13 @@ async function deployOne(page, args, ledger, logLine) {
 
   // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
   const buf = await readFile(page.file);
+  const sha256 = createHash('sha256').update(buf).digest('hex');
   const fd = new FormData();
   fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
   if (put.status === 401) return tokenHalt('put', put);
   rec.put = put.status;
+  if (ok2xx(put.status)) rec.sha256 = sha256; // the bytes this document now holds in DA
   // only a 2xx answer moves a page on: an exhausted transport failure (status 0) is a failure, never a success
   if (!ok2xx(put.status)) {
     rec.status = 'put-fail';
@@ -315,21 +323,24 @@ async function main() {
   }
   const pathList = async (file) => (await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
     .map((p) => (p.startsWith('/') ? p : `/${p}`));
-  // a list entry names a content file (`/x.html`, one `.html` dropped), a web path (`/x`) or a folder (`/x/` →
-  // `/x/index`). An entry that names two documents of this content dir — `/nav.html` is the file nav.html (`/nav`)
-  // and the document of nav.html.html (`/nav.html`) — is refused before anything is sent: write the content file path.
+  // A list entry is resolved against the documents of --content, never by text alone: its literal form (a web path,
+  // `/changelog.html` for changelog.html.html), its content-file form (one `.html` dropped) and a folder (`/x/` →
+  // `/x/index`). One matching document is the entry; two (`/nav.html`: nav.html or nav.html.html) exit 2 before
+  // anything is sent; none is reported (`--paths` then exits 1 at the end — a named page was not deployed).
   const resolveList = (entries, flag, webPaths) => {
-    const out = new Set(); const ambiguous = [];
+    const out = new Set(); const ambiguous = []; const unmatched = [];
     for (const e of entries) {
-      const stripped = e.replace(/\.html$/i, '').replace(/\/$/, '/index');
-      if (stripped !== e && webPaths.has(stripped) && webPaths.has(e)) ambiguous.push(e);
-      out.add(stripped);
+      const forms = [...new Set([e, e.replace(/\.html$/i, ''), e.replace(/\/$/, '/index')])].filter((f) => webPaths.has(f));
+      if (forms.length > 1) ambiguous.push(`${e} is ${forms.join(' or ')}`);
+      else if (forms.length === 1) out.add(forms[0]);
+      else unmatched.push(e);
     }
     if (ambiguous.length) {
-      console.error(`[deploy-batch] ${flag}: ${ambiguous.length} entr${ambiguous.length === 1 ? 'y names' : 'ies name'} two documents (${ambiguous.map((e) => `${e} is ${e.replace(/\.html$/i, '')} or ${e}`).join('; ')}) — list the content file path (${ambiguous.map((e) => `${e}.html`).join(', ')} for the second); nothing was sent.`);
+      console.error(`[deploy-batch] ${flag}: ${ambiguous.length} entr${ambiguous.length === 1 ? 'y names' : 'ies name'} two documents (${ambiguous.join('; ')}) — list the content file path (\`<file>.html\`); nothing was sent.`);
       process.exit(2);
     }
-    return out;
+    for (const e of unmatched) console.error(`[deploy-batch] ${flag}: ${e} names no document under ${args.content}`);
+    return Object.assign(out, { unmatched: unmatched.length });
   };
   // --allow is read before anything is walked or sent: a publish list that cannot be read sends nothing
   let allowEntries = null;
@@ -347,6 +358,7 @@ async function main() {
     want = resolveList(await pathList(args.paths), '--paths', webPaths);
     pages = pages.filter((p) => want.has(p.webPath));
   }
+  const unmatchedListed = want ? want.unmatched : 0;
   let heldListed = 0;
   if (allow) {
     const held = pages.filter((p) => !allow.has(p.webPath));
@@ -359,10 +371,12 @@ async function main() {
 
   // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
   const todo = [];
-  let skipped = 0;
+  let skipped = 0; let changed = 0;
   for (const p of pages) {
     const rec = ledger[p.webPath];
     if (!args.force && rec && rec.status === 'live') {
+      // a 200 does not say which bytes are live: a page changed locally since its PUT is driven again
+      if (rec.sha256 && rec.sha256 !== createHash('sha256').update(await readFile(p.file)).digest('hex')) { changed += 1; todo.push(p); continue; }
       const v = await deliveredOk({ ...args, webPath: p.webPath });
       if (v.ok) { skipped += 1; continue; }
     }
@@ -377,7 +391,7 @@ async function main() {
   };
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
-  console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
+  console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive${changed ? ` (${changed} changed since their PUT)` : ''} (concurrency ${args.concurrency}, publish=${args.publish})`);
   let done = 0;
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries
   const results = [];
@@ -421,6 +435,10 @@ async function main() {
   }
   if (heldListed) {
     console.error(`[deploy-batch] ${heldListed} listed page(s) held by --allow ${args.allow} — not sent`);
+    process.exit(1);
+  }
+  if (unmatchedListed) {
+    console.error(`[deploy-batch] ${unmatchedListed} --paths entr${unmatchedListed === 1 ? 'y names' : 'ies name'} no document — not deployed`);
     process.exit(1);
   }
 }

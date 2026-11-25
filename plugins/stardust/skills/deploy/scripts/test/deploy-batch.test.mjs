@@ -228,7 +228,7 @@ await check('a list entry that names two documents (`/nav.html`: nav.html or nav
   const from = requests.length;
   const amb = await run(['--content', 'site-amb', '--allow', 'site-amb.allow', '--force']);
   assert.equal(amb.code, 2, amb.out + amb.err);
-  assert.match(amb.err, /--allow: 1 entry names two documents \(\/nav\.html is \/nav or \/nav\.html\)/);
+  assert.match(amb.err, /--allow: 1 entry names two documents \(\/nav\.html is \/nav\.html or \/nav\)/);
   assert.equal(since(from).length, 0, 'no request at all');
   writeFileSync(join(proj, 'site-amb.allow'), '/nav.html.html\n');
   const from2 = requests.length;
@@ -236,20 +236,50 @@ await check('a list entry that names two documents (`/nav.html`: nav.html or nav
   assert.equal(ok.code, 0, ok.out + ok.err);
   assert.deepEqual(since(from2).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/nav.html.html`], 'the new document, never the old nav');
 });
-await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s new documents are sent (nav.html.html, visit/index.html), never the opening nav', async () => {
-  site('site-x', ['nav', 'about']);
-  mkdirSync(join(proj, 'site-x-opening'), { recursive: true });
-  spawnSync('cp', ['-Rp', join(proj, 'site-x'), join(proj, 'site-x-opening', 'content')]);
-  site('site-x', ['nav.html', 'visit/index']);
-  writeFileSync(join(proj, 'site-x', 'nav.html'), '<nav>relinked locally</nav>');
-  const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--before', join(proj, 'site-x-opening', 'content'), '--content', join(proj, 'site-x'), '--out', join(proj, 'site-x.publish')], { encoding: 'utf8' });
+await check('composition: the list `extend-roster.mjs publish` writes, fed to --allow as is — only the pass\'s documents are sent (its roster page, its declared fragment); never an opening document (nav.html, nav.htm.html), a `.htm` file or an owner\'s draft', async () => {
+  const px = join(proj, 'pass-x'); mkdirSync(px, { recursive: true });
+  const sh = (cmd, ...a) => spawnSync(cmd, a, { cwd: px, encoding: 'utf8' });
+  site('pass-x/content', ['nav', 'nav.htm', 'about']);
+  sh('git', 'init', '-q'); sh('git', 'add', '-A'); sh('git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'delivered');
+  mkdirSync(join(px, 'x1'), { recursive: true });
+  writeFileSync(join(px, 'x1', 'base.txt'), sh('git', 'rev-parse', 'HEAD').stdout);
+  assert.equal(spawnSync(process.execPath, [ROSTER, 'inventory', '--pass', 'x1'], { cwd: px, encoding: 'utf8' }).status, 0);
+  writeFileSync(join(px, 'x1', 'urls.txt'), 'https://src.test/visit/\n');
+  writeFileSync(join(px, 'x1', 'also.paths'), '/nav.html.html\n');
+  site('pass-x/content', ['visit/index', 'nav.html', 'draft']);
+  writeFileSync(join(px, 'content', 'nav.htm'), '<nav>no document</nav>');
+  writeFileSync(join(px, 'content', 'nav.html'), '<nav>relinked locally</nav>');
+  const pub = spawnSync(process.execPath, [ROSTER, 'publish', '--pass', 'x1'], { cwd: px, encoding: 'utf8' });
   assert.equal(pub.status, 0, pub.stderr);
+  assert.match(pub.stderr, /held \/draft\.html/);
   const from = requests.length;
-  const r = await run(['--content', 'site-x', '--allow', 'site-x.publish', '--force']);
+  const r = await run(['--content', 'pass-x/content', '--allow', 'pass-x/x1/publish.paths', '--force']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url).sort(), [`${SRC}/nav.html.html`, `${SRC}/visit/index.html`]);
   const put = since(from).find((q) => q.method === 'PUT' && q.url.endsWith('/nav.html.html'));
-  assert.equal(put.parts[0].data.toString('utf8'), FRAG['/nav.html'], 'the new document\'s bytes, not the nav\'s');
+  assert.equal(put.parts[0].data.toString('utf8'), FRAG['/nav.html'], 'the bytes of the new nav.html.html');
+  assert.notEqual(put.parts[0].data.toString('utf8'), '<nav>relinked locally</nav>', 'the new document\'s bytes, never the opening nav\'s');
+});
+await check('a --paths entry is resolved against the documents: `/changelog.html` is the document of changelog.html.html when nothing else matches (as on main); an entry naming no document is named and exits 1', async () => {
+  site('site-lit', ['changelog.html', 'other']);
+  writeFileSync(join(proj, 'site-lit.paths'), '/changelog.html\n/missing\n');
+  const from = requests.length;
+  const r = await run(['--content', 'site-lit', '--paths', 'site-lit.paths']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/changelog.html.html`]);
+  assert.match(r.err, /--paths: \/missing names no document under site-lit/);
+  assert.match(r.err, /1 --paths entry names no document — not deployed/);
+});
+await check('a page the ledger reads live is driven again when its file changed since its PUT (a later relink); unchanged pages stay skipped', async () => {
+  site('site-chg', ['a', 'b']);
+  assert.equal((await run(['--content', 'site-chg'])).code, 0);
+  assert.match(ledgerOf('site-chg')['/a'].sha256, /^[0-9a-f]{64}$/, 'the PUT bytes recorded');
+  writeFileSync(join(proj, 'site-chg', 'a.html'), '<div><p>relinked</p></div>\n');
+  const from = requests.length;
+  const r = await run(['--content', 'site-chg']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /2 pages, 1 already live, 1 to drive \(1 changed since their PUT\)/);
+  assert.deepEqual(since(from).filter((q) => q.method === 'PUT').map((q) => q.url), [`${SRC}/a.html`]);
 });
 await check('--allow with a roster folder url: `/visit/` is the DA document `/visit/index` (content/visit/index.html) — that page is sent, nothing else', async () => {
   site('site-fold', ['visit/index', 'other']);
