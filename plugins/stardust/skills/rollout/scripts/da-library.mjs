@@ -5,7 +5,7 @@
  *
  *   node da-library.mjs [--org <org>] [--site <site>] [--ref main] [--content content] [--blocks-dir blocks]
  *        [--coverage stardust/rollout/coverage] [--template <name>=<delivered path> ...]
- *        [--out stardust/rollout/library] [--dry-run] [--no-preview] [--token-env DA_TOKEN | --token-file <path>]
+ *        [--out stardust/rollout/library] [--dry-run] [--no-preview] [--add] [--token-env DA_TOKEN | --token-file <path>]
  *
  * Reads the authored DA bodies under --content (the files deploy PUT). With rollout's coverage, only delivered pages
  * (status deployed | verified), each template's representative page first (a template whose representative is not
@@ -41,6 +41,16 @@
  * No authored block found, or a delivered page with no content file under --content → exit 1 and no DA write.
  * Idempotent: every write replaces the previous one.
  *
+ * --add (needs coverage) extends the publication published.json records instead of rebuilding it: it reads only the
+ * delivered pages that publication has not read — never read, or re-delivered after it ran (lib.mjs libraryDelta, the
+ * rule of done-check's stale gap) — so an older page's body is never needed. It reads the published library back from
+ * DA first (blocks.json, templates.json, each block document it adds to; GETs, so a token even with --dry-run): a new
+ * class combination is appended to its block's document as DA holds it (an author's edit there kept), a new block
+ * gets its document, a template whose representative it read is written, every other entry is kept as it is; the
+ * sheets keep their rows and gain the new ones. No marker, one for another site, or a published document that cannot
+ * be read back → exit 1, nothing written to DA (run without --add). The marker stays standing while it runs (an
+ * append never removes what it records) and, when every write succeeded, records the pages read as well.
+ *
  * Token: --token-file, --token-env, else DA_TOKEN, else the file named by ADOBE_IMS_TOKEN_FILE (daTokenSource, the
  * shared rule in skills/stardust/scripts/lib/da-token.mjs); never printed. An expired JWT exits 3
  * before any request; a 401 is retried like a 429 and exits 3 when it persists. Exit 0 done; 1 no block found, a delivered page
@@ -53,7 +63,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSyn
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
-import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath, LIBRARY_ROOT, deliveredRows, contentFile } from './lib.mjs'; // lib/da-token.mjs; the marker path
+import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath, libraryDelta, pathKey, LIBRARY_ROOT, deliveredRows, contentFile } from './lib.mjs'; // lib/da-token.mjs; the marker path
 // the DA folder this script writes: lib/documents.mjs owns it, so a page can never be published there
 const LIB = LIBRARY_ROOT.slice(1);
 
@@ -128,6 +138,18 @@ export function blockDoc(block) {
   });
   return body(sections);
 }
+
+/** A block document with the sections of another library document appended inside its <main>, or null when it has
+ * none. Pure. */
+export function appendSections(doc, add) {
+  const at = String(doc).lastIndexOf('</main>');
+  if (at < 0) return null;
+  return `${doc.slice(0, at)}${mainInner(add).replace(/^\n/, '')}${doc.slice(at)}`;
+}
+
+/** The class combinations a block document holds for `name` (sorted classes joined by a space, as collectBlocks keys
+ * them). Pure. */
+export const variantKeys = (doc, name) => new Set(blocksOf(doc).filter((b) => b.name === name).map((b) => [...b.variants].sort().join(' ')));
 
 const PAGE_SPECIFIC = /^(title|description|image|image-alt|json-ld|keywords|canonical|author|published-time|modified-time|(og|twitter):(title|description|image.*|url))$/i;
 /** A delivered page body → a template document: metadata → template-metadata, page-specific values emptied. Pure. */
@@ -217,7 +239,7 @@ function parseArgs(argv) {
     else if (k === '--content') a.content = next(); else if (k === '--blocks-dir') a.blocksDir = next();
     else if (k === '--coverage') a.coverage = next(); else if (k === '--out') a.out = next();
     else if (k === '--template') { const v = next(); const j = v.indexOf('='); if (j < 1) throw new Error('--template takes <name>=<delivered path>'); a.templates.push({ name: v.slice(0, j), path: v.slice(j + 1) }); }
-    else if (k === '--dry-run') a.dryRun = true; else if (k === '--no-preview') a.preview = false;
+    else if (k === '--dry-run') a.dryRun = true; else if (k === '--no-preview') a.preview = false; else if (k === '--add') a.add = true;
     else if (k === '--token-env') a.tokenEnv = next(); else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
   }
@@ -241,7 +263,7 @@ function walk(dir) {
  * the run refuses them — a library read from fewer pages than were delivered must not be recorded as covering them),
  * from coverage when present, else from the content tree.
  */
-function sources(a) {
+function sources(a, prior = null) {
   const pagesDoc = readJSON(join(a.coverage, 'pages.json'));
   const tplDoc = readJSON(join(a.coverage, 'templates.json'));
   const pages = []; const templates = []; const missing = [];
@@ -251,7 +273,13 @@ function sources(a) {
     const all = ((tplDoc && tplDoc.templates) || []).map((t) => ({ t, page: bySlug.get(t.representativeSlug) }));
     for (const x of all) if (!x.page) console.error(`da-library: template ${templateName(x.t)}: representative ${x.t.representativeSlug || '(none)'} not delivered yet — skipped; re-run after it is`);
     const reps = all.filter((x) => x.page);
-    const order = [...reps.map((x) => x.page), ...delivered.filter((p) => !reps.some((x) => x.page === p))];
+    let order = [...reps.map((x) => x.page), ...delivered.filter((p) => !reps.some((x) => x.page === p))];
+    if (prior) {
+      // --add: only what the publication has not read (lib.mjs libraryDelta)
+      const { unread, newer } = libraryDelta(prior, delivered.map((p) => ({ path: p.path, deployedAt: p.delivery.deployedAt })));
+      const keys = new Set([...unread, ...newer].map(pathKey));
+      order = order.filter((p) => keys.has(pathKey(p.path)));
+    }
     for (const p of order) { const f = contentFile(a.content, p.path); if (f) pages.push({ path: p.path, file: f }); else missing.push(p.path); }
     for (const { t, page } of reps) templates.push({ name: templateName(t), path: page.path });
   } else if (existsSync(a.content)) {
@@ -320,6 +348,150 @@ async function acquirePublishLock(path) {
   return null;
 }
 
+/** The DA client of a run: the token (lib/da-token.mjs source rule and expiry preflight) and `call` / `put`, or
+ * `{ code }` to exit with. */
+function daClient(a) {
+  // token: the shared source rule and expiry preflight (lib/da-token.mjs, as deploy-batch / da-media-upload)
+  let src; let token;
+  try { src = daTokenSource(a, process.env); token = readDaToken(src, process.env); } catch (e) { console.error(`da-library: ${e.message}`); return { code: 2 }; }
+  const label = src.tokenFile ? `${src.tokenFile}${src.via === 'ADOBE_IMS_TOKEN_FILE' ? ' (ADOBE_IMS_TOKEN_FILE)' : ''}` : src.tokenEnv;
+  if (!token) { console.error(`da-library: no token in ${label}`); return { code: 2 }; }
+  const exp = jwtExpiry(token);
+  if (exp && exp * 1000 < Date.now()) { console.error(`da-library: the token in ${label} expired at ${new Date(exp * 1000).toISOString()} — refresh it and re-run`); return { code: 3 }; }
+  const SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
+  const CONF = process.env.DA_CONFIG_BASE || 'https://admin.da.live/config';
+  const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
+  const auth = { Authorization: `Bearer ${token}` };
+  const BACKOFF = Number(process.env.DA_LIBRARY_BACKOFF_MS || 500);
+  // 401 / 429 / 5xx / network are retried with backoff (a valid token can be answered 401 under a burst, as the
+  // sibling uploaders record); a 401 that persists is the token → exit 3; a network error that persists is a FAIL.
+  const call = async (url, opts) => {
+    for (let i = 0; ; i += 1) {
+      let res;
+      try { res = await fetch(url, { ...opts, headers: auth }); } catch (e) {
+        if (i < 3) { await new Promise((r) => { setTimeout(r, BACKOFF * 2 ** i); }); continue; }
+        return { ok: false, status: 0, why: String(e.message || e), json: async () => null };
+      }
+      if (i < 3 && (res.status === 401 || res.status === 429 || res.status >= 500)) { await res.arrayBuffer().catch(() => {}); await new Promise((r) => { setTimeout(r, BACKOFF * 2 ** i); }); continue; }
+      if (res.status === 401) { console.error(`da-library: 401 from ${new URL(url).host} after retries — refresh ${label} and re-run the same command`); process.exit(3); }
+      return res;
+    }
+  };
+  const put = (path, text, type) => { const fd = new FormData(); fd.append('data', new Blob([text], { type }), path.split('/').pop()); return call(`${SRC}/${a.org}/${a.site}/${path}`, { method: 'PUT', body: fd }); };
+  return { call, put, SRC, CONF, ADMIN };
+}
+
+/** Merge the library rows into the site config: the number of failed writes, or null when the config was not readable
+ * (the rows to add by hand printed). */
+async function writeConfig(a, call, CONF, rows) {
+  const confUrl = `${CONF}/${a.org}/${a.site}/`;
+  const got = await call(confUrl, { method: 'GET' });
+  if (got.status !== 200 && got.status !== 404) {
+    console.error(`FAIL config read ${got.status} — add these rows to the "library" tab of https://da.live/config#/${a.org}/${a.site}/ by hand:\n${JSON.stringify(rows, null, 2)}`);
+    return null;
+  }
+  const merged = mergeLibraryConfig(got.status === 200 ? await got.json() : null, rows);
+  const fd = new FormData(); fd.append('config', JSON.stringify(merged));
+  const w = await call(confUrl, { method: 'POST', body: fd });
+  console.log(`${w.ok ? 'OK  ' : 'FAIL'} config library tab (${rows.map((r) => r.title).join(', ')}) · post ${w.status}`);
+  if (!w.ok) console.error(`rows to add by hand:\n${JSON.stringify(rows, null, 2)}`);
+  return w.ok ? 0 : 1;
+}
+
+/**
+ * --add: extend the publication `prior` records with the pages `sources` read (those it has not read). Reads the
+ * published library back first; any read that fails stops the run before a DA write.
+ */
+async function addToLibrary(a, { pages, templates, known, prior, marker }) {
+  if (!pages.length) { console.log('da-library: --add: every delivered page is in the publication — nothing to add'); return 0; }
+  const c = daClient(a);
+  if (c.code) return c.code;
+  const { call, put, SRC, CONF, ADMIN } = c;
+  const base = `https://content.da.live/${a.org}/${a.site}/${LIB}`;
+  const refuse = (why) => { console.error(`da-library: --add: ${why} — nothing written to DA; run without --add to rebuild the library`); return 1; };
+  const get = async (path) => { const r = await call(`${SRC}/${a.org}/${a.site}/${path}`, { method: 'GET' }); return { status: r.status, text: r.ok ? await r.text() : null }; };
+  const rowsOf = (text) => {
+    try { const j = JSON.parse(text); const sh = Array.isArray(j.data) ? j : (Array.isArray(j[':names']) && j[j[':names'][0]]) || {}; return Array.isArray(sh.data) ? sh.data : null; } catch { return null; }
+  };
+  const bs = await get(`${LIB}/blocks.json`);
+  if (bs.status !== 200) return refuse(`${LIB}/blocks.json: GET ${bs.status}`);
+  const blockRows = rowsOf(bs.text);
+  if (!blockRows) return refuse(`${LIB}/blocks.json is no sheet`);
+  const ts = await get(`${LIB}/templates.json`);
+  if (ts.status !== 200 && ts.status !== 404) return refuse(`${LIB}/templates.json: GET ${ts.status}`);
+  const tplRows = ts.status === 200 ? rowsOf(ts.text) : [];
+  if (!tplRows) return refuse(`${LIB}/templates.json is no sheet`);
+
+  const authored = collectBlocks(pages.map((p) => ({ path: p.path, html: readFileSync(p.file, 'utf8') })));
+  for (const b of authored) if (known && !known.has(b.name)) console.error(`da-library: authored class "${b.name}" (on ${b.pages[0]}) has no ${a.blocksDir}/${b.name}/ folder — left out of the library`);
+  const blocks = known ? authored.filter((b) => known.has(b.name)) : authored;
+  const docs = []; let added = 0; let newBlocks = 0;
+  const listed = new Set(blockRows.map((r) => String(r.name)));
+  for (const b of blocks) {
+    const path = `${LIB}/blocks/${docName(b.name)}`;
+    if (!listed.has(b.name)) {
+      docs.push({ path, html: blockDoc(b) }); blockRows.push({ name: b.name, path: `${base}/blocks/${docName(b.name)}` });
+      added += b.variants.size; newBlocks += 1; continue;
+    }
+    // the block's document as DA holds it: only a class combination it lacks is appended
+    const cur = await get(`${path}.html`);
+    if (cur.status !== 200) return refuse(`${path}.html: GET ${cur.status}`);
+    const present = variantKeys(cur.text, b.name);
+    const fresh = [...b.variants.keys()].filter((k) => !present.has(k));
+    if (!fresh.length) continue;
+    const doc = appendSections(cur.text, blockDoc({ ...b, variants: new Map(fresh.map((k) => [k, b.variants.get(k)])) }));
+    if (!doc) return refuse(`${path}.html has no <main>`);
+    docs.push({ path, html: doc }); added += fresh.length;
+  }
+  const readKeys = new Set(pages.map((p) => pathKey(p.path)));
+  const tplListed = new Set(tplRows.map((r) => String(r.key)));
+  const tplWritten = []; let newTemplates = 0;
+  for (const t of templates) {
+    const isNew = !tplListed.has(t.name);
+    if (!isNew && !readKeys.has(pathKey(t.path))) continue; // its representative was not re-read: kept as it is
+    const f = contentFile(a.content, t.path);
+    if (!f) { console.error(`da-library: --add: template ${t.name}: no content file for ${t.path} — not added`); continue; }
+    docs.push({ path: `${LIB}/templates/${docName(t.name)}`, html: templateDoc(readFileSync(f, 'utf8')) });
+    if (isNew) { tplRows.push({ key: t.name, value: `${base}/templates/${docName(t.name)}` }); newTemplates += 1; }
+    tplWritten.push(t.name);
+  }
+  const rows = [{ title: 'Blocks', path: `${base}/blocks.json` }, ...(tplRows.length ? [{ title: 'Templates', path: `${base}/templates.json` }] : [])];
+  for (const d of docs) write(join(a.out, `${d.path.slice(LIB.length + 1)}.html`), d.html);
+  write(join(a.out, 'blocks.json'), `${JSON.stringify(sheet(blockRows), null, 2)}\n`);
+  write(join(a.out, 'templates.json'), `${JSON.stringify(sheet(tplRows), null, 2)}\n`);
+  write(join(a.out, 'library-rows.json'), `${JSON.stringify(rows, null, 2)}\n`);
+  console.log(`da-library: --add: ${pages.length} page(s) read, ${added} variant(s) added (${newBlocks} new block(s)), ${tplWritten.length} template(s) written (${newTemplates} new) → ${a.out}`);
+  if (a.dryRun) { console.log('da-library: --dry-run — nothing written to DA'); return 0; }
+
+  let failed = 0;
+  for (const d of docs) {
+    const r = await put(`${d.path}.html`, d.html, 'text/html');
+    let pv = ''; let ok = r.ok;
+    if (r.ok && a.preview && d.path.startsWith(`${LIB}/templates/`)) {
+      const pr = await call(`${ADMIN}/preview/${a.org}/${a.site}/${a.ref}/${d.path}`, { method: 'POST' });
+      pv = ` · preview ${pr.status}`; ok = pr.ok;
+    }
+    if (!ok) failed += 1;
+    console.log(`${ok ? 'OK  ' : 'FAIL'} ${d.path} · put ${r.status}${pv}`);
+  }
+  for (const [name, rowsOfSheet, changed] of [['blocks', blockRows, newBlocks > 0], ['templates', tplRows, newTemplates > 0]]) {
+    if (!changed) continue;
+    const r = await put(`${LIB}/${name}.json`, JSON.stringify(sheet(rowsOfSheet)), 'application/json');
+    if (!r.ok) failed += 1;
+    console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${LIB}/${name}.json · put ${r.status}`);
+  }
+  const conf = await writeConfig(a, call, CONF, rows);
+  if (conf === null) return 1;
+  failed += conf;
+  if (failed) return 1; // the publication's marker stays as it was: every page it records is still in the library
+  const union = (x, y) => [...new Set([...(Array.isArray(x) ? x : []), ...y])];
+  write(marker, `${JSON.stringify({
+    org: a.org, site: a.site, blocks: union(prior.blocks, blocks.map((b) => b.name)), variants: (Number(prior.variants) || 0) + added,
+    templates: union(prior.templates, tplWritten), pages: union(prior.pages, pages.map((p) => p.path)), rows, at: new Date().toISOString(),
+  }, null, 2)}\n`);
+  return 0;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -340,7 +512,7 @@ async function main() {
     // run's marker standing over DA documents it has since replaced.
     const held = await acquirePublishLock(publishLockPath(rolloutDir));
     if (held) { console.error(`da-library: ${held}`); return 1; }
-    rmSync(marker, { force: true });
+    if (!a.add) rmSync(marker, { force: true }); // --add only appends: the publication it extends stays true meanwhile
   }
   const cfg = readJSON(join(rolloutDir, 'rollout.json'));
   const da = (cfg && cfg.site && cfg.site.da) || {};
@@ -348,12 +520,20 @@ async function main() {
   if (!a.org || !a.site) { console.error(`da-library: --org and --site are required (or site.da in ${join(rolloutDir, 'rollout.json')})`); return 2; }
   if (!existsSync(a.content)) { console.error(`da-library: content dir ${a.content} missing — run after deploy has authored the pages`); return 2; }
 
-  const { pages, templates, missing } = sources(a);
+  let prior = null;
+  if (a.add) {
+    if (!readJSON(join(a.coverage, 'pages.json'))) { console.error(`da-library: --add needs rollout coverage (${join(a.coverage, 'pages.json')})`); return 2; }
+    prior = readJSON(marker);
+    if (!prior) { console.error(`da-library: --add: no publication to extend (${marker} absent) — run without --add`); return 1; }
+    if (`${prior.org}/${prior.site}` !== `${a.org}/${a.site}`) { console.error(`da-library: --add: the publication is ${prior.org}/${prior.site}, this run ${a.org}/${a.site} — run without --add`); return 1; }
+  }
+  const { pages, templates, missing } = sources(a, prior);
   if (missing.length) {
     console.error(`da-library: ${missing.length} delivered page(s) have no content file under ${a.content}/ — the library would not cover them: ${missing.join(', ')}. Restore the deployed DA bodies (or re-run deploy for them) and re-run. Nothing written to DA`);
     return 1;
   }
   const known = existsSync(a.blocksDir) ? new Set(readdirSync(a.blocksDir).filter((n) => statSync(join(a.blocksDir, n)).isDirectory())) : null;
+  if (a.add) return addToLibrary(a, { pages, templates, known, prior, marker });
   const authored = collectBlocks(pages.map((p) => ({ path: p.path, html: readFileSync(p.file, 'utf8') })));
   const blocks = known ? authored.filter((b) => known.has(b.name)) : authored;
   for (const b of authored) if (known && !known.has(b.name)) console.error(`da-library: authored class "${b.name}" (on ${b.pages[0]}) has no ${a.blocksDir}/${b.name}/ folder — left out of the library`);
@@ -379,33 +559,9 @@ async function main() {
   if (!blocks.length) { console.error(`da-library: no authored block found in ${a.content} (${pages.length} pages) — is --content the deployed DA bodies? Nothing written to DA`); return 1; }
   if (a.dryRun) { console.log('da-library: --dry-run — nothing written to DA'); return 0; }
 
-  // token: the shared source rule and expiry preflight (lib/da-token.mjs, as deploy-batch / da-media-upload)
-  let src; let token;
-  try { src = daTokenSource(a, process.env); token = readDaToken(src, process.env); } catch (e) { console.error(`da-library: ${e.message}`); return 2; }
-  const label = src.tokenFile ? `${src.tokenFile}${src.via === 'ADOBE_IMS_TOKEN_FILE' ? ' (ADOBE_IMS_TOKEN_FILE)' : ''}` : src.tokenEnv;
-  if (!token) { console.error(`da-library: no token in ${label}`); return 2; }
-  const exp = jwtExpiry(token);
-  if (exp && exp * 1000 < Date.now()) { console.error(`da-library: the token in ${label} expired at ${new Date(exp * 1000).toISOString()} — refresh it and re-run`); return 3; }
-  const SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
-  const CONF = process.env.DA_CONFIG_BASE || 'https://admin.da.live/config';
-  const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
-  const auth = { Authorization: `Bearer ${token}` };
-  const BACKOFF = Number(process.env.DA_LIBRARY_BACKOFF_MS || 500);
-  // 401 / 429 / 5xx / network are retried with backoff (a valid token can be answered 401 under a burst, as the
-  // sibling uploaders record); a 401 that persists is the token → exit 3; a network error that persists is a FAIL.
-  const call = async (url, opts) => {
-    for (let i = 0; ; i += 1) {
-      let res;
-      try { res = await fetch(url, { ...opts, headers: auth }); } catch (e) {
-        if (i < 3) { await new Promise((r) => { setTimeout(r, BACKOFF * 2 ** i); }); continue; }
-        return { ok: false, status: 0, why: String(e.message || e), json: async () => null };
-      }
-      if (i < 3 && (res.status === 401 || res.status === 429 || res.status >= 500)) { await res.arrayBuffer().catch(() => {}); await new Promise((r) => { setTimeout(r, BACKOFF * 2 ** i); }); continue; }
-      if (res.status === 401) { console.error(`da-library: 401 from ${new URL(url).host} after retries — refresh ${label} and re-run the same command`); process.exit(3); }
-      return res;
-    }
-  };
-  const put = (path, text, type) => { const fd = new FormData(); fd.append('data', new Blob([text], { type }), path.split('/').pop()); return call(`${SRC}/${a.org}/${a.site}/${path}`, { method: 'PUT', body: fd }); };
+  const c = daClient(a);
+  if (c.code) return c.code;
+  const { call, put, CONF, ADMIN } = c;
   // published.json (the marker, removed above) is the proof the library reached DA — library-rows.json is written by
   // --dry-run too; it is written only when every write below succeeded.
   let failed = 0;
@@ -426,17 +582,9 @@ async function main() {
     if (!r.ok) failed += 1;
     console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${LIB}/${name}.json · put ${r.status}`);
   }
-  const confUrl = `${CONF}/${a.org}/${a.site}/`;
-  const got = await call(confUrl, { method: 'GET' });
-  if (got.status !== 200 && got.status !== 404) {
-    console.error(`FAIL config read ${got.status} — add these rows to the "library" tab of https://da.live/config#/${a.org}/${a.site}/ by hand:\n${JSON.stringify(rows, null, 2)}`);
-    return 1;
-  }
-  const merged = mergeLibraryConfig(got.status === 200 ? await got.json() : null, rows);
-  const fd = new FormData(); fd.append('config', JSON.stringify(merged));
-  const w = await call(confUrl, { method: 'POST', body: fd });
-  console.log(`${w.ok ? 'OK  ' : 'FAIL'} config library tab (${rows.map((r) => r.title).join(', ')}) · post ${w.status}`);
-  if (!w.ok) { failed += 1; console.error(`rows to add by hand:\n${JSON.stringify(rows, null, 2)}`); }
+  const conf = await writeConfig(a, call, CONF, rows);
+  if (conf === null) return 1;
+  failed += conf;
   if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.map((b) => b.name), variants, templates: tplRows.map((t) => t.key), pages: pages.map((p) => p.path), rows, at: new Date().toISOString() }, null, 2)}\n`);
   return failed ? 1 : 0;
 }

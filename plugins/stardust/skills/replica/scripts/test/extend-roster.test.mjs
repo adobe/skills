@@ -359,7 +359,7 @@ await check('published: the library\'s input holds each document at bytes known 
   pw('content/team.html', TEAM.replace('/visit/', '/visit/#owner'));
 });
 
-await check('opening-check: the library\'s inputs — coverage pages — whose published bytes cannot be recovered are listed (exit 1); a page recoverable from a commit though its file is gone passes; a ledger-only document is no input; redeliver freezes the committed bytes', () => {
+await check('opening-check: the library\'s inputs — coverage pages, or only those a publication to this site has not read — whose published bytes cannot be recovered are listed (exit 1); a page recoverable from a commit though its file is gone passes; a ledger-only document is no input; redeliver freezes the committed bytes', () => {
   pw('content/handmade.html', '<main>delivered by hand</main>\n');   // in the opening commit, verified in coverage, no ledger row
   git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'handmade');
   pw('stardust/rollout/coverage/pages.json', JSON.stringify({ pages: [
@@ -371,6 +371,15 @@ await check('opening-check: the library\'s inputs — coverage pages — whose p
   assert.equal(r.code, 1, r.err);
   assert.equal(pr(`${x3}/unproven.paths`), '/handmade.html\n', 'about recovered from the opening blob; /nav (ledger-only) is no input');
   assert.match(r.err, /unproven \/handmade\.html \(coverage \/handmade\) — no deploy ledger records it live/);
+  // a library published to this site already covers both: the refresh extends it (da-library --add), neither is an input
+  pw('stardust/rollout/rollout.json', JSON.stringify({ site: { da: { org: 'o', site: 's' } } }));
+  pw('stardust/rollout/library/published.json', JSON.stringify({ org: 'o', site: 's', pages: ['/about', '/handmade'], at: '2026-11-01T00:00:00Z' }));
+  r = prun('opening-check', '--pass', x3);
+  assert.equal(r.code, 0, r.err); assert.equal(pr(`${x3}/unproven.paths`), '');
+  assert.match(r.err, /extended \(da-library\.mjs --add\): 0 delivered page\(s\) it has not read are its inputs; the 2 it covers are not read/);
+  pw('stardust/rollout/library/published.json', JSON.stringify({ org: 'o', site: 'other', pages: ['/about', '/handmade'], at: '2026-11-01T00:00:00Z' }));
+  assert.equal(prun('opening-check', '--pass', x3).code, 1, 'another site\'s publication: every delivered page is an input');
+  rmSync(join(proj, 'stardust/rollout/library'), { recursive: true }); rmSync(join(proj, 'stardust/rollout/rollout.json'));
   pw('content/handmade.html', '<main>edited while the owner decides</main>\n');
   r = prun('redeliver', '--pass', x3, '--files', 'handmade.html');
   assert.equal(r.code, 0, r.err);

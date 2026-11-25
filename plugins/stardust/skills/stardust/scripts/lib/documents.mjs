@@ -11,6 +11,11 @@
  *                                   path — unless `hidden: true` (deploy-batch, which has always sent them).
  *   deliveredRows(pagesDoc)         rollout coverage pages.json rows that are delivered: a `path` and delivery status
  *                                   `deployed` or `verified` (da-library's rule, and the extend pass's opening check).
+ *   libraryMarkerPath(rolloutDir)   the block library's proof of publication, `<rollout dir>/library/published.json`:
+ *                                   da-library.mjs writes it, done-check's library gap and the extend pass read it.
+ *   libraryDelta(marker, delivered) the delivered pages (`{ path, deployedAt }` or a path) a publication has not read:
+ *                                   `unread` (never read) and `newer` (re-delivered after it ran) — done-check's stale
+ *                                   gap, `da-library.mjs --add`'s pages and the extend pass's opening check.
  *   contentFile(root, path)         the content file of a delivered path (`/` → index.html, `/a` → a.html or
  *                                   a/index.html), or null.
  *   replaceIfUnchanged(path, sha, bytes)  write `bytes` over a file only while it still holds the bytes whose sha256 is
@@ -73,6 +78,18 @@ export function isLibraryPath(p) {
 
 export const deliveredRows = (pagesDoc) => ((pagesDoc && Array.isArray(pagesDoc.pages)) ? pagesDoc.pages : [])
   .filter((p) => p && p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
+
+export const libraryMarkerPath = (rolloutDir = join('stardust', 'rollout')) => join(rolloutDir, 'library', 'published.json');
+
+export function libraryDelta(marker, delivered = []) {
+  const read = new Set((marker && Array.isArray(marker.pages) ? marker.pages : []).map(pathKey));
+  const ranAt = Date.parse(marker && marker.at);
+  const rows = delivered.map((d) => (typeof d === 'string' ? { path: d } : d));
+  return {
+    unread: rows.filter((d) => !read.has(pathKey(d.path))).map((d) => d.path),
+    newer: rows.filter((d) => read.has(pathKey(d.path)) && Date.parse(d.deployedAt) > ranAt).map((d) => d.path),
+  };
+}
 
 export function contentFile(root, p) {
   const rel = p === '/' || p === '' ? 'index' : String(p).replace(/^\/|\/$/g, '');

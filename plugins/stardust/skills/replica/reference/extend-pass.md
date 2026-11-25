@@ -42,9 +42,11 @@ close or reopen another pass's.
 settle), so every tracked document's opening bytes are the opening commit's, recoverable from any clone that has
 it. The `extend start` line carries the request and that commit, so a session that ends mid-opening loses neither.
 Everything the pass keeps under `$X` is committed with the checkpoints; a shallow clone of the last checkpoint
-resumes it. The opening runs `opening-check` (local, read-only): it lists every page the library refresh reads — a
-coverage row `deployed`/`verified` — whose published bytes cannot be recovered from its file or a commit (a page
-delivered by hand, a row from before ledgers kept digests) in `$X/unproven.paths`, and exits 1 while any is left.
+resumes it. The opening runs `opening-check` (local, read-only): it lists every page the library refresh reads whose
+published bytes cannot be recovered from its file or a commit (a page delivered by hand, a row from before ledgers
+kept digests) in `$X/unproven.paths`, and exits 1 while any is left. With a library already published to this site
+(`stardust/rollout/library/published.json`), the refresh extends it and reads only the delivered pages it has not
+read, usually none, so an older page's bytes are never needed; with none, it reads every delivered page.
 The opening goes on; the report names them up front, and C-deliver settles them before the pass's first PUT (§ 4). A
 document no coverage row names (a ledger-only nav) is no input: it stays reserved and untouched. `inventory` then writes
 `$X/reserved.paths`: every DA document a ledger records live, its file in the checkout or not — no pass output may
@@ -213,7 +215,9 @@ approved revision, below; a finding on one is reported.
   (#793); the others' verdicts are reused, and each summary stays complete.
 - **The library refresh** (`done-check.mjs`'s `library_missing` remedy) reads delivered bytes, never working files: `LIB=$(mktemp
   -d)/library-src; $R published --pass $X --out $LIB` writes each document at the bytes its newest live row's digest
-  names (the working file or any pass's committed copy), and names the rest withheld; then `da-library.mjs --content $LIB`. It exits 1 while a delivered page is withheld (a conflict's published bytes missing, a pass page
+  names (the working file or any pass's committed copy), and names the rest withheld; then `da-library.mjs --content
+  $LIB --add` when a library is published to this site (it appends the new pages' variants, blocks and templates to
+  the documents DA holds and keeps every other entry), else `da-library.mjs --content $LIB`. It exits 1 while a delivered page is withheld (a conflict's published bytes missing, a pass page
   not delivered as it is): close that first, or a `blocked` line names it.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
 - **F–I** as in a first pass, except G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level

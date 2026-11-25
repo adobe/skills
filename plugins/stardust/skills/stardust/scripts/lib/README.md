@@ -14,7 +14,7 @@ pipeline's bytes, so a change here is visible before it ships.
 | `kinds.mjs` | `CODED`, `CHROME_IDS`, `kindOf`, `isChromeName`, `QA_CHROME_PATHS`, `documentKind`, `META_BLOCKS`/`KEY_VALUE_BLOCKS`, `DEFAULT_CONTENT`, the kind enums (`SPEC_MAP_KINDS`, `SPEC_CATALOG_KINDS`, `ROLLOUT_KINDS`, `DYNAMICS_TARGETS`), `AI_EXCLUDE_DEFAULT` |
 | `taxonomy.mjs` | dynamics `TAXONOMY` and the single `CLASS_NAMES` |
 | `resolve.mjs` | `layout`, `siblingCandidates`, `sibling`/`siblingPath`/`loadSibling` |
-| `documents.mjs` | which files of a content tree are DA documents (`contentDocuments`, lowercase `.html` only), what a path-list entry names (`resolveEntry`), the authoring library's DA folder (`LIBRARY_ROOT`, `isLibraryPath`); used by deploy's `deploy-batch`/`localize-links`, replica's `extend-roster`, rollout's `da-library` |
+| `documents.mjs` | which files of a content tree are DA documents (`contentDocuments`, lowercase `.html` only), what a path-list entry names (`resolveEntry`), the authoring library's DA folder (`LIBRARY_ROOT`, `isLibraryPath`), its proof of publication and the delivered pages it has not read (`libraryMarkerPath`, `libraryDelta`); used by deploy's `deploy-batch`/`localize-links`, replica's `extend-roster`, rollout's `da-library` |
 | `da-token.mjs` | where a DA/admin script finds its IMS token (`daTokenSource` — the order is stated in its header), `readDaToken`, `jwtExpiry`; used by deploy's `da-media-upload`/`deploy-batch`, rollout's `da-library`, dynamics' `sync-sheets` |
 
 Centralise first, converge later: a variant keeps its consumer's current output until a deliberate commit removes its

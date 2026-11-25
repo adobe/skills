@@ -40,10 +40,12 @@
  *   .deploy-ledger.json. A row's `published` (the last verified publication: sha256 and time) is the evidence, else a
  *   row reading `live` (its `sha256`, when it has one). A ledger that cannot be parsed stops every command (exit 2).
  *
- *   opening-check  the library's inputs: every page rollout coverage delivers (lib/documents.mjs deliveredRows,
- *             contentFile) whose published bytes cannot be recovered as `published` recovers them (its file, else any
- *             committed copy) is listed in <pass>/unproven.paths. Exit 1 while any is left, 0 when none. A document no
- *             coverage row names (a ledger-only nav) is no input: it stays reserved.
+ *   opening-check  the library refresh's inputs whose published bytes cannot be recovered as `published` recovers
+ *             them (its file, else any committed copy), listed in <pass>/unproven.paths; exit 1 while any is left, 0
+ *             when none. With a library published to this site (lib/documents.mjs libraryMarkerPath, rollout.json
+ *             site.da) the refresh is `da-library.mjs --add` and its inputs are the delivered pages that publication
+ *             has not read (libraryDelta) — usually none; without one, every page coverage delivers (deliveredRows,
+ *             contentFile). A document no coverage row names (a ledger-only nav) is never an input: it stays reserved.
  *   redeliver the owner-approved fallback for an unproven page: freezes the opening commit's bytes of the named files
  *             (never the working file) as <pass>/approved/r<k>/ with r<k>.sha256 and r<k>.paths; a file with no
  *             committed bytes is refused (exit 1, nothing frozen). Commit it, then deploy-batch.mjs --content <it>
@@ -122,7 +124,7 @@ const SELF = fileURLToPath(import.meta.url);
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 if (!CONTRACTS) { console.error('extend-roster: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/) — copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(2); }
-const { pathKey, deliveredUrl, documentPath, contentDocuments, resolveEntry, isLibraryPath, deliveredRows, contentFile, replaceIfUnchanged } = await import(CONTRACTS.href);
+const { pathKey, deliveredUrl, documentPath, contentDocuments, resolveEntry, isLibraryPath, deliveredRows, contentFile, replaceIfUnchanged, libraryMarkerPath, libraryDelta } = await import(CONTRACTS.href);
 
 class UsageError extends Error {}
 class Refused extends Error {}
@@ -405,8 +407,21 @@ function openingCheck(o) {
   const inv = existsSync(join(o.pass, 'inventory.tsv')) ? readInventory(o.pass) : new Map();
   const cache = {};
   const cov = existsSync(o.coverage) ? readJson(o.coverage, '--coverage') : null;
+  // A library already published to this site is extended (`da-library.mjs --add`): it reads only the delivered pages
+  // that publication has not read (lib/documents.mjs libraryDelta) — never an older page it covers. With no current
+  // publication (none, another site's, or one that cannot be read) the refresh rebuilds it from every delivered page.
+  const rolloutDir = dirname(dirname(o.coverage));
+  const parse = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+  const marker = parse(libraryMarkerPath(rolloutDir)); const da = ((parse(join(rolloutDir, 'rollout.json')) || {}).site || {}).da || {};
+  let rows = deliveredRows(cov);
+  if (marker && marker.org && `${marker.org}/${marker.site}` === `${da.org}/${da.site}`) {
+    const { unread, newer } = libraryDelta(marker, rows.map((p) => ({ path: p.path, deployedAt: p.delivery.deployedAt })));
+    const keys = new Set([...unread, ...newer].map(pathKey));
+    console.error(`opening-check: the library published to ${da.org}/${da.site} is extended (da-library.mjs --add): ${keys.size} delivered page(s) it has not read are its inputs; the ${rows.length - keys.size} it covers are not read`);
+    rows = rows.filter((p) => keys.has(pathKey(p.path)));
+  }
   const unproven = []; let pages = 0;
-  for (const row of deliveredRows(cov)) {
+  for (const row of rows) {
     pages += 1;
     const rel = row.path === '/' || row.path === '' ? 'index' : String(row.path).replace(/^\/|\/$/g, '');
     const onDisk = contentFile(o.content, row.path);
@@ -594,7 +609,7 @@ function publish(o) {
   const rewrite = [...keep, ...[...inv.entries()].filter(([f, e]) => !e.ignored && lastPublished(o, f, e, cache, null).from === 'committed').map(([f]) => f)];
   writeAtomic(join(o.pass, 'rewrite.paths'), lines([...new Set(rewrite)].sort().map((f) => `/${f}`)));
   writeAtomic(join(o.pass, 'publish.paths'), lines([...keep].sort().map((f) => `/${f}`)));
-  console.error(`publish: ${keep.size} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held} new held); targets.paths: ${new Set(targets).size} link target(s)`);
+  console.error(`publish: ${keep.size} document(s) → ${join(o.pass, 'publish.paths')} (${inv.size} existing at opening, ${held} new held); targets.paths: ${new Set(targets).size} link target(s); rewrite.paths: ${new Set(rewrite).size - keep.size} of ${inv.size} opening document(s) may be relinked — the rest (published bytes in no commit) keep their links`);
   return 0;
 }
 
