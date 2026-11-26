@@ -14,7 +14,7 @@
  *        [--named] [--max <n>] [--slugs-out <file>] [--reserved-out <file> --opening <file>]
  *        [--state stardust/state.json] [--coverage stardust/rollout/coverage/pages.json] [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs output --pass <dir> --unit <name> --files <a.html,b.html>
- *        [--content content]
+ *        [--content content]      (--files: paths below --content, `visit/index.html`)
  *   node stardust/scripts/replica/extend-roster.mjs publish --pass <dir> [--content content]
  *
  *   select    reads the candidate urls (one per line, in the crawler's order) and keeps those whose EDS destination
@@ -255,7 +255,7 @@ function output(o) {
   const claim = new Map(own.map((f) => [pathKey(`/${f}`), f])); const problems = [];
   for (const f of o.files) {
     const dest = pathKey(`/${f}`);
-    if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends)`);
+    if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends; name it relative to ${o.content}, as in visit/index.html)`);
     else if (aliased(o.content, f)) problems.push(`/${f} — ${ALIASED}`);
     else if (takenWhy(reserved, dest)) problems.push(`/${f} — ${takenWhy(reserved, dest)}`);
     else if (!pages.has(dest)) problems.push(`/${f} — ${dest} is not a roster page (a fragment the pages need goes in also.paths)`);

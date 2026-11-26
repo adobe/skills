@@ -157,7 +157,7 @@ await check('output: a unit records the exact file of a roster page; a file at a
   pw('content/footer.html', '<footer>a pass render over the live footer</footer>\n');
   assert.equal(prun('output', '--pass', X, '--unit', 'c-visit', '--files', 'visit/index.html').code, 0);
   assert.equal(pr(`${X}/outputs/c-visit.paths`), '/visit/index.html\n');
-  for (const [f, why] of [['visit.html', /roster page \/visit already has its output \/visit\/index\.html \(unit c-visit\)/], ['about.html', /\/about was taken when the pass opened/], ['footer.html', /\/footer was taken when the pass opened/], ['fragments/hours.html', /not a roster page \(a fragment the pages need goes in also\.paths\)/], ['visit/Index.HTML', /not a document/]]) {
+  for (const [f, why] of [['visit.html', /roster page \/visit already has its output \/visit\/index\.html \(unit c-visit\)/], ['about.html', /\/about was taken when the pass opened/], ['footer.html', /\/footer was taken when the pass opened/], ['fragments/hours.html', /not a roster page \(a fragment the pages need goes in also\.paths\)/], ['visit/Index.HTML', /not a document/], ['content/visit/index.html', /not a document under content .*name it relative to content, as in visit\/index\.html/]]) {
     const r = prun('output', '--pass', X, '--unit', 'c-other', '--files', f);
     assert.equal(r.code, 2, f); assert.match(r.err, why);
   }

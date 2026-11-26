@@ -151,7 +151,8 @@ enforces the rule, so no caller has to remember a flag:
 - **The pass's documents.** `migrate.mjs render` writes `stardust/migrated/`, never `content/`: the guard stays
   empty during migrate. The conversion of `handoff-contract.md` § 2 writes each `content/<page>.html`. Right after
   it, before the localizer and the PUT, the unit runs `$R output --pass $X --unit <unit> --files <them>`, then
-  `$R publish --pass $X`. `output` records the files, one per roster page, in `$X/outputs/<unit>.paths`. A new
+  `$R publish --pass $X`. `--files` takes paths below `content/`: `visit/index.html`, not
+  `content/visit/index.html`. `output` records the files, one per roster page, in `$X/outputs/<unit>.paths`. A new
   fragment the pages need is one line in `$X/also.paths`, written by the unit that creates it. `publish` holds and
   names any other new document: an owner's draft, or a file at a roster page no unit recorded. A page no unit
   recorded is not sent, and `done-check.mjs` reports it unfinished. Units may run `publish` at the same time: it
