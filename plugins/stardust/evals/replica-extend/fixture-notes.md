@@ -8,7 +8,11 @@ http://localhost:8780/ --pages / --max 1 --dynamics`; the full-page screenshot
 the record names is not included (180 KB, not read by the scenario). Everything
 else — state, ledger, spec, progress files, the foundation and its manifest —
 is written by hand in the shapes the skills document (the rollout coverage
-`stardust/rollout/coverage/pages.json` holds the home row, verified); `setup.sh` makes the
+`stardust/rollout/coverage/pages.json` holds the home row, verified, with the
+`sourceHash` of its migrated file). `stardust/migrated/index.html` and its
+sidecar `_meta.json` come from `migrate.mjs render index` on the fixture's
+prototype: `inventory.mjs` keeps a delivered row only while its migrated file
+is in the checkout. `setup.sh` makes the
 work directory a git repository of one commit, as a delivered project is; the first pass's
 `_crawl-log.json` records `discovery.capSource: "--cap"` (a user-named cap of
 1), so the next page is chosen link-first. No delivery target exists.

@@ -15,7 +15,9 @@
       ],
       "widgets": [],
       "source": {
-        "migratedHtml": "stardust/migrated/index.html"
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:fa1e2dec1ee57fb8d982e0386ec9b16552d3c1cc34d0e1637f39287ff8120b2f"
       },
       "delivery": {
         "status": "verified",

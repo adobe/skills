@@ -13,6 +13,38 @@ A pass runs Phases 1 and 3–5 over its new pages only — never the whole proce
 records `bounded-single`) has no extend pass: it grows to site scope by re-running Phase 1 with `--prep`, whose
 promotion replaces its spec (`preserve-direction.md` § 1a).
 
+## For a caller — a person, or a system that runs the skill unattended
+
+The command line is the whole request. `--hands-off` is the master skill's (`../../stardust/SKILL.md` § Hands-off
+mode): with it a pass asks no question, and records each decision.
+
+| Call | When | Result |
+|---|---|---|
+| `$stardust replica <URL> --extend-next <n>` | the run is delivered | a new pass for the next `n` pages |
+| `$stardust replica <URL> --extend <url,...>` | the run is delivered | a new pass for the named pages |
+| `$stardust replica <URL>` | a session ended early, or a blocker was cleared | resumes the open pass, or the state report when none is open |
+
+- **A restart is the same command, sent again.** With or without the extend flags, an open pass is resumed first.
+  It selects and captures nothing twice, and opens no second pass.
+- **`--extend-next <n>` counts pages to add,** not a total. For a target of 10 pages on a site with 3 delivered,
+  send 7.
+- **The state is one line:** `node stardust/scripts/stardust/ledger.mjs last replica`.
+
+  | The line | Meaning |
+  |---|---|
+  | `handoff end`, no `track` | delivered, no pass yet |
+  | any line with `track: x<N>` other than `extend end` | pass `x<N>` is open |
+  | `event: blocked` with `track: x<N>` | pass `x<N>` is open and waits: `detail` says for what, `next` what to do |
+  | `extend end` with `track: x<N>` | pass `x<N>` is closed: `detail` gives the count delivered, or `rejected:`, or `0 new pages found by discovery` |
+
+- **A refused request writes nothing,** not a ledger line: the state stays `handoff end` or `extend end`, and the
+  reason is in the answer. § Entry lists the refusals.
+- **Before a pass,** the checkout holds `stardust/migrated/` as the earlier passes committed it. `inventory.mjs`
+  drops the coverage row of a delivered page whose migrated file is missing.
+- **A blocked pass ends only by delivering.** Clear what `detail` names, then send the command again. Every
+  `blocked` line of a pass carries `--next "<what to do, then the command to send>"`: a caller reads it, not the
+  answer.
+
 ## Entry — when a pass opens
 
 The ledger decides before replica installs, copies or stamps anything (`../SKILL.md` § Setup, step 0). The master

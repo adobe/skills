@@ -13,6 +13,7 @@ as any remote origin.
   `handoff end`.
 - `stardust/current/`: the capture of the home page and the descriptive spec
   (`PRODUCT.md`, `DESIGN.md`, `DESIGN.json`), promoted to the project root.
+- `stardust/migrated/`: the migrated home page and its sidecar.
 - `stardust/replica/progress.json`, `stardust/migrate/progress.json`,
   `stardust/rollout/progress.json`: the gated archetype and the delivery units,
   all `done`. `stardust/rollout/foundation-freeze.json`: the delivered
