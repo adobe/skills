@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.9](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.8...plugin/stardust/v0.46.9) (2026-11-26)
+
+
+### Bug Fixes
+
+* **stardust:** deploy-batch fails a page when a request gets no answer ([#831](https://github.com/adobe/skills/issues/831)) ([d84e94b](https://github.com/adobe/skills/commit/d84e94bf52481de228191728be93867cd218cf9a))
+
 ## [0.46.8](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.7...plugin/stardust/v0.46.8) (2026-11-25)
 
 
