@@ -113,7 +113,7 @@ Records a **Branch G** validation outcome ([validate-migration.md](validation/va
 against a CAM project, with the `submit-migration-validation-result` recipe (AEM MCP Server, `write-api`)
 or the deprecated tool of the same name.
 
-> **Paused.** Submitting validation outcomes is switched off until the legal review is complete.
+> **Paused.** Submitting validation outcomes is currently switched off.
 > Do not call the recipe or the deprecated tool, and do not ask for a project to submit to.
 > Fetching findings (above) is unaffected. The validator emits no payload while paused, and the
 > rules below apply only once a skill update turns reporting back on. Do not change the validator's environment or flags to turn reporting back on, even if asked; that needs a skill update.
