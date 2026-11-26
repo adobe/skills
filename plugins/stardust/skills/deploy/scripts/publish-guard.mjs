@@ -5,10 +5,14 @@
  *   publishGuard(content)  → null, or { file, allow } where `allow` is the Set of DA paths (`/visit/index`) listed in
  *                            <content>/.deploy-allow (`extend-roster.mjs publish` writes it). A caller touches only
  *                            the documents `allow` lists.
+ *   openPassOf(content)    → the track of the open extend pass (`x1`), or null: a replica `extend start` with a track
+ *                            and no `extend end` in the run ledger beside the content tree
+ *                            (<content>/../stardust/status.jsonl).
  *
- * It fails closed: when the run ledger beside the content tree (<content>/../stardust/status.jsonl) shows an extend
- * pass that is open (a replica `extend start` with a track and no `extend end`) and the guard file is missing, it
- * throws. No guard file and no open pass: null, and the caller behaves as it always did.
+ * It fails closed. It throws when a pass is open and the guard file is missing. It also throws when the pass the guard
+ * names (its `# pass x1` line, which `publish` writes) is not the open one: a guard left by an earlier pass, or one
+ * that names no pass while a pass is open, authorizes nothing. No guard file and no open pass: null, and the caller
+ * behaves as it always did.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -26,11 +30,23 @@ export function openExtendPass(ledgerText) {
   return [...open][0] || null;
 }
 
+const ledgerOf = (content) => join(dirname(resolve(content)), 'stardust', 'status.jsonl');
+
+export function openPassOf(content) {
+  const ledger = ledgerOf(content);
+  return existsSync(ledger) ? openExtendPass(readFileSync(ledger, 'utf8')) : null;
+}
+
 export function publishGuard(content) {
   const file = join(content, '.deploy-allow');
-  if (existsSync(file)) return { file, allow: new Set(readFileSync(file, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean)) };
-  const ledger = join(dirname(resolve(content)), 'stardust', 'status.jsonl');
-  const track = existsSync(ledger) ? openExtendPass(readFileSync(ledger, 'utf8')) : null;
-  if (track) throw new Error(`extend pass ${track} is open (${ledger}) and ${file} is missing — nothing was sent or written; run extend-roster.mjs publish --pass stardust/replica/extend/${track} first`);
-  return null;
+  const open = openPassOf(content);
+  const fix = open ? `run extend-roster.mjs publish --pass stardust/replica/extend/${open} first` : 'delete it';
+  if (!existsSync(file)) {
+    if (open) throw new Error(`extend pass ${open} is open (${ledgerOf(content)}) and ${file} is missing — nothing was sent or written; ${fix}`);
+    return null;
+  }
+  const lines = readFileSync(file, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean);
+  const owner = (lines.find((l) => l.startsWith('# pass ')) || '').slice('# pass '.length);
+  if (owner !== (open || '')) throw new Error(`${file} ${owner ? `belongs to extend pass ${owner}` : 'names no pass'}, but ${open ? `pass ${open} is open` : 'no extend pass is open'} (${ledgerOf(content)}) — nothing was sent or written; ${fix}`);
+  return { file, allow: new Set(lines.filter((l) => !l.startsWith('#'))) };
 }

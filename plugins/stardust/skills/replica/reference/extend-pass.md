@@ -15,7 +15,8 @@ promotion replaces its spec (`preserve-direction.md` § 1a).
 
 ## Entry — when a pass opens
 
-The ledger decides before anything is installed, copied or stamped (`../SKILL.md` § Setup, step 0):
+The ledger decides before replica installs, copies or stamps anything (`../SKILL.md` § Setup, step 0). The master
+skill's Setup has run by then: it refreshes `stardust/scripts/`, and writes nothing else of the project.
 
 | Latest replica line | Without `--extend*` | With `--extend*` |
 |---|---|---|
@@ -48,6 +49,7 @@ L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/
 X=stardust/replica/extend/x1
 $L replica extend start --track x1 --detail "extend-next 300 @ $(git rev-parse HEAD)" --strict   # never a value starting with --
 mkdir -p $X; echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
+(cd content && find . -name '*.html' | sed 's|^\.||' | sort) > $X/opening.paths   # every document now, ignored ones too
 SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
 for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
 $F freeze --paths-if-present "$(echo $SPEC | tr ' ' ,)" --out $X/spec-freeze.json   # a missing one is recorded absent
@@ -56,8 +58,8 @@ cp $X/foundation-freeze.json stardust/rollout/.ff.tmp && mv stardust/rollout/.ff
 ```
 
 Resuming an open pass whose track has no `extract start` yet: re-make each missing piece — `request.txt` and
-`base.txt` from the `extend start` detail, the spec copy, `spec-freeze.json` — and never replace one that
-exists. `$X/foundation-freeze.json` is the evidence the foundation
+`base.txt` from the `extend start` detail, `opening.paths`, the spec copy, `spec-freeze.json` — and never replace
+one that exists. `$X/foundation-freeze.json` is the evidence the foundation
 was re-frozen for this pass: missing, both foundation lines run again (the rollout manifest is replaced only after
 it exists); present, only the copy runs again. Once `extract start` is written, all of them exist; one missing is a
 `blocked` line, not a re-made baseline.
@@ -83,15 +85,16 @@ capture, such as a search page), not a document a deploy ledger records live (it
 not an existing content document (nav, footer, fragments: no coverage row names them); one destination, one slot, a
 query-less URL kept over a query one, so the roster replays as written. `--reserved-out` records every destination
 taken now (captured ones included) in `$X/reserved.paths`, written before the roster: no output of the pass may
-take one (§ 4). Before the selection, `git diff --quiet $(cat $X/base.txt) -- content/` must exit 0 (else stop):
-the reservations then cover every document of the opening commit. A deploy ledger that cannot be read stops the
-selection (exit 2, named):
+take one (§ 4). `--opening $X/opening.paths` keeps the destination of every document of the opening reserved, also
+one that has left the tree since (a git-ignored draft the owner moved). A deploy ledger that cannot be read stops
+the selection (exit 2, named):
 
 ```bash
 C=stardust/scripts/extract/crawl.mjs; R="node stardust/scripts/replica/extend-roster.mjs"; O=<state.json site.originUrl>; S="--skip-captured stardust/state.json"
-printf '%s\n' <url> <url> > $X/named.txt; $R select --named --candidates $X/named.txt --out $X/urls.txt --slugs-out $X/reserved-slugs.txt --reserved-out $X/reserved.paths   # --extend
+T="--slugs-out $X/reserved-slugs.txt --reserved-out $X/reserved.paths --opening $X/opening.paths"
+printf '%s\n' <url> <url> > $X/named.txt; $R select --named --candidates $X/named.txt --out $X/urls.txt $T   # --extend
 node $C --url $O --max 0 --first-run-order --skip-failed $S --select-only > $X/candidates.tmp && mv $X/candidates.tmp $X/candidates.txt \
-  && $R select --candidates $X/candidates.txt --max <n> --out $X/urls.txt --slugs-out $X/reserved-slugs.txt --reserved-out $X/reserved.paths   # --extend-next
+  && $R select --candidates $X/candidates.txt --max <n> --out $X/urls.txt $T   # --extend-next
 ```
 
 A request a resumed pass can never meet (exit 2 on a named URL) closes the pass: `extract end`, the spec check,
@@ -136,11 +139,15 @@ enforces the rule, so no caller has to remember a flag:
 - **The guard.** `$R publish --pass $X` writes `content/.deploy-allow`, the DA paths of the pass's own documents.
   Run it at `handoff start`, where it writes an empty guard. While the guard exists, `deploy-batch.mjs` sends only
   the documents it lists, with or without `--force`. `localize-links.mjs` rewrites only those. A `--paths` entry
-  the guard does not list exits 2 with nothing sent. Every command of `handoff-contract.md` § 2 runs as written
-  there.
+  the guard does not list exits 2 with nothing sent.
+- **One writer.** Every page or fragment of the pass is sent by `deploy-batch.mjs`, a single document too
+  (`--paths`). The hand-written PUT, preview and publish requests that `handoff-contract.md` § 2 permits are never
+  used for a document during a pass: they do not read the guard. An older document that needs a repair (nav,
+  footer, an earlier page) is a `blocked` line for the owner, never sent.
 - **Fail closed.** Both scripts read the run ledger beside `content/`. While it shows an extend pass open (an
   `extend start` without its `extend end`) and the guard is missing, they send and write nothing, and name the
-  `publish` command that puts it back. The guard is committed with the checkpoints.
+  `publish` command that puts it back. The guard names its pass: one that names another pass, or none, is refused
+  too, and only the open pass may run `publish`. The guard is committed with the checkpoints.
 - **The pass's documents.** `migrate.mjs render` writes `stardust/migrated/`, never `content/`: the guard stays
   empty during migrate. The conversion of `handoff-contract.md` § 2 writes each `content/<page>.html`. Right after
   it, before the localizer and the PUT, the unit runs `$R output --pass $X --unit <unit> --files <them>`, then
@@ -148,8 +155,9 @@ enforces the rule, so no caller has to remember a flag:
   fragment the pages need is one line in `$X/also.paths`, written by the unit that creates it. `publish` holds and
   names any other new document: an owner's draft, or a file at a roster page no unit recorded. A page no unit
   recorded is not sent, and `done-check.mjs` reports it unfinished. Units may run `publish` at the same time: it
-  works under a lock. A file at a destination of `$X/reserved.paths`, or reached through a symbolic link, is
-  refused.
+  works under a lock. A file at a destination of `$X/reserved.paths`, or a symbolic or hard link, is refused.
+  `publish` also stops (exit 2) on a second file at a pass page's path, such as `visit.html` beside the recorded
+  `visit/index.html`: remove or rename it.
 
 The units:
 
@@ -178,19 +186,21 @@ The units:
   every delivered page with `--skip-existing`, the new pages are gated, and an earlier page too when an input of its
   reuse key changed (#793); the others' verdicts are reused, and each summary stays complete.
 - **D, D2:** the served sitemap count grows by the pass's pages (`D-site end` names it); every parity row replays.
-- **E2:** `localize-links.mjs --source-host <host> --json` names in `held` each older document it did not
-  rewrite, for example one that links to the source site for a page now delivered. Write that list to
-  `$X/relink-pending.txt`. The report gives the count and the file. Never edit or send those documents: the owner
-  decides, outside the pass.
-- **F–I** as in a first pass, with two changes. G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt`
-  (no site-level fix: the foundation is frozen), then `deploy-batch.mjs --force --paths <the pages it changed>`.
-  The library refresh (`done-check.mjs`'s `library_missing` remedy) is `da-library.mjs`, as in a first pass.
+- **E2:** `localize-links.mjs --source-host <host> --json` names in `held` each document it left alone though a
+  link in it can now be localized. Write to `$X/relink-pending.txt` the entries that `$X/opening.paths` lists: the
+  older documents. A draft made during the pass is not one. The report gives the count and the file. Never edit or
+  send those documents: the owner decides, outside the pass.
+- **F–I** as in a first pass, with three changes. `autofix-aem.mjs` and `da-library.mjs` read the first file that
+  matches a page's path, so run `$R publish --pass $X` before each: its exit 0 says that no second file sits at a
+  pass page's path. G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level fix: the
+  foundation is frozen), then `deploy-batch.mjs --force --paths <the pages it changed>`. The library refresh
+  (`done-check.mjs`'s `library_missing` remedy) is `da-library.mjs`, as in a first pass.
 - **The end.** The guard stays through every check and every retry: a `pages_not_live` gap is closed by a
   re-deploy, and that re-deploy needs it. List each opening document that changed, moved or went missing on disk:
   `git diff --no-renames --diff-filter=MD --name-only $(cat $X/base.txt) -- 'content/*.html'`. The guard sent none
   of them. Name each in the report and leave it as it is. The owner settles that edit, and the pass never restores
   it. Then `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's —
   `replica handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail
-  "<n> pages delivered (x<N>), <total> live[; <n> older documents keep source links (relink-pending.txt)]"`. Only
+  "<n> pages delivered (x<N>), <total> live[; <n> older documents not relinked (relink-pending.txt)]"`. Only
   then `rm content/.deploy-allow`, the last step of the pass. A pass that ends before Phase 5 (rejected, or 0 new
   pages) never wrote a guard.

@@ -11,22 +11,26 @@
  *
  * Usage:
  *   node stardust/scripts/replica/extend-roster.mjs select --candidates <urls.txt> --out <roster.txt>
- *        [--named] [--max <n>] [--slugs-out <file>] [--reserved-out <file>] [--state stardust/state.json]
- *        [--coverage stardust/rollout/coverage/pages.json] [--content content]
+ *        [--named] [--max <n>] [--slugs-out <file>] [--reserved-out <file> --opening <file>]
+ *        [--state stardust/state.json] [--coverage stardust/rollout/coverage/pages.json] [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs output --pass <dir> --unit <name> --files <a.html,b.html>
  *        [--content content]
  *   node stardust/scripts/replica/extend-roster.mjs publish --pass <dir> [--content content]
  *
  *   select    reads the candidate urls (one per line, in the crawler's order) and keeps those whose EDS destination
  *             (pathKey(deliveredUrl(path)): case, `.html`, `/index`, trailing slash, query and `_` folded) is new: not
- *             the destination of a captured page (state.json pages[] url / finalUrl), not a coverage row's `path`,
+ *             the destination of a captured page (state.json pages[] url / finalUrl, and the capture records beside
+ *             it under current/pages/, as the crawler reads them), not a coverage row's `path`,
  *             not a document a deploy ledger records as sent (stardust/deploy/ledger-*.json and
  *             <content>/.deploy-ledger.json — its file in this checkout or not), not an existing content document
  *             (nav, footer and fragments included, though no coverage row names them), and not under /library (the
  *             DA authoring library). One destination takes one slot, at its first candidate's place; a query-less url
  *             of that destination replaces a query one. --max n keeps the first n (0 or absent: all). --slugs-out
  *             gets every coverage `slug` (for `crawl.mjs --reserve-slugs`) and --reserved-out every destination
- *             taken now (captured, coverage, ledgers, content), both written BEFORE the roster, each through a temp
+ *             taken now (captured, coverage, ledgers, content). --opening names the content file paths recorded
+ *             when the pass opened (`/a/index.html`, one per line; git-ignored files included): their destinations
+ *             stay taken though the file has left the tree since, and --reserved-out needs it. --slugs-out and
+ *             --reserved-out are written BEFORE the roster, each through a temp
  *             file + rename: a roster on disk means the selection completed. Hand the roster to capture as a file
  *             (`crawl.mjs --pages-file`): a url may hold a comma. --named (urls the owner named): a url with a query
  *             string, or one whose destination is delivered, an existing document or the library — captured or not
@@ -34,15 +38,18 @@
  *   output    a unit that succeeded records the exact files it wrote for its roster pages in its own
  *             <pass>/outputs/<unit>.paths (one writer per file: concurrent units never share a record); a record only
  *             grows — a resumed unit reporting a subset keeps the rest. Refused (exit 2, nothing written): a file
- *             that is no document (a lowercase `.html` under --content), that is reached through a symbolic link,
- *             whose destination was taken at the opening (<pass>/reserved.paths), that is no roster page's
- *             (<pass>/urls.txt), or a second file for a page any record gives an output.
- *   publish   writes the guard <content>/.deploy-allow: the DA path (`/visit/index`) of every recorded output plus
- *             every entry of <pass>/also.paths (a NEW fragment the pages need, written there by the unit that
- *             creates it), one per line. While the guard exists, `deploy-batch.mjs` sends only the documents it
- *             lists and `localize-links.mjs` rewrites only those. Any other new document (an owner's draft, a file
- *             at a roster page no unit recorded) is held and named. An entry that is missing, reached through a
- *             symbolic link, or whose destination was taken at the opening, exits 2 with nothing written. It reads
+ *             that is no document (a lowercase `.html` under --content), that is another file under a second name
+ *             (a symbolic or hard link), whose destination was taken at the opening (<pass>/reserved.paths), that
+ *             is no roster page's (<pass>/urls.txt), or a second file for a page any record gives an output.
+ *   publish   writes the guard <content>/.deploy-allow: a `# pass x<N>` line that names the pass, then the DA path
+ *             (`/visit/index`) of every recorded output plus every entry of <pass>/also.paths (a NEW fragment the
+ *             pages need, written there by the unit that creates it), one per line. Only the pass the run ledger
+ *             shows open may publish (exit 2 otherwise). While the guard exists, `deploy-batch.mjs` sends only the
+ *             documents it lists and `localize-links.mjs` rewrites only those. Any other new document (an owner's draft, a file
+ *             at a roster page no unit recorded) is held and named. An entry that is missing, a symbolic or hard
+ *             link, or whose destination was taken at the opening, exits 2 with nothing written. So does a second
+ *             file at a pass output's destination (`visit.html` beside `visit/index.html`): rollout's autofix and
+ *             library take the first file that matches a page's path. It reads
  *             the records and replaces the guard under a lock (deploy/file-lock.mjs), so units may run it at once.
  *             Run it after every `output` and before every deploy of the pass; delete the guard after `extend end`.
  *
@@ -52,7 +59,7 @@
 import {
   existsSync, readdirSync, readFileSync, realpathSync, renameSync, mkdirSync, statSync, writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -80,9 +87,10 @@ export function documents(dir, rel = '') {
   }).sort();
 }
 
-// A document reached through a symbolic link (the file or a folder above it) can be an older document under a new
-// name: writing through it would rewrite that older document.
-const viaSymlink = (content, f) => realpathSync(join(content, f)) !== join(realpathSync(content), f);
+// A document that is another file under a second name — reached through a symbolic link (the file or a folder above
+// it), or a hard link — can be an older document: writing it would rewrite that older document.
+const aliased = (content, f) => realpathSync(join(content, f)) !== join(realpathSync(content), f) || statSync(join(content, f)).nlink > 1;
+const ALIASED = 'another file under a second name (a symbolic or hard link): never a pass output';
 
 // `/library` is the DA folder rollout's da-library.mjs writes: never a page's destination.
 const isLibraryPath = (key) => key === '/library' || key.startsWith('/library/');
@@ -155,8 +163,16 @@ function liveDocuments(content) {
   return out;
 }
 
+// The capture records beside a state.json (current/pages/*.json); one that cannot be parsed is skipped.
+function captureRecords(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).filter((n) => n.endsWith('.json')).flatMap((n) => {
+    try { return [JSON.parse(readFileSync(join(dir, n), 'utf8'))]; } catch { return []; }
+  });
+}
+
 const FLAGS = {
-  select: ['--candidates', '--out', '--max', '--state', '--coverage', '--content', '--slugs-out', '--reserved-out'],
+  select: ['--candidates', '--out', '--max', '--state', '--coverage', '--content', '--slugs-out', '--reserved-out', '--opening'],
   output: ['--pass', '--content', '--unit', '--files'],
   publish: ['--pass', '--content'],
 };
@@ -183,10 +199,15 @@ function select(o) {
   let text;
   try { text = readFileSync(o.candidates, 'utf8'); } catch (e) { return usage(`--candidates ${o.candidates}: ${e.code || e.message}`); }
   const candidates = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const captured = capturedDestinations(readJson(o.state, '--state'));
+  if (o.reservedOut && !o.opening) usage('--reserved-out needs --opening <file>: the content file paths recorded when the pass opened');
+  if (o.opening && !existsSync(o.opening)) usage(`--opening ${o.opening}: not found — the opening of the pass writes it`);
+  const state = readJson(o.state, '--state');
+  const captured = capturedDestinations(state);
+  // the capture records on disk, as the crawler reads them: a redirect's final url is captured too
+  for (const key of capturedDestinations({ site: state.site, pages: captureRecords(join(dirname(o.state), 'current', 'pages')) })) captured.add(key);
   const cov = coverageOf(readJson(o.coverage, '--coverage'));
   for (const key of liveDocuments(o.content)) cov.paths.add(key); // a ledger's live document reserves its destination too
-  const docs = new Set(documents(o.content).map((f) => pathKey(`/${f}`)));
+  const docs = new Set([...documents(o.content), ...(o.opening ? readList(o.opening) : [])].map((f) => pathKey(`/${f}`)));
   const r = selectRoster({ candidates, captured, delivered: cov.paths, documents: docs, max: o.max, named: o.named });
   for (const d of r.dropped) console.error(`dropped ${d.url} — ${d.why}`);
   if (r.refused.length) {
@@ -235,7 +256,7 @@ function output(o) {
   for (const f of o.files) {
     const dest = pathKey(`/${f}`);
     if (!docs.has(f)) problems.push(`/${f} — not a document under ${o.content} (a lowercase .html file deploy sends)`);
-    else if (viaSymlink(o.content, f)) problems.push(`/${f} — reached through a symbolic link: never a pass output`);
+    else if (aliased(o.content, f)) problems.push(`/${f} — ${ALIASED}`);
     else if (takenWhy(reserved, dest)) problems.push(`/${f} — ${takenWhy(reserved, dest)}`);
     else if (!pages.has(dest)) problems.push(`/${f} — ${dest} is not a roster page (a fragment the pages need goes in also.paths)`);
     else if ((claim.has(dest) && claim.get(dest) !== f) || (others.has(dest) && others.get(dest).f !== f)) problems.push(`/${f} — roster page ${dest} already has its output /${claim.get(dest) || others.get(dest).f}${others.has(dest) ? ` (unit ${others.get(dest).unit})` : ''}`);
@@ -256,10 +277,14 @@ function output(o) {
 // a guard without the other's documents.
 async function publish(o) {
   const { withLock } = await loadSibling('deploy', 'file-lock.mjs');
-  return withLock(join(o.pass, 'guard'), () => buildGuard(o));
+  const { openPassOf } = await loadSibling('deploy', 'publish-guard.mjs');
+  // only the open pass writes the guard: a retried command of an earlier pass never authorizes its documents again
+  const track = basename(resolve(o.pass)).toLowerCase(); const open = openPassOf(o.content);
+  if (open !== track) usage(`${o.pass} is not the open extend pass (${open ? `pass ${open} is open` : 'the run ledger shows none open'}) — nothing written`);
+  return withLock(join(o.pass, 'guard'), () => buildGuard(o, track));
 }
 
-function buildGuard(o) {
+function buildGuard(o, track) {
   const pages = rosterDestinations(o.pass); const reserved = reservedOf(o.pass);
   const docs = new Set(documents(o.content));
   const keep = new Set(); const problems = []; const owner = new Map();
@@ -273,8 +298,13 @@ function buildGuard(o) {
   }
   for (const f of [...[...owner.values()].map((v) => v.f), ...readList(join(o.pass, 'also.paths'))]) {
     const why = !docs.has(f) ? `listed, but no such document under ${o.content}`
-      : viaSymlink(o.content, f) ? 'reached through a symbolic link: never a pass output' : takenWhy(reserved, pathKey(`/${f}`));
+      : aliased(o.content, f) ? ALIASED : takenWhy(reserved, pathKey(`/${f}`));
     if (why) problems.push(`/${f} — ${why}`); else keep.add(f);
+  }
+  // rollout's autofix and library take the first file that matches a page's path: a second file there is never guessed
+  for (const f of docs) {
+    const dest = pathKey(`/${f}`);
+    if (!keep.has(f) && owner.has(dest)) problems.push(`/${f} — shares the destination ${dest} with the pass output /${owner.get(dest).f}: remove or rename it`);
   }
   if (problems.length) {
     for (const p of problems) console.error(`refused ${p}`);
@@ -286,10 +316,10 @@ function buildGuard(o) {
     const dest = pathKey(`/${f}`);
     if (keep.has(f) || reserved.has(dest)) continue;
     held += 1;
-    console.error(`held /${f} — ${owner.has(dest) ? `roster page ${dest} has its output /${owner.get(dest).f}` : pages.has(dest) ? `no unit recorded it as the output of roster page ${dest}` : 'new, neither a unit\'s output nor in also.paths'}`);
+    console.error(`held /${f} — ${pages.has(dest) ? `no unit recorded it as the output of roster page ${dest}` : 'new, neither a unit\'s output nor in also.paths'}`);
   }
   const guard = join(o.content, GUARD);
-  writeAtomic(guard, lines([...keep].sort().map((f) => documentPath(f))));
+  writeAtomic(guard, lines([`# pass ${track}`, ...[...keep].sort().map((f) => documentPath(f))]));
   console.error(`publish: ${keep.size} document(s) → ${guard} (${held} new held); deploy-batch sends and localize-links rewrites only these while it exists`);
   return 0;
 }

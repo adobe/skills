@@ -44,7 +44,7 @@ source-fidelity gate** against the live site before anything ships.
 0. **A delivered or extending run first, read-only.** With
    `stardust/status.jsonl` present, its last replica line (`node
    <plugin>/skills/stardust/scripts/ledger.mjs last replica`, the installed
-   plugin's copy) decides before anything is installed, copied or stamped. A line of track `x<N>` other
+   plugin's copy) decides before this skill installs, copies or stamps anything. A line of track `x<N>` other
    than `extend end` — `handoff end --track x<N>` included — resumes that
    pass, flags or not. After an UNTRACKED `handoff end`, or an `extend
    end`, a session without `--extend*` renders the state report and stops:
