@@ -1,0 +1,52 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-11-21T16:40:00Z",
+    "stardustVersion": "0.46.7"
+  },
+  "site": {
+    "originUrl": "http://localhost:8780",
+    "deployUrl": "https://main--store--fixture.aem.live",
+    "extractedAt": "2026-11-21T09:02:00Z",
+    "pageCap": 1,
+    "totalDiscovered": 2,
+    "crawled": 1
+  },
+  "direction": {
+    "phrase": "preserve",
+    "resolvedAt": "2026-11-21T09:10:00Z"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-21T09:00:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "index",
+      "url": "http://localhost:8780/",
+      "title": "Fixture Store: everyday goods, made to last",
+      "type": "landing",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-21T09:02:00Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-11-21T12:30:00Z",
+          "approvedBy": "hands-off"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-21T14:05:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/index.json",
+      "prototypePath": "stardust/prototypes/index-proposed.html",
+      "migratedPath": "stardust/migrated/index.html"
+    }
+  ]
+}

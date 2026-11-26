@@ -1,0 +1,30 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-11-21T16:30:00Z",
+    "stardustVersion": "0.46.7"
+  },
+  "pages": [
+    {
+      "slug": "index",
+      "path": "/",
+      "templateId": "index",
+      "blocks": [
+        "hero",
+        "shelf-cards"
+      ],
+      "widgets": [],
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html"
+      },
+      "delivery": {
+        "status": "verified",
+        "deployedAt": "2026-11-21T15:30:00Z",
+        "verifiedAt": "2026-11-21T16:20:00Z",
+        "gate": {
+          "pass": true
+        }
+      }
+    }
+  ]
+}

@@ -52,16 +52,41 @@
  *
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
- *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
+ *     --content content [--paths list.txt] [--allow publish.paths] [--concurrency 4] [--no-publish] \
  *     [--force] [--ledger path] [--log path] [--retries 4] [--backoff-ms 500] \
  *     [--token-env DA_TOKEN | --token-file <path>]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
- *             restrict the run to a subset (re-drive only these).
+ *             restrict the run to a subset (re-drive only these); a `.html` entry —
+ *             a content file path as localize-links.mjs --json lists it — counts as
+ *             the same page without its extension (one `.html` dropped). An entry is
+ *             resolved against the documents of --content: its literal form or that
+ *             content-file form, whichever names one; two (`/nav.html`: nav.html or
+ *             nav.html.html) exit 2 before anything is sent; none is named on stderr,
+ *             and a --paths entry that names none makes the run exit 1.
+ * A step succeeds only on a 2xx answer: a transport failure that outlasts --retries
+ * (status 0) fails the page like a 4xx/5xx, even when the delivered origin still serves
+ * an earlier version of it.
+ * --allow     optional file of web paths, same format as --paths: no page outside it is ever
+ *             sent, whatever --paths, --force or the ledger say — each held page is named
+ *             on stderr (`held /x — not in <file>`), and a held page listed in --paths
+ *             exits 1. Replica's extend pass passes its publish list on every deploy.
+ *             A missing, blank or flag-shaped value, or an unreadable file, exits 2 before
+ *             anything is sent. A `/x/` entry (here and in --paths) is the folder's index
+ *             document `/x/index`, as a roster url names it.
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
- * --force     ignore the ledger; re-drive every page.
+ * --force     re-drive every selected page, whatever the ledger says; its rows, and the last verified
+ *             publication each keeps (`published`), stay — a forced attempt that fails or halts never erases it.
+ * Every run merges only the rows it drove into the ledger (under its lock), and its exit status covers only the
+ * pages it selected and its list errors.
+ * A page the ledger reads `live` and the delivered origin still serves is skipped, as on every re-run: a retry
+ * re-drives the failures only. The ledger also records `sha256` — the bytes verified delivered —, `published: {
+ * sha256, at }` — the last verified publication, never moved by a later failed or halted attempt —, `liveAttempt: {
+ * sha256, at }` — a live publication not yet verified (a reader must not take `published` as current while it
+ * stands) — and `putSha256`, the bytes the last PUT sent, for a caller that compares them (replica's extend pass re-drives its own list with --force
+ * --paths).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -78,10 +103,11 @@
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
-import { readFile, appendFile, readdir, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, appendFile } from 'node:fs/promises';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { mergeLedger } from './file-lock.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
@@ -91,7 +117,7 @@ if (!CONTRACTS) {
   console.error('deploy-batch: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { documentPath, daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
+const { contentDocuments, resolveEntry, daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -116,6 +142,11 @@ function parseArgs(argv) {
     else if (k === '--branch') a.branch = next();
     else if (k === '--content') a.content = next();
     else if (k === '--paths') a.paths = next();
+    else if (k === '--allow') {
+      // a publish list given without a usable file name fails closed: never read as "no --allow"
+      a.allow = next();
+      if (typeof a.allow !== 'string' || !a.allow.trim() || a.allow.startsWith('--')) throw new Error('--allow needs a file of web paths (missing, blank or flag-shaped value) — nothing was sent');
+    }
     else if (k === '--ledger') a.ledger = next();
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
@@ -128,6 +159,8 @@ function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
+  // a misspelled --content must not read as an empty, successful batch (nor get a ledger created in it)
+  if (!existsSync(a.content) || !statSync(a.content).isDirectory()) throw new Error(`--content ${a.content} is not a directory — nothing was sent`);
   // The token source (daTokenSource, lib/da-token.mjs — the uploader's rule): one file or one variable, never
   // both. The file is read here, once, before anything else runs; the value lives on `token` only and every
   // message names the source (tokenLabel, and readDaToken's errors), never the value.
@@ -151,25 +184,14 @@ const rerunCommand = (a) => (a.tokenFile
   ? `node ${process.argv.slice(1).map(shellQuote).join(' ')}   (after writing the fresh token to ${a.tokenFile})`
   : `${a.tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`);
 
-async function walkHtml(dir, base = dir) {
-  const out = [];
-  for (const name of await readdir(dir)) {
-    const full = path.join(dir, name);
-    const s = await stat(full);
-    if (s.isDirectory()) out.push(...(await walkHtml(full, base)));
-    else if (name.endsWith('.html')) {
-      out.push({ file: full, webPath: documentPath(path.relative(base, full)) }); // lib/paths.mjs: a/index.html → /a/index
-    }
-  }
-  return out;
-}
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
 // The admin calls also retry a 401: a valid token can be answered 401 under a concurrent burst (recorded
 // on the media uploader — a whole first burst at concurrency 4, while a lone sequential PUT went through).
 // A 401 that survives every retry is the token, not the page — deployOne turns it into the batch halt.
 const ADMIN_RETRYABLE = new Set([...RETRYABLE, 401]);
+
+const ok2xx = (status) => status >= 200 && status < 300;
 
 async function call(method, url, { token, body } = {}, { retries = 4, backoffMs = 500, retryStatuses = ADMIN_RETRYABLE } = {}) {
   for (let attempt = 0; ; attempt += 1) {
@@ -228,12 +250,15 @@ async function deployOne(page, args, ledger, logLine) {
 
   // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
   const buf = await readFile(page.file);
+  const sha256 = createHash('sha256').update(buf).digest('hex');
   const fd = new FormData();
   fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
   if (put.status === 401) return tokenHalt('put', put);
   rec.put = put.status;
-  if (put.status >= 400) {
+  if (ok2xx(put.status)) rec.putSha256 = sha256; // sent; `sha256` (what the skip trusts) waits for live + verify
+  // only a 2xx answer moves a page on: an exhausted transport failure (status 0) is a failure, never a success
+  if (!ok2xx(put.status)) {
     rec.status = 'put-fail';
     rec.lastError = `PUT ${put.status} ${put.text}`;
     await logLine({ path: page.webPath, step: 'put', status: put.status, text: put.text, attempts: put.attempts });
@@ -244,7 +269,7 @@ async function deployOne(page, args, ledger, logLine) {
   const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args);
   if (prev.status === 401) return tokenHalt('preview', prev);
   rec.preview = prev.status;
-  if (prev.status >= 400) {
+  if (!ok2xx(prev.status)) {
     rec.status = 'preview-fail';
     rec.lastError = `preview ${prev.status} ${prev.text}`;
     await logLine({ path: page.webPath, step: 'preview', status: prev.status, text: prev.text, attempts: prev.attempts });
@@ -256,7 +281,9 @@ async function deployOne(page, args, ledger, logLine) {
     const live = await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, args);
     if (live.status === 401) return tokenHalt('live', live);
     rec.live = live.status;
-    if (live.status >= 400) {
+    // published, not yet verified: until verify confirms it, no earlier `published` reads as what is live now
+    if (ok2xx(live.status)) rec.liveAttempt = { sha256, at: new Date().toISOString() };
+    if (!ok2xx(live.status)) {
       rec.status = 'live-fail';
       rec.lastError = `live ${live.status} ${live.text}`;
       await logLine({ path: page.webPath, step: 'live', status: live.status, text: live.text, attempts: live.attempts });
@@ -268,6 +295,9 @@ async function deployOne(page, args, ledger, logLine) {
   const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
+  if (v.ok) rec.sha256 = sha256; // the bytes verified delivered: a halt or failure before here never moves it
+  // the last verified publication, apart from the attempt's status: a later failed or halted attempt never moves it
+  if (v.ok && publish) { rec.published = { sha256, at: new Date().toISOString() }; delete rec.liveAttempt; }
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };
@@ -291,14 +321,60 @@ async function main() {
     console.error(`[deploy-batch] ${tokenLabel(args)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
-  let pages = await walkHtml(args.content);
+  const pathList = async (file) => (await readFile(file, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
+    .map((p) => (p.startsWith('/') ? p : `/${p}`));
+  // A list entry is resolved against the documents of --content, never by text alone (lib/documents.mjs resolveEntry,
+  // the rule extend-roster's publish list is written to). One matching document is the entry; two (`/nav.html`:
+  // nav.html or nav.html.html) exit 2 before anything is sent; none is reported (`--paths` then exits 1 at the end —
+  // a named page was not deployed).
+  const resolveList = (entries, flag, webPaths) => {
+    const out = new Set(); const ambiguous = []; const unmatched = [];
+    for (const e of entries) {
+      const r = resolveEntry(e, webPaths);
+      if (r.ambiguous) ambiguous.push(`${e} is ${r.ambiguous.join(' or ')}`);
+      else if (r.match) out.add(r.match);
+      else unmatched.push(e);
+    }
+    if (ambiguous.length) {
+      console.error(`[deploy-batch] ${flag}: ${ambiguous.length} entr${ambiguous.length === 1 ? 'y names' : 'ies name'} two documents (${ambiguous.join('; ')}) — list the content file path (\`<file>.html\`); nothing was sent.`);
+      process.exit(2);
+    }
+    for (const e of unmatched) console.error(`[deploy-batch] ${flag}: ${e} names no document under ${args.content}`);
+    return Object.assign(out, { unmatched: unmatched.length });
+  };
+  // --allow is read before anything is walked or sent: a publish list that cannot be read sends nothing
+  let allowEntries = null;
+  if (args.allow) {
+    try { allowEntries = await pathList(args.allow); } catch (e) {
+      console.error(`[deploy-batch] --allow: cannot read ${args.allow} (${e.code || e.message}); nothing was sent.`);
+      process.exit(2);
+    }
+  }
+  // lib/documents.mjs: the documents of --content and the DA path each PUTs to (`a/index.html` → /a/index)
+  let pages = contentDocuments(args.content, { hidden: true }).map((d) => ({ file: path.join(args.content, d.file), webPath: d.webPath }));
+  const webPaths = new Set(pages.map((p) => p.webPath));
+  const allow = allowEntries && resolveList(allowEntries, '--allow', webPaths);
+  let want = null;
   if (args.paths) {
-    const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-      .map((p) => (p.startsWith('/') ? p : `/${p}`)));
+    want = resolveList(await pathList(args.paths), '--paths', webPaths);
     pages = pages.filter((p) => want.has(p.webPath));
   }
-  const ledger = (!args.force && existsSync(args.ledger))
-    ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
+  const unmatchedListed = want ? want.unmatched : 0;
+  let heldListed = 0;
+  if (allow) {
+    const held = pages.filter((p) => !allow.has(p.webPath));
+    for (const p of held) console.error(`[deploy-batch] held ${p.webPath} — not in ${args.allow}`);
+    heldListed = want ? held.length : 0;
+    pages = pages.filter((p) => allow.has(p.webPath));
+  }
+  // --force bypasses the skip below, never the ledger: each row keeps the last verified publication (`published`)
+  let ledger = {};
+  if (existsSync(args.ledger)) {
+    try { ledger = JSON.parse(await readFile(args.ledger, 'utf8')); } catch (e) {
+      if (!args.force) throw e;
+      console.error(`[deploy-batch] --force: ledger ${args.ledger} unreadable (${e.message}) — starting from an empty one`);
+    }
+  }
 
   // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
   const todo = [];
@@ -314,8 +390,12 @@ async function main() {
 
   // Shared file: lock + re-read + merge (this run's rows win) + tmp/rename, so a second batch or a
   // kill mid-write never loses rows or leaves a ledger the next run refuses to parse.
+  // Only the rows this run drove are merged: a row it merely read (another batch's, or history) is never written back
+  // from this run's stale copy.
+  const touched = new Set();
   const persist = async () => {
-    try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); }
+    const own = Object.fromEntries([...touched].map((w) => [w, ledger[w]]));
+    try { mergeLedger(args.ledger, own, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); }
     catch (e) { console.error(`[deploy-batch] ${e.message}`); }
   };
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
@@ -325,6 +405,7 @@ async function main() {
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries
   const results = [];
   await pool(todo, args.concurrency, async (p) => {
+    touched.add(p.webPath);
     const { rec, halt } = await deployOne(p, args, ledger, logLine);
     done += 1;
     results.push({ path: p.webPath, rec, halt });
@@ -355,11 +436,20 @@ async function main() {
     process.exit(TOKEN_EXIT);
   }
 
-  const fails = Object.entries(ledger).filter(([, r]) => !['live', 'previewed'].includes(r.status));
-  console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  // this invocation's verdict: the pages it selected, never a history row of a page it was not asked about
+  const fails = pages.map((p) => [p.webPath, ledger[p.webPath] || {}]).filter(([, r]) => !['live', 'previewed'].includes(r.status));
+  console.error(`[deploy-batch] done. ${todo.length - fails.filter(([w]) => todo.some((t) => t.webPath === w)).length} ok, ${fails.length} failed.`);
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);
+    process.exit(1);
+  }
+  if (heldListed) {
+    console.error(`[deploy-batch] ${heldListed} listed page(s) held by --allow ${args.allow} — not sent`);
+    process.exit(1);
+  }
+  if (unmatchedListed) {
+    console.error(`[deploy-batch] ${unmatchedListed} --paths entr${unmatchedListed === 1 ? 'y names' : 'ies name'} no document — not deployed`);
     process.exit(1);
   }
 }

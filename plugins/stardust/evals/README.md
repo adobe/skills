@@ -92,6 +92,8 @@ v2 evals without modification.
 | `replica-round-cap/`         | Entry point (`replica`)   | A page resumed with its three counted prototype rounds spent: no round past the cap, the way forward recorded with `rounds.mjs decide`, the residual logged or the prototype redone, an honest report. |
 | `replica-frozen-reference/`  | Entry point (`replica`)   | The first round of a page that repaints a band on every load (frozen reference, noise floor, masked rows) and of a variant that changes height on every load (exit 5: no verdict, not a counted round, no hand-made reference). |
 | `replica-measure-first/`     | Entry point (`replica`)   | One small page recreated from scratch: `source-spec.mjs capture` at both widths before any CSS, `compare` exit 0 before the first gate round, clean re-authoring, content verbatim. |
+| `replica-extend/`           | Entry point (`replica`)   | A delivered one-page run extended with `--extend-next 1`: pass `x1` opened on the ledger with its track, the spec and the foundation frozen, the roster selected with `--skip-captured --select-only` before any capture, the delivered page never captured again, the new page's type routed to sibling tier or to Phases 3–4. |
+| `replica-extend-noop/`      | Entry point (`replica`)   | The same delivered project resumed without `--extend*`: the ledger read, the state report, nothing written and nothing re-run, the extend commands named as the way to add pages. |
 | `rollout-gated-archetype/`   | Entry point (`rollout`)   | A replica-flow site of six migrated pages with no AEM target: inventory, block dedup and plan from the scripts; a page type whose archetype is over the bar with no residual entry is blocked with its gate command, one with a documented residual ships; default content is not planned as a block; nothing is reported as delivered. |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
@@ -145,16 +147,17 @@ other colours, which is what a frozen reference measures as its noise floor
 and masks. Everything else is byte-stable. The images are SVG files written
 for the fixture and the fonts are system fonts.
 
-The four `replica-*` scenarios target it. Each has a `setup.sh` that calls
+The six `replica-*` scenarios target it. Each has a `setup.sh` that calls
 `fixture-site/start.sh`: it starts the server detached from the checkout
 (the site's files are never copied into the work directory), reuses one that
 already answers as the fixture, and the server stops by itself after an hour
-without a request. `replica-round-cap`, `replica-frozen-reference` and
-`replica-measure-first` also have a `fixture/` (the project a resumed run
-starts from, recorded against the fixture site; provenance in each
-`fixture-notes.md`) and a `scenario.json` that installs it, so
-`scripts/skill-eval.mjs --scenario` and `runner/run.mjs` start from the same
-files. Their `task.md` holds the setup and the prompt only: `skill-eval.mjs`
+without a request. `replica-round-cap`, `replica-frozen-reference`,
+`replica-measure-first` and `replica-extend` also have a `fixture/` (the
+project a resumed run starts from, recorded against the fixture site;
+provenance in each `fixture-notes.md`) and a `scenario.json` that installs
+it, so `scripts/skill-eval.mjs --scenario` and `runner/run.mjs` start from
+the same files; `replica-extend-noop`'s `setup.sh` copies `replica-extend`'s
+fixture instead. Their `task.md` holds the setup and the prompt only: `skill-eval.mjs`
 gives the whole file to the agent, so the expected behaviour is in
 `criteria.json` and `fixture-notes.md`.
 

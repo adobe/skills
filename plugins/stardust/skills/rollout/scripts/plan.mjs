@@ -8,7 +8,10 @@
  * CONVERTS it; every later page REUSES it by its canonical EDS name. The per-page
  * convert/reuse lists are exactly the input to `deploy`'s Step-7 brief
  * ("Existing blocks — REUSE, do not recreate: …"), so each block converts once
- * WITHOUT changing deploy.
+ * WITHOUT changing deploy. A block a DELIVERED page already uses (delivery status deployed or
+ * verified) is converted: that page is its conversion point, whatever the order, so a later pass
+ * (replica's extend pass, `--pending-only`) is told to reuse it, never to convert it again over
+ * code delivered pages run on.
  *
  * Chrome (header/nav/footer) loads as site-wide authored documents (/nav, /footer), so it is listed
  * once under `fragments`, not per page.
@@ -66,17 +69,24 @@ for (const t of orderedTemplates) {
 for (const p of pages) if (!seen.has(p.slug)) { seen.add(p.slug); order.push(p.slug); }
 
 // --- Walk once, assign each block a single conversion point -----------------------
+// widgets ride along: their code converts once too (widgets/<path>/<name>.html); the page only carries a link
+const modulesOf = (p) => [...new Set([...(p.blocks || []).filter((id) => !isChrome(id)), ...(p.widgets || []).map((w) => w.id)])];
 const converted = new Map(); // block id -> slug that converts it
+// delivered pages first: their blocks are live code, converted where they were delivered
+for (const slug of order) {
+  const p = bySlug.get(slug);
+  if (!['deployed', 'verified'].includes(p.delivery && p.delivery.status)) continue;
+  for (const id of modulesOf(p)) if (!converted.has(id)) converted.set(id, slug);
+}
 const steps = [];
 for (const slug of order) {
   const p = bySlug.get(slug);
-  // widgets ride along: their code converts once too (widgets/<path>/<name>.html); the page only carries a link
-  const modules = [...(p.blocks || []).filter((id) => !isChrome(id)), ...(p.widgets || []).map((w) => w.id)];
+  const modules = modulesOf(p);
   const convert = [];
   const reuse = [];
   for (const id of modules) {
     const kind = (blockById.get(id) || {}).kind === 'widget' ? { kind: 'widget' } : {};
-    if (!converted.has(id)) { converted.set(id, slug); convert.push({ id, edsBlockName: edsNameOf(id), ...kind }); }
+    if (!converted.has(id) || converted.get(id) === slug) { converted.set(id, slug); convert.push({ id, edsBlockName: edsNameOf(id), ...kind }); }
     else reuse.push({ id, edsBlockName: edsNameOf(id), convertedBy: converted.get(id), ...kind });
   }
   const pending = ['pending', 'stale', 'failed'].includes(p.delivery && p.delivery.status);

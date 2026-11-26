@@ -426,16 +426,26 @@ informational output.
 }
 ```
 
-This file is descriptive and append-only. Re-running `extract` adds a
-new top-level entry under `runs[]` rather than overwriting.
+This file is descriptive and append-only. The top-level `discovery` and
+`crawl` are the latest run's (`crawl.mjs` adds `discovery.selection` —
+`link-first`, `discovered` or `pages` — and `max`); every run is also
+appended to `runs[]` as `{ at, discovery, crawl }`, and a log written
+before `runs[]` existed becomes `runs[0]` on the next crawl, so the first
+run's selection and every failure stay readable (`crawl.mjs
+--first-run-order`, `--skip-failed`).
 
 ## Incremental re-runs
 
 The user may run `$stardust extract` again on the same site to add new
 pages or refresh existing ones.
 
-- Default behaviour: skip URLs whose slug is already in `state.json`
-  with status `extracted` or beyond. Crawl only newly discovered URLs.
+- Default behaviour, `--prep` included: skip URLs whose slug is already
+  in `state.json` with status `extracted` or beyond. Crawl only newly
+  discovered URLs — `crawl.mjs --skip-captured stardust/state.json`
+  drops them before the cap and keeps their slugs; it makes `--pages`
+  exact (no entry page added) and the crawl log then lists only the new
+  pages. Never with `--refresh` / `--refresh-all`: those re-capture
+  pages that are in `state.json` on purpose.
 - `--refresh <slug>` re-extracts a single named page even if already
   extracted. The new per-page JSON overwrites, but state.json
   preserves the page's full lifecycle history.

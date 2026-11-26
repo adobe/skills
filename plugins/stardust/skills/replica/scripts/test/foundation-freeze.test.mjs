@@ -171,6 +171,47 @@ check('--paths refuses a missing entry, an absolute path and a climb out of --ro
   }
   assert.equal(readdirSync(root).includes('never.json'), false, 'a refused freeze writes nothing');
 });
+check('--paths-if-present keeps the entries that exist, names each missing one on stderr; none existing is exit 2', () => {
+  const out = join(root, 'spec.json');
+  const r = run('freeze', '--paths-if-present', 'head.html,stardust/current/PRODUCT.md,blocks/hero/', '--out', out);
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, 'skipped missing stardust/current/PRODUCT.md\n');
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')).paths, ['head.html', 'blocks/hero/']);
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')).absent, ['stardust/current/PRODUCT.md'], 'the missing entry is recorded absent');
+  assert.equal(run('check', '--manifest', out).code, 0);
+  write('stardust/current/PRODUCT.md', '# synthesized\n');
+  const created = run('check', '--manifest', out);
+  assert.equal(created.code, 1, 'a recorded-absent path that now exists is a change');
+  assert.match(created.out, /^added stardust\/current\/PRODUCT\.md$/m);
+  rmSync(join(root, 'stardust/current/PRODUCT.md'));
+  assert.equal(run('check', '--manifest', out).code, 0, 'removed again: unchanged');
+  write('stardust/current/PRODUCT.md', '# now real\n');
+  const re = run('freeze', '--from', out, '--out', join(root, 'spec-2.json'));
+  assert.equal(re.code, 0, re.err); assert.equal(re.err, 'now present stardust/current/PRODUCT.md\n');
+  const m2 = JSON.parse(readFileSync(join(root, 'spec-2.json'), 'utf8'));
+  assert.ok(m2.paths.includes('stardust/current/PRODUCT.md') && !m2.absent, 'frozen from here on');
+  write('stardust/current/PRODUCT.md', '# edited\n');
+  assert.match(run('check', '--manifest', join(root, 'spec-2.json')).out, /^changed stardust\/current\/PRODUCT\.md$/m);
+  rmSync(join(root, 'stardust/current/PRODUCT.md'));
+  const none = run('freeze', '--paths-if-present', 'nope.md,also-nope/', '--out', join(root, 'never.json'));
+  assert.equal(none.code, 2); assert.match(none.err, /--paths-if-present: none of the listed entries exists/);
+  assert.equal(existsSync(join(root, 'never.json')), false);
+});
+check('--from re-freezes an earlier manifest\'s own path set (never the defaults); a vanished entry is exit 2; the three set flags are exclusive', () => {
+  const first = join(root, 'own.json');
+  assert.equal(run('freeze', '--paths', 'blocks/hero/,head.html', '--out', first).code, 0);
+  write('blocks/hero/hero.css', '.hero { min-height: 55vh; }\n');
+  const again = join(root, 'again.json');
+  const r = run('freeze', '--from', first, '--out', again); assert.equal(r.code, 0, r.err);
+  const m = JSON.parse(readFileSync(again, 'utf8'));
+  assert.deepEqual(m.paths, ['blocks/hero/', 'head.html'], 'the earlier set, not DEFAULT_PATHS');
+  assert.equal(m.files['blocks/hero/hero.css'], sha('.hero { min-height: 55vh; }\n'), 're-hashed as the files stand now');
+  const self = run('freeze', '--from', first, '--out', first); assert.equal(self.code, 0, 'in place: read, then rewritten');
+  write('gone/x.css', 'x{}\n'); assert.equal(run('freeze', '--paths', 'gone/', '--out', join(root, 'gone.json')).code, 0);
+  rmSync(join(root, 'gone'), { recursive: true, force: true });
+  const lost = run('freeze', '--from', join(root, 'gone.json'), '--out', join(root, 'never.json'));
+  assert.equal(lost.code, 2); assert.match(lost.err, /--from .*gone\.json entry not found/);
+  const both = run('freeze', '--from', first, '--paths', 'head.html'); assert.equal(both.code, 2); assert.match(both.err, /exclusive/);
+});
 check('--help (and -h, in any position) exits 0 with the usage and touches nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'foundation-freeze-help-'));
   for (const args of [['--help'], ['-h'], ['freeze', '--help'], ['check', '--root', 'x', '-h']]) {
@@ -206,6 +247,20 @@ check('exported helpers: snapshot() is sorted, skips absent entries and records 
   assert.equal(existsSync(join(root, 'head-link.html')), false);
   const d = compare({ files: { a: '1', b: '2', c: '3' } }, { a: '1', b: 'x', d: '4' });
   assert.deepEqual(d, { changed: ['b'], missing: ['c'], added: ['d'] });
+});
+
+check('a manifest naming a path outside --root (absent[], paths[] or a files key) is refused, exit 2, before anything is hashed or reported `added`', () => {
+  write('outside-probe.txt', 'x');
+  for (const bad of [{ paths: [], absent: ['../outside.txt'], files: {} }, { paths: ['/etc/hosts'], files: {} }, { paths: [], files: { '../../x': 'h' } }, { paths: [], absent: 'x', files: {} }, { paths: ['a/../../b'], files: {} }, { paths: ['styles/../head.html'], files: {} }]) {
+    writeFileSync(join(root, 'bad.json'), JSON.stringify(bad));
+    for (const args of [['check', '--manifest', 'bad.json'], ['freeze', '--from', 'bad.json', '--out', 'bad-out.json']]) {
+      const r = run(...args);
+      assert.equal(r.code, 2, `${JSON.stringify(bad)} ${args[0]}: ${r.out}${r.err}`);
+      assert.match(r.err, /not root-relative|absent is not a list/);
+      assert.doesNotMatch(r.out, /^added /m);
+    }
+  }
+  assert.equal(existsSync(join(root, 'bad-out.json')), false);
 });
 
 rmSync(root, { recursive: true, force: true });

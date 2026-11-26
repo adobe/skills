@@ -14,7 +14,9 @@ committing to migrate; build the data structure migrate consumes."
 ## 1. Lift the cap
 
 `--prep` implies `--all`. Migration coverage requires the full
-inventory — the small discovery cap (5 pages) is insufficient. When
+inventory — the small discovery cap (5 pages) is insufficient. Lifting
+the cap never re-captures a page already extracted, `--refresh`
+aside (`ia-extraction.md` § Incremental re-runs). When
 the user named N, `--prep` keeps `--cap N` instead (link-first order,
 `ia-extraction.md` § Priority for the cap). Otherwise the
 cap-respecting selection logic from `ia-extraction.md`

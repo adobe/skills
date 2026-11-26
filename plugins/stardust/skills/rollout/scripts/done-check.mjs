@@ -5,11 +5,13 @@
  *
  * Usage: node stardust/scripts/rollout/done-check.mjs [--out stardust/rollout] [--ledger stardust/status.jsonl]
  *          [--live-host <host> | --offline] [--chrome stardust/chrome] [--state stardust/state.json]
- *          [--gates stardust/replica/gates] [--json]
+ *          [--gates stardust/replica/gates] [--track <name>] [--json]
  *   --out        rollout dir (default stardust/rollout): coverage/pages.json, optimize/findings.json, rollout.json
  *   --ledger     run-status ledger (default stardust/status.jsonl)
  *   --live-host  aem.live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost)
  *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so
+ *   --track      a ledger track (replica's extend pass: x<N>): only that track's I-dashboard lines count, so an
+ *                earlier pass's `end` never completes this one; a missing, blank or flag-shaped name exits 2
  *   --json       print { complete, gaps[], liveChecked } instead of one line per gap
  *
  * Gaps, one per line in this order; complete = none:
@@ -31,7 +33,8 @@
  *                                  stopped or failed), was published to another org/site than rollout.json site.da,
  *                                  or is stale — delivered pages it never read, or pages re-delivered (deployedAt)
  *                                  after it ran (lib.mjs libraryGap)
- *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
+ *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line (of --track, when given) is not
+ *                                  an `end`
  *
  * Advisory, after the verdict line — never a gap, the verdict and the exit code do not read it:
  *   wide_report:N: <w>px — <slugs>   N pages the wide report (replica's gate-all.mjs --wide, <gates>/wide-<w>/summary.json)
@@ -60,9 +63,13 @@ const listed = (paths) => (paths.length > LIST_MAX ? `${paths.slice(0, LIST_MAX)
 // probed at the URL EDS serves (a folder index at `/a/`): `/a` 404s on a plain site (some add a 301; neither is 200)
 export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statusOf(p))).map(publicUrl);
 
-/** Is the rollout's final phase ended? The LAST I-dashboard line decides (a later `start` re-opens it). */
-export function rolloutEnded(ledgerLines) {
-  const dash = ledgerLines.filter((l) => l && l.skill === 'stardust:rollout' && l.phase === 'I-dashboard');
+/**
+ * Is the rollout's final phase ended? The LAST I-dashboard line decides (a later `start` re-opens it); with a
+ * track, only that track's lines are read — another pass's `end` never completes it.
+ */
+export function rolloutEnded(ledgerLines, track = null) {
+  const want = track == null ? null : String(track).toLowerCase();
+  const dash = ledgerLines.filter((l) => l && l.skill === 'stardust:rollout' && l.phase === 'I-dashboard' && (want == null || String(l.track || '').toLowerCase() === want));
   return dash.length > 0 && dash[dash.length - 1].event === 'end';
 }
 
@@ -101,7 +108,7 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
 }
 
 /** `library` is the library gap (lib.mjs libraryGap) or null; it counts only once a page is delivered. */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, library = null }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, library = null, track = null }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -112,7 +119,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
   if (library && deliveredPaths(pages).length) gaps.push(library);
-  if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
+  if (!rolloutEnded(ledgerLines, track)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null };
 }
 
@@ -194,6 +201,14 @@ async function main() {
   const LEDGER = arg('ledger', 'stardust/status.jsonl');
   const OFFLINE = argv.includes('--offline');
   const JSON_OUT = argv.includes('--json');
+  // --track given without a usable name is a usage error, never the untracked verdict (an earlier pass's end)
+  let TRACK = null;
+  const ti = argv.indexOf('--track');
+  if (ti !== -1) {
+    // the ledger writer's grammar (ledger.mjs buildLine): trimmed, lower-cased, one token of letters, digits, dashes
+    TRACK = typeof argv[ti + 1] === 'string' ? argv[ti + 1].trim().toLowerCase() : '';
+    if (!/^[a-z][a-z0-9-]*$/.test(TRACK)) { console.error('rollout done-check: --track needs a track name as the ledger writes it (e.g. x1: letters, digits, dashes) — missing, blank or flag-shaped value.'); process.exit(2); }
+  }
 
   const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
   if (!pagesDoc) { console.error(`rollout done-check: no ${join(OUT, 'coverage', 'pages.json')} — run inventory.mjs first.`); process.exit(2); }
@@ -209,7 +224,7 @@ async function main() {
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
-  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library });
+  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library, track: TRACK });
   const GATES = arg('gates', 'stardust/replica/gates');
   const advisories = [...wideAdvisories(readWideTables(GATES)), ...unitsAdvisories(readGateTables(GATES))];
 
