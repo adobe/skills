@@ -9,14 +9,16 @@ $stardust replica <URL> --extend-next <n>         # the next n pages, in the fir
 ```
 
 A pass runs Phases 1 and 3–5 over its new pages only — never the whole procedure again, never Phase 2. Fewer than
-`n` new pages found delivers those; none found ends the pass at once. A bounded pilot (`stardust/direction.md`
-records `bounded-single`) has no extend pass: it grows to site scope by re-running Phase 1 with `--prep`, whose
-promotion replaces its spec (`preserve-direction.md` § 1a).
+`n` new pages found delivers those; none found ends the pass at once. A bounded pilot has no extend pass: it grows
+to site scope by re-running Phase 1 with `--prep`, whose promotion replaces its spec (`preserve-direction.md`
+§ 1a). A pilot is a project whose `stardust/direction.md` holds a spec line that starts `Synthesized
+(bounded-single):`. A spec line that starts `Promoted:` is a full run, whatever else it mentions: after first page
+first that line names the bounded spec it replaced.
 
 ## For a caller — a person, or a system that runs the skill unattended
 
-The command line is the whole request. `--hands-off` is the master skill's (`../../stardust/SKILL.md` § Hands-off
-mode): with it a pass asks no question, and records each decision.
+For a pass, the command line is the whole request. `--hands-off` is the master skill's (`../../stardust/SKILL.md`
+§ Hands-off mode): with it a pass asks no question, and records each decision.
 
 | Call | When | Result |
 |---|---|---|
@@ -32,11 +34,19 @@ mode): with it a pass asks no question, and records each decision.
 
   | The line | Meaning |
   |---|---|
+  | a line before the first `handoff end` with no `track` | the first run is not finished: send the plain command; `--extend*` is refused |
   | `handoff end`, no `track` | delivered, no pass yet |
   | any line with `track: x<N>` other than `extend end` | pass `x<N>` is open |
   | `event: blocked` with `track: x<N>` | pass `x<N>` is open and waits: `detail` says for what, `next` what to do |
   | `extend end` with `track: x<N>` | pass `x<N>` is closed: `detail` gives the count delivered, or `rejected:`, or `0 new pages found by discovery` |
 
+- **Only a full first run can be extended.** A page list on the first run (`--pages <a,b>`, or `--single`) is read
+  as the bounded entry: it makes a pilot, and a pilot is refused. No flag of the replica command starts a full run
+  on a page list. To start with a few pages and add more later, the request must say it in words: Phase 1 runs
+  `$stardust extract <URL> --prep --dynamics --pages <a,b>`, and pages outside the list are out of scope.
+- **Only `track: x<N>` is a pass.** A hands-off first run writes lines with `track: first-page` and
+  `track: site-scope` (`first-page-first.md`). They belong to the first run. Its `handoff end --track first-page` is
+  one page delivered early, not the run delivered.
 - **A refused request writes nothing,** not a ledger line: the state stays `handoff end` or `extend end`, and the
   reason is in the answer. § Entry lists the refusals.
 - **Before a pass,** the checkout holds `stardust/migrated/` as the earlier passes committed it. `inventory.mjs`
@@ -56,12 +66,14 @@ skill's Setup has run by then: it refreshes `stardust/scripts/`, and writes noth
 | any other line of track `x<N>`, `handoff end --track x<N>` included | resume pass `x<N>` (§ Opening, then its roster and units) | resume pass `x<N>` first; a new pass opens only after its `extend end` |
 | a first-pass line (no track) before `handoff end` | the first pass resumes (`../SKILL.md` § Procedure) | refuse: the first pass is not delivered |
 
-Opening a pass refuses, before writing anything, unless: `state.json.flow` is `replica`; `direction.md` does not
-record `bounded-single`; `<URL>` is on the site of `state.json.site.originUrl` (a `www.` prefix aside — another
+Opening a pass refuses, before writing anything, unless: `state.json.flow` is `replica`; the spec line of
+`direction.md` starts `Promoted:` (not a pilot, above); `<URL>` is on the site of `state.json.site.originUrl` (a
+`www.` prefix aside — another
 site's URL is refused, not crawled); exactly one of `--extend` / `--extend-next`; `--extend-next` a positive integer
 (`0` would lift the crawl cap); every `--extend` URL http(s) on that site, without a query string. Then Setup runs:
 its copy steps and those of `handoff-contract.md` § 4, plus `../../extract/scripts/` → `stardust/scripts/extract/`,
-from the installed plugin (the project's copies can predate this pass's flags). With `--extend`, the named roster of
+from the installed plugin (the project's copies can predate this pass's flags). Leave each skill's `test/` directory
+out of the copy. With `--extend`, the named roster of
 § 2 is then checked once, `--out stardust/.work/extend-preflight.txt`, before `extend start`: its exit 2 — a named
 page with a query string, or whose destination is delivered or an existing content document — refuses the pass with
 that message, and nothing is opened.
@@ -163,10 +175,14 @@ cumulative prototypes), then its C-archetype unit before its cluster.
 `replica handoff start --track x<N>`; rollout and migrate run their phases again with the pass's track, and each
 script already skips what is delivered.
 
-**A pass never sends a document that existed at its opening, and its localizer never rewrites one.** An earlier
-pass can have pointed a link to the source site for a page this pass delivers. Those older documents keep their
-links. Relinking and re-publishing them is not part of a pass: the report names them (E2, below). A guard file
-enforces the rule, so no caller has to remember a flag:
+**A pass never sends a document under `content/` that existed at its opening, and its localizer never rewrites
+one.** That covers the pages, the nav, the footer and the fragments: `$X/opening.paths`. It does not cover the block
+library under `/library/` in DA. `da-library.mjs` generates that catalogue from the delivered pages and sends it
+whole in each pass, with the new pages counted in (F–I, below).
+
+An earlier pass can have pointed a link to the source site for a page this pass delivers. Those older documents
+keep their links. Relinking and re-publishing them is not part of a pass: the report names them (E2, below). A guard
+file enforces the rule, so no caller has to remember a flag:
 
 - **The guard.** `$R publish --pass $X` writes `content/.deploy-allow`, the DA paths of the pass's own documents.
   Run it at `handoff start`, where it writes an empty guard. While the guard exists, `deploy-batch.mjs` sends only
@@ -205,13 +221,15 @@ The units:
 - **Units:** every new unit in both `progress.json` files is named `<unit>-x<N>` (`archetype-<template>-x1`,
   `<cluster>-x1`, `gate-all-1440-x1`); a `done` unit of an earlier pass is never reopened, and a new page of a known
   template joins a new cluster unit. No `foundation` unit: the foundation is delivered and frozen.
-- **A, B:** `inventory.mjs` keeps delivered rows and adds the new ones `pending`, so optimize, verify and
-  `done-check.mjs` cover them; `blocks.mjs`, then `plan.mjs --pending-only` (a block a delivered page runs is
-  `reuse`, never `convert`). **B2:** the new pages' dynamic surface — `dynamic-features.md` gains rows, never loses
-  one.
+- **A, B:** `inventory.mjs`, without `--state` (with it every page becomes its own template), keeps delivered rows
+  and adds the new ones `pending`, so optimize, verify and `done-check.mjs` cover them; `blocks.mjs`, then
+  `plan.mjs --pending-only` (a block a delivered page runs is `reuse`, never `convert`). **B2:** the new pages'
+  dynamic surface — `dynamic-features.md` gains rows, never loses one.
 - **C-deliver** (`--track x<N>`; one start/end pair per pass): C-archetype units for the new types, cluster units
-  with `gate-all.mjs --only <their slugs>`, then C-final: the pass's queued foundation requests applied once and the
-  published gate re-run on every affected archetype, any pass's. Then `deploy-batch.mjs --force --ledger
+  with `gate-all.mjs --only <their slugs>`. That gate reads rows with status `deployed`: after the PUT and before
+  the gate, `update-coverage.mjs <slug> --status deployed --url <the page>` for each page of the unit. Then
+  C-final: the pass's queued foundation requests applied once and the published gate re-run on every affected
+  archetype, any pass's. Then `deploy-batch.mjs --force --ledger
   stardust/deploy/ledger-x<N>-final.json`, once: it sends every document of the guard again. A later cluster's
   localizer can change a pass page after its PUT, and a plain re-run skips a page its ledger reads live. Then the
   final units exactly as `handoff-contract.md` § 3, row C (C-final), names them, each name suffixed:
@@ -228,6 +246,10 @@ The units:
   pass page's path. G: `autofix-aem.mjs --slug <s>` once per line of `$X/slugs.txt` (no site-level fix: the
   foundation is frozen), then `deploy-batch.mjs --force --paths <the pages it changed>`. The library refresh
   (`done-check.mjs`'s `library_missing` remedy) is `da-library.mjs`, as in a first pass.
+- **Header and footer.** A pass sends no nav or footer document, and the foundation is frozen. So
+  `done-check.mjs` reads the header parity record of the first run. If the pass applied a foundation request that
+  touches `blocks/header/` or `blocks/footer/`, the header is explored and compared again before `done-check.mjs`
+  (`handoff-contract.md` § 3, `header_parity`).
 - **The end.** The guard stays through every check and every retry: a `pages_not_live` gap is closed by a
   re-deploy, and that re-deploy needs it. List each opening document that changed, moved or went missing on disk:
   `git diff --no-renames --diff-filter=MD --name-only $(cat $X/base.txt) -- 'content/*.html'`. The guard sent none
