@@ -7,7 +7,7 @@
 Verify migrated code on a local Cloud SDK without modifying customer code.
 Completion requires a saved report, not just a successful build. Restricted passes retain their caveats.
 
-> **Outcome reporting to CAM is paused** until the legal review is complete. Do **not**
+> **Outcome reporting to CAM is currently paused.** Do **not**
 > call `submit-migration-validation-result` (or `write-api` for it), and do not run the
 > Submit and Finalize steps below, even when a CAM project is linked. Validation is
 > local-only: the validator ignores any project link, emits no payload, and exits `0`
