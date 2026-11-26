@@ -335,7 +335,6 @@ await check('a 5xx that persists through --retries is a per-page FAIL (put-fail,
   assert.equal(l2['/recover'].status, 'live'); assert.equal(l2['/recover'].attempts, 2); assert.equal(l2['/flaky'].status, 'put-fail'); assert.equal(l2['/flaky'].attempts, 2);
 });
 
-// ---- usage, --help --------------------------------------------------------------------------------------
 await check('a transport failure that persists through --retries (no HTTP status) fails the page at that step — put-fail, preview-fail or live-fail, exit 1, no later step — even when an older version is still served', async () => {
   site('site-sever', ['ok', 'put-sever', 'prev-sever', 'live-sever']);
   const from = requests.length;
@@ -352,6 +351,7 @@ await check('a transport failure that persists through --retries (no HTTP status
   assert.match(r.err, /^\[\d\/4\] FAIL \/put-sever \(put-fail\)$/m);
 });
 
+// ---- usage, --help --------------------------------------------------------------------------------------
 await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, no token) with nothing sent; --help prints the header, exits 0, writes nothing', async () => {
   const from = requests.length;
   const bad = async (args, re, opts) => { const r = await run(args, opts); assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); };
