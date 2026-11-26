@@ -150,7 +150,8 @@ check('owner-only gates: an accepted residual covers figma/exact/step10/chrome o
   assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', figma: { join: 'PASS', geometry: 'PASS', ramp: 'FAIL 1/4' } } }, fb('figma.ramp')), true, 'and its deployed re-run');
   assert.equal(gatesOk({ step10: { eyeball: 'fail', cls: '0.02', header: 'pass' } }, fb('step10')), true);
   assert.equal(gatesOk({ exact: { verdict: 'FAIL' } }, fb('exact')), true);
-  assert.equal(gatesOk(gates, fb('figma.geometry')), false, 'a section\'s geometry is remapped, never a fallback');
+  assert.equal(gatesOk(gates, fb('figma.geometry')), true, 'a fitting module keeps its geometry miss as a fallback');
+  assert.equal(gatesOk({ figma: { join: 'FAIL 1/3', geometry: 'PASS', ramp: 'PASS' } }, fb('figma.join')), false, 'a join failure is remapped, never a fallback');
   assert.equal(gatesOk({ deployed: { content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'FAIL 1/4', inherited: 'PASS' } }, fb('deployed.sanity')), false);
 });
 check('chromeVerdict: no fragment / parity header crop n/a is NOT-RUN, FAIL is FAIL, explicit chrome keys win over parity', () => {
@@ -194,9 +195,9 @@ check('CLI: owner-only residuals, step10 header refusal for an agent, flag, deli
   const L2 = read(); L2.pages.login.gates.deployed = { parity: 'PASS' }; w('stardust/reskin/ledger.json', JSON.stringify(L2));
   assert.equal(s10('pass', '--by', 'hands-off').status, 0, 'an agent may pass the header when the chrome evidence passes');
 
-  // fallback: hands-off only, figma.ramp|exact|step10 only, a --note, step10 after a second run
+  // fallback: hands-off only, figma.geometry|figma.ramp|exact|step10 only, a --note, step10 after a second run
   const fbk = (gate, ...extra) => run(['residual', 'login', '--gate', gate, '--cause', 'still fails', '--verdict', 'fallback', ...extra], root);
-  assert.match(fbk('figma.geometry', '--note', 'x').stderr, /takes no fallback/);
+  assert.match(fbk('figma.join', '--note', 'x').stderr, /takes no fallback/);
   assert.match(fbk('deployed.chrome', '--note', 'x').stderr, /takes no fallback/);
   assert.match(fbk('figma.ramp').stderr, /needs --note/);
   const L3 = read(); L3.pages.login.gates.step10 = { ...L3.pages.login.gates.step10, attempts: 1 }; w('stardust/reskin/ledger.json', JSON.stringify(L3));

@@ -297,6 +297,27 @@ check('coverage floor: a TEXT-node waiver and a container waiver each clear thei
   assert.deepEqual(floorProblems(s03({ type: withoutType('t3', 't2'), waive: [{ node: 'F:15', why: 'legal' }] })), ['s03 @1440: text style 16/400/24 #333333 ("Body copy", node F:13) has no type entry or waiver'], 'a waiver clears what it names');
 });
 
+check('coverage floor: an absent part leaves the floor without spending the waiver budget; a style it shares stays', () => {
+  const r = floor(s03({ type: withoutType('t3'), absent: [{ node: 'F:14', why: 'the source has no notes' }] }));
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.coverage.s03, { styles: { covered: 4, total: 4 }, widths: [382, 1440], waived: 0, absent: 1 });
+  assert.equal(r.budget.excused, 0);
+  assert.deepEqual(r.sections.s03.absent, [{ node: 'F:14', why: 'the source has no notes' }]);
+  const shared = floor(s03({ geometry: [{ id: 'g1', selector: '.card', node: 'F:12', measure: 'width' }], type: [...withoutType('t1'), { id: 't1', selector: 'h3', node: 'F:12' }], absent: [{ node: 'F:11', why: 'one title only' }] }));
+  assert.deepEqual(shared.problems, [], 'F:12 still carries the title style');
+  assert.equal(shared.coverage.s03.styles.total, 5);
+});
+
+check('coverage floor: no entry measures an absent part; a root with every text part absent does not fit; absent needs a why inside the roots', () => {
+  assert.deepEqual(floorProblems(s03({ absent: [{ node: 'F:14', why: 'no notes' }] })), ['t3: F:15 is in absent part F:14: drop the entry or the absent part']);
+  const all = floorProblems(s03({ geometry: [{ id: 'g1', selector: '.card', node: 'F:10', measure: 'width' }], type: at382, absent: ['F:11', 'F:12', 'F:13', 'F:14', 'F:19'].map((node) => ({ node, why: 'empty' })) }));
+  assert.ok(all.some((p) => /^s03 @1440: every text part of root F:10 .* is absent: the module does not fit/.test(p)), all.join('\n'));
+  const bad = floorProblems(s03({ absent: [{ node: 'F:14' }, { node: 'G:2', why: 'x' }, 'F:15'] }));
+  assert.ok(bad.includes('s03: absent[0] needs why (the part of the source the module part would hold, and that it has none)'));
+  assert.ok(bad.includes('s03: absent[1]: G:2 is not inside any of the section\'s roots'));
+  assert.ok(bad.includes('s03: absent[2] must be { node, why }'));
+});
+
 check('coverage floor: a waiver names a node inside one of the section\'s roots, one of node or width "mobile" | "desktop", and a why', () => {
   const w = (waive) => floorProblems(s03({ waive }));
   assert.deepEqual(w([{ node: 'F:15', why: '' }]), ['s03: waive[0] needs why']);

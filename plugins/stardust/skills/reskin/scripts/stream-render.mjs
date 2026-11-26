@@ -147,7 +147,7 @@ export function tokenVars(tokens) {
 
 // Custom properties the renderer sets in markup (a style attribute on the element its rule styles), not in
 // :root — canon.css reads them without defining them. reskin-preflight's canon-tokens check skips them.
-export const MARKUP_VARS = ['--band-inset', '--split-columns', '--cards-columns'];
+export const MARKUP_VARS = ['--band-inset', '--split-columns', '--cards-columns', '--tray-height', '--scroll-max', '--tab-columns'];
 
 // Which top-level stream nodes render as a `.btn` (the donor primary/secondary button): a cta whose classes
 // say button or that capture saw styled as one (buttonLike), a submit/button form control, a bare text run
@@ -411,9 +411,24 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     // A link whose label is only screen-reader text (a parent-org link whose mark was not captured) is the
     // Figma header's utility bar: a small text link above the row on desktop.
     const isUtil = (n) => n.kind === 'cta' && n.children?.length > 0 && n.children.every((c) => c.kind === 'text' && isSrOnlyLeaf(c));
-    const util = ordered.filter(isUtil).map((n) => `<a href="${url(n)}">${esc((n.text || '').trim())}</a>`);
-    const menu = ordered.filter((n) => n.kind === 'listItem').flatMap((n) => navItem(s, n));
-    const actions = ordered.filter((n) => n.kind !== 'listItem' && !isUtil(n)).flatMap((n) => navItem(s, n));
+    // Header tiers (render.md § Header tiers): a source list that sits wholly above another list is the
+    // utility bar (the logo may span both rows), so the menu keeps only the lowest row's lists.
+    const items = ordered.filter((n) => n.kind === 'listItem');
+    const boxed = items.filter((n) => Number.isFinite(n.list) && Number.isFinite(n.listTop) && Number.isFinite(n.listBottom));
+    const above = new Set(boxed.filter((n) => boxed.some((m) => m.list !== n.list && n.listBottom <= m.listTop + 1)).map((n) => n.list));
+    const utilList = (n) => n.kind === 'listItem' && above.has(n.list);
+    // A link styled as a button (isButtonish), in the menu or not, is an action button.
+    const soleCta = (n) => {
+      const ctasIn = (x) => (x.kind === 'cta' ? [x] : (x.children || []).flatMap(ctasIn));
+      const c = ctasIn(n).filter((x) => (x.text || '').trim());
+      return c.length === 1 && isButtonish(c[0]) && !(n.children || []).some((k) => k.kind === 'listItem') ? c[0] : null;
+    };
+    const util = ordered.filter((n) => isUtil(n) || utilList(n)).flatMap((n) => (isUtil(n) ? [`<a href="${url(n)}">${esc((n.text || '').trim())}</a>`] : navItem(s, n)));
+    const menu = items.filter((n) => !utilList(n) && !soleCta(n)).flatMap((n) => navItem(s, n));
+    const actions = ordered.filter((n) => !isUtil(n) && !utilList(n) && (n.kind !== 'listItem' || soleCta(n))).flatMap((n) => {
+      const b = soleCta(n);
+      return b ? [`<a class="btn" href="${url(b)}">${esc((b.text || '').trim())}</a>`] : navItem(s, n);
+    });
     const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
     const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
     // The row's plain (non-link) texts are the brand's name and tagline: they sit with the logo, as a
@@ -423,7 +438,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const brand = `<div class="brand">${logos}${brandTexts.length ? `<div class="brand-text">${brandTexts.join('')}</div>` : ''}</div>`;
     // The toggle opens the folded menu below 900px: the page script flips aria-expanded and .nav-open on the header.
     const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
-    return `${util.length ? `<div class="utility-bar"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
+    return `${util.length ? `<div class="utility-bar${above.size ? ' tier' : ''}"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
       ${brand}
       <nav${toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>
       <div class="nav-actions">${rest.join('')}${toggle}</div>
@@ -520,8 +535,28 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const embedAfter = new Set((model._provenance?.normalize?.ledger || [])
     .filter((e) => /disposition:\s*embed/i.test(e.why || '') && /embed/i.test(e.what || ''))
     .map((e) => (e.what.match(/under\s+["“]([^"”]+)["”]/) || [])[1]?.trim().toLowerCase()).filter(Boolean));
+  // Source behaviour the mapping keeps (mapping-json.md `behaviour`, render.md § Behaviour).
+  const used = { tray: false, tabs: false, scroll: false };
+  function tabsHtml(s, tabs, ctx, sid) {
+    const at = tabs.panels.map((r) => r[0]);
+    const end = tabs.panels.at(-1)[1];
+    const skip = (a, b) => s.ordered.slice(a, b).filter((_, k) => !(tabs.list && a + k >= tabs.list[0] && a + k < tabs.list[1]));
+    const desk = !tabs.visible; // the source hid its tabs at the capture (desktop) width: so does the target
+    const panels = at.map((a, k) => `<div class="tab-panel" role="tabpanel" id="${sid}-panel-${k + 1}" aria-labelledby="${sid}-tab-${k + 1}"${k ? ' hidden' : ''}>${streamHtml(skip(a, at[k + 1] ?? end), ctx)}</div>`);
+    return [
+      streamHtml(skip(0, at[0]), ctx),
+      `<div class="tabs${desk ? ' tabs-desktop-open' : ''}" style="--tab-columns: ${desk ? Math.max(1, tabs.columns || 1) : 1}"><div class="tab-list" role="tablist">${tabs.labels.map((l, k) => `<button type="button" role="tab" id="${sid}-tab-${k + 1}" aria-controls="${sid}-panel-${k + 1}" aria-selected="${!k}"${k ? ' tabindex="-1"' : ''}>${esc(l)}</button>`).join('')}</div><div class="tab-panels">${panels.join('')}</div></div>`,
+      streamHtml(skip(end, s.ordered.length), ctx),
+    ].filter(Boolean).join('\n        ');
+  }
   const sections = model.sections.map((s, i) => {
     const m = pageMap.slots?.[s.slot] || {};
+    const sid = s.slot || `s${String(i + 1).padStart(2, '0')}`;
+    const keep = new Set((typeof m.behaviour === 'string' ? m.behaviour.trim().split(/\s+/) : []).filter((b) => {
+      if (s.behaviour?.[b]) return true;
+      if (b) warnings.push(`${sid}: behaviour "${b}" but the content model records none — ignored`);
+      return false;
+    }));
     const layout = (m.layout || 'stack').split(/\s+/);
     const ctx = { band: layout.includes('media-band'), split: layout.includes('split'), bandImage: null, buttons: 0 };
     let inner;
@@ -537,8 +572,17 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       ].filter(Boolean).join('\n        ');
     } else {
       if (layout.includes('cards')) warnings.push(`${s.slot}: layout "cards" but no repeating run in the stream — rendered as a stack`);
-      inner = streamHtml(s.ordered, ctx);
+      const tabs = keep.has('tabs') ? s.behaviour.tabs : null;
+      if (tabs && !(tabs.panels?.length === tabs.labels?.length && tabs.panels.every(Array.isArray))) {
+        warnings.push(`${sid}: tabs kept but the capture has no stream range for every panel — rendered as a stack`);
+        keep.delete('tabs');
+      }
+      inner = keep.has('tabs') ? tabsHtml(s, tabs, ctx, sid) : streamHtml(s.ordered, ctx);
     }
+    if (rep && keep.delete('tabs')) warnings.push(`${sid}: tabs kept but the layout is cards — rendered as cards`);
+    for (const b of keep) used[b] = true;
+    const tray = keep.has('tray');
+    if (tray) inner = inner.replace(/<(h[1-6]) class="heading">/, `<$1 class="heading" id="${sid}-title">`);
     const head = s.ordered.find((n) => n.kind === 'heading');
     if (head && embedAfter.has(String(head.text || '').trim().toLowerCase())) inner += '\n        <div class="embed-placeholder" aria-hidden="true"></div>';
     const tone = ['dark', 'light', 'accent'].includes(m.tone) ? m.tone : null;
@@ -550,12 +594,15 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     if (m.inset && !inset) warnings.push(`${s.slot}: inset "${m.inset}" is not a length (px | rem | %) — ignored`);
     const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
     if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
-    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : [])].join(' ');
+    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : []),
+      ...(tray ? [`--tray-height: ${s.behaviour.tray.height}px`] : []), ...(keep.has('scroll') ? [`--scroll-max: ${s.behaviour.scroll.maxHeight}px`] : [])];
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []),
+      ...(tray ? ['tray'] : []), ...(keep.has('scroll') ? ['scroll'] : [])].join(' ');
+    const toggle = tray ? `<button type="button" class="tray-toggle" aria-expanded="false" aria-controls="${sid}-body"${inner.includes(`id="${sid}-title"`) ? ` aria-labelledby="${sid}-title"` : ''}><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>` : '';
     const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
-    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
-      ${ctx.split ? '' : media}
-      <div class="container"><div class="panel"><div class="flow" data-slot-body>
+    return `${tray ? '<div class="tray-sentinel" aria-hidden="true"></div>\n  ' : ''}<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(sid)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}${keep.size ? ` data-behaviour="${[...keep].join(' ')}"` : ''}>
+      ${ctx.split ? '' : media}${toggle}
+      <div class="container"><div class="panel"><div class="flow" data-slot-body${tray ? ` id="${sid}-body"` : ''}>
           ${inner}
       </div>${ctx.split ? media : ''}</div></div>
     </section>`;
@@ -576,7 +623,25 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   }
   :where(.site-header, .site-main, .site-footer), :where(.site-header, .site-main, .site-footer) *, :where(.site-header, .site-main, .site-footer) *::before, :where(.site-header, .site-main, .site-footer) *::after { box-sizing: border-box; }
   body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }${clamped ? `
-  .site-main .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }` : ''}
+  .site-main .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }` : ''}${used.tray ? `
+  .site-main .tray-toggle { display: none; }
+  .site-main .tray.is-pinned { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; max-height: var(--tray-height); overflow: hidden; padding-top: 0; background: ${v('--palette-page-bg', '#fff')}; box-shadow: 0 -2px 8px rgb(0 0 0 / 15%); }
+  .site-main .tray.is-pinned.is-open { max-height: 80vh; overflow-y: auto; }
+  .site-main .tray.is-pinned .tray-toggle { display: inline-flex; position: absolute; top: 8px; right: 16px; z-index: 1; padding: 4px; border: 0; background: none; color: inherit; cursor: pointer; }
+  .site-main .tray.is-open .tray-toggle svg { transform: rotate(180deg); }
+  html[data-stardust-measure] .site-main .tray.is-pinned { position: relative; max-height: none; overflow: visible; box-shadow: none; }
+  html[data-stardust-measure] .site-main .tray .tray-toggle { display: none; }` : ''}${used.tabs ? `
+  .site-main .tab-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .site-main .tab-list [role="tab"] { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .site-main .tab-list [role="tab"][aria-selected="true"] { border-bottom-color: ${v('--palette-accent', 'currentColor')}; }
+  @media (min-width: 900px) {
+    .site-main .tabs-desktop-open .tab-list { display: none; }
+    .site-main .tabs-desktop-open .tab-panels { display: grid; grid-template-columns: repeat(var(--tab-columns), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; }
+    .site-main .tabs-desktop-open .tab-panel[hidden] { display: block; }
+  }
+  html[data-stardust-measure] .site-main .tab-panel[hidden] { display: block; }` : ''}${used.scroll ? `
+  .site-main .scroll .flow { max-height: var(--scroll-max); overflow-y: auto; }
+  html[data-stardust-measure] .site-main .scroll .flow { max-height: none; overflow: visible; }` : ''}
   .container { box-sizing: content-box; max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
   :where(.site-header, .site-main, .site-footer) a { color: inherit; }
   .link { ${accentText ? `color: ${v('--palette-accent', 'inherit')}; text-decoration: underline;` : `color: inherit; text-decoration: underline; text-decoration-color: var(--palette-accent); text-decoration-thickness: 2px; text-underline-offset: 3px;`} }
@@ -616,8 +681,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-header .utility-bar { border-bottom: 1px solid ${v('--palette-light-band-bg', '#eee')}; font-size: 12px; line-height: 1; }
   .site-header .utility-bar .container { display: flex; justify-content: flex-end; gap: 16px; padding-top: 10px; padding-bottom: 10px; }
   .site-header .utility-bar a { text-decoration: underline; }
+  .site-header .utility-bar.tier { background: ${v('--palette-dark-band-bg', v('--palette-accent', '#111'))}; color: ${v('--palette-dark-band-fg', '#fff')}; border-bottom: 0; }
+  .site-header .utility-bar.tier .container { flex-wrap: wrap; }
   @media (min-width: 901px) {
-    .site-header .chrome-row .container { min-height: ${v('--header-row-height', '80px')}; }
+    .site-header .chrome-row .container { min-height: ${v('--header-row-height', '80px')}; flex-wrap: nowrap; }
+    .site-header .chrome-row nav { flex: 0 1 auto; min-width: 0; }
     .site-header nav { gap: 24px; font-family: ${v('--type-nav-font-family', 'inherit')}; font-size: ${v('--type-nav-font-size', 'inherit')}; }
   }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
@@ -644,8 +712,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
-  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: ${r('--button-height', '40px')}; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
-  .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
+  .site-main .btn, .site-header .btn { display: inline-flex; align-items: center; justify-content: center; min-height: ${r('--button-height', '40px')}; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
+  .site-main .btn-secondary, .site-header .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
   .site-main .list { padding-left: 1.2em; }
@@ -709,6 +777,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-footer .footer-zoned li { margin-bottom: 12px; }
     .site-header nav { display: none; }
     .site-header .utility-bar { display: none; }
+    .site-header .utility-bar.tier { display: block; }
+    .site-header .utility-bar.tier .container { justify-content: center; }
     .site-header .nav-toggle { display: inline-flex; }
     .site-header.nav-open .chrome-row .container { flex-wrap: wrap; }
     .site-header.nav-open nav { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; flex-basis: 100%; order: 3; margin: 0; padding: 8px 0 16px; }
@@ -758,7 +828,9 @@ ${css}
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
   ${chromeHtml(mapping.chrome?.footer || [], 'footer')}
 </footer>${headerHtml.includes('class="icon-btn nav-toggle"') ? `
-<script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}${used.tray ? `
+<script>document.querySelectorAll('.site-main .tray').forEach((t) => { const b = t.querySelector('.tray-toggle'); b.addEventListener('click', () => { const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); t.classList.toggle('is-open', open); }); if (!('IntersectionObserver' in window)) return; new IntersectionObserver(([e]) => { t.classList.toggle('is-pinned', !e.isIntersecting && e.boundingClientRect.top > 0); }).observe(t.previousElementSibling); });</script>` : ''}${used.tabs ? `
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.site-main .tab-list [role="tab"]'); if (!b) return; b.parentElement.querySelectorAll('[role="tab"]').forEach((x) => { const on = x === b; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1; document.getElementById(x.getAttribute('aria-controls')).hidden = !on; }); });</script>` : ''}
 </body>
 </html>
 `;
@@ -772,7 +844,8 @@ export const MAPPING_SCHEMA = {
   top: ['chrome', 'pages', 'blocks'],
   chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
   page: ['template', 'slots'],
-  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split'],
+  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'behaviour', 'dropped'],
+  behaviour: ['tray', 'tabs', 'scroll'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
   width: ['narrow', 'wide'],
   tone: ['dark', 'light', 'accent'],
@@ -825,6 +898,15 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
     if (!isObj(pm.slots)) { out.push(`${at}.slots: must be an object { "<slot id>": { module, layout, … } }`); continue; }
     const model = models[slug];
     const have = model ? new Set((model.sections || []).map((s) => s.slot)) : null;
+    // A source behaviour (content-model.md § Behaviour) is kept or dropped with a why, never silently.
+    for (const sec of model?.sections || []) {
+      const m = isObj(pm.slots[sec.slot]) ? pm.slots[sec.slot] : {};
+      const kept = typeof m.behaviour === 'string' ? m.behaviour.trim().split(/\s+/) : [];
+      for (const b of Object.keys(sec.behaviour || {})) {
+        if (!kept.includes(b) && !(isObj(m.dropped) && m.dropped[b])) out.push(`${at}.slots.${sec.slot}: the source's ${b} behaviour is neither kept (behaviour: "${b}") nor dropped with a why (dropped.${b})`);
+      }
+      for (const b of kept) if (S.behaviour.includes(b) && !sec.behaviour?.[b]) out.push(`${at}.slots.${sec.slot}.behaviour: "${b}" — the content model records no ${b} for this slot`);
+    }
     for (const [id, m] of Object.entries(pm.slots)) {
       if (annotation(id)) continue;
       const sat = `${at}.slots.${id}`;
@@ -841,6 +923,20 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       if (m.columns !== undefined && !(Number.isInteger(m.columns) && m.columns > 0)) out.push(`${sat}.columns: ${JSON.stringify(m.columns)} is not a positive integer`);
       if (m.inset !== undefined && !(typeof m.inset === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.inset))) out.push(`${sat}.inset: ${JSON.stringify(m.inset)} is not a length (px | rem | %)`);
       if (m.split !== undefined && !(typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()))) out.push(`${sat}.split: ${JSON.stringify(m.split)} is not two column tracks (px | fr | %)`);
+      if (m.behaviour !== undefined) {
+        const parts = typeof m.behaviour === 'string' ? m.behaviour.trim().split(/\s+/).filter(Boolean) : [];
+        if (!parts.length || parts.some((b) => !S.behaviour.includes(b))) out.push(`${sat}.behaviour: ${JSON.stringify(m.behaviour)} is not space-separated ${S.behaviour.join(' | ')}`);
+      }
+      if (m.dropped !== undefined) {
+        if (!isObj(m.dropped)) out.push(`${sat}.dropped: must be an object { "<behaviour>": "<why>" }`);
+        else for (const [b, why] of Object.entries(m.dropped)) {
+          if (annotation(b)) continue;
+          if (!S.behaviour.includes(b)) out.push(`${sat}.dropped.${b}: not a behaviour (${S.behaviour.join(' | ')})`);
+          else if (typeof why !== 'string' || !why.trim()) out.push(`${sat}.dropped.${b}: needs the why, a non-empty string`);
+          // Tabs lay over any module's stream (render.md § Behaviour); only a cards layout can't hold them.
+          else if (b === 'tabs' && !(typeof m.layout === 'string' && m.layout.split(/\s+/).includes('cards'))) out.push(`${sat}.dropped.tabs: tabs render over any module but cards — keep them (behaviour: "tabs")`);
+        }
+      }
     }
   }
   return out;

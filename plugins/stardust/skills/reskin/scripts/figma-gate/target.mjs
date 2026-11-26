@@ -49,6 +49,10 @@ export const localAttributes = {
   }))),
 };
 
+// A kept source behaviour (a pinned tray, tab panels, a scroll box) is measured docked and expanded, the
+// state the Figma frame draws (render.md § Behaviour); rAF lets the style change apply before measuring.
+const MEASURE_STATE = () => { document.documentElement.setAttribute('data-stardust-measure', ''); return new Promise((r) => requestAnimationFrame(() => r())); };
+
 export function localTarget(input) {
   const url = toUrl(input);
   return {
@@ -66,6 +70,7 @@ export function localTarget(input) {
           await visit(page, url);
         }
         await page.evaluate(() => document.fonts.ready);
+        await page.evaluate(MEASURE_STATE);
       } catch (e) {
         await ctx.close();
         if (e?.name === 'BotChallengeError') e.code = 3;
@@ -137,6 +142,7 @@ export function previewTarget(input, { reskin, edsTimeoutMs = 20000 } = {}) {
         const { stalled } = await eds.edsSettle(page, { timeoutMs: edsTimeoutMs });
         if (stalled.length) throw coded(124, `stalled decoration: ${stalled.join(', ')}`);
         await page.evaluate(() => document.fonts.ready);
+        await page.evaluate(MEASURE_STATE);
         return page;
       } catch (e) {
         await ctx.close();

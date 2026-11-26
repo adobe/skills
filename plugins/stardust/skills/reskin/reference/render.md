@@ -98,3 +98,39 @@ fallback** is to drop that text before rendering and record the drop in
 the model's provenance — filtering ghosts against `visibleText` is the
 documented resolution, distinct from the forbidden order-reconstruction
 move (`content-model.md` § When `orderedVerified` is false).
+
+## Header tiers
+
+A header row with a logo and list items is zoned brand / menu /
+actions (`mapping-json.md` `chrome.header`). A source list that sits
+wholly above another list (content-model `listTop` / `listBottom`; the
+logo may span both rows) is the utility bar: a `.utility-bar.tier` above
+the row, on the palette's dark band, shown at every width. A list item
+whose one link is styled as a button (`buttonLike`, or a `btn` /
+`button` class) is an action `.btn`, not a menu link. The deployed gate
+fails a header with fewer link rows than the source
+(`gates.md` § Nav depth).
+
+## Behaviour
+
+A behaviour the slot's mapping keeps (`mapping-json.md` `behaviour`)
+renders with the source's content unchanged; it adds no visible text.
+The section gets `data-behaviour` and, per behaviour:
+
+- `tray` — class `tray`, `--tray-height` from the capture, a sentinel
+  `div` before the section, and an icon-only toggle labelled by the
+  slot's heading (`aria-expanded`, `aria-controls` the flow). While the
+  sentinel is below the viewport the tray is pinned to the bottom edge
+  at that height; the toggle opens it to 80vh, scrollable. At the end
+  of the page it docks in-flow, open.
+- `tabs` — the stream before the first panel, then a tablist of the
+  captured labels and one `tabpanel` per range, then the rest; the
+  source's tablist nodes are not repeated. When the source hid its
+  tablist at the capture width, the tablist is hidden at ≥900px and the
+  panels sit in `columns` side by side, as in the source. Ignored with
+  a warning when a panel range is missing or the layout is `cards`.
+- `scroll` — class `scroll`; the flow scrolls past `--scroll-max`.
+
+Under `html[data-stardust-measure]` (set by `measurePrep`) the tray is
+docked and open, every tab panel shows and the scroll box is unclamped,
+so the gates read the state the Figma frame draws.

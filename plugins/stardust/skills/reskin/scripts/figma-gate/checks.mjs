@@ -140,10 +140,13 @@ const sampleOf = (characters) => {
 
 // The text styles a root asks for → Map<styleKey, { nodes: ids in tree order, sample, label }>. A waiver on a
 // container drops everything under it; one on a TEXT node waives its style, as an entry on one node covers it.
-export function textStyles(rootBox, waived = []) {
+// absent: ids of module parts the slot's content does not fill; each subtree is left out, its styles kept if used elsewhere.
+export function textStyles(rootBox, waived = [], absent = []) {
   const ids = new Set(waived);
+  const gone = new Set(absent);
   const live = [];
   const walk = (b) => {
+    if (gone.has(b.id)) return;
     if (ids.has(b.id) && !b.text) return;
     if (b.text) live.push(b);
     b.children.forEach(walk);
@@ -214,11 +217,28 @@ function readWaivers(slot, list, inRoots, problems) {
   return out;
 }
 
+// A section's absent list, as { node, why }: module parts the slot's content does not fill, left unrendered and out
+// of the floor without spending the waiver budget (content is never written for them). Every malformed entry is a problem.
+function readAbsent(slot, list, inRoots, problems) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) { problems.push(`${slot}: absent must be a list of { node, why }`); return []; }
+  const out = [];
+  list.forEach((a, i) => {
+    const at = `${slot}: absent[${i}]`;
+    if (!isObject(a)) { problems.push(`${at} must be { node, why }`); return; }
+    if (!text(a.why)) problems.push(`${at} needs why (the part of the source the module part would hold, and that it has none)`);
+    if (!text(a.node)) problems.push(`${at}: node must be a node id`);
+    else if (!inRoots(a.node)) problems.push(`${at}: ${a.node} is not inside any of the section's roots`);
+    else if (text(a.why)) out.push({ node: a.node, why: a.why });
+  });
+  return out;
+}
+
 // The coverage floor of one section: at every width it is checked at, each text style of that width's root (less
 // the waived) needs a type entry at that width whose node has the style. → { covered, total, excused } over (width,
 // style): excused counts the styles a node waiver takes out that no type entry covers.
 // The base width goes first, and its first style problem takes `hint` (the root is the whole module frame).
-function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems, baseWidth, hint = '' }) {
+function floorOf({ slot, roots, rootBox, type, waivedIds, absentIds = [], enforce, problems, baseWidth, hint = '' }) {
   let covered = 0;
   let total = 0;
   let excused = 0;
@@ -231,10 +251,10 @@ function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems, bas
       const box = text(e.node) ? findBox(root, e.node) : null;
       if (box?.text) have.add(styleKey(box.text));
     }
-    const every = textStyles(root);
+    const every = textStyles(root, [], absentIds);
     total += every.size;
     covered += [...every.keys()].filter((k) => have.has(k)).length;
-    const kept = textStyles(root, waivedIds);
+    const kept = textStyles(root, waivedIds, absentIds);
     excused += [...every.keys()].filter((k) => !kept.has(k) && !have.has(k)).length;
     if (!enforce) continue;
     for (const [key, s] of kept) {
@@ -393,7 +413,20 @@ export function validateChecks(checks, { join, boxes, tokens, waiverBudget = WAI
     const frame = !j.node || j.node === root ? base : rootBox(j.node);
     const hint = j.node && roots[width] === j.node ? '; name the desktop instance in "node"' : '';
     const waivedIds = waive.flatMap((w) => (w.node ? [w.node] : []));
-    const { excused, ...styles } = floorOf({ slot, roots, rootBox, type, waivedIds, enforce: !skipped, problems, baseWidth: String(width), hint });
+    const absent = readAbsent(slot, section.absent, inRoots, problems);
+    const absentIds = absent.map((a) => a.node);
+    // An absent part is not rendered: an entry measuring a node in it would hold the page to a part it lacks.
+    const absentHolding = (id) => absent.find((a) => Object.values(roots).some((node) => {
+      const part = findBox(rootBox(node), a.node);
+      return part && findBox(part, id);
+    }));
+    for (const e of [...geometry, ...type]) {
+      for (const nodeId of [...(Array.isArray(e.nodes) ? e.nodes : []), e.node].filter(text)) {
+        const a = absentHolding(nodeId);
+        if (a) problems.push(`${e.id}: ${nodeId} is in absent part ${a.node}: drop the entry or the absent part`);
+      }
+    }
+    const { excused, ...styles } = floorOf({ slot, roots, rootBox, type, waivedIds, absentIds, enforce: !skipped, problems, baseWidth: String(width), hint });
     budget.required += styles.total;
     budget.excused += skipped ? styles.total : excused;
     if (j.node && !frame && !skipped) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
@@ -407,7 +440,10 @@ export function validateChecks(checks, { join, boxes, tokens, waiverBudget = WAI
       const fault = j.node && frame ? rootFault(frame, box) : null;
       if (fault) refuse(fault);
       if (Number(w) > 0 && box.w < Number(w) / 2) refuse(`is ${box.w} wide, under half of ${w}`);
-      if (!skipped && moduleHasText && textStyles(box, waivedIds).size === 0) refuse('holds no text style to check (after waivers) and the module frame has some');
+      if (!skipped && moduleHasText && textStyles(box, waivedIds, absentIds).size === 0) {
+        if (absentIds.length && textStyles(box, waivedIds).size > 0) problems.push(`${slot} @${w}: every text part of root ${node} (${box.name}) is absent: the module does not fit the slot's content; take the next module or the source's own block (gates.md § Fallback ladder)`);
+        else refuse('holds no text style to check (after waivers) and the module frame has some');
+      }
     }
     const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
     const desktopNode = roots[width] && Number(width) > 480 ? roots[width] : Object.entries(roots).find(([w]) => Number(w) > 480)?.[1];
@@ -446,8 +482,8 @@ export function validateChecks(checks, { join, boxes, tokens, waiverBudget = WAI
         }
       }
     }
-    coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0) };
-    sections[slot] = { root: roots[width], width, roots, geometry, type, waive, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
+    coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0), ...(absent.length ? { absent: absent.length } : {}) };
+    sections[slot] = { root: roots[width], width, roots, geometry, type, waive, absent, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
   }
   if (budget.required && budget.excused * 100 > budget.limitPct * budget.required) {
     const pct = ((budget.excused / budget.required) * 100).toFixed(1);

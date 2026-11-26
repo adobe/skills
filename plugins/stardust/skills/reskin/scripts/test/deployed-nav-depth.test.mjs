@@ -75,6 +75,16 @@ await check('source with no nav groups (or no header) is n/a, whatever the deliv
   assert.equal(navDepthLedger(navDepthRow({ source: sourceHeader(0) })), 'n/a: the source header has no nav groups');
 });
 
+await check('header rows: fewer delivered rows than the source (a utility bar merged into the menu) is a FAIL, even with no nav groups', () => {
+  const tiered = (tree, tiers) => ({ ...tree, tiers });
+  const lost = navDepthRow({ source: tiered(sourceHeader(0, 6), 2), delivered: tiered(edsHeader([item('A')]), 1) });
+  assert.equal(lost.status, 'FAIL');
+  assert.equal(lost.value, 'source 0 nav groups, delivered 0; rows 2 → 1');
+  assert.match(lost.detail, /source header has 2 rows, the delivered header 1: each source row \(a utility bar above the logo row\) stays its own row/);
+  assert.equal(navDepthRow({ source: tiered(sourceHeader(3), 2), delivered: tiered(edsHeader([drop('Group 1'), drop('Group 2'), drop('Group 3')]), 2) }).status, 'PASS');
+  assert.equal(navDepthRow({ source: tiered(sourceHeader(0, 6), 1), delivered: tiered(edsHeader([]), 1) }).status, 'n/a');
+});
+
 await check('a disclosure button (aria-controls) with a panel of links is a group; a "Menu" or "Search" toggle is not', () => {
   const button = (label, n, over = {}) => node('button', [], { label, trig: { links: n, nested: false, shown: false }, expanded: 'false', ...over });
   const source = node('header', [node('div', [button('Products', 4), button('Company', 3), button('Menu', 12), button('Search', 2), button('Solo', 1)])]);

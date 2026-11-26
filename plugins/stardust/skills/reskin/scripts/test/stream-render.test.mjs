@@ -93,7 +93,7 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   }] };
   const run = (chrome) => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], ...chrome } } }).html;
   const centred = run({ navAlign: 'center' });
-  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav id="site-nav"><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">/);
+  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav id="site-nav"><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a class="btn" href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">/);
   assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
   assert.match(run({}), /<div class="chrome-row nav-align-end">/);
   assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
@@ -107,6 +107,26 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   assert.match(branded, /<div class="brand"><img class="logo"[^>]*><div class="brand-text"><span class="nav-text">Hill School<\/span><span class="nav-text">Learn well<\/span><\/div><\/div>/);
   assert.doesNotMatch(branded.match(/<div class="nav-actions">.*?<\/div>/)[0], /Hill School/);
   assert.match(branded, /@media \(max-width: 900px\) \{[\s\S]*\.site-header nav \{ display: none; \}[\s\S]*\.site-header \.nav-toggle \{ display: inline-flex; \}/);
+});
+check('header tiers: a list wholly above another list is the utility bar (the logo may span both); a button-styled menu item is an action', () => {
+  const li = (text, href, list, top, extra = {}) => ({ kind: 'listItem', text, list, listTop: top, listBottom: top + 30, children: [{ kind: 'cta', text, absHref: href, ...extra }] });
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
+    ordered: [
+      li('Patients', 'https://example.test/p', 1, 0), li('HCPs', 'https://example.test/h', 1, 0),
+      { kind: 'cta', text: '', absHref: 'https://example.test/', children: [{ kind: 'image', currentSrc: 'https://example.test/logo.svg' }] },
+      li('Home', 'https://example.test/', 2, 70), li('Stay Connected', 'https://example.test/s', 2, 70, { classes: 'menu-item__link button' }),
+    ],
+  }] };
+  const run = () => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } }).html;
+  const html = run();
+  assert.match(html, /<div class="utility-bar tier"><div class="container"><a href="https:\/\/example\.test\/p">Patients<\/a><a href="https:\/\/example\.test\/h">HCPs<\/a><\/div><\/div><div class="chrome-row/);
+  assert.match(html, /<nav id="site-nav"><a href="https:\/\/example\.test\/">Home<\/a><\/nav>\s*<div class="nav-actions"><a class="btn" href="https:\/\/example\.test\/s">Stay Connected<\/a>/);
+  assert.match(html, /\.site-header \.utility-bar\.tier \{ display: block; \}/);
+  // lists side by side (no list wholly above another): both stay the menu
+  chromeModel.sections[0].ordered.forEach((n) => { if (n.list === 1) Object.assign(n, { listTop: 70, listBottom: 100 }); });
+  assert.doesNotMatch(run(), /<div class="utility-bar/);
+  assert.match(run(), /<nav id="site-nav"><a href="https:\/\/example\.test\/p">Patients<\/a><a href="https:\/\/example\.test\/h">HCPs<\/a><a href="https:\/\/example\.test\/">Home<\/a><\/nav>/);
 });
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
@@ -676,6 +696,96 @@ await (async () => {
     await page.setViewportSize({ width: 1440, height: 800 });
     assert.equal(await toggle.isVisible(), false, 'no toggle at 1440px');
     assert.equal(await nav.isVisible(), true, 'nav shown at 1440px');
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
+
+// Source behaviour (content-model.md § Behaviour): a tray and tabs the mapping keeps or drops with a why.
+const isiOrdered = [
+  { kind: 'heading', level: 'h3', text: 'Safety information' },
+  { kind: 'heading', level: 'h4', text: 'Alpha safety' }, { kind: 'paragraph', text: 'Alpha text' },
+  { kind: 'heading', level: 'h4', text: 'Beta safety' }, { kind: 'paragraph', text: 'Beta text' },
+];
+const isiBehaviour = {
+  tray: { position: 'fixed', height: 120, toggle: true },
+  tabs: { labels: ['Alpha', 'Beta'], visible: false, list: null, panels: [[1, 3], [3, 5]], columns: 2 },
+};
+const behModel = { metadata: { title: 'ISI', lang: 'en' }, sections: [
+  { slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Top' }, ...Array.from({ length: 30 }, (_, k) => ({ kind: 'paragraph', text: `Filler ${k}` }))] },
+  { slot: 's02', ordered: [{ kind: 'paragraph', text: 'Scroll one' }, { kind: 'paragraph', text: 'Scroll two' }], behaviour: { scroll: { maxHeight: 30 } } },
+  { slot: 's03', ordered: isiOrdered, behaviour: isiBehaviour },
+] };
+const behMapping = (s03, s02 = { behaviour: 'scroll' }) => ({ pages: { isi: { slots: { s01: {}, s02, s03 } } } });
+const behRender = (s03) => render({ slug: 'isi', model: behModel, tokens, mapping: behMapping(s03), now: '2026-01-01T00:00:00Z' });
+
+check('checkMapping: a source behaviour is kept or dropped with a why, never silently; kept behaviour must exist in the model', () => {
+  const at = (s03, s02) => checkMapping(behMapping(s03, s02), { models: { isi: behModel } });
+  assert.deepEqual(at({ module: 'M19', behaviour: 'tray tabs' }), []);
+  assert.deepEqual(at({ module: 'M19', behaviour: 'tray', dropped: { tabs: 'M19 stacks the panels' } }), ['pages.isi.slots.s03.dropped.tabs: tabs render over any module but cards — keep them (behaviour: "tabs")']);
+  assert.deepEqual(at({ module: 'M4', layout: 'cards', behaviour: 'tray', dropped: { tabs: 'the panels are cards' } }), []);
+  assert.deepEqual(at({ module: 'M19', behaviour: 'tray' }), ['pages.isi.slots.s03: the source\'s tabs behaviour is neither kept (behaviour: "tabs") nor dropped with a why (dropped.tabs)']);
+  assert.deepEqual(at({ behaviour: 'tray tabs' }, {}), ['pages.isi.slots.s02: the source\'s scroll behaviour is neither kept (behaviour: "scroll") nor dropped with a why (dropped.scroll)']);
+  assert.deepEqual(at({ behaviour: 'tray tabs scroll' }), ['pages.isi.slots.s03.behaviour: "scroll" — the content model records no scroll for this slot']);
+  assert.deepEqual(at({ layout: 'cards', behaviour: 'tray sticky', dropped: { tabs: ' ', modal: 'x' } }), [
+    'pages.isi.slots.s03.behaviour: "tray sticky" is not space-separated tray | tabs | scroll',
+    'pages.isi.slots.s03.dropped.tabs: needs the why, a non-empty string',
+    'pages.isi.slots.s03.dropped.modal: not a behaviour (tray | tabs | scroll)',
+  ]);
+});
+
+check('render: a kept tray gets a sentinel, an icon toggle named by its heading, the captured height; kept tabs split the stream at the panel ranges; dropped ones render as a stack', () => {
+  const { html, warnings } = behRender({ behaviour: 'tray tabs' });
+  assert.deepEqual(warnings, []);
+  assert.match(html, /<div class="tray-sentinel" aria-hidden="true"><\/div>\s*<section class="band layout-stack width-narrow tray" style="--tray-height: 120px" data-slot="s03" data-behaviour="tray tabs">/);
+  assert.match(html, /<button type="button" class="tray-toggle" aria-expanded="false" aria-controls="s03-body" aria-labelledby="s03-title"><svg[^>]*aria-hidden="true"/);
+  assert.match(html, /<div class="flow" data-slot-body id="s03-body">\s*<h3 class="heading" id="s03-title">Safety information<\/h3>\s*<div class="tabs tabs-desktop-open" style="--tab-columns: 2">/);
+  assert.match(html, /<div class="tab-panel" role="tabpanel" id="s03-panel-1" aria-labelledby="s03-tab-1"><h4 class="heading">Alpha safety<\/h4>\s*<p class="lead">Alpha text<\/p><\/div><div class="tab-panel" role="tabpanel" id="s03-panel-2" aria-labelledby="s03-tab-2" hidden><h4/);
+  assert.match(html, /<button type="button" role="tab" id="s03-tab-2" aria-controls="s03-panel-2" aria-selected="false" tabindex="-1">Beta<\/button>/);
+  assert.match(html, /class="band layout-stack width-narrow scroll" style="--scroll-max: 30px" data-slot="s02" data-behaviour="scroll"/);
+  const dropped = behRender({ behaviour: 'tray', dropped: { tabs: 'M19 stacks' } }).html;
+  assert.ok(!dropped.includes('role="tab"') && !dropped.includes('.tab-list {'), 'tabs dropped: no tablist, no tab CSS');
+  assert.ok(dropped.includes('.tray.is-pinned {'));
+  const none = render({ slug: 'isi', model: behModel, tokens, mapping: { pages: { isi: { slots: {} } } }, now: 'x' }).html;
+  assert.ok(!/tray|tab-list|--scroll-max/.test(none), 'nothing kept: no behaviour markup, CSS or script');
+  assert.deepEqual(render({ slug: 'isi', model: { ...behModel, sections: [{ slot: 's01', ordered: isiOrdered }] }, tokens, mapping: { pages: { isi: { slots: { s01: { behaviour: 'tray' } } } } }, now: 'x' }).warnings,
+    ['s01: behaviour "tray" but the content model records none — ignored']);
+});
+
+// In a browser: the tray pins to the bottom edge at load, docks in-flow at the end, and under the measure attribute it
+// is in-flow and expanded; tabs show side by side at desktop width and switch at 390px.
+await (async () => {
+  const name = 'kept tray and tabs in a browser: pinned at load, toggle opens, docked at the end, in-flow under data-stardust-measure; tabs grid at 1400, switch at 390';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1400, height: 700 } });
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await page.setContent(behRender({ behaviour: 'tray tabs' }).html, { waitUntil: 'domcontentloaded' });
+    const tray = page.locator('section[data-slot="s03"]');
+    const box = () => tray.evaluate((e) => { const r = e.getBoundingClientRect(); return { pos: getComputedStyle(e).position, bottom: Math.round(r.bottom), h: Math.round(r.height) }; });
+    await page.waitForFunction(() => document.querySelector('.tray').classList.contains('is-pinned'));
+    assert.deepEqual(await box(), { pos: 'fixed', bottom: 700, h: 120 }, 'pinned to the bottom edge at the captured height');
+    const toggle = page.locator('.tray-toggle');
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.ok((await box()).h > 120, 'open: taller than the captured height');
+    assert.equal(await page.locator('#s03-panel-2').isVisible(), true, 'desktop: both panels shown, side by side');
+    assert.equal(await page.locator('.tab-list').isVisible(), false, 'desktop: tablist hidden as in the source');
+    const { measurePrep, measureRestore } = await import('../source-normalize.mjs');
+    await page.evaluate(measurePrep, { scopes: 'main' });
+    assert.equal((await box()).pos, 'relative', 'measurePrep: in-flow');
+    assert.equal(await toggle.isVisible(), false, 'measurePrep: no toggle');
+    await page.evaluate(measureRestore);
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-stardust-measure')), false, 'measureRestore clears the attribute');
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForFunction(() => !document.querySelector('.tray').classList.contains('is-pinned'));
+    assert.equal((await box()).pos, 'relative', 'docked in-flow at the end');
+    await page.setViewportSize({ width: 390, height: 700 });
+    assert.equal(await page.locator('#s03-panel-2').isVisible(), false, 'mobile: second panel hidden');
+    await page.locator('#s03-tab-2').click();
+    assert.equal(await page.locator('#s03-panel-2').isVisible(), true, 'mobile: tab switches');
+    assert.equal(await page.locator('#s03-panel-1').isVisible(), false);
     console.log(`✓ ${name}`);
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
 })();

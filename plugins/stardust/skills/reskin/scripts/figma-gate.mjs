@@ -211,6 +211,7 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
       "roots"?: { "<width>": "<id>" }    another outermost instance or variant of the module, for entries with that width
       "skip"?: "<why>"                   replaces the required geometry and type entries (and the floor)
       "waive"?: [ { "node": "<id>" | "width": "mobile" | "desktop", "why": "<why>" } ]   lowers the coverage floor below
+      "absent"?: [ { "node": "<id>", "why": "<the source has no …>" } ]   module parts the slot's content does not fill
       "geometry": [ { id, selector, previewSelector?, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
       "type": [ { id, selector, previewSelector?, node, width? } ],
       "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
@@ -238,7 +239,10 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   width such as 360: geometry and type would be held to a width the variant was not drawn at), and some root is
   checked wider than 480. waive is the only way below the floor, and needs a why: { node } on a frame drops that subtree
   (a documentation panel, notation text), on a TEXT node waives that style; { width: "mobile" } waives the mobile root,
-  { width: "desktop" } the root above 480. Waiver budget, per checks file: waivers and skips excuse at most 25% of the
+  { width: "desktop" } the root above 480. absent names a module part (a frame or TEXT node) the slot's content does
+  not fill: it is not rendered, no content is written for it, and its subtree leaves the floor without spending the
+  waiver budget (a style it shares with a filled part stays). No entry may measure a node in it, and a root whose every
+  text part is absent is a problem: the module does not fit the content. Waiver budget, per checks file: waivers and skips excuse at most 25% of the
   floor's items (each root's text styles, plus those of a waived mobile or desktop root and of a skipped section;
   --waiver-budget raises it), and never every mobile root the floor requires: over it is a problem (exit 2).
   A module frame that is itself the root holds its documentation frames and every variant: name the desktop instance

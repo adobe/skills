@@ -417,6 +417,8 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
     let clampSeq = 0;
     const clampOf = (el) => { const n = linesClamped(el); return n ? { lines: n, group: ++clampSeq } : null; };
     const withClamp = (n, c) => (c ? Object.assign(n, { lineClamp: c.lines, clampGroup: c.group }) : n);
+    const nodeEl = new WeakMap(); // stream node → its element (a text node → its parent), for behaviourOf
+    const listIds = new Map();
     function nodeFor(el, inherited = null) {
       const kind = kindOf(el);
       if (kind === 'image') {
@@ -435,6 +437,14 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
       const n = { kind, text: norm(el.innerText), display: getComputedStyle(el).display };
       withClamp(n, clampOf(el) || inherited);
       if (kind === 'heading') n.level = el.tagName.toLowerCase();
+      // A list item names its list and that list's vertical box: a header with a utility list above the logo
+      // row keeps it as its own tier (render.md § Header tiers).
+      if (kind === 'listItem' && el.parentElement && /^(UL|OL)$/.test(el.parentElement.tagName)) {
+        const listEl = el.parentElement;
+        if (!listIds.has(listEl)) listIds.set(listEl, listIds.size);
+        const r = listEl.getBoundingClientRect();
+        Object.assign(n, { list: listIds.get(listEl), listTop: Math.round(r.top + scrollY), listBottom: Math.round(r.bottom + scrollY) });
+      }
       if (kind === 'cta') {
         n.href = el.getAttribute('href') || '';
         n.absHref = el.href || '';
@@ -477,14 +487,15 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
               const slice = ciFind(pInner, t);
               if (slice === null) continue; // absent from innerText → not in the byte reference → not a stream node
               t = slice;
-              out.push(withClamp({
+              const tn = withClamp({
                 kind: 'text',
                 text: t,
                 parentTag: el.tagName.toLowerCase(),
                 parentClass: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
                 // An icon button's label sits in a nested span (often sr-only): the node is still the button.
                 ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
-              }, clamp));
+              }, clamp);
+              out.push(tn); nodeEl.set(tn, el);
             }
             continue;
           }
@@ -492,7 +503,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
           if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
           if (kindOf(node)) {
             const n = nodeFor(node, clamp);
-            if (n) out.push(n);
+            if (n) { out.push(n); nodeEl.set(n, node); }
             continue;
           }
           walk(node, clampOf(node) || clamp); // transparent wrapper — descend
@@ -522,6 +533,46 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
     const visibleText = norm(sec.innerText);
     const ordered = kindOf(sec) ? [nodeFor(sec)].filter(Boolean) : streamOf(sec, clampOf(sec));
     const orderedVerified = assignSeps(visibleText, ordered);
+    // Behaviour the source gives this slot (content-model.md § Behaviour): a tray pinned to the
+    // viewport's bottom edge, tabs (their labels and each panel's run of top-level stream nodes), a
+    // scroll box. The mapping keeps or drops each one with a why (mapping-json.md `behaviour`).
+    const behaviour = {};
+    let pinned = null;
+    for (let e = sec; e && e !== document.body; e = e.parentElement) {
+      const pos = getComputedStyle(e).position;
+      if (pos !== 'fixed' && pos !== 'sticky') continue;
+      const r = e.getBoundingClientRect();
+      if (r.height > 0 && r.top + r.height / 2 > window.innerHeight / 2) {
+        behaviour.tray = { position: pos, height: Math.round(r.height), toggle: !!e.querySelector('button, [aria-expanded]') };
+        pinned = e;
+      }
+      break;
+    }
+    const tabEls = [...(sec.querySelector('[role="tablist"]')?.querySelectorAll('[role="tab"]') || [])];
+    if (tabEls.length > 1) {
+      const byRef = tabEls.map((t) => document.getElementById(t.getAttribute('aria-controls') || (t.getAttribute('href') || '').replace(/^#/, '')));
+      const panels = byRef.every(Boolean) ? byRef : [...sec.querySelectorAll('[role="tabpanel"]')];
+      const range = (box) => {
+        const at = ordered.map((n, k) => (box.contains(nodeEl.get(n) || null) ? k : -1)).filter((k) => k >= 0);
+        return at.length ? [at[0], at[at.length - 1] + 1] : null;
+      };
+      if (panels.length === tabEls.length) {
+        const rects = panels.map((p) => p.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+        const list = sec.querySelector('[role="tablist"]');
+        behaviour.tabs = {
+          labels: tabEls.map((t) => norm(t.textContent)),
+          visible: isVisible(list),
+          list: range(list),
+          panels: panels.map(range),
+          columns: rects.length > 1 && rects.every((r) => Math.abs(r.top - rects[0].top) < 4) ? rects.length : 1,
+        };
+      }
+    }
+    const box = [sec, ...sec.querySelectorAll('*')].find((e) => {
+      const st = getComputedStyle(e);
+      return e !== pinned && /^(auto|scroll)$/.test(st.overflowY) && e.clientHeight > 0 && e.scrollHeight > e.clientHeight + 1 && norm(e.innerText).length > 0;
+    });
+    if (box) behaviour.scroll = { maxHeight: box.clientHeight };
     return {
       slot: `s${String(i + 1).padStart(2, '0')}`,
       rootTag: sec.tagName.toLowerCase(),
@@ -529,6 +580,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc, embedSrc }) =>
       visibleText,
       headings, paragraphs, listItems, ctas, images, formControls, leftovers,
       ordered, orderedVerified,
+      ...(Object.keys(behaviour).length ? { behaviour } : {}),
     };
   });
 

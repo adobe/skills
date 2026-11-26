@@ -470,7 +470,7 @@ async function inheritedStep(ctx) {
 // ---- nav-depth: the source header's dropdown groups held to the delivered header's ---------------------------------------
 
 const NAV_WIDTH = 1440;
-const NAV_BAR = 'delivered groups ≥ source groups, closed at load';
+const NAV_BAR = 'delivered groups and header rows ≥ source, closed at load';
 const NAV_TIMEOUT_MS = 60000;
 // A disclosure that opens the whole menu, a search, a language or account panel: never a nav group of its own.
 const NOT_A_GROUP = /\b(menu|navigation|nav|search|languages?|locale|country|region|account|log ?in|sign ?in|cart|basket)\b/i;
@@ -523,7 +523,25 @@ export const navTree = () => {
       kids: [...el.children].filter((k) => !SKIP.has(k.tagName.toLowerCase()) && budget > 0).map(walk),
     };
   };
-  return walk(root);
+  // Header tiers: the vertical bands of links (the outermost link lists, the runs of sibling links, the other links);
+  // boxes that overlap are one band (a wrapped menu is one list box). A logo link (no text) spanning two rows joins none.
+  const tiers = () => {
+    const outer = (l) => { const p = l.parentElement?.closest(LISTS); return !p || !root.contains(p); };
+    const lists = [...root.querySelectorAll(LISTS)].filter((l) => outer(l) && shown(l) && [...l.querySelectorAll('a[href]')].some(shown));
+    const inList = (el) => lists.some((l) => l.contains(el));
+    const runs = [...root.querySelectorAll('*')].filter((el) => !inList(el) && [...el.children].filter((k) => k.matches('a[href]') && shown(k)).length >= 2);
+    const inRun = (el) => runs.some((r) => r.contains(el));
+    const loose = [...root.querySelectorAll('a[href]')].filter((el) => !inList(el) && !inRun(el) && shown(el) && clean(el.textContent));
+    const boxes = [...lists, ...runs, ...loose].map((el) => el.getBoundingClientRect()).map((r) => [r.top, r.bottom]).sort((x, y) => x[0] - y[0]);
+    let n = 0;
+    let end = -Infinity;
+    for (const [top, bottom] of boxes) {
+      if (top >= end - 1) n += 1;
+      end = Math.max(end, bottom);
+    }
+    return n;
+  };
+  return { ...walk(root), tiers: tiers() };
 };
 
 const isList = (n) => ['ul', 'ol'].includes(n.t) || ['menu', 'menubar'].includes(n.role);
@@ -569,15 +587,20 @@ export function navDepthRow({ source = null, delivered = null, error = null } = 
   const row = (status, value, detail = null) => ({ check: 'nav-depth', width: NAV_WIDTH, value, bar: NAV_BAR, status, artifact: null, detail });
   if (error) return row('ERROR', 'ERROR (exit 124)', error);
   const src = navGroups(source);
-  if (!src?.count) return row('n/a', `n/a: the source ${src ? 'header has no nav groups' : 'page has no header'}`);
+  // Header tiers (reskin render.md § Header tiers): a utility bar above the logo row stays its own row.
+  const srcTiers = Number.isFinite(source?.tiers) ? source.tiers : 0;
+  const delTiers = Number.isFinite(delivered?.tiers) ? delivered.tiers : 0;
+  const lostTier = srcTiers > 1 && delTiers < srcTiers;
+  if (!src?.count && !lostTier) return row('n/a', `n/a: the source ${src ? 'header has no nav groups' : 'page has no header'}`);
   const del = navGroups(delivered, { eds: true }) ?? { count: 0, labels: [], groups: [] };
   const open = del.groups.filter((g) => g.open);
   const problems = [];
-  if (del.count < src.count) {
+  if (lostTier) problems.push(`the source header has ${srcTiers} rows, the delivered header ${delTiers}: each source row (a utility bar above the logo row) stays its own row, never merged into the nav list`);
+  if (src && del.count < src.count) {
     problems.push(`the source header has ${src.count} nav groups (${src.labels.join(', ')}), the delivered header ${delivered ? del.count : 'none (no <header>)'}${del.count ? ` (${del.labels.join(', ')})` : ''}: a flat list of the group links does not satisfy it, each group needs its own dropdown (.nav-sections li > ul)`);
   }
   if (open.length) problems.push(`${open.length} dropdown(s) open at load @${NAV_WIDTH} (${open.map((g) => g.label || '(unlabeled)').join(', ')}): a dropdown is closed by default (aria-expanded="false", its submenu hidden)`);
-  const value = `source ${src.count} nav groups, delivered ${del.count}${open.length ? `, ${open.length} open at load` : ''}`;
+  const value = `source ${src?.count ?? 0} nav groups, delivered ${del.count}${srcTiers ? `; rows ${srcTiers} → ${delTiers}` : ''}${open.length ? `, ${open.length} open at load` : ''}`;
   return problems.length ? row('FAIL', value, problems.join('\n')) : row('PASS', value);
 }
 

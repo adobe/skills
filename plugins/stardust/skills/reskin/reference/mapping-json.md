@@ -34,7 +34,7 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 | key | type | values / default | effect |
 |---|---|---|---|
 | `model` | string | directory (project-relative) holding a `content-model.json` | the chrome capture `header` / `footer` read; required when either is set |
-| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items is zoned brand / menu / actions |
+| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items is zoned brand / menu / actions, a list above another list being the utility bar (`render.md` § Header tiers) |
 | `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items |
 | `footerTone` | string | `dark` \| `light` \| `accent`; default none | paints the footer from the palette |
 | `navAlign` | string | `start` \| `center` \| `end`; default the donor's `layout.navAlign`, else `end` | where a zoned header puts its menu |
@@ -71,6 +71,8 @@ read by the renderer.
 | `heading` | string | `display` \| `h2` \| `h3` \| `h4`; default `display` | the type role of the slot's `.heading` (`display` when the donor lacks `type.<role>`) |
 | `inset` | string | a length `<n>px` \| `rem` \| `%` | full-width container with that side gutter |
 | `split` | string | two tracks, each `<n>px` \| `fr` \| `%` (`531px 1fr`); default `1fr 1fr` | the `split` layout's columns |
+| `behaviour` | string | space-separated `tray` \| `tabs` \| `scroll`, each one the slot's `behaviour` in the content model records | keeps it (`render.md` § Behaviour); one the model lacks is warned and ignored |
+| `dropped` | object | `{ "<behaviour>": "<why>" }` | a source behaviour not kept, with a non-empty why (`"scroll": "the module shows the full text"`); `tabs` only with `layout: "cards"` |
 
 The renderer warns and ignores a bad `tone`, `heading`, `inset` or `split`, falls back for `columns`, and
 emits an unknown `layout` word as a class with no style; `--check` reports all of them.
@@ -88,6 +90,7 @@ node stardust/scripts/reskin/stream-render.mjs --check [<slug>…] [--mapping <f
 
 Reports, one per line on stdout: unknown keys, values outside the enums, malformed `columns` / `inset` /
 `split`, slot ids absent from the page's content model (checked when the model exists; a missing model is
-a note on stderr), chrome slot ids absent from the chrome model, `header` / `footer` without `model`, and
+a note on stderr), a behaviour in the model that the slot neither keeps nor drops with a why, a kept
+behaviour the model lacks, chrome slot ids absent from the chrome model, `header` / `footer` without `model`, and
 each requested `<slug>` with no `pages` entry. Nothing is rendered or written. Exit 0 valid, 1 problems,
 2 the file is missing.

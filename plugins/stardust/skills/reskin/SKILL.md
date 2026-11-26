@@ -229,7 +229,8 @@ fixed trays (an ISI), modals, collapsed
 accordions, fragment-loaded content. The content gate measures them
 expanded and resolved, so never inline, open or un-stick one to pass
 a gate; if a gate still can't read it, log a `gate.limitation`
-residual. Content the source keeps on screen stays on screen.
+residual. Content the source keeps on screen stays on screen. Each
+captured `behaviour` is kept or `dropped` with a why in `mapping.json`.
 
 ### Phase 5 — GATES
 
@@ -266,9 +267,10 @@ looped on. **The ledger is written by script, never by hand:**
 (`reference/gates.md` § Residual logging). **An agent never accepts
 its own blocking failure**: a (d) `figma.*`, `exact`, `step10` or
 header/footer residual is `--verdict needs-owner`; only `--by user`
-accepts one. A hands-off run remaps the failing section instead: the
-closest other kit module, then the source's own block
-(`reference/gates.md` § Fallback ladder).
+accepts one. A hands-off run keeps a module that fits the content
+(recorded fallback); a join failure or a module that fits nothing is
+remapped to the closest other kit module, and only then the source's
+own block (`reference/gates.md` § Fallback ladder).
 
 ### Phase 6 — HANDOFF
 

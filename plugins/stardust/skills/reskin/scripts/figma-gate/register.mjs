@@ -135,7 +135,7 @@ function staleWhy(slot, section, geometry, ramp) {
 }
 
 // checks is the validated checks (prepare's checks: each section's root, roots, entries, waive and skip) and coverage its
-// per-slot coverage floor ({ styles: { covered, total }, widths, waived }); boxes must hold the roots the checks name.
+// per-slot coverage floor ({ styles: { covered, total }, widths, waived, absent }); a section's absent parts are named in its row; boxes must hold the roots the checks name.
 // Without coverage or checks nothing is mandated: it is not run. A section is also not mandated when its results are not of this
 // checks file (staleWhy): an unmandated "stale" row says why. A waived row names its node or width, quotes the why and
 // says what it drops.
@@ -160,7 +160,8 @@ export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, fla
     const cov = coverage?.[s.slot];
     const stale = geometry && ramp && checks ? staleWhy(s.slot, checks[s.slot], geometry, ramp) : null;
     const passes = Boolean(geometry && ramp && checks) && !stale && g.length + t.length > 0 && ![...g, ...t].some(failing);
-    const tally = `${g.length} geometry and ${t.length} type entries pass`;
+    const absent = (checks?.[s.slot]?.absent ?? []).map((x) => `${x.node} (${x.why})`);
+    const tally = `${g.length} geometry and ${t.length} type entries pass${absent.length ? `; absent, not rendered: ${absent.join('; ')}` : ''}`;
     if (stale) row('unmandated', s.slot, s.module, s.node, 'stale', `${stale}: re-run figma-gate all`);
     if (passes && cov?.waived === 0) {
       if (cov.styles.covered === cov.styles.total) row('mandated', s.slot, s.module, [...g, ...t].find((r) => r.root)?.root ?? s.node, 'geometry and type', tally);

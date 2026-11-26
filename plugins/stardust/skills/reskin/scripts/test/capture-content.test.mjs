@@ -113,6 +113,36 @@ if (playwrightOk) {
     } finally { await browser.close(); }
   });
 
+  await check('behaviour: a tray pinned to the bottom edge, its hidden tabs with two side-by-side panels as stream ranges, and a scroll box', () => {
+    const lines = ['one', 'two', 'three', 'four', 'five'].map((w) => `<p>Line ${w}</p>`).join('');
+    const r = capture('behaviour', page(`<main><section><h2>Plain</h2><p>Copy</p></section>`
+      + `<section><h2>Scroll</h2><div style="max-height:60px;overflow-y:auto">${lines}</div></section></main>`
+      + '<section id="isi" style="position:fixed;left:0;right:0;bottom:0;height:160px;overflow:hidden;background:#fff">'
+      + '<h3>Safety information</h3><button aria-expanded="false">Show more</button>'
+      + '<ul role="tablist" style="display:none"><li><a role="tab" href="#p1">Alpha</a></li><li><a role="tab" href="#p2">Beta</a></li></ul>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr"><div id="p1" role="tabpanel"><h4>Alpha safety</h4><p>Alpha text</p></div>'
+      + '<div id="p2" role="tabpanel"><h4>Beta safety</h4><p>Beta text</p></div></div></section>'), ['--scope', 'main,#isi!']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const [plain, scroll, isi] = r.model.sections;
+    assert.equal(plain.behaviour, undefined, 'a plain section has no behaviour');
+    assert.deepEqual(scroll.behaviour, { scroll: { maxHeight: 60 } });
+    assert.deepEqual(isi.behaviour.tray, { position: 'fixed', height: 160, toggle: true });
+    assert.equal(isi.behaviour.scroll, undefined, 'the tray itself is not a scroll box');
+    const { tabs } = isi.behaviour;
+    assert.deepEqual({ ...tabs, panels: undefined }, { labels: ['Alpha', 'Beta'], visible: false, list: null, panels: undefined, columns: 2 });
+    assert.deepEqual(tabs.panels.map(([a, b]) => isi.ordered.slice(a, b).map((n) => n.text)), [['Alpha safety', 'Alpha text'], ['Beta safety', 'Beta text']]);
+  });
+
+  await check('header tiers: each list item names its list and the list\'s page box', () => {
+    const r = capture('tiers', page('<header style="margin:0"><ul style="margin:0;height:30px"><li><a href="/p">Patients</a></li><li><a href="/h">HCPs</a></li></ul>'
+      + '<div style="display:flex"><a href="/"><img alt="Logo" width="80" height="40" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'4\'/%3E"></a>'
+      + '<ul style="margin:0"><li><a href="/">Home</a></li></ul></div></header><main><section><h2>Body</h2><p>Copy</p></section></main>'), ['--scope', 'header!']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const items = r.model.sections[0].ordered.filter((n) => n.kind === 'listItem');
+    assert.deepEqual(items.map((n) => n.list), [0, 0, 1]);
+    assert.ok(items[0].listBottom <= items[2].listTop, `the first list (bottom ${items[0].listBottom}) sits above the second (top ${items[2].listTop})`);
+  });
+
   await check('embeds: an iframe player, a Wistia player and a <video> are inventoried by identity (a player script naming the same video adds none); altFlags names non-descriptive alts', () => {
     const img = (alt, n) => `<img width="120" height="80" alt="${alt}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Ctext%3E${n}%3C/text%3E%3C/svg%3E">`;
     const r = capture('embeds', page(`<main><section><h2>Watch</h2><iframe width="560" height="315" data-src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>

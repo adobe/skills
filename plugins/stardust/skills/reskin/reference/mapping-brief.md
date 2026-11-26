@@ -109,13 +109,23 @@ parent slot's full text, so a split can't shed content.
 Pick a `mapped` row's module by the parts the slot has, not its role
 alone. List the slot's parts from `content-model.json` (kicker, heading,
 subhead, body, CTA, image, items) and each candidate frame's text and
-image parts (`figma-gate.mjs boxes --module Mn`). Prefer the module or
-composition variant whose every part the slot fills; among those, the
-one leaving fewest of the slot's parts without a place. Name the parts
+image parts (`figma-gate.mjs boxes --module Mn`). Pick the module or
+composition variant that gives a place to most of the slot's parts;
+among equals, the one with fewest parts left empty. Name the parts
 compared in the row's rationale. Never write content to fill a frame
-part: an empty part is a coverage-floor item the page cannot meet, and
-in a hands-off run the section falls back (`gates.md` § Fallback
-ladder).
+part: list each empty part in the checks file's `absent` with why (the
+source has no subhead); it is not rendered (`gates.md`, Coverage
+floor). The layout may differ from the source's to fit the module.
+A slot takes `new-module` (the source's own block in donor tokens)
+only when no module holds its content.
+
+A slot's `behaviour` in the content model (a pinned tray, tabs, a
+scroll box) is kept in `mapping.json` (`behaviour`) or dropped with a
+why (`dropped`), whatever the module: the module styles the content,
+the source's behaviour stays. Tabs lay over any module, so a module
+that stacks its panels still keeps them; only a `cards` layout drops
+tabs. `--check` fails a behaviour left unaccounted or tabs dropped
+elsewhere.
 
 ## Composition variants
 

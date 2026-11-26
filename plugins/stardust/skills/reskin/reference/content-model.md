@@ -59,7 +59,8 @@ It complements — does not replace — extract's design-oriented capture
         { "kind": "listItem", "text": "SUPERCOMPUTING", "display": "inline", "sep": " " },
         { "kind": "listItem", "text": "ARTIFICIAL INTELLIGENCE", "display": "inline", "sep": "" }
       ],
-      "orderedVerified": true
+      "orderedVerified": true,
+      "behaviour": { "tray": { "position": "fixed", "height": 160, "toggle": true } }
     }
   ]
 }
@@ -150,6 +151,9 @@ Node shape:
   whatever its class names: a painted background or visible border plus
   button-sized padding (≥8px sides, ≥4px top). The renderer gives it the
   donor `.btn`.
+  A `listItem` in a `ul`/`ol` carries `list` (the list's id in the
+  capture) and `listTop` / `listBottom` (the list's page box), so the
+  renderer can tell header tiers apart (`render.md` § Header tiers).
 - `text` — normalized **rendered-case** innerText. Stream `text`
   nodes are built on an **innerText-consistent basis**: a text node
   enters the stream only if its text occurs in its parent's rendered
@@ -253,6 +257,28 @@ A renderer may still parse a single node's text apart (a composite
 `li` row into kicker/date/title) — the SKILL.md Phase 4 fail-loudly
 rule applies to that parse. Reordering or re-joining across nodes is
 never the renderer's job anymore.
+
+## Behaviour
+
+`behaviour` (per slot, omitted when empty) records what the source does
+with the slot's content beyond showing it, so the mapping can keep it
+(`mapping-json.md` `behaviour`) or drop it with a why:
+
+- `tray` — the slot or an ancestor is `position: fixed` or `sticky`
+  with its centre in the viewport's lower half (an ISI tray):
+  `{ position, height, toggle }`; `toggle` is whether it holds a
+  button or an `[aria-expanded]` control.
+- `tabs` — a `[role=tablist]` with more than one `[role=tab]`, each tab
+  matched to its panel by `aria-controls` / `href`, else the
+  `[role=tabpanel]` elements in order: `{ labels, visible, list,
+  panels, columns }`. `labels` are the tab texts; `visible` whether
+  the tablist shows at the capture width; `list` and each of `panels`
+  a `[start, end)` range of `ordered` indexes (`list` null when the
+  tablist adds no stream node); `columns` the panel count when the
+  panels sit side by side, else 1.
+- `scroll` — the first element (not the tray itself) that scrolls its
+  text (`overflow-y: auto | scroll`, content taller than the box):
+  `{ maxHeight }` in px.
 
 ## Rendered-case text (the casing subtlety)
 

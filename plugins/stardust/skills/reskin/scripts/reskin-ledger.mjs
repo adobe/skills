@@ -35,7 +35,7 @@
  *       refused unless the page's gates.deployed shows the chrome PASS.
  *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked|fallback [--note "…"] [--by <who>]
  *       accepted on an owner-only gate (AGENT_NEVER_ACCEPTS, or chrome/header/footer) needs --by user.
- *       fallback: a hands-off run's figma.ramp, exact or step10 (after step10 ran twice), --note required.
+ *       fallback: a hands-off run's figma.geometry, figma.ramp, exact or step10 (after step10 ran twice), --note required.
  *   flag <slug> --note "<text>"                          appends to pages[slug].flags (deduped)
  *   delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
  *       → ledger.delivery { scope, pages?, requestedBy, reason, at } (default scope full-site; pages for subset
@@ -66,7 +66,7 @@ human judgments. reskin-preflight and migrate read it.
   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked|fallback [--note "…"] [--by <who>]
       figma.join|geometry|ramp, exact, step10 and chrome/header/footer gates are the owner's: an agent
       records --verdict needs-owner; only --by user accepts. deployed.sanity is never accepted.
-      fallback (hands-off runs only; figma.ramp, exact or step10; --note says what was used; step10 after a
+      fallback (hands-off runs only; figma.geometry, figma.ramp, exact or step10; --note says what was used; step10 after a
       second step10 run) covers the gate and is listed in the handoff.
   flag <slug> --note "<text>"                  appends to pages[slug].flags (identical text once)
   delivery --scope full-site|archetypes-only|subset [--pages a,b] --requested-by user|runner --reason "<why>"
@@ -104,9 +104,10 @@ export const ownerOnly = (gate) => {
 // An agent's say-so: --by hands-off|autopilot|agent (anything but user), or no --by in a handsOff run.
 export const agentBy = (by, state) => (by ? String(by).toLowerCase() !== 'user' : state?.handsOff === true);
 // What a hands-off run uses when an owner-only failure is not one section's to remap (gates.md § Fallback ladder):
-// the source's value for a figma.ramp token, the source's text for an exact check, a finish after a second step10.
+// the kit module kept where its geometry still misses (figma.geometry), the source's value for a figma.ramp token,
+// the source's text for an exact check, a finish after a second step10.
 // residual --verdict fallback, hands-off only, --note naming what was used; it covers its gate and the handoff lists it.
-export const fallbackGate = (gate) => { const g = String(gate || '').replace(/^deployed\./, ''); return ['figma.ramp', 'step10'].includes(g) || /(^|\.)exact(\.|$)/.test(g); };
+export const fallbackGate = (gate) => { const g = String(gate || '').replace(/^deployed\./, ''); return ['figma.geometry', 'figma.ramp', 'step10'].includes(g) || /(^|\.)exact(\.|$)/.test(g); };
 export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
   if (s == null) return 'NOT-RUN';
@@ -369,7 +370,7 @@ export function main(argv) {
     }
     if (o.verdict === 'fallback') {
       const why = !state.handsOff ? 'a fallback is for a hands-off run (state.json handsOff: true); record --verdict needs-owner'
-        : !fallbackGate(o.gate) ? `${o.gate} takes no fallback (figma.ramp, exact or step10 only; a section's figma.join/geometry or chrome failure is remapped, gates.md § Fallback ladder)`
+        : !fallbackGate(o.gate) ? `${o.gate} takes no fallback (figma.geometry, figma.ramp, exact or step10 only; a section's figma.join or chrome failure is remapped, gates.md § Fallback ladder)`
           : !o.note?.trim() ? 'a fallback needs --note "<what was used instead>"'
             : o.gate.replace(/^deployed\./, '') === 'step10' && !(Number(ledger.pages[slug]?.gates?.step10?.attempts) >= 2) ? 'a step10 fallback needs step10 run twice (re-run it once first)'
               : null;

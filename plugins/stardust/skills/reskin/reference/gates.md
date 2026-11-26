@@ -98,7 +98,9 @@ resolved as EDS `fragment.js` does, and EDS sections outside `main`
 counts only where the other side has the same words or images there,
 so content visible at load can never be skipped. The report names what
 was normalised (one line). An accordion hidden only by `display:none`
-is not opened.
+is not opened. `measurePrep` also sets `data-stardust-measure` on
+`<html>`, which docks a kept tray, shows every tab panel and unclamps a
+scroll box (`render.md` § Behaviour); `figma-gate` sets it too.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.
@@ -395,6 +397,12 @@ phone width such as 360), and some root is checked wider than 480. Only
 `waive: [{ node | "width": "mobile" | "desktop", why }]` (or a section `skip`)
 lowers it: `node` on a frame drops that subtree (a documentation panel), on a
 TEXT node waives its style; the widths waive the mobile or the desktop root.
+`absent: [{ node, why }]` names a module part the slot's content does not
+fill (a subhead the source lacks): it is not rendered, no content is written
+for it, and its subtree leaves the floor without spending the waiver budget.
+No entry may measure a node in it; a root whose every text part is absent is
+a floor problem (the module does not fit: `mapping-brief.md` § Content fit).
+The register names each absent part in its section's row.
 A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
 last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
 letter spacing a style is keyed by.
@@ -502,9 +510,11 @@ fetches `.plain.html` without a browser.
 - **Nav depth.** `parity` also counts the source header's nav groups
   (a list item holding a nested list, or a labelled toggle with 2+
   links) against the preview's `.nav-sections` items holding a list,
-  at 1440 (`nav-depth.json`, `chrome.navDepth`). Fewer groups, a flat
-  list of the group links, or a dropdown open at load is a parity
-  FAIL; a source with no groups is n/a.
+  at 1440 (`nav-depth.json`, `chrome.navDepth`), and the header's
+  link rows (overlapping link lists and runs are one row). Fewer groups,
+  a flat list of the group links, fewer rows (a utility bar merged into
+  the menu) or a dropdown open at load is a parity FAIL; a source with
+  no groups and one row is n/a.
 - **Step 10 stays.** The verdict replaces only `deploy` Step 10's automated
   reconcile; its eyeball, CLS and header-behavior checks stay mandatory before
   handoff (`deployed-leg.md` § Recipe, step 7).
@@ -566,18 +576,27 @@ imposed (a page cap), named in the handoff like a user's opt-out.
 ### Fallback ladder (hands-off)
 
 In a hands-off run (`state.json` `handsOff: true`) nobody can accept an
-owner-only residual, so a section still failing (d) `figma.join`,
-`figma.geometry` or `figma.ramp` after its two fix iterations is remapped
-instead of recorded `needs-owner`. No gate is lowered: each step renders the new mapping and
-re-runs every gate. A step is not a fix iteration.
+owner-only residual. The page is the kit's modules filled with the
+source's content; the source's own block is the last resort, for content
+no module fits, never for a check that still misses. No gate is lowered:
+each step renders the new mapping and re-runs every gate. A step is not a
+fix iteration.
+
+- A section whose module fits its content (`mapping-brief.md` § Content
+  fit) but still fails (d) `figma.geometry` or `figma.ramp` after its two
+  fix iterations **keeps its module**: record a fallback residual (below)
+  naming each slot and what still misses. Its layout may differ from the
+  source's to fit the content.
+- A section failing `figma.join`, or whose content fits no part of its
+  module (every text part `absent`), is remapped:
 
 1. **Closest kit module.** Remap the slot in `mapping.md` to the included
    module, other than the failing one and its `variantOf` rows, that the
    slot's content fits best (`mapping-brief.md` § Content fit). Rewrite
    its checks-file entries from `figma-gate.mjs boxes --module <new>`.
    One remap per slot.
-2. **The source's own block.** If no module is left or the remap fails
-   too, the row becomes `new-module`: the source section's own layout,
+2. **The source's own block.** Only if no module fits the content, the
+   row becomes `new-module`: the source section's own layout,
    composed from donor tokens (name them, as for any new-module row), its
    checks-file entries removed. (d) joins it as `out-of-kit` (B4), B3's
    `:root` block still holds, and (a) to (c) hold as for any section.
@@ -600,6 +619,8 @@ What no section remap fixes takes a recorded fallback,
 `reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict fallback --note "<what was used>"`
 (hands-off only; the script refuses any other gate):
 
+- **`figma.geometry`**: the fitting module is kept; the note names each
+  slot and the entries that still miss after two fix iterations.
 - **`figma.ramp`** on a `:root` token or a font: that one token takes
   the source page's computed value; the note names the token and both values.
 - **`exact`**: the section carries the source's text verbatim, never

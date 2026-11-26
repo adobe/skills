@@ -277,6 +277,10 @@ export const MARKS = ['\uFDD0', '\uFDD1'];
 export async function measurePrep({ scopes: scopeList, resolve = false, timeoutMs = 10000 }) {
   const [OPEN, CLOSE] = ['\uFDD0', '\uFDD1'];
   const undo = []; window.__stardustMeasureUndo = undo;
+  // A rendered page's kept behaviour (stream-render: pinned tray, tab panels, scroll box) shows its docked,
+  // expanded state under this attribute (render.md § Behaviour).
+  const html = document.documentElement;
+  if (!html.hasAttribute('data-stardust-measure')) { html.setAttribute('data-stardust-measure', ''); undo.push(() => html.removeAttribute('data-stardust-measure')); }
   const stats = { details: 0, dialogs: 0, panels: 0, fragments: [], modals: [], outside: 0, deduped: [], failed: [] };
   const scopes = scopeList.split(',').map((s) => document.querySelector(s.trim().replace(/!$/, ''))).filter(Boolean);
   if (!scopes.length) return stats;
