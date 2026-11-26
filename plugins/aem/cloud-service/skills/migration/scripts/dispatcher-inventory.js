@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 const exists = p => { try { return fs.existsSync(p); } catch { return false; } };
 const isDir = p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
@@ -16,7 +17,7 @@ function walkFind(dir, pred, depth, d = 0) {
   let es; try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
   for (const e of es) {
     if ((e.isFile() || e.isSymbolicLink()) && pred(e.name)) return true;
-    if (e.isDirectory() && !['node_modules', '.git', 'target', 'dist'].includes(e.name)
+    if (e.isDirectory() && !isHiddenDir(e.name) && !['node_modules', 'target', 'dist'].includes(e.name)
         && walkFind(path.join(dir, e.name), pred, depth, d + 1)) return true;
   }
   return false;
@@ -61,7 +62,7 @@ function findConfigRoots(workspaceRoot, acc = [], depth = 0) {
   if (detectMode(workspaceRoot) !== 'not-dispatcher') { acc.push(workspaceRoot); return acc; }
   let es; try { es = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return acc; }
   for (const e of es) {
-    if (!e.isDirectory() || ['node_modules', '.git', 'target', 'dist'].includes(e.name)) continue;
+    if (!e.isDirectory() || isHiddenDir(e.name) || ['node_modules', 'target', 'dist'].includes(e.name)) continue;
     findConfigRoots(path.join(workspaceRoot, e.name), acc, depth + 1);
   }
   return acc;
@@ -74,7 +75,7 @@ function readTextFiles(dir, pred) {
     let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of es) {
       const f = path.join(d, e.name);
-      if (e.isDirectory() && !['node_modules', '.git', 'target', 'dist'].includes(e.name)) rec(f, depth + 1);
+      if (e.isDirectory() && !isHiddenDir(e.name) && !['node_modules', 'target', 'dist'].includes(e.name)) rec(f, depth + 1);
       else if (e.isFile() && pred(e.name)) out.push(f);
     }
   })(dir, 0);

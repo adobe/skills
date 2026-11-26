@@ -134,14 +134,20 @@ ports without advanced networking (flexible port egress plus port forwarding rul
   confidence, then id. Output contains no timestamps and is identical across runs.
 - Warnings are kept in `integrationDiscovery.warnings`, separate from findings and from the
   runbook's pattern scan warnings.
+- **Runbook rendering.** Known integrations get one row each, with their evidence. Unknown APIs
+  are **rolled up by the consumer**: one row per OSGi PID (its endpoint properties and the run modes
+  that set them) or per Java file, with a host count. A legacy project gives each run mode its own
+  host, so one setting is many records in the cache but one row in the runbook. Rows that need
+  advanced networking (private address, non-80/443 port) come first, and settings that change host
+  per run mode get a pointer to Cloud Manager `$[env:]` variables (Branch A). Full evidence stays in the cache.
 
 ## Security and privacy
 
 - Local, read-only: no network calls, no endpoint is contacted, no customer code is executed or modified.
 - Evidence holds only the workspace-relative path, line, signal type/id and the catalog's static
   `indicator`. Matched source text, URLs, query strings, credentials and config values are never stored.
-- Unknown hosts are shown as `sha256:<8 hex>` plus their top-level domain. The fingerprint is stable,
-  for correlating evidence across files.
+- Unknown hosts are stored in the cache as `sha256:<8 hex>` plus their top-level domain. The fingerprint
+  is stable, for correlating evidence across files. The runbook only counts them.
 
 ## Extending the catalog
 

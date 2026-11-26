@@ -22,6 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 // Keys whose plaintext string values are likely secrets and should move to
 // `$[secret:…]`. Matched case-insensitively against the JSON property name.
@@ -120,7 +121,7 @@ function collectRunmodeFolders(dir, acc = []) {
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+    if (isHiddenDir(e.name) || e.name === 'node_modules' || e.name === 'target' || e.name === 'dist') continue;
     const full = path.join(dir, e.name);
     if (RUNMODE_QUALIFIED_DIR_RE.test(e.name)) acc.push(full);
     collectRunmodeFolders(full, acc);
@@ -248,7 +249,7 @@ function collectConfigFiles(dir, acc = []) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+      if (isHiddenDir(e.name) || e.name === 'node_modules' || e.name === 'target' || e.name === 'dist') continue;
       collectConfigFiles(full, acc);
     } else if (e.isFile()) {
       if (!inConfigFolder(full)) continue;

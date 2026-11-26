@@ -697,7 +697,7 @@ test('cascade findings are NOT tagged heuristic', async () => {
 
 test('samplePrompt uses the OSGi natural-language override', () => {
   assert.match(samplePrompt('osgiConfig', {}), /scan my config files/i);
-  assert.match(samplePrompt('scheduler', {}), /migration skill: \*\*scheduler\*\* only/);
+  assert.strictEqual(samplePrompt('scheduler', {}), 'Use the migration skill: scheduler only.');
 });
 
 test('samplePrompt never leaks the internal code-assessment handoff to the user', () => {
@@ -1733,4 +1733,138 @@ test('inputStream: rendered runbook + cache stay workspace-relative and carry si
   assert.strictEqual(entry.file, 'core/src/main/java/com/acme/core/servlets/DownloadServlet.java');
   assert.strictEqual(entry.confidence, 'heuristic');
   assert.ok(entry.sites.every(s => Number.isInteger(s.line) && s.fix));
+});
+
+test('the runbook carries a Cloud Manager readiness baseline: pre-flight before patterns, cached for Step 6', async () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project><artifactId>x</artifactId><build><plugins><plugin><artifactId>maven-surefire-plugin</artifactId><configuration><argLine>-Xmx1g</argLine></configuration></plugin></plugins></build></project>');
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+    getEffectivePom: () => ({ ok: false, error: 'no stub' }),
+  });
+  assert.deepStrictEqual(gathered.cmReadiness.findings.map((f) => f.rule), ['argline-drops-jacoco-agent']);
+
+  const md = renderRunbook(gathered, { workspaceRoot: root, generatedAt: 'now' });
+  const readiness = md.indexOf('## Cloud Manager readiness');
+  assert.ok(readiness > 0 && readiness < md.indexOf('## Scanned'), 'readiness renders before the per-pattern sections');
+  assert.match(md, /### Pre-flight — fix before any pattern/);
+
+  const cachePath = path.join(root, 'cache.json');
+  writeRunbookCache(gathered, { generatedAt: 'now' }, cachePath);
+  assert.strictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).cmReadiness.findings[0].file, 'pom.xml');
+});
+
+test('a pattern with more than 10 findings shows 10 rows and folds the rest into <details>', () => {
+  const gathered = {
+    findingsByPattern: Object.fromEntries(CANONICAL_PATTERNS.map((p) => [p, []])),
+    sourceByPattern: { scheduler: 'csv' },
+    needsLlmScan: [],
+    analyzerWarnings: [],
+  };
+  gathered.findingsByPattern.scheduler = Array.from({ length: 14 }, (_, i) => ({ location: `core/Job${i}.java:1`, detail: 'Runnable', severity: 'high' }));
+  const md = renderRunbook(gathered, { generatedAt: 'now' });
+  const section = md.slice(md.indexOf('### Affected'), md.indexOf('### Sample prompt'));
+  const [visible, hidden] = section.split('<details>');
+  assert.strictEqual((visible.match(/core\/Job\d+\.java/g) || []).length, 10);
+  assert.match(hidden, /<summary>Show 4 more findings \(14 in total\)<\/summary>\n\n\| Location \| Detail \|\n/);
+  assert.strictEqual((hidden.match(/core\/Job\d+\.java/g) || []).length, 4);
+  assert.match(hidden, /Job13\.java:1`[^\n]*\n\n<\/details>/);
+
+  gathered.findingsByPattern.scheduler = gathered.findingsByPattern.scheduler.slice(0, 10);
+  assert.ok(!renderRunbook(gathered, { generatedAt: 'now' }).includes('<details>'));
+});
+
+test('a skill installed inside the project (.agents/, .claude/) is never scanned as customer code', async () => {
+  const root = mkworkspace();
+  const fixture = '.agents/skills/migration/evals/files/legacy-project';
+  write(root, `${fixture}/ui.apps/src/main/content/jcr_root/apps/example/config.qa/com.example.Svc.cfg.json`, '{ "password": "x" }');
+  write(root, `${fixture}/ui.apps/src/main/content/jcr_root/apps/example/components/p/p.html`, '<div data-sly-test="${true}"></div>');
+  write(root, `${fixture}/pom.xml`, '<project><packaging>content-package</packaging></project>');
+  write(root, `.claude/skills/x/core/src/main/java/a/T.java`, 'package a;\nimport java.io.*;\nclass T { void a(File f) throws IOException { InputStream in = new FileInputStream(f); in.read(); } }');
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+    getEffectivePom: () => ({ ok: false, error: 'no stub' }),
+  });
+  const everything = JSON.stringify({ f: gathered.rawFindingsByPattern, w: gathered.analyzerWarnings, c: gathered.cmReadiness });
+  assert.ok(!everything.includes('.agents/'), everything);
+  assert.ok(!everything.includes('.claude/'), everything);
+});
+
+test('maven failures become one readable line in the warnings', () => {
+  const { mavenErrorSummary } = require('./vault-package-scan-runner.js');
+  const out = '[ERROR] [ERROR] Some problems were encountered while processing the POMs:\n[ERROR] Unknown packaging: content-package @ line 10, column 14\n[ERROR] \n[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.\n[ERROR] [Help 1] http://cwiki.apache.org/x';
+  assert.strictEqual(mavenErrorSummary(out), 'Unknown packaging: content-package @ line 10, column 14');
+});
+
+// ── Runbook layout: plan, shared files, OSGi grouping, progress ──────────────
+
+const layoutGathered = () => {
+  const findingsByPattern = Object.fromEntries(CANONICAL_PATTERNS.map((p) => [p, []]));
+  const rawFindingsByPattern = {};
+  const put = (p, rows) => {
+    findingsByPattern[p] = rows.map((r) => ({ location: r.file, detail: r.snippet, severity: r.severity || 'high' }));
+    rawFindingsByPattern[p] = rows.map((r) => ({ pattern: p, file: r.file, line: 1, snippet: r.snippet }));
+  };
+  put('scheduler', [{ file: 'core/a/Feed.java', snippet: '@Component(label = "Feed", description = "x")' }]);
+  put('replication', [{ file: 'core/a/Feed.java', snippet: 'public class Feed' }, { file: 'core/a/Other.java', snippet: 'replicator.replicate(s, t, p)' }]);
+  put('htlLint', [{ file: 'ui.apps/p.html', snippet: '<sly data-sly-test="${x == true}">', severity: 'medium' }]);
+  put('osgiConfig', ['config.author.qa1', 'config.publish.qa1', 'config.qa1', 'config.author.cci'].map((f) => ({
+    file: `ui.apps/jcr_root/apps/x/${f}`, snippet: `unsupported-runmode — folder '${f}'`,
+  })));
+  findingsByPattern.osgiConfig = findingsByPattern.osgiConfig.map((t) => ({ ...t, detail: `unsupported-runmode — folder '${path.basename(t.location)}'` }));
+  return {
+    findingsByPattern, rawFindingsByPattern, sourceByPattern: {}, needsLlmScan: [], analyzerWarnings: [],
+    cmReadiness: { status: 'unverified', findings: [
+      { rule: 'argline-drops-jacoco-agent', severity: 'gate', file: 'pom.xml', line: 3, message: 'x' },
+      { rule: 'java:S2095', severity: 'gate', file: 'core/a/Feed.java', line: 9, message: 'y' },
+    ] },
+  };
+};
+
+test('the runbook opens with an ordered plan: pre-flight, patterns by severity then size, Blockers, push check', () => {
+  const md = renderRunbook(layoutGathered(), { generatedAt: 'now' });
+  const plan = md.slice(md.indexOf('## Start here'), md.indexOf('## Summary'));
+  const steps = plan.split('\n').filter((l) => /^\| \d+ \|/.test(l)).map((l) => l.split('|')[2].trim());
+  assert.deepStrictEqual(steps, [
+    'Fix the Cloud Manager pre-flight items: until then Cloud Manager measures 0% coverage',
+    'OSGi → Cloud Manager Config (high)', 'Replication (high)', 'Scheduler (high)', 'HTL data-sly-test Lint (medium)',
+    'Fix the reliability Blockers that are left', 'Check before you push',
+  ]);
+  assert.match(plan, /`Use the migration skill: scheduler only\.`/);
+  assert.ok(!md.includes('**scheduler**'), 'prompts carry no Markdown emphasis');
+});
+
+test('files changed by several patterns are listed once, with every pattern and Blocker', () => {
+  const md = renderRunbook(layoutGathered(), { generatedAt: 'now' });
+  assert.match(md, /## Files touched by several patterns[\s\S]*\| `core\/a\/Feed\.java` \| Reliability Blocker, Replication, Scheduler \|/);
+  assert.ok(!/\| `core\/a\/Other\.java` \| Replication \|/.test(md), 'single-pattern files are not listed');
+});
+
+test('OSGi run-mode findings group by token; uniform severity drops the column; declarations collapse', () => {
+  const md = renderRunbook(layoutGathered(), { generatedAt: 'now' });
+  const osgi = md.slice(md.indexOf('## OSGi'), md.indexOf('### Sample prompt', md.indexOf('## OSGi')));
+  assert.match(osgi, /\| run mode `qa1` \| unsupported run mode in 3 folder\(s\): config\.author\.qa1, config\.publish\.qa1, config\.qa1 — map it to dev, stage or prod, or drop it \|/);
+  assert.match(osgi, /\| run mode `cci` \| unsupported run mode in 1 folder\(s\)/);
+  assert.match(osgi, /\| Location \| Detail \|\n/);
+  const sched = md.slice(md.indexOf('## Scheduler'), md.indexOf('### Sample prompt', md.indexOf('## Scheduler')));
+  assert.match(sched, /\| `core\/a\/Feed\.java` \| class-level finding \|/);
+  assert.match(md, /\| `ui\.apps\/p\.html` \| `<sly data-sly-test="\$\{x == true\}">` \|/, 'HTL stays in a code span');
+});
+
+test('a second runbook shows progress against the cache of the first', async () => {
+  const root = mkworkspace();
+  const cachePath = path.join(root, 'migration-runbook.json');
+  const opts = { workspaceRoot: root, collectionsDir: path.join(root, 'none'), analyzeScript: path.join(root, 'missing.sh'), getEffectivePom: () => ({ ok: false, error: 'no stub' }), outputPath: path.join(root, 'migration-runbook.md'), cachePath };
+  write(root, 'ui.apps/src/main/content/jcr_root/apps/x/components/a/a.html', '<sly data-sly-test="${x == true}"></sly>\n<sly data-sly-test="${y == false}"></sly>\n');
+  await generateRunbook(opts);
+  assert.ok(!fs.readFileSync(opts.outputPath, 'utf8').includes('## Progress'), 'no progress on the first run');
+  assert.strictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).countsByPattern.htlLint, 2);
+
+  write(root, 'ui.apps/src/main/content/jcr_root/apps/x/components/a/a.html', '<sly data-sly-test="${x}"></sly>\n');
+  await generateRunbook(opts);
+  assert.match(fs.readFileSync(opts.outputPath, 'utf8'), /## Progress since the last runbook[\s\S]*Outstanding findings: \*\*\d+ → \d+\*\*[\s\S]*\| HTL data-sly-test Lint \| 2 \| 0 \| ✓ done \|/);
 });

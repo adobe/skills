@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { stripCommentsAndStrings } = require('./input-stream-runner.js');
+const { collapsible } = require('./md-collapse.js');
 
 const DEFAULT_CATALOG_PATH = path.join(__dirname, '..', 'references', 'integrations', 'catalog.json');
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -720,6 +721,97 @@ function evidenceSummary(rec) {
     .join(', ');
 }
 
+/**
+ * Roll unknown-endpoint records up by the code or config that consumes them.
+ *
+ * Records are keyed by host, and a legacy project usually gives every run mode
+ * its own host for the same setting, so one OSGi property becomes one record
+ * per environment. A reader acts on the consumer, not the host: one row per
+ * OSGi PID (with its endpoint properties and run modes) or per Java file.
+ * Only code identifiers and run-mode names are rendered, never host values.
+ */
+function groupEndpointsByComponent(records) {
+  const groups = new Map();
+  for (const rec of records) {
+    for (const e of rec.evidence) {
+      const base = path.basename(e.file);
+      const osgi = e.type === 'osgi-endpoint-config';
+      const component = osgi ? base.replace(/\.(cfg\.json|config|cfg|xml)$/i, '') : base;
+      const key = osgi ? `osgi\u0000${component}` : `code\u0000${e.file}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          kind: osgi ? 'OSGi config' : 'Java code', component, settings: new Set(), runModes: new Set(),
+          hosts: new Set(), needs: new Set(), candidate: true, evidenceCount: 0, firstFile: e.file,
+        });
+      }
+      const g = groups.get(key);
+      g.evidenceCount++;
+      g.hosts.add(rec.host ? rec.host.fingerprint : rec.id);
+      if (rec.status !== 'candidate') g.candidate = false;
+      for (const c of rec.migrationConsiderations) if (ENDPOINT_NEEDS[c]) g.needs.add(c);
+      if (osgi) {
+        const prop = (e.indicator.match(/`([^`]+)`/) || [])[1];
+        if (prop) g.settings.add(prop);
+        const folder = path.basename(path.dirname(e.file));
+        g.runModes.add(folder === 'config' || !folder.startsWith('config.') ? '(all)' : folder.slice('config.'.length));
+      } else {
+        if (e.line != null) g.settings.add(e.line);
+      }
+    }
+  }
+  return [...groups.values()].sort((a, b) =>
+    (b.needs.size - a.needs.size) || (b.hosts.size - a.hosts.size) || (a.component < b.component ? -1 : 1));
+}
+
+// Endpoint considerations worth a per-row flag; the ones every unknown endpoint carries are stated once.
+const ENDPOINT_NEEDS = {
+  'private-connectivity': 'private network (VPN / dedicated egress)',
+  'non-standard-port': 'non-80/443 port (port forwarding)',
+};
+
+const listPreview = (values, max) => {
+  const all = [...values].sort((a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a) < String(b) ? -1 : 1));
+  return all.length <= max ? all : [...all.slice(0, max), `+${all.length - max} more`];
+};
+
+function renderEndpoints(records) {
+  const out = [];
+  const groups = groupEndpointsByComponent(records);
+  const perEnv = groups.filter((g) => g.kind === 'OSGi config' && g.runModes.size > 1 && g.hosts.size > 1);
+  const flagged = groups.filter((g) => g.needs.size > 0);
+  out.push('### Outbound endpoints by component');
+  out.push('');
+  out.push(`**${records.length}** unknown external hosts, used by **${groups.length}** components. Every one needs outbound connectivity from AEM as a Cloud Service (advanced networking if the endpoint allowlists IPs) and an owner to confirm protocol and authentication. Rows marked *candidate* rest on a URL-like value alone: confirm them.`);
+  out.push('');
+  const header = ['| Component | Endpoint settings | Run modes | Hosts | Also needs |', '|-----------|-------------------|-----------|-------|------------|'];
+  const rows = groups.map((g) => {
+    const name = `\`${esc(g.component)}\` (${g.kind})${g.candidate ? ' *candidate*' : ''}`;
+    const settings = g.kind === 'OSGi config'
+      ? listPreview(g.settings, 4).map((s) => (s.startsWith('+') ? s : `\`${esc(s)}\``)).join(', ')
+      : `URL in code${g.settings.size ? ` (line ${listPreview(g.settings, 4).join(', ')})` : ''}`;
+    const runModes = g.kind === 'OSGi config' ? `${g.runModes.size}: ${listPreview(g.runModes, 5).join(', ')}` : '—';
+    const needs = [...g.needs].map((c) => ENDPOINT_NEEDS[c]).join('; ') || '—';
+    return `| ${name} | ${settings} | ${runModes} | ${g.hosts.size} | ${needs} |`;
+  });
+  out.push(...collapsible(header, rows, { noun: 'more components' }));
+  out.push('');
+  if (flagged.length) {
+    out.push(`> **${flagged.length}** component(s) reach a private address or a non-standard port: plan advanced networking for them before go-live.`);
+    out.push('');
+  }
+  if (perEnv.length) {
+    out.push(`> **${perEnv.length}** component(s) point a setting to a different host in each run mode. On AEM as a Cloud Service, set such values with \`$[env:…]\` Cloud Manager environment variables instead of run-mode folders. Run modes other than author/publish and dev/stage/prod are not supported there (see the OSGi config section). Start with:`);
+    out.push('>');
+    out.push('> ```');
+    out.push('> Scan my config files and create Cloud Manager environment secrets or variables.');
+    out.push('> ```');
+    out.push('');
+  }
+  out.push('Every file and line behind these rows is in `migration-runbook.json` under `integrationDiscovery`.');
+  out.push('');
+  return out;
+}
+
 /** Markdown lines for the runbook's Integration Discovery section. */
 function renderIntegrationDiscovery(discovery) {
   const { categories, considerations } = labels();
@@ -729,7 +821,7 @@ function renderIntegrationDiscovery(discovery) {
   out.push('> Read-only inventory of external integrations found by deterministic signature matching');
   out.push('> (`integration-scan`). No endpoint was contacted, no code was changed, and no remediation');
   out.push('> is proposed. **Low** confidence rows are candidates that need manual confirmation.');
-  out.push('> Unknown hosts are shown only as a fingerprint; source text and values are never included.');
+  out.push('> Unknown hosts are only counted, never shown; source text and values are never included.');
   out.push('');
 
   if (!discovery || discovery.status === 'not-run') {
@@ -748,23 +840,31 @@ function renderIntegrationDiscovery(discovery) {
       out.push('No integrations detected.');
       out.push('');
     } else {
-      out.push('| Integration | Category | Confidence | Evidence | Migration considerations |');
-      out.push('|-------------|----------|------------|----------|--------------------------|');
-      for (const r of discovery.integrations) {
-        const name = r.host ? `${r.name} — host \`${r.host.hint}\` [${r.host.fingerprint}]` : r.name;
-        const conf = `${cap(r.confidence)}${r.status === 'candidate' ? ' (candidate)' : ''}`;
-        const cons = r.migrationConsiderations.map(c => considerations[c] || c).join('; ');
-        out.push(`| ${esc(name)} | ${esc(categories[r.category] || r.category)} | ${conf} | ${esc(evidenceSummary(r))} | ${esc(cons)} |`);
+      // Known integrations are few and each needs its own plan; unknown endpoints roll up by component.
+      const known = discovery.integrations.filter((r) => !r.host);
+      const unknown = discovery.integrations.filter((r) => r.host);
+      if (known.length) {
+        out.push('### Known integrations');
+        out.push('');
+        const header = ['| Integration | Category | Confidence | Evidence | Migration considerations |', '|-------------|----------|------------|----------|--------------------------|'];
+        const rows = known.map((r) => {
+          const conf = `${cap(r.confidence)}${r.status === 'candidate' ? ' (candidate)' : ''}`;
+          const cons = r.migrationConsiderations.map(c => considerations[c] || c).join('; ');
+          return `| ${esc(r.name)} | ${esc(categories[r.category] || r.category)} | ${conf} | ${esc(evidenceSummary(r))} | ${esc(cons)} |`;
+        });
+        out.push(...collapsible(header, rows, { noun: 'more integrations' }));
+        out.push('');
+        out.push('### Integration evidence');
+        out.push('');
+        const evidence = known.map((r) => {
+          const refs = r.evidence.slice(0, 5).map(e => `\`${e.line == null ? e.file : `${e.file}:${e.line}`}\` (${e.indicator})`);
+          const more = r.evidenceCount - refs.length;
+          return `- **${esc(r.name)}** (\`${r.id}\`): ${refs.join(', ')}${more > 0 ? ` (+${more} more in the cache)` : ''}`;
+        });
+        out.push(...collapsible([], evidence, { noun: 'more integrations' }));
+        out.push('');
       }
-      out.push('');
-      out.push('### Integration evidence');
-      out.push('');
-      for (const r of discovery.integrations) {
-        const refs = r.evidence.slice(0, 5).map(e => `\`${e.line == null ? e.file : `${e.file}:${e.line}`}\` (${e.indicator})`);
-        const more = r.evidenceCount - refs.length;
-        out.push(`- **${esc(r.name)}** (\`${r.id}\`): ${refs.join(', ')}${more > 0 ? ` (+${more} more in the cache)` : ''}`);
-      }
-      out.push('');
+      if (unknown.length) out.push(...renderEndpoints(unknown));
     }
   }
 

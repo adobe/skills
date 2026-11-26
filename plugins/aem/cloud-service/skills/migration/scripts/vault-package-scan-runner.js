@@ -58,6 +58,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 // Group-path prefixes whose packages don't exist on AEMaaCS.
 const LEGACY_PREFIXES = ['day/cq60/', 'day/cq560/', 'adobe/cq60'];
@@ -72,6 +73,21 @@ function isLegacyGroup(group) {
   return LEGACY_PREFIXES.some(p => group.startsWith(p) || group === p.replace(/\/$/, ''));
 }
 
+/**
+ * One readable line from a failed Maven run: the first real `[ERROR]` message,
+ * without Maven's "re-run with -e / -X / see Help" boilerplate. The warning is
+ * rendered in the runbook, where a multi-line stack breaks the list.
+ */
+function mavenErrorSummary(output) {
+  const lines = String(output).split('\n').map((l) => l.trim()).filter(Boolean);
+  const boilerplate = /^\[ERROR\]\s*(?:$|To see the full stack trace|Re-run Maven|For more information|\[Help \d+\])/;
+  const errors = lines.filter((l) => /^\[ERROR\]/.test(l) && !boilerplate.test(l));
+  // Prefer the specific cause over a heading such as "Some problems were encountered …:".
+  const error = errors.find((l) => !l.endsWith(':')) || errors[0];
+  const msg = (error || lines[lines.length - 1] || 'unknown error').replace(/^(\[ERROR\]\s*)+/, '').replace(/\s+/g, ' ');
+  return msg.length > 200 ? `${msg.slice(0, 199)}…` : msg;
+}
+
 /** Recursively collect Maven project roots (dirs containing a `pom.xml`). */
 function collectMavenProjectRoots(dir, acc = []) {
   let entries;
@@ -80,7 +96,7 @@ function collectMavenProjectRoots(dir, acc = []) {
   if (hasPom) acc.push(dir);
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+    if (isHiddenDir(e.name) || e.name === 'node_modules' || e.name === 'target' || e.name === 'dist') continue;
     collectMavenProjectRoots(path.join(dir, e.name), acc);
   }
   return acc;
@@ -113,8 +129,7 @@ function getEffectivePom(projectDir) {
     const xml = fs.readFileSync(outFile, 'utf8');
     return { ok: true, xml };
   } catch (err) {
-    const combined = String(err.stdout || '') + String(err.stderr || err.message || '');
-    return { ok: false, error: combined.trim().split('\n').slice(-8).join('\n') };
+    return { ok: false, error: mavenErrorSummary(String(err.stdout || '') + String(err.stderr || err.message || '')) };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -141,8 +156,7 @@ function getReactorEffectivePoms(reactorRoot) {
     const bulk = fs.readFileSync(outFile, 'utf8');
     return { ok: true, byArtifactId: splitReactorEffectivePom(bulk) };
   } catch (err) {
-    const combined = String(err.stdout || '') + String(err.stderr || err.message || '');
-    return { ok: false, error: combined.trim().split('\n').slice(-8).join('\n') };
+    return { ok: false, error: mavenErrorSummary(String(err.stdout || '') + String(err.stderr || err.message || '')) };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -438,6 +452,7 @@ function runVaultPackageScan(workspaceRoot, opts = {}) {
 }
 
 module.exports = {
+  mavenErrorSummary,
   runVaultPackageScan,
   isLegacyGroup,
   findVaultDependenciesInEffectivePom,

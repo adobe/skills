@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 // xtypes with a direct Coral 3 equivalent (dialog/context.md). Anything else on
 // a cq:Widget is a custom widget → cdw.
@@ -32,7 +33,7 @@ function collectContentXml(dir, acc = []) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+      if (isHiddenDir(e.name) || e.name === 'node_modules' || e.name === 'target' || e.name === 'dist') continue;
       collectContentXml(full, acc);
     } else if (e.isFile() && e.name === '.content.xml') {
       acc.push(full);

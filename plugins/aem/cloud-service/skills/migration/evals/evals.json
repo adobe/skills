@@ -40,6 +40,37 @@
         "The agent asks for a BPA CSV, a CAM project or concrete files as the source of the findings"
       ],
       "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "We are about to push this migrated project to Cloud Manager. Last time the code scanning step failed on test coverage and the reliability rating even though the build and unit tests passed. Make sure that does not happen this time.",
+      "expected_output": "The agent takes Branch J: it reads references/cloud-manager-quality-gate.md and runs `node scripts/cm-quality-precheck.js <project>` before changing anything. It explains that the green build proved nothing about coverage because JaCoCo 0.8.7 cannot instrument a JDK 21 build and the Surefire argLine `-Xmx1024m` drops the JaCoCo agent, and that the unclosed FileInputStream in FeedImporter is a Blocker bug that fails the reliability rating. It fixes the tooling first (jacoco-maven-plugin 0.8.11 or later; `<argLine>@{argLine} -Xmx1024m</argLine>` with an empty argLine property), then opens the stream in try-with-resources. It asks before running the Cloud Manager-equivalent Maven build to measure coverage, and reports a prediction, not a guarantee that Cloud Manager will pass.",
+      "assertions": [
+        "`scripts/cm-quality-precheck.js` is run before any project file is edited",
+        "The jacoco-maven-plugin version is raised to 0.8.11 or later",
+        "The Surefire argLine keeps the JaCoCo agent with `@{argLine}`",
+        "FeedImporter opens the FileInputStream in a try-with-resources header",
+        "The agent asks before running the full Maven build",
+        "No coverage exclusion, test skip, @Disabled/@Ignore or @SuppressWarnings is added to make the gate pass",
+        "The agent does not claim that Cloud Manager will pass; it says the result is a local prediction"
+      ],
+      "files": [
+        "files/cm-gate-project"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Review my code for AEMaaCS migration.",
+      "expected_output": "The agent takes Step 0 and runs `node scripts/runbook-generator.js <workspaceRoot> --out ./migration-runbook.md --cache ./migration-runbook.json`. The runbook's Cloud Manager readiness section and the printed summary report two pre-flight items (jacoco-maven-plugin 0.8.7 on JDK 21, and a Surefire argLine that drops the JaCoCo agent) and one reliability Blocker (the unclosed FileInputStream in FeedImporter). The agent tells the user to fix the pre-flight items before the first pattern, because until then Cloud Manager measures 0% coverage, and presents the Blocker as planned work. It edits nothing and runs no Maven build.",
+      "assertions": [
+        "`scripts/runbook-generator.js` is run with --out and --cache",
+        "The agent tells the user to fix the Cloud Manager pre-flight items before the first pattern",
+        "The agent does not present the FeedImporter Blocker as something that stops the first pattern",
+        "No project file is edited and no Maven build is run"
+      ],
+      "files": [
+        "files/cm-gate-project"
+      ]
     }
   ]
 }

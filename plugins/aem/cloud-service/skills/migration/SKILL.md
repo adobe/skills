@@ -1,18 +1,18 @@
 ---
 name: migration
 description: |
-  Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV/cache and
-  CAM/MCP discovery, one pattern per session. Use to review/scan a project for AEMaaCS
-  migration — generates a read-only migration-runbook.md — or to fix specific Cloud Service
-  blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
-  DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
-  Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
+  Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV or CAM/MCP,
+  one pattern per session. Use to review/scan a project for AEMaaCS migration (read-only
+  migration-runbook.md) or to fix specific Cloud Service blockers: scheduler,
+  ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager,
+  HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialogs (lui),
+  Custom Design Widgets (cdw), Vault install-time dependencies (vault-package-dependencies),
   Guava cache → Caffeine (guavaCache), java.io.InputStream triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager ($[secret:]/$[env:]), converts AMS/on-prem
-  Dispatcher configs, validates migrated code on a local Cloud SDK (beta), migrates asset
-  workflows, and restructures a project into the Cloud Service layout (ui.apps, ui.config,
-  ui.content, all; beta).
+  Dispatcher configs, validates on a local Cloud SDK (beta), migrates asset workflows,
+  restructures a project into the Cloud Service layout (ui.apps, ui.config, ui.content, all;
+  beta), and prechecks the Cloud Manager quality gate (coverage, reliability).
 license: Apache-2.0
 metadata:
   version: "1.3.0"
@@ -20,11 +20,11 @@ metadata:
 
 # AEM as a Cloud Service — Code Migration
 
-**Source → target:** Legacy **AEM 6.x / AMS / on-prem** → **AEM as a Cloud Service**. Scoped under `skills/aem/cloud-service/skills/migration/` so this is not confused with Edge Delivery or 6.5 LTS.
+**Source → target:** Legacy **AEM 6.x / AMS / on-prem** → **AEM as a Cloud Service**.
 
 This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern per session**, and target discovery. **Transformation rules and steps** live in the **`code-assessment`** skill — once a finding's pattern is identified, hand off to `{code-assessment}/<pattern>/SKILL.md` (or the relevant shared reference under `{code-assessment}/references/`).
 
-**Setup:** Use the **`aem-cloud-service`** install (see repository root **README**) so both **migration** and **code-assessment** paths are available. If you already have the monorepo open with resolvable `{code-assessment}` paths, no separate install step is required.
+**Setup:** install **`aem-cloud-service`** (repository root **README**) so the `{code-assessment}` paths resolve.
 
 **For the person driving the agent:** [references/quick-start.md](references/quick-start.md) has what to say for each kind of migration, with copy-paste prompts.
 
@@ -35,8 +35,6 @@ From the **repository root** (parent of the `skills/` directory):
 | Symbol | Path |
 |--------|------|
 | **`{code-assessment}`** | `skills/aem/cloud-service/skills/code-assessment/` |
-
-Examples: `{code-assessment}/SKILL.md`, `{code-assessment}/scheduler/SKILL.md`, `{code-assessment}/references/scr-to-osgi-ds.md`.
 
 ## Workspace scope (IDE) — user code only
 
@@ -49,7 +47,7 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 ## Required delegation (do this first)
 
-Find the branch for the request and read its file before anything else. Each of Branches A and C–I **skips Branch B**. A, C, E, G, H and I take **no BPA pattern id**.
+Find the branch for the request and read its file before anything else. Each of Branches A and C–J **skips Branch B**. A, C, E, G, H, I and J take **no BPA pattern id**.
 
 | Branch | The user asks to… | Read first, and follow |
 |---|---|---|
@@ -62,6 +60,7 @@ Find the branch for the request and read its file before anything else. Each of 
 | **G — Validate a migration** (beta) | validate, verify or smoke-test migrated code on the local Cloud SDK | [references/validation/validate-migration.md](references/validation/validate-migration.md). It never edits customer source; a failure goes back to the branch that owns the pattern. |
 | **H — Asset workflow migration** | migrate DAM asset workflows (`DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions); or mentions Adobe's Asset Workflow Migration Tool / `wf-migrator` / `aem-cloud-migration` | [references/asset-workflow/flow.md](references/asset-workflow/flow.md): four steps around Adobe's `wf-migrator`, which makes every change. The skill runs it and guides the review; it never edits project files itself. Never present a failed run as done. |
 | **I — Repository restructuring** (beta) | restructure the project for AEM as a Cloud Service; split a content package into code (`ui.apps`) and content (`ui.content`); create `ui.config` or the `all` package; or mentions the Repository Modernizer | [references/repo-structure/flow.md](references/repo-structure/flow.md): five steps around Adobe's `repository-modernizer`. The plan review with the user is required. The tool's output is a copy: check it, then adopt it on a branch. Run this before the other branches when the project has no `ui.config` or `all`. |
+| **J — Ready to push (Cloud Manager quality gate)** | *"am I ready to push?"*; make sure Cloud Manager code scanning passes; check coverage, the reliability rating or JaCoCo; the runbook's Cloud Manager prompts | [references/cloud-manager-quality-gate.md](references/cloud-manager-quality-gate.md): `scripts/cm-quality-precheck.js`, then fix tooling → Blocker bugs → coverage, in that order. Ask before the full Maven build. Never exclude code or skip tests to pass. |
 
 **Branch B — Java / HTL / BPA pattern migration:**
 
@@ -77,23 +76,14 @@ Find the branch for the request and read its file before anything else. Each of 
    - `guavaCache` → **[references/guava-cache.md](references/guava-cache.md)** *(reference — Guava cache → Caffeine)*
    - `inputStream` → **[references/input-stream.md](references/input-stream.md)** *(reference — triage of the `DG` / `java.io.inputstream` advisory; detection is `scripts/input-stream-runner.js`, not the code-assessment analyzer)*
 
-   The last three live under `migration` only, not under `code-assessment`: these shapes occur only in code carried over from legacy AEM.
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{code-assessment}/references/scr-to-osgi-ds.md`** and **`{code-assessment}/references/resource-resolver-logging.md`** (or the hub **`{code-assessment}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
-Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B). Branch A does not require `{code-assessment}` pattern guidance.
-
-**Behavior pinning (before-eligible Java patterns).** For `guavaCache`, `scheduler`, `resourceChangeListener`, and `eventListener`/`eventHandler`, **Step 5** pins a one-per-finding characterization test around each edit (green before → transform → green after). Rules and skeletons: [references/characterization-tests.md](references/characterization-tests.md).
+Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B).
 
 **Branch D — Legacy UI Migration** (`legacy-ui/` sub-folders):
 
 - **Dialog findings** (`lui`, sub-types `legacy.dialog.classic` and `legacy.dialog.coral2` only): read [dialog/context.md](references/legacy-ui/dialog/context.md) (`getBpaFindings('lui', …)`, filter to the dialog sub-types, skip all others with a note); convert with [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) (`convert-extjs`) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md) (`upgrade-coral2`); validate with [dialog/validation.md](references/legacy-ui/dialog/validation.md).
 - **Custom widget findings** (`cdw`): read [cdw/context.md](references/legacy-ui/cdw/context.md) (`getBpaFindings('cdw', …)`, inventory the xtypes); per xtype apply [cdw/conversion.md](references/legacy-ui/cdw/conversion.md) (a mapping, or a scaffolded Granite UI component); validate with [cdw/validation.md](references/legacy-ui/cdw/validation.md).
-
-## Prerequisites
-
-- Project source and Maven/Gradle build
-- BPA CSV or MCP access optional but recommended
-- For **htlLint**: `ui.apps` or equivalent content package with `.html` HTL templates
 
 ## BPA findings
 
@@ -133,7 +123,7 @@ If the user asks to fix everything or BPA mixes patterns, **ask which pattern fi
 
 ### Step 1: Pattern id
 
-First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows), I (repository restructuring).
+First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows), I (repository restructuring), J (Cloud Manager code quality).
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
@@ -161,13 +151,13 @@ For **each finding in the returned batch only** (up to 5):
 
 1. Resolve the target **inside the IDE workspace** (see **Workspace scope (IDE)**).
 2. **Pin behavior first (before-eligible patterns only).** If the active pattern is before-eligible in [references/characterization-tests.md](references/characterization-tests.md) (`guavaCache`, `scheduler`, `resourceChangeListener`, `eventListener`/`eventHandler`), write **one** characterization test for this finding and run it green **before** editing — this pins current behavior. Follow that file's **efficiency contract exactly**: one fill-in skeleton, one attempt, **skip-fast** with `pin-skip: <reason>`. Never debug a test. All other patterns (including `replication`, `assetApi`, and every non-Java pattern) skip this step.
-3. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints.
+3. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints and the [gate-safe checklist](references/cloud-manager-quality-gate.md#gate-safe-code-every-branch-that-writes-java).
 4. **Re-run the pinned test (only if step 2 pinned one).** Green → behavior preserved, record `pinned`. Red after the edit → a real regression: **revert this finding's edit**, record `pin-fail → reverted`, and move on — do not retry or edit the test.
 5. Next file.
 
 ### Step 6: Report batch and wait
 
-After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. For before-eligible patterns, add each finding's pin outcome (`pinned` \| `pin-skip: <reason>` \| `pin-fail → reverted`) per [references/characterization-tests.md](references/characterization-tests.md) — omit this line entirely for patterns that are not before-eligible. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done and move to the session report.
+After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. For before-eligible patterns, add each finding's pin outcome (`pinned` \| `pin-skip: <reason>` \| `pin-fail → reverted`) per [references/characterization-tests.md](references/characterization-tests.md) — omit this line entirely for patterns that are not before-eligible. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done, run `node scripts/cm-quality-precheck.js <projectRoot> --baseline ./migration-runbook.json` (no runbook cache: `--base origin/main`), fix any Blocker this session introduced, and report new findings only ([Branch J](references/cloud-manager-quality-gate.md#fix-the-end-of-session-delta)).
 
 Then **stop and wait** — resume only when the user explicitly asks, per the Batched-processing rules.
 
@@ -187,8 +177,4 @@ Findings come in batches of **5**, whatever the source. The fetch (MCP call or C
 - The next offset is `result.paging.nextOffset`. Never compute `offset + limit` yourself.
 - Done when `paging.hasMore === false`.
 
-The full rules and an example exchange: [references/bpa-helper.md](references/bpa-helper.md#batched-processing-batch-size-5).
-
-## Quick reference
-
-The source priority for BPA patterns and the snippets to show the user: [references/bpa-helper.md](references/bpa-helper.md#quick-reference).
+The full rules and an example exchange: [references/bpa-helper.md](references/bpa-helper.md#batched-processing-batch-size-5). Source priority and the snippets to show the user: [quick reference](references/bpa-helper.md#quick-reference).

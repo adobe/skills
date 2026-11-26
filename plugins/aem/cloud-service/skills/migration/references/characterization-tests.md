@@ -62,7 +62,8 @@ plus a dev-deploy check before merge.
 listeners inline their logic in the framework callback with nothing to bind to — skip those. But a
 missing JUnit 5 dep is **not** a reason to skip: match the module's JUnit 4/5 stack, or add the
 minimal deps once (rule 2). Do not chase coverage or reshape the target code to make it testable —
-that is the only effort this module refuses to spend.
+that is the only effort this module refuses to spend. Coverage for the Cloud Manager gate is a separate,
+opt-in step: [cloud-manager-quality-gate.md](cloud-manager-quality-gate.md) (Branch J).
 
 ## Reporting (Step 5 / Step 6)
 

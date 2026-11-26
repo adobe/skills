@@ -503,3 +503,24 @@ test('renderRunbook lists integrations, evidence references and candidates', () 
   assert.match(md, /### Integration evidence/);
   assert.match(md, /`core\/src\/main\/java\/com\/acme\/S\.java:2` \(software\.amazon\.awssdk\.services\.s3\)/);
 });
+
+// ── 13. Unknown endpoints roll up by component ──────────────────────────────
+
+test('one setting with a host per run mode renders as one component row, without host values', () => {
+  const root = mkworkspace();
+  const osgiDir = CONFIG.replace(/\/config$/, '');
+  for (const [rm, host] of [['dev', 'api-dev.partner-corp.com'], ['stage', 'api-stg.partner-corp.com'], ['prod', 'api.partner-corp.com']]) {
+    write(root, `${osgiDir}/config.${rm}/com.acme.Orders.cfg.json`, `{\n  "serviceUrl": "https://${host}/v2"\n}\n`);
+  }
+  write(root, `${osgiDir}/config.prod/com.acme.Erp.cfg.json`, '{\n  "erpUrl": "http://10.20.30.40:8443/erp"\n}\n');
+  const res = runIntegrationScan(root);
+  assert.strictEqual(res.summary.unknown, 4, 'the cache still holds one record per host');
+  const md = renderIntegrationDiscovery(res).join('\n');
+  const rows = md.split('\n').filter((l) => l.startsWith('| `com.acme.'));
+  assert.strictEqual(rows.length, 2);
+  assert.match(md, /\| `com\.acme\.Orders` \(OSGi config\)[^|]*\| `serviceUrl` \| 3: dev, prod, stage \| 3 \| — \|/);
+  assert.match(md, /\| `com\.acme\.Erp` \(OSGi config\)[^|]*\| `erpUrl` \| 1: prod \| 1 \| private network/);
+  assert.match(md, /point a setting to a different host in each run mode[\s\S]*Scan my config files and create Cloud Manager environment secrets or variables\./);
+  assert.ok(rows.indexOf(rows.find((r) => r.includes('Erp'))) === 0, 'rows needing advanced networking come first');
+  for (const leak of ['partner-corp', '10.20.30.40', 'sha256:']) assert.ok(!md.includes(leak), `renders ${leak}`);
+});

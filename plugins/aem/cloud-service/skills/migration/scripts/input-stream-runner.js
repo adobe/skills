@@ -43,6 +43,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'build', 'out', '.idea', '.vscode']);
 const MAIN_JAVA_SEGMENT = `${path.sep}src${path.sep}main${path.sep}java${path.sep}`;
@@ -298,7 +299,7 @@ function collectJavaFiles(dir, acc = []) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (!inSourceRoot && SKIP_DIRS.has(e.name)) continue;
+      if (isHiddenDir(e.name) || (!inSourceRoot && SKIP_DIRS.has(e.name))) continue;
       collectJavaFiles(full, acc);
     } else if (e.isFile() && e.name.endsWith('.java') && full.includes(MAIN_JAVA_SEGMENT)) {
       acc.push(full);

@@ -106,6 +106,8 @@ const { runDispatcherScan } = require('./dispatcher-inventory.js');
 const { runInputStreamScan } = require('./input-stream-runner.js');
 const { runAssetWorkflowScan } = require('./asset-workflow-run.js');
 const { runIntegrationScan, renderIntegrationDiscovery } = require('./integration-scanner.js');
+const { runPrecheck, readinessBaseline, renderReadinessSection, TOOLING_RULES } = require('./cm-quality-precheck.js');
+const { collapsible } = require('./md-collapse.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
@@ -667,15 +669,150 @@ async function gatherFindings(options = {}) {
     };
   }
 
-  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings: scanWarnings, bpaMode, analyzerUsed, integrationDiscovery };
+  // ── Cloud Manager readiness baseline (static, no build). Pattern sessions
+  //    compare against it so they report only what they add (Step 6). ──
+  let cmReadiness;
+  try {
+    cmReadiness = readinessBaseline(runPrecheck(workspaceRoot));
+  } catch (err) {
+    cmReadiness = { status: 'not-run', error: err.message, findings: [] };
+  }
+
+  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings: scanWarnings, bpaMode, analyzerUsed, integrationDiscovery, cmReadiness };
 }
 
 /** Build the per-pattern copy-paste sample prompt. */
 function samplePrompt(pattern, ctx) {
   const meta = PATTERN_META[pattern];
   if (meta.sampleOverride) return meta.sampleOverride;
-  const csvClause = ctx.bpaFilePath ? ` (BPA CSV at \`${ctx.bpaFilePath}\`)` : '';
-  return `Use the migration skill: **${meta.promptPattern}** only${csvClause}.`;
+  const csvClause = ctx.bpaFilePath ? ` (BPA CSV at ${ctx.bpaFilePath})` : '';
+  return `Use the migration skill: ${meta.promptPattern} only${csvClause}.`;
+}
+
+// ── Runbook layout helpers ───────────────────────────────────────────────────
+
+const SEVERITY_RANK = { high: 0, medium: 1, info: 2 };
+const DETAIL_MAX = 160;
+
+/**
+ * One-line, bounded detail text. A class declaration or annotation says nothing
+ * the file name does not (the analyzer reports some patterns per class), so it
+ * collapses to a short marker; the pattern session finds the call sites.
+ */
+function displayDetail(detail) {
+  const text = String(detail || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '—';
+  if (/^(@[A-Z]\w*|((public|protected|private|final|abstract|static)\s+)*(class|interface|enum)\s)/.test(text)) return 'class-level finding';
+  return text.length > DETAIL_MAX ? `${text.slice(0, DETAIL_MAX - 1)}…` : text;
+}
+
+/**
+ * Display rows for a pattern section. OSGi folders with an unsupported run-mode
+ * token are grouped by that token: the decision is per run mode (map it to
+ * dev/stage/prod or drop it), not per folder.
+ */
+function displayTargets(pattern, targets, root) {
+  if (pattern !== 'osgiConfig') return targets.map((t) => ({ ...t, location: relPath(t.location, root) }));
+  const rows = [];
+  const byToken = new Map();
+  for (const t of targets) {
+    const bad = /^unsupported-runmode/.test(t.detail || '') ? validateRunmodeFolder(path.basename(String(t.location))) : null;
+    const token = bad && (bad.reason.match(/unsupported run mode token '([^']+)'/) || [])[1];
+    if (!token) { rows.push({ ...t, location: relPath(t.location, root) }); continue; }
+    if (!byToken.has(token)) byToken.set(token, { folders: [], severity: t.severity });
+    byToken.get(token).folders.push(path.basename(String(t.location)));
+  }
+  const grouped = [...byToken.entries()].sort((a, b) => b[1].folders.length - a[1].folders.length || (a[0] < b[0] ? -1 : 1)).map(([token, g]) => ({
+    location: `run mode \`${token}\``,
+    rawLocation: true,
+    detail: `unsupported run mode in ${g.folders.length} folder(s): ${g.folders.sort().join(', ')} — map it to dev, stage or prod, or drop it`,
+    severity: g.severity,
+  }));
+  return [...grouped, ...rows];
+}
+
+/** Outstanding findings per pattern, as stored in the cache for the next run's progress line. */
+function countsByPattern(findingsByPattern) {
+  return Object.fromEntries(CANONICAL_PATTERNS.map((p) => [p, actionable(findingsByPattern[p] || []).length]));
+}
+
+/** Patterns with outstanding findings, in the order the runbook recommends. */
+function planOrder(findingsByPattern) {
+  return CANONICAL_PATTERNS
+    .map((p) => ({ p, n: actionable(findingsByPattern[p]).length }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => (SEVERITY_RANK[PATTERN_META[a.p].severity] - SEVERITY_RANK[PATTERN_META[b.p].severity]) || (b.n - a.n))
+    .map((x) => x.p);
+}
+
+function renderStartHere(gathered, ctx) {
+  const cm = gathered.cmReadiness && gathered.cmReadiness.status !== 'not-run' ? gathered.cmReadiness : null;
+  const preflight = cm ? cm.findings.filter((f) => TOOLING_RULES.has(f.rule) && f.severity !== 'info').length : 0;
+  const blockers = cm ? cm.findings.filter((f) => f.severity === 'gate' && !TOOLING_RULES.has(f.rule)).length : 0;
+  const steps = [];
+  if (preflight) steps.push(['Fix the Cloud Manager pre-flight items: until then Cloud Manager measures 0% coverage', preflight, 'Fix the Cloud Manager pre-flight items from the migration runbook.']);
+  for (const p of planOrder(gathered.findingsByPattern)) {
+    steps.push([`${PATTERN_META[p].label} (${PATTERN_META[p].severity})`, actionable(gathered.findingsByPattern[p]).length, samplePrompt(p, ctx)]);
+  }
+  if (blockers) steps.push(['Fix the reliability Blockers that are left', blockers, 'Fix the reliability Blockers listed in the migration runbook.']);
+  steps.push(['Check before you push', '—', 'Am I ready to push to Cloud Manager?']);
+  const out = ['## Start here', '', 'One pattern per session, in this order. Each step\'s prompt starts it; the sections below are the detail.', ''];
+  out.push('| Step | What | Findings | Prompt |', '|------|------|----------|--------|');
+  steps.forEach(([what, n, prompt], i) => out.push(`| ${i + 1} | ${what} | ${n} | \`${prompt.replace(/\|/g, '\\|').replace(/`/g, "'")}\` |`));
+  out.push('');
+  return out;
+}
+
+/** Files that more than one pattern (or a reliability Blocker) will change. */
+function renderSharedFiles(gathered, root) {
+  const byFile = new Map();
+  const add = (file, label) => {
+    if (!file || typeof file !== 'string') return;
+    const key = relPath(file, root);
+    if (!byFile.has(key)) byFile.set(key, new Set());
+    byFile.get(key).add(label);
+  };
+  for (const [p, findings] of Object.entries(gathered.rawFindingsByPattern || {})) {
+    if (!PATTERN_META[p]) continue;
+    for (const f of findings) if (!f.informational) add(f.file, PATTERN_META[p].label);
+  }
+  const cm = gathered.cmReadiness;
+  if (cm && cm.status !== 'not-run') {
+    for (const f of cm.findings) if (f.severity === 'gate' && !TOOLING_RULES.has(f.rule) && f.file) add(f.file, 'Reliability Blocker');
+  }
+  const shared = [...byFile.entries()].filter(([, s]) => s.size > 1)
+    .sort((a, b) => (b[1].size - a[1].size) || (a[0] < b[0] ? -1 : 1));
+  if (!shared.length) return [];
+  const out = ['## Files touched by several patterns', ''];
+  out.push(`${shared.length} file(s) are changed by more than one pattern. Run those sessions one after another, never in parallel, and fix a listed reliability Blocker while the file is open anyway.`, '');
+  out.push(...collapsible(['| File | Patterns |', '|------|----------|'],
+    shared.map(([file, labels]) => `| \`${file}\` | ${[...labels].sort().join(', ')} |`), { noun: 'more files' }));
+  out.push('');
+  return out;
+}
+
+/** Change since the previous runbook of the same workspace (read from the old cache). */
+function renderProgress(gathered, previous) {
+  if (!previous || !previous.countsByPattern) return [];
+  const now = countsByPattern(gathered.findingsByPattern);
+  const changed = CANONICAL_PATTERNS.filter((p) => p in previous.countsByPattern && previous.countsByPattern[p] !== now[p]);
+  const before = Object.values(previous.countsByPattern).reduce((a, b) => a + b, 0);
+  const after = Object.values(now).reduce((a, b) => a + b, 0);
+  const out = ['## Progress since the last runbook', ''];
+  out.push(`Previous runbook: ${previous.generatedAt || 'unknown date'}. Outstanding findings: **${before} → ${after}**.`, '');
+  if (!changed.length) {
+    out.push('No pattern changed since then.', '');
+    return out;
+  }
+  out.push('| Pattern | Before | Now | |', '|---------|--------|-----|---|');
+  for (const p of changed) {
+    const b = previous.countsByPattern[p];
+    const n = now[p];
+    const mark = n === 0 ? '✓ done' : n < b ? `−${b - n}` : `+${n - b} new`;
+    out.push(`| ${PATTERN_META[p].label} | ${b} | ${n} | ${mark} |`);
+  }
+  out.push('');
+  return out;
 }
 
 /**
@@ -730,6 +867,9 @@ function renderRunbook(gathered, ctx = {}) {
   lines.push('> one-pattern-per-session apply workflow. No code was changed to produce this.');
   lines.push('');
 
+  lines.push(...renderStartHere(gathered, ctx));
+  lines.push(...renderProgress(gathered, ctx.previous));
+
   lines.push('## Summary');
   lines.push('');
   lines.push('| Field | Value |');
@@ -759,6 +899,20 @@ function renderRunbook(gathered, ctx = {}) {
     lines.push('');
   }
 
+  // Pre-flight comes before the patterns: broken coverage tooling invalidates every later figure.
+  if (gathered.cmReadiness) {
+    lines.push('---');
+    lines.push('');
+    lines.push(...renderReadinessSection(gathered.cmReadiness));
+  }
+
+  const shared = renderSharedFiles(gathered, root);
+  if (shared.length) {
+    lines.push('---');
+    lines.push('');
+    lines.push(...shared);
+  }
+
   lines.push('---');
   lines.push('');
 
@@ -784,13 +938,20 @@ function renderRunbook(gathered, ctx = {}) {
     }
     lines.push('### Affected');
     lines.push('');
-    lines.push('| Location | Detail | Severity |');
-    lines.push('|----------|--------|----------|');
-    for (const t of targets) {
-      const detail = (t.detail || '').replace(/\|/g, '\\|');
-      const location = relPath(t.location, root);
-      lines.push(`| \`${location}\` | \`${detail || '—'}\` | ${t.severity || 'high'} |`);
-    }
+    const shown = displayTargets(p, targets, root);
+    // A per-row severity column only when rows differ; otherwise it repeats the section header.
+    const mixed = new Set(shown.map((t) => t.severity || 'high')).size > 1;
+    const rows = shown.map((t) => {
+      const location = t.rawLocation ? t.location : `\`${t.location}\``;
+      const d = displayDetail(t.detail);
+      // Snippets stay in code spans (HTL markup would otherwise render as HTML); generated prose does not.
+      const detail = (t.rawLocation || d === 'class-level finding' || d === '—' ? d : `\`${d.replace(/`/g, "'")}\``).replace(/\|/g, '\\|');
+      return `| ${location} | ${detail} |${mixed ? ` ${t.severity || 'high'} |` : ''}`;
+    });
+    const header = mixed
+      ? ['| Location | Detail | Severity |', '|----------|--------|----------|']
+      : ['| Location | Detail |', '|----------|--------|'];
+    lines.push(...collapsible(header, rows, { noun: 'more findings' }));
     lines.push('');
     lines.push('### Sample prompt');
     lines.push('');
@@ -819,7 +980,9 @@ function renderRunbook(gathered, ctx = {}) {
   if (analyzerWarnings && analyzerWarnings.length > 0) {
     lines.push('## Scan warnings');
     lines.push('');
-    for (const w of analyzerWarnings) lines.push(`- ${w}`);
+    // One line each: a multi-line message (a tool's stack output) would break the list.
+    const oneLine = (w) => String(w).replace(/\s+/g, ' ').trim();
+    lines.push(...collapsible([], analyzerWarnings.map((w) => `- ${oneLine(relPath(w, root))}`), { noun: 'more warnings' }));
     lines.push('');
   }
 
@@ -872,6 +1035,8 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
     workspaceRoot: root || null,
     project: ctx.projectId ? { id: ctx.projectId, name: ctx.projectName || null } : null,
     sourceByPattern: gathered.sourceByPattern,
+    // Outstanding findings per pattern; the next runbook's "Progress" section compares against it.
+    countsByPattern: countsByPattern(gathered.findingsByPattern),
     findingsByPattern: {},
   };
   // Copy raw findings, relativizing `file` and tagging heuristic patterns
@@ -889,6 +1054,8 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
   }
   // Evidence paths are already workspace-relative; no endpoint values are stored.
   if (gathered.integrationDiscovery) cache.integrationDiscovery = gathered.integrationDiscovery;
+  // The Step 6 delta (`cm-quality-precheck.js --baseline`) reads this field.
+  if (gathered.cmReadiness) cache.cmReadiness = gathered.cmReadiness;
   fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
   return cachePath;
 }
@@ -931,6 +1098,20 @@ function mergeLlmFindings(gathered, llmByPattern) {
  *   results back as the `llmByPattern` option (CLI: `--llm-findings <file>`) —
  *   the generator merges, re-renders, and rewrites the cache in one pass.
  */
+/**
+ * The cache this run is about to overwrite, if it describes the same workspace.
+ * A missing, unreadable or foreign cache just means no progress section.
+ */
+function readPreviousCache(cachePath, workspaceRoot) {
+  try {
+    const prev = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    if (prev.workspaceRoot && workspaceRoot && path.resolve(prev.workspaceRoot) !== path.resolve(workspaceRoot)) return null;
+    return prev;
+  } catch {
+    return null;
+  }
+}
+
 async function generateRunbook(options = {}) {
   const { outputPath = './migration-runbook.md', cachePath = DEFAULT_CACHE_PATH, bpaFilePath, workspaceRoot, llmByPattern, projectId, projectName } = options;
 
@@ -942,6 +1123,7 @@ async function generateRunbook(options = {}) {
     projectId,
     projectName,
     generatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    previous: readPreviousCache(cachePath, workspaceRoot),
   };
 
   const markdown = renderRunbook(gathered, ctx);
@@ -1022,6 +1204,16 @@ async function main() {
     console.log(`  ${pattern.padEnd(25)} ${String(count).padStart(3)}  (${src})`);
   }
   const integ = result.gathered.integrationDiscovery;
+  const cm = result.gathered.cmReadiness;
+  if (cm) {
+    console.log('');
+    if (cm.status === 'not-run') {
+      console.log(`Cloud Manager readiness: did not run (${cm.error})`);
+    } else {
+      const count = (pred) => cm.findings.filter(pred).length;
+      console.log(`Cloud Manager readiness: ${count((f) => TOOLING_RULES.has(f.rule) && f.severity !== 'info')} pre-flight item(s), ${count((f) => f.severity === 'gate' && !TOOLING_RULES.has(f.rule))} reliability Blocker(s), ${count((f) => f.severity === 'critical')} critical, ${count((f) => f.rule === 'module-without-tests')} module(s) without tests — coverage is measured before push`);
+    }
+  }
   if (integ) {
     console.log('');
     console.log(integ.status === 'not-run'

@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isHiddenDir } = require('./workspace-ignore.js');
 
 // Page-component resource types that mark a static template as legacy/OOTB-derived
 // rather than a project-authored custom template. Mirrors the BPA distinction
@@ -41,7 +42,7 @@ function collectStaticTemplates(dir, acc = []) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+      if (isHiddenDir(e.name) || e.name === 'node_modules' || e.name === 'target' || e.name === 'dist') continue;
       collectStaticTemplates(full, acc);
     } else if (e.isFile() && e.name === '.content.xml') {
       // Path shape: .../jcr_root/apps/<appId>/templates/.../<templateName>/.content.xml

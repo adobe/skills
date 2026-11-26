@@ -155,6 +155,25 @@ It adds no transformation of its own: a gap of the tool is a finding for the age
 
 Tests: `repo-modernizer.test.js` uses a stand-in for the tool and needs no network; it needs git.
 
+### Runbook layout (`runbook-generator.js`)
+
+Top to bottom: **Start here** (`renderStartHere`: pre-flight → patterns by severity, then finding count → remaining reliability Blockers → push check, each with its prompt); **Progress since the last runbook** (`renderProgress`: compares with `countsByPattern` in the cache it is about to overwrite, same workspace only; absent on a first run); Summary; Cloud Manager readiness; **Files touched by several patterns** (`renderSharedFiles`: a file in two or more patterns or Blockers); one section per pattern; Integration Discovery; scan warnings. Pattern rows: OSGi folders with an unsupported run-mode token are grouped per token (`displayTargets`); details are one line, capped at 160 characters, and class declarations collapse to `class-level finding` (`displayDetail`); the Severity column appears only when rows differ.
+
+### `md-collapse.js`
+
+`collapsible(head, rows, { limit = 10, noun })` renders the first 10 rows of a runbook table or list and folds the rest into an HTML `<details>` block, repeating the table header inside it. Used by `runbook-generator.js`, `integration-scanner.js` and `cm-quality-precheck.js`.
+
+### `cm-quality-precheck.js` (Branch J)
+
+Predicts the Cloud Manager Code Quality results that fail migrated projects despite a green build — see [`../references/cloud-manager-quality-gate.md`](../references/cloud-manager-quality-gate.md). Pure Node, no Maven run of its own. `node cm-quality-precheck.js <projectRoot> [--coverage] [--target <pct>] [--base <git-ref>] [--baseline <migration-runbook.json>] [--json] [--out <file.md>]`.
+
+One engine, three moments: `runbook-generator.js` runs it statically and stores the result as the `cmReadiness` baseline (and the runbook's Cloud Manager readiness section); Step 6 runs it with `--baseline` so a pattern session sees only the findings it added (matched by rule and file, status and exit code computed over new findings only); the Prove step runs it without a baseline, then with `--coverage`.
+
+- **Static (default):** POM tooling that zeroes coverage (Surefire/Failsafe `argLine` without `@{argLine}`, JaCoCo older than the build JDK supports, `skipTests`/`maven.test.skip`/`jacoco.skip`), the Blocker bugs `java:S2095`/`S2168`/`S2276` as source heuristics (reusing `input-stream-runner.js`'s comment/string stripper), the OakPAL index Blocker rules, and `/libs` filter roots (`BannedPath`).
+- **`--coverage`:** after `mvn --batch-mode clean org.jacoco:jacoco-maven-plugin:prepare-agent package org.jacoco:jacoco-maven-plugin:report`, reads each module's `jacoco.xml`, Surefire reports and `jacoco.exec`; computes `(covered lines + covered branches) / (lines + branches)` over every module with main Java code (modules without a report count as uncovered, estimated from sources) and ranks the classes to test first.
+
+Exit `0` no gate failure predicted, `1` gate failure predicted, `2` usage error. Tests: `cm-quality-precheck.test.js` (synthetic fixtures; no Maven, no network).
+
 ### `bpa-findings-helper.js` (main entry point)
 
 Orchestrates finding BPA data. Called by the skill internally.

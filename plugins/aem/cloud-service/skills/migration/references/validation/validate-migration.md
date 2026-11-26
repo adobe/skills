@@ -113,7 +113,7 @@ Do not change credentials or SDK configuration without approval.
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
   through the project's Maven install profile, and saves `.validate-migration/state.json`.
    A pattern reference may add steps between prepare and verify; follow it.
-   The build uses `-DskipTests`; do not claim customer unit tests passed.
+   The build uses `-DskipTests`; do not claim customer unit tests passed, and do not claim the Cloud Manager code-quality gate (coverage, reliability) passes — that is Branch J.
 3. **Diagnose (bundle-runtime scope only).** Skip this step for offline
   `legacy-ui`/`cdw` checks. For each emitted BSN, call MCP `diagnose-osgi-bundle` with
    `{ "bundleSymbolicName": "<BSN>" }` against the SAME SDK. Save the exact returned report in
@@ -222,6 +222,15 @@ ask the developer to start it (or correct `--sdk`) and rerun prepare. Runtime re
 runtime/source contract failures. Source-only failures go back to `migration`
 without automatic repair in this runtime recovery loop. Pattern references define
 any extra revalidation for their pattern.
+
+## Before a push: the Cloud Manager gate lane
+
+This branch proves runtime behaviour on the local SDK; it does not predict the Cloud Manager Code Quality step. When the user validates **before a push** (*"am I ready to push?"*, *"validate before I raise the PR"*), run both lanes and close with one summary:
+
+- **Runtime lane** — this branch, when the SDK and its MCP are available. Without them, do not block: say "runtime behaviour not validated".
+- **Cloud Manager gate lane** — the Prove step of [cloud-manager-quality-gate.md](../cloud-manager-quality-gate.md#prove-am-i-ready-to-push). It is project-wide and offline, and it runs the customer's unit tests, so it asks before its build, unlike this branch's `-DskipTests` build. Its report goes to `.validate-migration/` beside this branch's reports.
+
+The two lanes stay separate builds with separate results: never present a gate-lane pass as runtime evidence, or a runtime pass as a gate prediction.
 
 ## Guardrails and reference
 
