@@ -21,7 +21,7 @@ The detector flags, as written and without type resolution:
 
 - a call to `getAdministrativeResourceResolver(` or `loginAdministrative(`, on any receiver;
 - `ResourceProvider.AUTH_ADMIN` (simple or fully qualified), and a bare `AUTH_ADMIN` when the file static-imports it by name or by wildcard from a Sling `ResourceProvider`;
-- a line in a `org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl` configuration, including `.amended-*` and `~` variants, in a `.cfg.json`, `.config` or `.cfg` file, that maps to the user `admin` (`bundle:subservice=admin`, also `=[admin]`).
+- a line in a `org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl` configuration, including `.amended-*` and `~` variants, in a `.cfg.json`, `.config` or `.cfg` file, that maps to the user `admin` (`bundle:subservice=admin`, also `=[admin]`), or sets `user.default` to `admin`. `user.default` is the fallback user when no service mapping applies.
 
 **Limits.** The analyzer collects only `.cfg`, `.cfg.json` and `.config` files, so a mapping in an XML `sling:OsgiConfig` file (for example `…ServiceUserMapperImpl.amended-<name>.xml` with `<name>=admin`) is **not** detected. Search `ui.config` and `ui.apps` for `ServiceUserMapperImpl*.xml` by hand and treat each `=admin` as a finding. The detector also misses a resolver opened through a helper in another module that is not flagged itself, and a user name built at runtime.
 

@@ -1,0 +1,5 @@
+{
+  "scripts": [
+    "create service user legacy-report-service\ncreate service user legacy-cleanup-service"
+  ]
+}

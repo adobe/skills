@@ -30,7 +30,8 @@ import java.util.regex.Pattern;
  *  - ResourceProvider.AUTH_ADMIN (simple or fully qualified), and a bare AUTH_ADMIN when the file
  *    static-imports it, by name or by wildcard from a ResourceProvider;
  *  - a line of a ServiceUserMapperImpl configuration (.cfg.json, .config, .cfg; the plain
- *    ServiceUserMapperImpl and its .amended-* / ~ factory variants) that maps to the user "admin".
+ *    ServiceUserMapperImpl and its .amended-* / ~ factory variants) that maps to the user "admin"
+ *    or sets user.default to "admin".
  *
  * Not covered: XML sling:OsgiConfig files (the analyzer does not collect them), a mapping whose
  * user is built by a placeholder, and a project constant that is itself named ResourceProvider.
@@ -50,6 +51,8 @@ public final class AdminResourceResolver implements Detector {
     private static final String MAPPER_PID = "org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl";
     // "bundle:sub=admin" in JSON, "bundle:sub\=admin" in .config, with an optional [principal] bracket.
     private static final Pattern ADMIN_MAPPING = Pattern.compile("\\\\?=\\s*\\[?\\s*admin\\s*(?:[\\],\"']|$)");
+    private static final Pattern ADMIN_DEFAULT_USER = Pattern.compile(
+        "^\\s*[\"']?user\\.default[\"']?\\s*[:=]\\s*[\"']?admin[\"']?\\s*(?:,|$)");
 
     public void detect(Corpus c, List<Finding> out, List<String> warnings) {
         for (JavaUnit u : c.java) detectJava(u, out);
@@ -122,7 +125,9 @@ public final class AdminResourceResolver implements Detector {
         }
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
-            if (ADMIN_MAPPING.matcher(line).find()) out.add(new Finding(pattern(), o.rel, i + 1, line.trim()));
+            if (ADMIN_MAPPING.matcher(line).find() || ADMIN_DEFAULT_USER.matcher(line).find()) {
+                out.add(new Finding(pattern(), o.rel, i + 1, line.trim()));
+            }
         }
     }
 }

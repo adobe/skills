@@ -1,0 +1,6 @@
+{
+  "user.mapping": [
+    "com.example.site.core:siteReportService=admin",
+    "com.example.site.core:siteCleanupService=admin"
+  ]
+}

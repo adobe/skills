@@ -61,6 +61,22 @@
       "files": [
         "files/site-project"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "We're moving from AEM 6.5 to Cloud Service; our code opens resolvers as admin. Fix it.",
+      "expected_output": "The agent runs the analyzer with --pattern admin-resource-resolver and reads the admin-resource-resolver guide. It identifies both service callers and their different operations, proposes a separate subservice for each, and proposes least-privilege service users and corresponding ACLs in Repoinit for the paths and operations the code needs. It presents the proposed ACLs for review and asks for confirmation before writing any files. It replaces both explicit =admin mapping entries with the new service-user mappings rather than leaving the admin entries beside them, and it never proposes jcr:all on /.",
+      "assertions": [
+        "The analyzer is run with --pattern admin-resource-resolver",
+        "A distinct subservice is proposed for each of the two caller services",
+        "Repoinit service-user definitions and ACLs are proposed for the callers' required paths and operations",
+        "The proposed ACLs are shown for review and the agent asks for confirmation before editing",
+        "Both =admin mapping entries are replaced rather than retained alongside new mappings",
+        "The agent does not propose jcr:all on /"
+      ],
+      "files": [
+        "files/site-project"
+      ]
     }
   ]
 }

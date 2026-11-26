@@ -1,4 +1,5 @@
 {
+  "user.default": "content-reader-service",
   "user.mapping": [
     "com.example.core:siteReader=site-reader-service",
     "com.example.core:siteAuthor=administrators-reader",

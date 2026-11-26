@@ -302,8 +302,9 @@ assert_contains "static-imported AUTH_ADMIN flagged"           "$OUT" 'StaticImp
 assert_contains "wildcard static-imported AUTH_ADMIN flagged" "$OUT" 'WildcardStaticImportAdmin.java'
 assert_contains "cfg.json mapping to admin flagged"            "$OUT" 'ServiceUserMapperImpl.amended-admin.cfg.json'
 assert_contains "mapping line is the snippet"                  "$OUT" 'siteAdminService=admin'
+assert_contains "user.default admin fallback flagged"          "$OUT" 'ServiceUserMapperImpl.amended-default.cfg.json'
 assert_contains ".config mapping to admin flagged"             "$OUT" 'ServiceUserMapperImpl.amended-legacy.config'
-assert_count   "one finding per site (7)"                      "$OUT" '"pattern":"admin-resource-resolver"' 7
+assert_count   "one finding per site (8)"                      "$OUT" '"pattern":"admin-resource-resolver"' 8
 assert_absent  "service resolver not flagged"                  "$OUT" 'CleanServiceUser.java'
 assert_absent  "project's own AUTH_ADMIN not flagged"          "$OUT" 'UnrelatedAuthAdmin.java'
 assert_absent  "admin-like user names not flagged"             "$OUT" 'amended-clean.cfg.json'
