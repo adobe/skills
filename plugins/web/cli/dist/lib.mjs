@@ -7982,14 +7982,16 @@ function groupVariants(scanned) {
     groups.push({ members, owned, fallback });
   }
   const proposed = /* @__PURE__ */ new Map();
-  for (const { fallback } of groups) {
+  const pathDeclared = /* @__PURE__ */ new Set();
+  for (const { members, fallback } of groups) {
     if (fallback) proposed.set(fallback, (proposed.get(fallback) ?? 0) + 1);
+    for (const [m, tags] of members) if (tags.has(m.lang)) pathDeclared.add(m);
   }
   return groups.map(({ members, owned, fallback }) => ({
     url: proposed.get(fallback) === 1 ? fallback : owned.map((m) => m.url).sort()[0],
     variants: [...members].filter(([m, tags]) => owner.get(m) === members || [...tags].some((t) => t !== "x-default")).map(([m, tags]) => {
       const lang = [.../* @__PURE__ */ new Set([m.lang, ...tags])].filter((tag) => tag && tag !== "x-default");
-      const pathLang = m.lang && !tags.has(m.lang) ? m.lang : null;
+      const pathLang = m.lang && !pathDeclared.has(m) ? m.lang : null;
       return { lang, pathLang, url: m.url };
     })
   }));

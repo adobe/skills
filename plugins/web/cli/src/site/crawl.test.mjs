@@ -206,7 +206,7 @@ test('sitemaps: links to a shared page do not merge groups, and group URLs stay 
           page(
             `${o}/en/post-1`,
             alternate('fr', `${o}/fr/`),
-            alternate('de', `${o}/de/`),
+            alternate('de-AT', `${o}/de/`),
             alternate('x-default', `${o}/home`),
           ),
           page(
@@ -222,13 +222,13 @@ test('sitemaps: links to a shared page do not merge groups, and group URLs stay 
   try {
     const r = await crawl(s.origin);
     // /fr/ is listed and doesn't answer; /de/ and /home aren't listed, so they're trusted but
-    // join nothing.
+    // join nothing. post-2 declares de for /de/, so its path tag is declared in both groups.
     assert.deepEqual(r.urls, [
       {
         url: `${s.origin}/en/post-1`,
         variants: [
           { lang: ['en'], pathLang: 'en', url: `${s.origin}/en/post-1` },
-          { lang: ['de'], pathLang: null, url: `${s.origin}/de/` },
+          { lang: ['de', 'de-AT'], pathLang: null, url: `${s.origin}/de/` },
         ],
       },
       {
