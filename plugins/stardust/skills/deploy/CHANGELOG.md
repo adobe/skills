@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/adobe/skills/compare/deploy-v1.3.1...deploy-v1.3.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **stardust:** deploy-batch fails a page when a request gets no answer ([#831](https://github.com/adobe/skills/issues/831)) ([d84e94b](https://github.com/adobe/skills/commit/d84e94bf52481de228191728be93867cd218cf9a))
+
 ## [1.3.1](https://github.com/adobe/skills/compare/deploy-v1.3.0...deploy-v1.3.1) (2026-11-20)
 
 
