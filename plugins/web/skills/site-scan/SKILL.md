@@ -60,12 +60,12 @@ Only same-origin URLs count toward the scan; fragments are dropped. `--include` 
 ```
 
 `.urls[].url` names a group: its `x-default` URL when no other group shares it, else its
-lexically first sitemap URL. In `.urls[].variants[]`, `lang` combines path-derived and
-declared `hreflang` tags without duplicates or `x-default`. `pathLang` marks a tag inferred
-only from the path, or is `null`. A tag also declared in the sitemap stays in `lang` without
-being marked path-only. Two URLs the sitemaps list are variants only when each declares the
-other, as Google requires. An alternate no read sitemap lists (another origin, a sitemap
-not read) is trusted from each URL that declares it, so it can appear in several groups.
+lexically first sitemap URL. Read pages from `.urls[].variants[]`: each `lang` combines
+path-derived and declared `hreflang` tags without duplicates or `x-default`. `pathLang`
+marks a tag inferred only from the path, or is `null`. Two URLs the sitemaps list are
+variants only when each declares the other, as Google requires. An alternate no read
+sitemap lists (another origin, a sitemap not read) is trusted from each URL that declares
+it, so it can appear in several groups.
 With no alternates, including on `--strategy http`, each URL is its own group.
 
 `total`, `valid`, and `--limit` still count individual same-origin URLs, not groups.
