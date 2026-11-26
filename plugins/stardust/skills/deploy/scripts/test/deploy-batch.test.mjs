@@ -8,7 +8,7 @@
 // any page or step halts the batch with exit 3 — nothing new starts, pages in flight finish, the ledger
 // is written, the halted page keeps its status and is never put-fail, one stderr HALT line with the
 // exact re-run command — and the same command with a fresh token resumes); a 5xx that persists is a
-// per-page FAIL with exit 1, not a halt; usage errors exit 2; --help; and that the token value never
+// per-page FAIL with exit 1, not a halt, and so is a request that never gets an HTTP answer; usage errors exit 2; --help; and that the token value never
 // reaches stdout, stderr, a ledger or a log.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -72,6 +72,7 @@ const server = createServer((req, res) => {
     if (req.method === 'PUT' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
       const p = url.slice(SRC.length, -'.html'.length);
       const n = bump('put', p);
+      if (/put-sever$/.test(p)) { req.socket.destroy(); return undefined; } // the connection drops: no HTTP status at all
       if (/-dead$/.test(p) && !fresh) return reply(401, ''); // the token is dead until refreshed
       if (/burst$/.test(p) && n <= 2) return reply(401, ''); // a valid token answered 401 under a burst, then accepted
       if (/flaky$/.test(p)) return reply(503, 'unavailable');
@@ -84,6 +85,7 @@ const server = createServer((req, res) => {
     if (req.method === 'POST' && url.startsWith(`${PREVIEW}/`)) {
       const p = url.slice(PREVIEW.length);
       const n = bump('preview', p);
+      if (/prev-sever$/.test(p)) { req.socket.destroy(); return undefined; }
       if (/burst-prev$/.test(p) && n <= 2) return reply(401, '');
       if (!valid) return reply(401, 'bad token');
       return reply(200, '{}', { 'content-type': 'application/json' });
@@ -91,6 +93,7 @@ const server = createServer((req, res) => {
     if (req.method === 'POST' && url.startsWith(`${LIVE}/`)) {
       const p = url.slice(LIVE.length);
       const n = bump('live', p);
+      if (/live-sever$/.test(p)) { req.socket.destroy(); return undefined; }
       if (/dead-live$/.test(p) && !fresh) return reply(401, '');
       if (/burst-live$/.test(p) && n <= 2) return reply(401, '');
       if (!valid) return reply(401, 'bad token');
@@ -99,7 +102,8 @@ const server = createServer((req, res) => {
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
       bump('verify', p);
-      return putOk.has(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
+      // an older version of a `-sever` page is still live: the delivered origin answers 200 for it
+      return putOk.has(p) || /-sever$/.test(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
     }
     return reply(405, `unexpected ${req.method} ${url}`);
   });
@@ -332,6 +336,22 @@ await check('a 5xx that persists through --retries is a per-page FAIL (put-fail,
 });
 
 // ---- usage, --help --------------------------------------------------------------------------------------
+await check('a transport failure that persists through --retries (no HTTP status) fails the page at that step — put-fail, preview-fail or live-fail, exit 1, no later step — even when an older version is still served', async () => {
+  site('site-sever', ['ok', 'put-sever', 'prev-sever', 'live-sever']);
+  const from = requests.length;
+  const r = await run(['--content', 'site-sever', '--concurrency', '1', '--retries', '1']);
+  assert.equal(r.code, 1, r.out + r.err);
+  const l = ledgerOf('site-sever');
+  assert.equal(l['/ok'].status, 'live');
+  assert.equal(l['/put-sever'].status, 'put-fail'); assert.equal(l['/prev-sever'].status, 'preview-fail'); assert.equal(l['/live-sever'].status, 'live-fail');
+  for (const p of ['/put-sever', '/prev-sever', '/live-sever']) assert.match(l[p].lastError, /^(PUT|preview|live) 0 /, `${p}: ${l[p].lastError}`);
+  const seen = (method, prefix, p) => requests.slice(from).filter((q) => q.method === method && q.url === `${prefix}${p}`).length;
+  assert.equal(seen('POST', PREVIEW, '/put-sever'), 0, 'a PUT that never landed is not previewed');
+  assert.equal(seen('POST', LIVE, '/prev-sever'), 0, 'a preview that never landed is not published');
+  assert.equal(seen('GET', '', '/live-sever.plain.html'), 0, 'a publish that never landed is not verified');
+  assert.match(r.err, /^\[\d\/4\] FAIL \/put-sever \(put-fail\)$/m);
+});
+
 await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, no token) with nothing sent; --help prints the header, exits 0, writes nothing', async () => {
   const from = requests.length;
   const bad = async (args, re, opts) => { const r = await run(args, opts); assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); };
