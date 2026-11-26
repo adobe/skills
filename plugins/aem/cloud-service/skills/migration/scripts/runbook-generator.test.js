@@ -30,11 +30,12 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 16 migration patterns with a valid strategy', () => {
+test('registry includes all 17 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
     'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex', 'assetWorkflowMigration',
+    'acsCommons',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {

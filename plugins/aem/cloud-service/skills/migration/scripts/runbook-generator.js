@@ -100,6 +100,7 @@ const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./
 const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan, scanUnsupportedRunmodes, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
+const { runAcsCommonsScan, isAcsCommonsTarget, linkAcsBpaFindings } = require('./acs-commons-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
@@ -297,6 +298,20 @@ const PATTERN_META = {
     promptPattern: 'asset workflow migration',
     sampleOverride: 'Use the migration skill: migrate my DAM asset workflows to AEM as a Cloud Service post-processing workflows and processing profiles.',
   },
+  acsCommons: {
+    label: 'ACS AEM Commons (third-party)',
+    severity: 'medium',
+    strategy: 'content-scan',
+    // ACS AEM Commons is an open-source third-party library, not part of AEM. Agreed
+    // handling: report the version and the features in use, recommend an upgrade, and
+    // never change or upgrade it — the customer owns that work.
+    bpaSlugs: [],
+    heuristic: true,
+    reportOnly: true,
+    description: 'ACS AEM Commons usage: the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills. Detected heuristically by a text scan.',
+    promptPattern: 'acs commons',
+    sampleOverride: 'Use the migration skill: assess my ACS AEM Commons usage for AEM as a Cloud Service (report only, no upgrade).',
+  },
 };
 
 // content-scan strategy → the runner that produces that pattern's findings.
@@ -306,6 +321,7 @@ const CONTENT_SCANNERS = {
   templateModernization: runTemplateScan,
   dispatcherConversion: runDispatcherScan,
   assetWorkflowMigration: runAssetWorkflowScan,
+  acsCommons: runAcsCommonsScan,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
@@ -426,6 +442,7 @@ async function gatherFindings(options = {}) {
   const cascadePatterns = CANONICAL_PATTERNS.filter(p => PATTERN_META[p].strategy === 'cascade');
   const bpaPatterns = CANONICAL_PATTERNS.filter(p => (PATTERN_META[p].bpaSlugs || []).length > 0);
   const bpaTargetsByPattern = {};
+  const acsBpaTargets = [];
   const scanWarnings = [];
 
   // ── BPA tier (MCP or CSV) — any pattern with bpaSlugs. When a BPA source is
@@ -446,6 +463,7 @@ async function gatherFindings(options = {}) {
           const targets = bpaSubtypeFilter
             ? res.targets.filter(t => bpaSubtypeFilter.includes(t.identifier))
             : res.targets;
+          for (const t of targets) if (isAcsCommonsTarget(t)) acsBpaTargets.push({ pattern, target: t });
           if (PATTERN_META[pattern].strategy === 'java-scan') {
             // Kept raw for the java-scan merge below (needs className/identifier/bundle).
             (bpaTargetsByPattern[pattern] = bpaTargetsByPattern[pattern] || []).push(...targets);
@@ -630,6 +648,17 @@ async function gatherFindings(options = {}) {
     }
   }
 
+  // ── acsCommons: BPA rows raised against ACS AEM Commons itself (any pattern) are
+  //    listed in its report-only section as informational rows; they stay in
+  //    their own pattern too. ──
+  if (acsBpaTargets.length > 0 && findingsByPattern.acsCommons) {
+    const linked = linkAcsBpaFindings(acsBpaTargets);
+    findingsByPattern.acsCommons.push(...linked.findings);
+    rawFindingsByPattern.acsCommons.push(...linked.rawFindings);
+    sourceByPattern.acsCommons = scannedBy.acsCommons ? `${sourceByPattern.acsCommons}+${bpaMode}` : bpaMode;
+    scannedBy.acsCommons = sourceByPattern.acsCommons;
+  }
+
   // ── Strategy 'java-scan': inputStream. Same precedence as the other BPA
   //    patterns: when the BPA tier above returned inputStream rows (CAM or CSV),
   //    BPA owns the pattern and the scanner only resolves those classes to
@@ -775,6 +804,10 @@ function renderRunbook(gathered, ctx = {}) {
     lines.push('');
     lines.push(meta.description);
     lines.push('');
+    if (meta.reportOnly) {
+      lines.push('> 🧾 **Report only — third-party, customer-owned.** The migration skill never upgrades or changes it. Share this list with the customer and plan the upgrade and any rework as custom development; see `references/third-party/acs-commons.md`.');
+      lines.push('');
+    }
     if (meta.heuristic) {
       lines.push(`> ⚠️ **Heuristic detection** (${sourceLabel(sourceByPattern[p], 'non-deterministic')}) — these are candidate matches, not compiler/BPA-validated findings. Re-confirm each one before editing.`);
       if (meta.needsReview) {

@@ -63,6 +63,8 @@ Find the branch for the request and read its file before anything else. Each of 
 | **H — Asset workflow migration** | migrate DAM asset workflows (`DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions); or mentions Adobe's Asset Workflow Migration Tool / `wf-migrator` / `aem-cloud-migration` | [references/asset-workflow/flow.md](references/asset-workflow/flow.md): four steps around Adobe's `wf-migrator`, which makes every change. The skill runs it and guides the review; it never edits project files itself. Never present a failed run as done. |
 | **I — Repository restructuring** (beta) | restructure the project for AEM as a Cloud Service; split a content package into code (`ui.apps`) and content (`ui.content`); create `ui.config` or the `all` package; or mentions the Repository Modernizer | [references/repo-structure/flow.md](references/repo-structure/flow.md): five steps around Adobe's `repository-modernizer`. The plan review with the user is required. The tool's output is a copy: check it, then adopt it on a branch. Run this before the other branches when the project has no `ui.config` or `all`. |
 
+**ACS AEM Commons** (`acsCommons`, third-party): report only; read [references/third-party/acs-commons.md](references/third-party/acs-commons.md). **Never** change its version, configs, code or content; the upgrade is customer-owned.
+
 **Branch B — Java / HTL / BPA pattern migration:**
 
 1. Read **`{code-assessment}/SKILL.md`** — critical rules, Java baseline links, **Pattern Guides** table, **Manual Pattern Hints**.
