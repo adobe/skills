@@ -177,14 +177,20 @@ test('sitemaps: groups URLs that declare each other, across sitemaps, in canonic
       {
         url: `${s.origin}/a`,
         variants: [
-          { lang: ['en', 'en-CA', 'nl'], url: `${s.origin}/en/a` },
-          { lang: ['fr-FR'], url: `${s.origin}/fr-fr/a` },
-          { lang: [], url: `${s.origin}/a` },
-          { lang: ['zh-Hant-TW'], url: other },
+          { lang: ['en', 'en-CA', 'nl'], pathLang: null, url: `${s.origin}/en/a` },
+          { lang: ['fr-FR'], pathLang: null, url: `${s.origin}/fr-fr/a` },
+          { lang: [], pathLang: null, url: `${s.origin}/a` },
+          { lang: ['zh-Hant-TW'], pathLang: null, url: other },
         ],
       },
-      { url: `${s.origin}/fr-fr/b`, variants: [{ lang: ['fr-FR'], url: `${s.origin}/fr-fr/b` }] },
-      { url: `${s.origin}/contact`, variants: [{ lang: [], url: `${s.origin}/contact` }] },
+      {
+        url: `${s.origin}/fr-fr/b`,
+        variants: [{ lang: ['fr-FR'], pathLang: 'fr-FR', url: `${s.origin}/fr-fr/b` }],
+      },
+      {
+        url: `${s.origin}/contact`,
+        variants: [{ lang: [], pathLang: null, url: `${s.origin}/contact` }],
+      },
     ]);
   } finally {
     s.close();
@@ -221,18 +227,21 @@ test('sitemaps: links to a shared page do not merge groups, and group URLs stay 
       {
         url: `${s.origin}/en/post-1`,
         variants: [
-          { lang: ['en'], url: `${s.origin}/en/post-1` },
-          { lang: ['de'], url: `${s.origin}/de/` },
+          { lang: ['en'], pathLang: 'en', url: `${s.origin}/en/post-1` },
+          { lang: ['de'], pathLang: null, url: `${s.origin}/de/` },
         ],
       },
       {
         url: `${s.origin}/en/post-2`,
         variants: [
-          { lang: ['en'], url: `${s.origin}/en/post-2` },
-          { lang: ['de'], url: `${s.origin}/de/` },
+          { lang: ['en'], pathLang: 'en', url: `${s.origin}/en/post-2` },
+          { lang: ['de'], pathLang: null, url: `${s.origin}/de/` },
         ],
       },
-      { url: `${s.origin}/fr/`, variants: [{ lang: ['fr'], url: `${s.origin}/fr/` }] },
+      {
+        url: `${s.origin}/fr/`,
+        variants: [{ lang: ['fr'], pathLang: null, url: `${s.origin}/fr/` }],
+      },
     ]);
   } finally {
     s.close();
@@ -267,8 +276,8 @@ test('sitemaps: limits and filters count selected locs, keeping alternates as me
       {
         url: `${s.origin}/en/a`,
         variants: [
-          { lang: ['en'], url: `${s.origin}/en/a` },
-          { lang: ['fr', 'fr-CA'], url: `${s.origin}/fr/a` },
+          { lang: ['en'], pathLang: null, url: `${s.origin}/en/a` },
+          { lang: ['fr', 'fr-CA'], pathLang: null, url: `${s.origin}/fr/a` },
         ],
       },
     ]);
@@ -307,9 +316,18 @@ test('http: follows same-origin html links once, skips non-html and respects exc
   try {
     const r = await crawl(s.origin, { strategy: 'http', exclude: ['/skip/**'] });
     assert.deepEqual(r.urls, [
-      { url: `${s.origin}/`, variants: [{ lang: [], url: `${s.origin}/` }] },
-      { url: `${s.origin}/en/a`, variants: [{ lang: ['en'], url: `${s.origin}/en/a` }] },
-      { url: `${s.origin}/b`, variants: [{ lang: [], url: `${s.origin}/b` }] },
+      {
+        url: `${s.origin}/`,
+        variants: [{ lang: [], pathLang: null, url: `${s.origin}/` }],
+      },
+      {
+        url: `${s.origin}/en/a`,
+        variants: [{ lang: ['en'], pathLang: 'en', url: `${s.origin}/en/a` }],
+      },
+      {
+        url: `${s.origin}/b`,
+        variants: [{ lang: [], pathLang: null, url: `${s.origin}/b` }],
+      },
     ]);
   } finally {
     s.close();

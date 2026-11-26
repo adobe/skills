@@ -131,10 +131,11 @@ function groupVariants(scanned) {
     url: proposed.get(fallback) === 1 ? fallback : owned.map((m) => m.url).sort()[0],
     variants: [...members]
       .filter(([m, tags]) => owner.get(m) === members || [...tags].some((t) => t !== 'x-default'))
-      .map(([m, tags]) => ({
-        lang: [...new Set([m.lang, ...tags])].filter((t) => t && t !== 'x-default'),
-        url: m.url,
-      })),
+      .map(([m, tags]) => {
+        const lang = [...new Set([m.lang, ...tags])].filter((tag) => tag && tag !== 'x-default');
+        const pathLang = m.lang && !tags.has(m.lang) ? m.lang : null;
+        return { lang, pathLang, url: m.url };
+      }),
   }));
 }
 
@@ -179,7 +180,8 @@ async function fetchBody({ url, timeoutMs, headers }) {
  * @param {{ strategy?: 'sitemaps'|'http', include?: string[], exclude?: string[],
  *   limit?: number, timeoutMs?: number, headers?: object }} [options]
  * @returns {Promise<{ origin: string, strategy: string, total: number, valid: number,
- *   urls: {url: string, variants: {url: string, lang: string[]}[]}[], scannedUrls: string[],
+ *   urls: {url: string, variants: {url: string, lang: string[], pathLang: string|null}[]}[],
+ *   scannedUrls: string[],
  *   sitemaps: string[], errors: {url: string, message: string}[] }>}
  */
 export async function crawl(origin, options = {}) {
