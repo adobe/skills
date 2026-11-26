@@ -38,7 +38,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { codeStamp } from './deployed/stamp.mjs';
-import { fallbackGate, gateVerdicts, residualAccepted } from './reskin-ledger.mjs';
+import { fallbackGate, gateVerdicts, passing, residualAccepted } from './reskin-ledger.mjs';
 import { MARKUP_VARS } from './stream-render.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
@@ -116,7 +116,7 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
         if (!e || !ledger.handoff?.[t]) { problems.push(`${t}/${a}: not recorded (reskin-ledger.mjs record ${a})`); continue; }
         const accepted = (g) => residualAccepted(e.residuals || [], g);
         // reskin's gates plus M2's fragments (gates.figma B0/B1/B3, gates.deployed A1–A5 + its figma re-run)
-        const bad = gateVerdicts(e.gates).filter((v) => v.verdict !== 'PASS' && !accepted(v.gate)).map((v) => `${v.gate} ${v.verdict}`);
+        const bad = gateVerdicts(e.gates).filter((v) => !passing(v.verdict) && !accepted(v.gate)).map((v) => `${v.gate} ${v.verdict}`);
         if (e.status !== 'gated' || bad.length) problems.push(`${t}/${a}: ${bad.join(', ') || e.status}`);
         const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted' && !(r.verdict === 'fallback' && fallbackGate(r.gate)));
         if (open.length) problems.push(`${t}/${a}: residual(s) ${open.map((r) => `${r.gate} ${r.verdict}`).join(', ')}`);

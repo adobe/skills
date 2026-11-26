@@ -485,6 +485,15 @@ if (playwrightOk && pngOk) {
     assert.equal(registerOf(p).counts.mandated, 0);
   });
 
+  queue('no checks run is NOT CHECKED 0/0, never PASS, with the out-of-kit share; exit 0', async () => {
+    const p = await framed();
+    const empty = (file, extra = {}) => async ({ ready }) => { ready.join.sections[1].module = null; writeFileSync(join(ready.out, file), JSON.stringify({ results: [], ...extra })); return 0; };
+    const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { geometry: empty('geometry.json'), ramp: empty('ramp.json', { literals: [] }) } });
+    assert.equal(code, 0);
+    const f = summaryOf(p).ledgerFragment;
+    assert.deepEqual([f.geometry, f.ramp], ['NOT CHECKED 0/0 (1 of 2 sections out-of-kit)', 'NOT CHECKED 0/0 (1 of 2 sections out-of-kit)']);
+  });
+
   queue('a step that throws is CRASH: <message>, the other steps still run, the exit is 124', async () => {
     const p = await framed();
     const out = [];

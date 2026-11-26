@@ -581,6 +581,9 @@ re-runs every gate. A step is not a fix iteration.
    composed from donor tokens (name them, as for any new-module row), its
    checks-file entries removed. (d) joins it as `out-of-kit` (B4), B3's
    `:root` block still holds, and (a) to (c) hold as for any section.
+   Geometry and ramp name the share, `PASS 12/12 (3 of 8 sections out-of-kit)`;
+   with no checks left they read `NOT CHECKED 0/0 (…)`, never `PASS`. The
+   ledger shows `NOT-CHECKED` and does not block on it: nothing failed.
 3. **Record each step** before re-rendering:
    `reskin-ledger.mjs flag <slug> --note "fallback <slot>: <from> → <to> (<gate>: <cause>)"`.
    The handoff lists every fallback and the share of content slots that

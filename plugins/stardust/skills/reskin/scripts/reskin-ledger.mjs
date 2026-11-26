@@ -20,7 +20,8 @@
  *       gates.deployed; without fresh evidence a fragment already in the ledger is kept. A Figma donor
  *       (reskin/curation-rules.json) with scripts/reskin/figma-gate.mjs installed and no figma fragment
  *       records figma.* NOT-RUN. Blocking: figma join/geometry/ramp; deployed content/tokens/parity/
- *       sanity/inherited and its figma re-run. A deployed.sanity residual is never accepted (M2a D7).
+ *       sanity/inherited and its figma re-run. A figma fragment of "NOT CHECKED 0/0" (no checks: every
+ *       section out-of-kit) records NOT-CHECKED, shown but not blocking. A deployed.sanity residual is never accepted (M2a D7).
  *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md — the sibling gate on migrate's output —
  *       into pages[slug].migratedGates and handoff.<type>.siblings.<slug>.
  *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5)
@@ -110,6 +111,7 @@ export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
   if (s == null) return 'NOT-RUN';
   if (/^(PASS|ADVISORY|n\/a)/i.test(s)) return 'PASS';
+  if (/^NOT CHECKED/i.test(s)) return 'NOT-CHECKED';
   if (/^FAIL/i.test(s)) return 'FAIL';
   if (/^(not run|CRASH|ERROR|CHALLENGE)/i.test(s)) return 'NOT-RUN';
   return 'UNKNOWN';
@@ -207,8 +209,10 @@ export function mobileStatic(html) {
 // accepted it (by "user"; a residual without by fails closed).
 export const residualAccepted = (residuals, g) => !NEVER_ACCEPTED.includes(g)
   && (residuals || []).some((r) => residualCovers(r, g) && ((r.verdict === 'accepted' && (!ownerOnly(g) || r.by === 'user')) || (r.verdict === 'fallback' && fallbackGate(g))));
-// The gates neither PASS nor covered by an accepted residual.
-export const openGates = (gates, residuals = []) => gateVerdicts(gates).filter(({ gate, verdict }) => verdict !== 'PASS' && !residualAccepted(residuals, gate));
+// NOT-CHECKED (figma-gate over no checks: every section out-of-kit) is reported, never blocking: nothing failed.
+export const passing = (verdict) => verdict === 'PASS' || verdict === 'NOT-CHECKED';
+// The gates neither passing nor covered by an accepted residual.
+export const openGates = (gates, residuals = []) => gateVerdicts(gates).filter(({ gate, verdict }) => !passing(verdict) && !residualAccepted(residuals, gate));
 export const gatesOk = (gates, residuals = []) => openGates(gates, residuals).length === 0;
 
 // Pure: the ledger with deploy's Step 10 receipts for one page in pages[slug].gates.step10. An unresolved

@@ -75,6 +75,10 @@ check('M2 fragments: verdict strings, flattening, figmaRequired, kept fragment, 
   assert.equal(ok.pages.login.status, 'gated'); assert.ok(ok.handoff.form.gates.login['figma.geometry']);
   assert.equal(applyRecord(ok, base).pages.login.gates.figma.geometry, 'PASS 9/9', 'a recorded fragment survives a re-record without fresh evidence');
   assert.equal(applyRecord({}, base).pages.login.gates.figma, undefined, 'no M2 → no figma gate');
+  assert.equal(fragmentVerdict('NOT CHECKED 0/0 (5 of 5 sections out-of-kit)'), 'NOT-CHECKED');
+  const vacuous = applyRecord({}, { ...base, m2: { figma: { ...fig, geometry: 'NOT CHECKED 0/0 (5 of 5 sections out-of-kit)' } } });
+  assert.equal(vacuous.pages.login.status, 'gated', 'NOT-CHECKED is shown, not blocking');
+  assert.equal(vacuous.handoff.form.gates.login['figma.geometry'], undefined, 'NOT-CHECKED is not listed as passed');
   assert.equal(fragmentVerdict('CHALLENGE: bot wall'), 'NOT-RUN'); assert.equal(fragmentVerdict('ERROR (exit 3)'), 'NOT-RUN');
   assert.deepEqual(gateVerdicts({ domEquality: 'PASS', slotCoverage: 'FAIL 1/9' }).map((v) => v.verdict), ['PASS', 'FAIL'], 'hand-written string gates');
   const withClass = applyRecord({ pages: { login: { residuals: [{ gate: 'figma', class: 'figma.geometry', verdict: 'accepted', by: 'user' }] } } }, { ...base, m2: { figma: fig } });

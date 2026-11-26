@@ -374,7 +374,8 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   }
   const { pass, results } = await runGeometry({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, out: ready.out });
   const failing = results.filter((r) => r.status !== 'PASS');
-  log(pass ? `geometry PASS ${results.length}/${results.length}` : `geometry FAIL ${failing.length}/${results.length}`);
+  const kit = kitNote(ready.join.sections);
+  log(`geometry ${pass ? (results.length ? `PASS ${results.length}` : 'NOT CHECKED 0') : `FAIL ${failing.length}`}/${results.length}${kit}`);
   for (const r of failing) log(`  ${r.slot} ${r.id} ${r.measure}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   return pass ? 0 : 1;
 }
@@ -394,7 +395,8 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   const unserved = results.filter((r) => r.status === 'UNSERVED');
   const asserted = results.length - unasserted.length - unserved.length;
   const note = rampNote(unasserted.length, unserved.length);
-  log(pass ? `ramp PASS ${asserted}/${asserted}${note}` : `ramp FAIL ${failing.length}/${asserted}${note}`);
+  const kit = kitNote(ready.join.sections);
+  log(`ramp ${pass ? (asserted ? `PASS ${asserted}` : 'NOT CHECKED 0') : `FAIL ${failing.length}`}/${asserted}${note}${kit}`);
   for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   for (const r of unasserted) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): advisory, ${r.detail}`);
   for (const r of unserved) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): font.unserved, ${r.detail}`);
@@ -477,9 +479,17 @@ const RAMP_WIDTH_FILE = /^ramp(?:-spec)?\.\d+\.(?:json|md)$/;
 const NOT_RUN_DRIFT = 'not run: section drift';
 const VERDICT_WORDS = { geometry: { 0: 'PASS', 1: 'FAIL' }, ramp: { 0: 'PASS', 1: 'FAIL' }, pixel: { 0: 'advisory', 124: 'no verdict' }, register: { 0: 'written' } };
 
-function geometryFragment(file) {
+// " (k of n sections out-of-kit)": the joined sections with no Figma module (new-module rows, fallback ladder step 2),
+// which carry no checks. A verdict over no checks is NOT CHECKED, never PASS: the ledger shows it and does not block on it.
+function kitNote(sections = []) {
+  const out = sections.filter((s) => !s.module).length;
+  return out ? ` (${out} of ${sections.length} sections out-of-kit)` : '';
+}
+
+function geometryFragment(file, sections) {
+  const n = file.results.length;
   const bad = file.results.filter((r) => r.status !== 'PASS').length;
-  return bad ? `FAIL ${bad}/${file.results.length}` : `PASS ${file.results.length}/${file.results.length}`;
+  return `${bad ? `FAIL ${bad}` : n ? `PASS ${n}` : 'NOT CHECKED 0'}/${n}${kitNote(sections)}`;
 }
 
 // " (k unasserted)", " (j unserved)" or both in one parenthesis: what a ramp verdict leaves out of its n.
@@ -488,12 +498,12 @@ function rampNote(unasserted, unserved) {
   return parts.length ? ` (${parts.join(', ')})` : '';
 }
 
-function rampFragment(file) {
+function rampFragment(file, sections) {
   const unasserted = file.results.filter((r) => r.status === 'UNASSERTED').length;
   const unserved = file.results.filter((r) => r.status === 'UNSERVED').length;
   const asserted = file.results.length - unasserted - unserved;
   const bad = file.results.filter((r) => r.status === 'FAIL').length;
-  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${rampNote(unasserted, unserved)}`;
+  return `${bad ? `FAIL ${bad}` : asserted ? `PASS ${asserted}` : 'NOT CHECKED 0'}/${asserted}${rampNote(unasserted, unserved)}${kitNote(sections)}`;
 }
 
 function pixelFragment(file) {
@@ -583,8 +593,8 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     regime: ready?.join.regime ?? regime,
     figmaVersion: current?.version ?? null,
     join: recorded.join.verdict,
-    geometry: fragmentOf('geometry', geometryFragment),
-    ramp: fragmentOf('ramp', rampFragment),
+    geometry: fragmentOf('geometry', (f) => geometryFragment(f, ready?.join.sections)),
+    ramp: fragmentOf('ramp', (f) => rampFragment(f, ready?.join.sections)),
     pixel: fragmentOf('pixel', pixelFragment),
     register: fragmentOf('register', (f) => countsLine(f.counts)),
     coverage: runnable ? coverageLine(ready.coverage) : ready ? NOT_RUN_DRIFT : joinStopped,
