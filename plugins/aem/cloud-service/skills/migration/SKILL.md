@@ -3,9 +3,9 @@ name: migration
 description: |
   Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV/cache and
   CAM/MCP discovery, one pattern per session. Use to review/scan a project for AEMaaCS
-  migration — generates a read-only migration-runbook.md — or to fix specific Cloud Service
-  blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
-  DAM AssetManager, administrative resource resolvers (admin-resource-resolver), HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
+  migration — generates a read-only migration-runbook.md — or to fix specific blockers:
+  scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
+  DAM AssetManager, admin resolvers, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
   Guava cache → Caffeine (guavaCache), java.io.InputStream triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
