@@ -13,9 +13,8 @@ Only in an aem-boilerplate project: `stardust/runtime-contract.json` (`deploy`'s
 
 ## Isolation
 
-Code is branch-scoped; DA content is not: a `PUT` has no branch, so a branch preview that writes `/nav` rewrites it
-for every branch. Either **`--sandbox`**, a repo of one's own (the safest; waives the rules below, recorded), or
-**`--namespace <ns>`** in a shared repo: every path the leg writes starts with `/<ns>/` (the page, `/<ns>/nav`,
+DA content is not branch-scoped. Either **`--sandbox`**, a repo of one's own (the safest; waives the rules below,
+recorded), or **`--namespace <ns>`** in a shared repo: every path the leg writes starts with `/<ns>/` (the page, `/<ns>/nav`,
 `/<ns>/footer`, DA media under `--scope <ns>`), the page's `metadata` block carries `nav` and `footer` rows naming
 `/<ns>/nav` and `/<ns>/footer`, and both chrome documents are on the publish roster or the chrome 404s. `preview` enforces
 the rows (read from the delivered head) and the path: rules in `deployed-gate.mjs --help`. One new page path in the
@@ -44,7 +43,8 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    renders from, and `reskin-preflight` fails deployed evidence whose `codeStamp` no longer matches the code. A
    block or CSS fix that makes EDS match the unchanged reskin page is a fix round (§ The fix budget).
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
-   (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
+   (`../../deploy/da-deploy-protocol.md` § Deploy, step 0). The push and step 3's DA write are externally visible:
+   confirm each with the user first, naming the repo, the branch and the paths.
 3. **Write the documents to DA and preview them, never publish:**
    `DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <o> --repo <r> --branch <b> --content content --paths <paths.txt> --no-publish --force --ledger stardust/.work/reskin/deploy-ledger.json`.
    `<paths.txt>` is a file, one web path per line (the page and both namespaced chrome documents; in a sandbox the
