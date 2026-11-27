@@ -109,9 +109,35 @@ await check('401/403 name the token source, its length and prefix shape, never i
   });
   reset();
   await rejects(createClient({ token: `${pat}\n`, tokenSource: 'MY_FIGMA_PAT', base: fake.base, sleep: async () => {} }).getJson(FILE), (e) => {
-    assert.match(e.message, /came from MY_FIGMA_PAT \(\d+ characters; prefix looks like a Figma personal access token; it has leading or trailing whitespace\)\. Check that MY_FIGMA_PAT holds/);
+    assert.match(e.message, new RegExp(`came from MY_FIGMA_PAT \\(${pat.length} characters; prefix looks like a Figma personal access token\\)\\. Check that MY_FIGMA_PAT holds`));
   });
   assert.equal(describeToken('abc'), 'the token came from FIGMA_TOKEN (3 characters; unexpected prefix: Figma personal access tokens start with figd_)');
+  assert.equal(describeToken(' figd_a\nb'), 'the token came from FIGMA_TOKEN (9 characters; prefix looks like a Figma personal access token; it has leading or trailing whitespace; it has characters outside printable ASCII (a line break, space or control character))');
+});
+await check('a multi-line token: usage error from describeToken before any request, no token characters', async () => {
+  reset();
+  const secret = `figd_${randomBytes(16).toString('hex')}`;
+  const token = ` ${secret}\nsecond-line`;
+  let err;
+  try { createClient({ token, base: fake.base }); } catch (e) { err = e; }
+  assert.ok(err instanceof UsageError, 'createClient throws');
+  assert.equal(err.code, 2);
+  assert.match(err.message, /^FIGMA_TOKEN cannot be sent as a header: the token came from FIGMA_TOKEN \(\d+ characters; .*outside printable ASCII/);
+  assert.ok(!err.message.includes(secret.slice(5, 13)) && !err.message.includes('second-line'), 'no token characters');
+  assert.equal(fake.requests.length, 0);
+});
+await check('a fetch failure that is not a network error: not retried, runtime message not echoed', async () => {
+  let calls = 0;
+  let slept = 0;
+  const fetchImpl = async () => { calls += 1; throw new TypeError(`Headers.append: "${TOKEN}" is an invalid header value.`); };
+  await rejects(createClient({ token: TOKEN, base: fake.base, fetchImpl, sleep: async () => { slept += 1; } }).getJson(FILE), (e) => {
+    assert.ok(e instanceof FigmaError);
+    assert.equal(e.exitCode, 3);
+    assert.match(e.message, /could not be sent \(TypeError\); not retried/);
+    assert.ok(!e.message.includes(TOKEN) && !e.message.includes('Headers.append'));
+  });
+  assert.equal(calls, 1);
+  assert.equal(slept, 0);
 });
 await check('404 → exit 2 naming the file key and node-id', async () => {
   reset();
