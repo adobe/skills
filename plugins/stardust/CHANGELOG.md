@@ -1,5 +1,66 @@
 # Changelog
 
+# [0.47.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.9...plugin/stardust/v0.47.0) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
+
+### Features
+
+* **stardust:** a delivery unit closes only when every page it shipped has a gate row ([#788](https://github.com/adobe/skills/issues/788)) ([d53aadc](https://github.com/adobe/skills/commit/d53aadc8ffe463a642d8312320b6693a16604f6c)), closes [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#790](https://github.com/adobe/skills/issues/790) [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793)
+
+## [0.46.9](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.8...plugin/stardust/v0.46.9) (2026-11-26)
+
+
+### Bug Fixes
+
+* **stardust:** deploy-batch fails a page when a request gets no answer ([#831](https://github.com/adobe/skills/issues/831)) ([d84e94b](https://github.com/adobe/skills/commit/d84e94bf52481de228191728be93867cd218cf9a))
+
+## [0.46.8](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.7...plugin/stardust/v0.46.8) (2026-11-25)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs one recorded unit per width, with a deadline sized to its roster ([#821](https://github.com/adobe/skills/issues/821)) ([d0e4c34](https://github.com/adobe/skills/commit/d0e4c34bbbc059de2eb9840064a0ad3f8b3e98cd))
+
+## [0.46.7](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.6...plugin/stardust/v0.46.7) (2026-11-24)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint reads not followed by extra whitespace correctly ([#728](https://github.com/adobe/skills/issues/728)) ([ebeca8c](https://github.com/adobe/skills/commit/ebeca8ce731c8d1cb9864af4eea922108118092e)), closes [#688](https://github.com/adobe/skills/issues/688)
+
+## [0.46.6](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.5...plugin/stardust/v0.46.6) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** a recorded gate pass is the whole verdict, written per page and reused only while the page's inputs are unchanged ([#793](https://github.com/adobe/skills/issues/793)) ([38a3255](https://github.com/adobe/skills/commit/38a3255c81ec76be0d63ddce5a324795d58650cf))
+
+## [0.46.5](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.4...plugin/stardust/v0.46.5) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs a page's probes beside its captures, inside one browser budget per job ([#792](https://github.com/adobe/skills/issues/792)) ([fede929](https://github.com/adobe/skills/commit/fede92993e633b33b86213f767385274b4d4ef6f))
+
+## [0.46.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.3...plugin/stardust/v0.46.4) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deps:** update dependency axe-core to v4.14.1 ([#803](https://github.com/adobe/skills/issues/803)) ([659ccbf](https://github.com/adobe/skills/commit/659ccbf32fbaf5c88b8c2636bb2e9ef38d8b2f94))
+
+## [0.46.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.2...plugin/stardust/v0.46.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the roster gate judges offsets with the height tolerance, so pages inside the pixel bar stop failing on small shifts ([#790](https://github.com/adobe/skills/issues/790)) ([50de2af](https://github.com/adobe/skills/commit/50de2afe042861b295af64cc4c68e86255caed54))
+
 ## [0.46.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.1...plugin/stardust/v0.46.2) (2026-11-22)
 
 

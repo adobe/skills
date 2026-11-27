@@ -44,7 +44,7 @@ const { writeLocalReport, finalizeReporting, resolveSdkUrl, camReportingNote, no
 const PATTERNS = require('./check/patterns');
 const { canonicalPattern } = require('./check/patterns/aliases.js');
 
-// Submitting outcomes to CAM through MCP is paused until the legal review is done. While paused,
+// Submitting outcomes to CAM through MCP is currently paused. While paused,
 // runs are local-only: any project link is ignored and no payload is emitted. Set
 // VALIDATE_MIGRATION_CAM_REPORTING=1 to turn reporting back on (tests and maintainers only; agent-facing docs must not mention it).
 const CAM_REPORTING_ENABLED = process.env.VALIDATE_MIGRATION_CAM_REPORTING === '1';

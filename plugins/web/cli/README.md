@@ -33,6 +33,18 @@ Fallback when published: `npx -y @adobe/web-cli …`.
 `web --help`, `web <group> --help` and `web <group> <command> --help` list every
 option, output shape and exit code; `web doc` lists the long-form topics.
 
+`web site scan` groups sitemap translations in `urls: [{ url, variants: [{ lang, pathLang, url }] }]`.
+Two URLs the sitemaps list are variants only when each declares the other, as Google requires;
+an alternate no read sitemap lists (another origin, a sitemap not read) is trusted from each
+URL that declares it. The outer `url` is the group's `x-default` when no other group shares
+it, otherwise its lexically first sitemap URL. Each variant's `lang` is an array of
+deduplicated path-based and `hreflang` tags in canonical case (`[]` if unknown). `pathLang`
+is the path-based tag if no `hreflang` also declares it, otherwise `null`. URLs without
+translations, including results from `--strategy http`, have one variant. Declared alternates
+can fall outside the origin, filters, or limit; `total`, `valid`, and `--limit` count
+individual same-origin URLs. Use `web --format text site scan …` for just the selected URLs
+and the counts.
+
 ## Extending with your own commands
 
 The package also exports a library (`dist/lib.mjs`, the package's `exports`): another program

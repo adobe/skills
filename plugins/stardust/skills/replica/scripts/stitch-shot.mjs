@@ -970,7 +970,7 @@ async function main() {
       // the one clamped to the CURRENT height: a document that shrank under
       // the scroll is at its (new) bottom, not stalled.
       if (scrollStalled(prevActualY, actualY, target)) {
-        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe, rely on content-diff/visual-diff against this URL and tell the user. Never gate against another rendering of it (a static, print, AMP or no-JS mode) instead (source-fidelity-gate.md § Hardening rule 13).`);
       }
       prevActualY = actualY;
       const buf = await page.screenshot();
