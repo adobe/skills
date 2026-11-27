@@ -1,3 +1,10 @@
+## [1.8.6](https://github.com/adobe/skills/compare/replica-v1.8.5...replica-v1.8.6) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
 ## [1.8.5](https://github.com/adobe/skills/compare/replica-v1.8.4...replica-v1.8.5) (2026-11-25)
 
 
