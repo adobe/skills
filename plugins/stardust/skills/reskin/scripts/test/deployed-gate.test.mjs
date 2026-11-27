@@ -694,6 +694,36 @@ await check('stamp: "current" (exit 0) while the code of the project root is wha
   assert.equal((await stamp()).status, 1, 'a new script file is a change');
 });
 
+await check('all: under a frozen foundation a tokens FAIL and a header crop FAIL become foundation request lines, once; without the freeze file nothing is queued', async () => {
+  const over = {
+    tokens: () => ({ verdict: 'FAIL', exit: 1, total: 12, failures: ['main h1 color: expected rgb(0, 47, 108), got rgb(255, 255, 255)'], skipped: [] }),
+    parity: () => ({ verdict: 'FAIL', exit: 1, rows: [rowOf('pixel', 1440, 'PASS'), rowOf('header crop', 1440, 'FAIL', '7.10%', '≤ 2%'), rowOf('pixel', 360, 'FAIL', '12%', '≤ 10%')] }),
+  };
+  const loose = allRoot('requests-loose');
+  const r0 = await runAll(loose, { over });
+  assert.equal(r0.code, 1, r0.lines.join('\n'));
+  assert.equal(existsSync(join(loose, 'stardust', 'rollout', 'foundation-requests.md')), false);
+  assert.equal(r0.lines.some((l) => l.startsWith('foundation requests:')), false);
+
+  const root = allRoot('requests-frozen');
+  mkdirSync(join(root, 'stardust', 'rollout'), { recursive: true });
+  writeFileSync(join(root, 'stardust', 'rollout', 'foundation-freeze.json'), '{}\n');
+  const extra = ['--unit', 'cluster-a', '--templates', 'article'];
+  const r1 = await runAll(root, { over, extra });
+  assert.equal(r1.code, 1, r1.lines.join('\n'));
+  const queue = join(root, 'stardust', 'rollout', 'foundation-requests.md');
+  const lines = readFileSync(queue, 'utf8').trim().split('\n');
+  assert.equal(lines.length, 2, lines.join('\n'));
+  assert.match(lines[0], /^- cluster-a \| :root \/ base tokens .* \| deployed-gate tokens 1\/12: main h1 color: expected rgb\(0, 47, 108\), got rgb\(255, 255, 255\) \| article$/);
+  assert.match(lines[1], /^- cluster-a \| header crop off the reskin \(blocks\/header\/\) \| deployed-gate parity header crop @1440: 7\.10% \(bar ≤ 2%\) \| article$/);
+  assert.ok(r1.lines.includes(`foundation requests: 2 queued, 0 already queued in ${queue} (applied at C-final)`), r1.lines.join('\n'));
+  assert.match(r1.lines.at(-1), /^summary written: /);
+
+  const r2 = await runAll(root, { over, extra });
+  assert.equal(readFileSync(queue, 'utf8').trim().split('\n').length, 2, 'a line already queued is not repeated');
+  assert.ok(r2.lines.includes(`foundation requests: 0 queued, 2 already queued in ${queue} (applied at C-final)`), r2.lines.join('\n'));
+});
+
 await check('all: an origin override in preview.json is carried into summary.json and the ledger fragment, and left out of both otherwise', async () => {
   const override = { env: 'DEPLOY_VERIFY_ORIGIN', origin: 'http://127.0.0.1:9' };
   const root = allRoot('all-override', { record: { originOverride: override } });

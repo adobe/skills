@@ -13,7 +13,8 @@ import { letterSpacingCss, lineHeightCss, px, weightCss } from '../figma/normali
 import { parseNormalizations } from '../figma/rules.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { findBox } from './boxes.mjs';
-import { scopeSelector, selectorFor } from './checks.mjs';
+import { scopeSelector } from './checks.mjs';
+import { derivedSelector } from './derive.mjs';
 import { stampsOf } from './stamp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -49,8 +50,9 @@ const TOLERANCE = { lineHeight: 0.1, letterSpacing: 0.1 };
 
 // → Map<width, ProbeEntry[]>. The :root entries go once, at the first section's width. A property the
 // Figma node gives no value for is not asserted: it is pushed onto unasserted as an UNASSERTED result. On a
-// preview (regime) an entry's selector is its previewSelector when it has one.
-export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted = [], regime = 'local' }) {
+// preview (regime) an entry's selector is its previewSelector when it has one, else the one derived for it (derived:
+// prepare's Map, derive.mjs).
+export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted = [], regime = 'local', derived = null }) {
   const specs = new Map();
   const add = (width, entry) => {
     if (!specs.has(width)) specs.set(width, []);
@@ -67,7 +69,7 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted =
       const box = rootBox && findBox(rootBox, entry.node);
       if (!box?.text) throw new Error(`${s.slot} ${entry.id}: ${entry.node} is not a TEXT node inside the root for width ${entry.width}`);
       const want = textExpect(box.text, norm);
-      const selector = scopeSelector(s.selector, selectorFor(entry, regime));
+      const selector = scopeSelector(s.selector, derivedSelector({ regime, derived }, s.slot, 'type', entry));
       for (const property of PROPERTIES) {
         if (want[property] === null) {
           unasserted.push({ slot: s.slot, id: entry.id, node: entry.node, root: section.roots[entry.width], property, status: 'UNASSERTED', detail: MISSING[property] });
@@ -165,7 +167,7 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
   const norm = parseNormalizations(rules?.normalizations, []);
   const rootEntries = rootTokens(tokens).entries;
   const unasserted = [];
-  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm, unasserted, regime: target.regime });
+  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm, unasserted, regime: target.regime, derived: target.derived });
   const nodeOf = new Map();
   const rootOf = new Map();
   for (const [slot, section] of Object.entries(checks)) {

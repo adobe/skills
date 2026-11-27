@@ -26,7 +26,9 @@
  *     "declared <family>, served fallback" (or "... no <weight> <style> face
  *     loaded"): never a FAIL, the exit code is unchanged, but it is no PASS
  *   - custom property (property starts with `--`): the computed
- *     getPropertyValue, trimmed, compared whitespace-collapsed
+ *     getPropertyValue, trimmed, compared whitespace-collapsed, each colour
+ *     in one notation (hex, rgb() and rgba() alike) and a name holding
+ *     "family" on its first family (as compare "firstFamily")
  *   - tolerancePx: componentwise numeric comparison (each px component of
  *     the computed value within ±tolerancePx of the token's component) —
  *     for paddings (±2), container width (±20), section rhythm (±16)
@@ -209,10 +211,37 @@ if (args.model) {
 const normFamily = (s) => (s || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const firstFamily = (s) => normFamily(String(s || '').split(',')[0]);
 const collapse = (s) => String(s).replace(/\s+/g, ' ').trim();
+// A custom property is read as declared, not computed: one colour written two ways (#fff, #ffffff, rgb(255 255 255),
+// rgba(255, 255, 255, 1)) becomes rgb(255, 255, 255) or rgba(r, g, b, a) before the comparison.
+const channel = (c, max) => (c.endsWith('%') ? (parseFloat(c) / 100) * max : parseFloat(c));
+function rgbOf(r, g, b, a) {
+  const k = [r, g, b].map((v) => Math.round(v));
+  const alpha = Math.round(a * 1000) / 1000;
+  return alpha === 1 ? `rgb(${k.join(', ')})` : `rgba(${k.join(', ')}, ${alpha})`;
+}
+function canonColours(v) {
+  return v
+    .replace(/#([0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b/gi, (m, h) => {
+      const x = h.length <= 4 ? [...h].map((d) => d + d).join('') : h;
+      const n = (i) => parseInt(x.slice(i, i + 2), 16);
+      return rgbOf(n(0), n(2), n(4), x.length === 8 ? n(6) / 255 : 1);
+    })
+    .replace(/rgba?\(([^()]*)\)/gi, (m, body) => {
+      const c = body.trim().split(/\s*[,/]\s*|\s+/).filter(Boolean);
+      if (c.length !== 3 && c.length !== 4) return m;
+      if (c.some((x) => !/^-?\d*\.?\d+%?$/.test(x))) return m;
+      return rgbOf(channel(c[0], 255), channel(c[1], 255), channel(c[2], 255), c[3] === undefined ? 1 : channel(c[3], 1));
+    })
+    .replace(/\s*,\s*/g, ', ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
+}
 function compare(entry, got, want) {
   if (entry.compare === 'firstFamily') return firstFamily(got) === firstFamily(want);
   if (entry.property === 'fontFamily') return normFamily(got) === normFamily(want);
-  if (String(entry.property ?? '').startsWith('--')) { got = collapse(got); want = collapse(want); }
+  if (String(entry.property ?? '').startsWith('--')) {
+    // A family token is held to its first family, like the body's (the page adds a fallback face to the stack).
+    if (/family/i.test(entry.property)) return firstFamily(got) === firstFamily(want);
+    got = canonColours(collapse(got)); want = canonColours(collapse(want));
+  }
   if (entry.tolerancePx != null) {
     const nums = (v) => String(v).match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
     const g = nums(got); const w = nums(want);

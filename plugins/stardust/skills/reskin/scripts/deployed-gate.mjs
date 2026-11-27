@@ -22,7 +22,7 @@
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge
 // · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
-import { existsSync, realpathSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,7 +83,8 @@ content  A1. Checks the preview's content against the live source, through two g
 tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
          settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
          on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
-         :root token of the block the reskin renders from the sheet, verbatim (the optional --card-*,
+         :root token of the block the reskin renders from the sheet, colours in one notation and *family* tokens on their
+         first family (the optional --card-*,
          --button-height, --section-padding-mobile and --gutter-mobile too, when the sheet carries them; the probe
          runs at 1440 only, so the mobile ones are asserted as :root values). Reads preview.json (no record, or
          one with problems, is exit 2; a skipped leg prints "not run: skipped", exit 0), the donor token sheet
@@ -239,6 +240,10 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          (deltas.blocking false)", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
          ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
          and no residual accepts its failure. invocation is the exact argument list, so the line can be run again.
+         Under a frozen foundation (stardust/rollout/foundation-freeze.json at the project root), a tokens FAIL and
+         each FAIL row of header crop, footer crop or nav-depth is appended to stardust/rollout/foundation-requests.md
+         as "- <unit> | <what> | <evidence> | <templates>" (a line already there is not repeated), then "foundation
+         requests: n queued, k already queued in <path>"; the agent never accepts such a FAIL as its own.
          Run it under run-bg when it may exceed a shell's limit (parity, sanity and the figma-gate child each drive
          a browser):
            node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
@@ -251,6 +256,8 @@ stamp    Recomputes the code stamp of the project root (the parent of --dir) and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
 --waiver-budget <pct>  all only: passed to the figma-gate child, so the preview run allows the waiver budget the
                local figma-gate run used (figma-gate validates it).
+--unit <name>  all only: the C-deliver unit a foundation request names (default the slug).
+--templates <t>  all only: the templates a foundation request names (default the slug).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, never a real preview. It is recorded:
                preview.json's originOverride, the "(origin override: …)" ending of the PASS preview line, and summary.json
@@ -298,7 +305,7 @@ const SPEC = {
     positional: [],
   },
   all: {
-    values: ['--page', '--reskin', '--dir', '--waiver-budget'],
+    values: ['--page', '--reskin', '--dir', '--waiver-budget', '--unit', '--templates'],
     bools: [],
     positional: [],
   },
@@ -664,6 +671,39 @@ export async function runNavDepth({ dir, slug, preview, measure = measureNav }) 
 // ---- all: the whole leg in one run ---------------------------------------------------------------------------------------
 
 const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'figma'];
+// Parity rows a frozen foundation owns (styles/, blocks/header/, blocks/footer/): their FAIL is a request, not a fix.
+const FOUNDATION_ROWS = new Set(['header crop', 'footer crop', 'nav-depth']);
+const FREEZE_FILE = join('stardust', 'rollout', 'foundation-freeze.json');
+const REQUESTS_FILE = join('stardust', 'rollout', 'foundation-requests.md');
+const MAX_EVIDENCE = 6;
+
+// The foundation findings of one run as request lines, in handoff-contract's format: `- <unit> | <what> | <evidence> |
+// <templates>`. tokens is one line (its failures as evidence); each failing foundation parity row is one line.
+function foundationRequests({ unit, templates, tokens, parityRows }) {
+  const clip = (xs) => (xs.length > MAX_EVIDENCE ? [...xs.slice(0, MAX_EVIDENCE), `+${xs.length - MAX_EVIDENCE} more`] : xs);
+  const flat = (x) => String(x).replace(/[|\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const lines = [];
+  if (tokens?.verdict === 'FAIL' && tokens.failures.length) {
+    lines.push(`- ${unit} | :root / base tokens off the donor sheet (styles/styles.css) | deployed-gate tokens ${tokens.failures.length}/${tokens.total}: ${clip(tokens.failures.map(flat)).join('; ')} | ${templates}`);
+  }
+  for (const r of parityRows ?? []) {
+    if (r.status !== 'FAIL' || !FOUNDATION_ROWS.has(r.check)) continue;
+    const owner = r.check === 'footer crop' ? 'blocks/footer/' : 'blocks/header/';
+    lines.push(`- ${unit} | ${r.check} off the reskin (${owner}) | deployed-gate parity ${r.check} @${r.width}: ${flat(r.value)} (bar ${flat(r.bar)})${r.detail ? `, ${flat(r.detail)}` : ''} | ${templates}`);
+  }
+  return lines;
+}
+
+// Appends the lines not already in the queue. Only under a frozen foundation (C-deliver after C0): elsewhere there is
+// no queue and the finding is fixed in place.
+function queueRequests(root, lines, log) {
+  if (!lines.length || !existsSync(join(root, FREEZE_FILE))) return;
+  const path = join(root, REQUESTS_FILE);
+  const have = new Set(existsSync(path) ? readFileSync(path, 'utf8').split('\n').map((l) => l.trim()) : []);
+  const fresh = lines.filter((l) => !have.has(l));
+  if (fresh.length) appendFileSync(path, `${fresh.join('\n')}\n`);
+  log(`foundation requests: ${fresh.length} queued, ${lines.length - fresh.length} already queued in ${path} (applied at C-final)`);
+}
 // What a previous run left: the step records and the summary built from them (each step deletes its own evidence).
 const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'nav-depth.json', 'sanity.json', 'inherited.json', 'summary.json'];
 const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
@@ -798,6 +838,8 @@ async function allStep(ctx) {
 
   let run = {};
   let navDepth = null;
+  let tokensResult = null;
+  let parityRows = null;
   if (!preview.skipped) {
     const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }, rowsLib] = await Promise.all([
       helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'), helper('rows'),
@@ -806,12 +848,13 @@ async function allStep(ctx) {
     const withPage = { ...base, reskinPage: opts.reskin };
     run = {
       content: async () => contentOutcome(await (runners.content ?? runContent)(base)),
-      tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(base)),
+      tokens: async () => { tokensResult = await (runners.tokens ?? runTokens)(base); return tokensOutcome(tokensResult); },
       parity: async () => {
         const r = await (runners.parity ?? runParity)(withPage);
         const nav = await (runners.navDepth ?? runNavDepth)(base);
         navDepth = navDepthLedger(nav);
         const merged = withNavDepth(r, nav, rowsLib);
+        parityRows = merged.rows;
         const outcome = rowsOutcome('parity', merged, parityLines(merged));
         if (nav.status === 'n/a') outcome.detail.push(`  ${nav.value} (nav-depth @${nav.width})`);
         return outcome;
@@ -862,6 +905,7 @@ async function allStep(ctx) {
     page: slug, url, regime: 'preview', ...override, steps: recorded, codeStamp: stamp, ledgerFragment, invocation,
   };
   writeJson(join(deployed, 'summary.json'), summary);
+  queueRequests(dirname(resolve(dir)), foundationRequests({ unit: opts.unit ?? slug, templates: opts.templates ?? slug, tokens: tokensResult, parityRows }), log);
   log(`summary written: ${join(deployed, 'summary.json')} (its ledgerFragment is pages.${slug}.gates.deployed in ledger.json)`);
   // A setup error (exit 2) stopped the run above; of the rest the first present wins.
   return [3, 124, 1].find((c) => exits.includes(c)) ?? 0;

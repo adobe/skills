@@ -323,6 +323,7 @@ renders as the display headline (the hero h2, typically).
 | Assertion class | Tolerance | Why |
 |---|---|---|
 | Colors (bg, fg, accent, bands) | exact string | computed rgb() is deterministic |
+| `:root` custom properties | whitespace-collapsed, each colour in one notation; a `family` token on its first family | read as declared, not computed: `#fff` and `rgb(255 255 255)` are one value |
 | Radii | exact string | ditto |
 | Font-family token string | exact after quote-strip + case-fold | licensed donor fonts are adopted as the *token string* with local fallback (§ Failure modes) — the string is the contract |
 | Font sizes / weights | exact string | |
@@ -529,8 +530,9 @@ fetches `.plain.html` without a browser.
   [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
   applied by `scripts/figma/eds-map.mjs`; a default-content module holds
   none) gets an advisory `naming` line, never a FAIL. An entry is measured by its
-  `previewSelector`, else its `selector`; no match is "unmeasurable", a
-  FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
+  `previewSelector`, else one derived from its text on the reskin page
+  (`preview-selectors.json`, a `warn:` line per miss), else its
+  `selector`; no match is "unmeasurable", a FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
   `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
 

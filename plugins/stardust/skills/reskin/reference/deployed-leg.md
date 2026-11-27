@@ -117,7 +117,9 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 
 `codeStamp` hashes the project's `blocks/`, `styles/`, `scripts/` and `head.html` as the run starts. Before handoff,
 `deployed-gate stamp --page <slug>` prints `current`, or `stale: summary <a>, now <b>` (exit 1): a block or CSS change
-after review invalidates the evidence, so re-run the leg (step 6).
+after review invalidates the evidence, so re-run the leg (step 6). In a rollout, C-final's applied foundation queue
+stales every archetype: re-run `all` on each before `gate-all`. Under the freeze, `all` queues a tokens or header /
+footer / nav-depth FAIL in `foundation-requests.md` itself: never a residual the agent accepts.
 
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
@@ -168,10 +170,12 @@ verdict (exit 124, or an instrument that did not run) does not count: re-run onc
 
 ## Defaults
 
+- **Base CSS.** `node stardust/scripts/reskin/foundation-css.mjs` writes the rules `tokens` asserts from the sheet into
+  `styles/styles.css` (one marked block, last); fix the sheet and re-run it, never the rules by hand.
 - **Fonts.** A Figma donor supplies no font files, so nothing is metric-matched: `<brand>-fallback` is the token's
-  second family at `size-adjust: 100%`, unless the user supplies files (`deploy`'s own rule). `tokens` asserts every
-  `:root` token verbatim, so `--body-font-family` / `--heading-font-family` stay the token string and the rendered stack
-  (`"<Brand>", "<brand>-fallback", <generic>`) goes in its own property, e.g. `--font-stack`. "Font not served" is a
+  second family at `size-adjust: 100%`, unless the user supplies files (`deploy`'s own rule). `tokens` compares a
+  `--*family*` token on its first family, so `--body-font-family` may carry the rendered stack
+  (`"<Brand>", "<brand>-fallback", <generic>`). "Font not served" is a
   declared difference, never a failure, and never a silent pass: `tokens` compares the first family and prints an
   `ADVISORY tokens font.unserved` line when the preview renders it from a fallback, the Figma ramp makes it `UNSERVED`
   and the pixel check records `served: false`; each is a `font.unserved` residual.

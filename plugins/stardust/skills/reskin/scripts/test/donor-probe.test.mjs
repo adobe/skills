@@ -111,6 +111,29 @@ h1 { font-size: 56px } @media (max-width: 600px) { h1 { font-size: 32px } }
       assert.ok(!/FAIL pad/.test(r.stdout) && !/FAIL tol/.test(r.stdout), r.stdout);
     });
 
+    await check('custom properties compare colours across notations and a family token on its first family', () => {
+      const pg = join(dir, 'notation.html');
+      writeFileSync(pg, `<!doctype html><html><head><style>
+:root { --color-bg: rgb(255 255 255); --short: #FFF; --opaque: rgba(0,47,108,1); --half: rgb(0 0 0 / 50%);
+  --heading-font-family: montserrat, montserrat-fallback, arial, sans-serif; }
+</style></head><body></body></html>`);
+      const s = join(dir, 'notation.json');
+      writeFileSync(s, JSON.stringify([
+        { label: 'bg', selector: ':root', property: '--color-bg', value: 'rgb(255, 255, 255)' },
+        { label: 'short', selector: ':root', property: '--short', value: '#ffffff' },
+        { label: 'opaque', selector: ':root', property: '--opaque', value: '#002f6c' },
+        { label: 'half', selector: ':root', property: '--half', value: 'rgba(0, 0, 0, 0.5)' },
+        { label: 'family', selector: ':root', property: '--heading-font-family', value: 'Montserrat, Arial, sans-serif' },
+        { label: 'off', selector: ':root', property: '--color-bg', value: 'rgb(255, 255, 254)' },
+        { label: 'offfamily', selector: ':root', property: '--heading-font-family', value: 'Arial, sans-serif' },
+      ]));
+      const r = run('--tokens', tokens, '--rendered', pg, '--spec', s, '--no-sanity');
+      assert.equal(r.status, 1, r.stdout);
+      for (const l of ['bg', 'short', 'opaque', 'half', 'family']) assert.ok(!new RegExp(`FAIL ${l} `).test(r.stdout), `${l}: ${r.stdout}`);
+      assert.match(r.stdout, /FAIL off = rgb\(255, 255, 254\)/);
+      assert.match(r.stdout, /FAIL offfamily = /);
+    });
+
     await check('exclude skips declared overrides: measures the first other match, SKIPs when every match is excluded', () => {
       const pg = join(dir, 'inset.html');
       writeFileSync(pg, '<!doctype html><html><body><main><section class="inset"><div class="container" style="max-width:none">a</div></section><section><div class="container" style="max-width:1180px">b</div></section></main></body></html>');

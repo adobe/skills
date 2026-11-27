@@ -6,6 +6,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join as pathJoin } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { loadBoxes } from './boxes.mjs';
+import { derivePreviewSelectors } from './derive.mjs';
 import { rootsNamed, validateChecks } from './checks.mjs';
 import { readInputs, workDir } from './io.mjs';
 import { runJoin } from './join.mjs';
@@ -32,15 +33,23 @@ export function checksFor({ dir, slug, inputs, join, out = null, waiverBudget })
   throw new UsageError(`${dir}/reskin/figma-checks/${slug}.json has ${problems.length} problem(s):\n${problems.map((p) => `  ${p}`).join('\n')}${listFile ? `\nfull list: ${listFile}` : ''}`);
 }
 
-// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, budget, out }, where
-// rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor.
+// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, budget, selectors, out },
+// where rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor.
 // target is the regime to measure: the local page at url by default, or a built Target (previewTarget for a
-// deployed preview); out is that regime's work dir.
+// deployed preview); out is that regime's work dir. On a preview the entries with no previewSelector get one derived
+// (derive.mjs): the returned target carries them, selectors is { derived, kept, missed } (null on the local regime).
 export async function prepare({ dir, slug, url, target = localTarget(url), waiverBudget }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug, target.regime);
   const join = await runJoin({ target, inputs, out, page: slug });
   if (!join.pass) return { drift: true, join, out };
   const { boxes, checks, coverage, budget } = checksFor({ dir, slug, inputs, join, out, waiverBudget });
-  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, budget, out };
+  let selectors = null;
+  let measured = target;
+  if (target.regime === 'preview') {
+    const { target: withDerived, ...found } = await derivePreviewSelectors({ target, join, checks, out });
+    measured = withDerived;
+    selectors = found;
+  }
+  return { drift: false, target: measured, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, budget, selectors, out };
 }

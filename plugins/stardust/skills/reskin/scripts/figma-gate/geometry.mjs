@@ -6,7 +6,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
-import { scopeSelector, selectorFor } from './checks.mjs';
+import { scopeSelector } from './checks.mjs';
+import { derivedSelector } from './derive.mjs';
 import { stampsOf } from './stamp.mjs';
 import { loadMeasureLive, openPlain } from './target.mjs';
 
@@ -80,7 +81,7 @@ export function judge(entry, want, got, why) {
 }
 
 // checks is validateChecks(...).sections; join is runJoin's result (its sections hold the selectors). On a preview an
-// entry is measured by its previewSelector (selectorFor). Each result carries root, the checks root it was measured
+// entry is measured by its previewSelector, else the one prepare derived (derivedSelector). Each result carries root, the checks root it was measured
 // against. Writes <out>/geometry.json.
 export async function runGeometry({ target, join: joined, checks, boxes, tokens, out }) {
   const selectorOf = new Map(joined.sections.map((s) => [s.slot, s.selector]));
@@ -98,7 +99,7 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
         planned.push({ entry, slot, base, error: e.message });
         continue;
       }
-      planned.push({ entry, slot, base, want, source, sectionSel: selectorOf.get(slot), selector: selectorFor(entry, target.regime) });
+      planned.push({ entry, slot, base, want, source, sectionSel: selectorOf.get(slot), selector: derivedSelector(target, slot, 'geometry', entry) });
     }
   }
 

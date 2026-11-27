@@ -114,6 +114,7 @@ export function previewTarget(input, { reskin, edsTimeoutMs = 20000 } = {}) {
   return {
     url,
     regime: 'preview',
+    reskin,
     edsTimeoutMs,
     join: {
       name: '.plain.html',

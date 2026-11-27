@@ -7,7 +7,7 @@
 //          its module's Figma frame; a page that drifted from the mapping stops here. --target preview joins
 //          a deployed preview: the reskin page's slots found in the preview's authored form (.plain.html).
 //          Every step with a --url takes --target preview: the join's sections of the settled preview are what
-//          geometry, ramp and pixel measure, each checks entry by its previewSelector when it has one.
+//          geometry, ramp and pixel measure, each checks entry by its previewSelector, else one derived from its text.
 //   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
 //   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
 //   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
@@ -198,8 +198,11 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          every step with a --url (join, geometry, ramp, pixel, all; register takes it only to say which run to read). A
          preview run keeps its files in <slug>/figma-preview/ beside the local run's <slug>/figma/, so neither
          deletes the other's evidence. The sections are the join's, main > div:nth-child(k) of the decorated page, and each checks entry is
-         measured by its previewSelector, else its selector, scoped to that section: a selector that matches nothing there
-         is "unmeasurable", a FAIL, never a skip. Each of those steps opens the preview and waits for the EDS decoration
+         measured by its previewSelector, else its selector, scoped to that section. An entry with no previewSelector whose
+         selector finds fewer elements there than on the reskin page gets one derived: its elements found again in the
+         preview's section by their text (deepest match, same tag first), named by their path from it; a line
+         "previewSelector: derived n, kept k, not derived m" and one "warn:" line per entry left on its selector, written
+         to preview-selectors.json. A selector that still matches nothing is "unmeasurable", a FAIL, never a skip. Each of those steps opens the preview and waits for the EDS decoration
          first (a stall is exit 124), and every step file records regime "preview". preview needs --reskin <file>;
          local does not take --reskin. The preview must be reachable without auth: HTTP 401 or 403 from it is exit 2
          (a protected preview is out of scope).
@@ -221,7 +224,7 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   ids are g1.. and t1.. per section. A joined chrome section is keyed "header" or "footer" (its selector is the
   page's header / footer element; ":scope" is that element).
   previewSelector (a string, scoped the same way) is the selector on a deployed preview (--target preview), whose blocks
-  rebuild the markup the reskin page was written with; without it the preview uses selector. --target local never reads it.
+  rebuild the markup the reskin page was written with; without it the preview derives one (above). --target local never reads it.
   measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.
   gapX and gapY take exactly two nodes; token is a path in donor-tokens.json holding one px value.
   top and height are content-dependent: they need tolerancePx and why. tolerancePx above 1 needs why.
@@ -367,6 +370,15 @@ async function joinStep({ dir, opts, log, UsageError }) {
   return result.pass ? 0 : 1;
 }
 
+// What prepare derived for the entries with no previewSelector (preview regime only): one line, then one warn line per
+// entry left on its selector (it measures as before, so an unmeasurable one still fails).
+function logSelectors(ready, log) {
+  const s = ready?.selectors;
+  if (!s || (!s.derived.length && !s.kept && !s.missed.length)) return;
+  log(`previewSelector: derived ${s.derived.length}, kept ${s.kept}, not derived ${s.missed.length} (preview-selectors.json)`);
+  for (const m of s.missed) log(`  warn: ${m.key}: ${m.why}`);
+}
+
 async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('geometry needs --page <slug>');
   if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
@@ -376,6 +388,7 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
     logDrift(ready.join, log);
     return 1;
   }
+  if (!given) logSelectors(ready, log);
   const { pass, results } = await runGeometry({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, out: ready.out });
   const failing = results.filter((r) => r.status !== 'PASS');
   const kit = kitNote(ready.join.sections);
@@ -393,6 +406,7 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
     logDrift(ready.join, log);
     return 1;
   }
+  if (!given) logSelectors(ready, log);
   const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
   const failing = results.filter((r) => r.status === 'FAIL');
   const unasserted = results.filter((r) => r.status === 'UNASSERTED');
@@ -566,6 +580,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     ready = await prepare({ dir, slug: opts.page, url: opts.url, target, waiverBudget: opts.waiverBudget });
     const detail = [];
     logJoin(ready.join, (m) => { detail.push(m); log(m); });
+    logSelectors(ready, log);
     record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
   } catch (e) {
     if (isSetup(e)) throw e;

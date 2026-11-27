@@ -37,7 +37,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — mobile-first `@media` (`#162`), target steps — `[--target 600,900] [--root .] [--dirs …]` | `--inventory <path…>`; exit 1 = a finding
-- `replica/cap-probe.mjs` — content caps, capture or vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
+- `replica/cap-probe.mjs` — content caps, capture or vs build — `<url…> [--write-design <f>]` | `<live> --against <build> [--design <f>] [--slug <s>]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
@@ -60,13 +60,14 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
-- `replica/source-spec.mjs` — source box + font spec — `capture <live> --slug <s> [--widths 1440,360]`; `compare <spec> <build> [--tol 2]`; `view <spec> [--section <i>]`; exit 2 = off
-- `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--hide <sel,…>] [--freeze-baseline] [--check-baseline]`
+- `replica/source-spec.mjs` — box + font spec — `capture <live> --slug <s> [--widths 1440,360]`; `compare <spec> <build> [--tol 2]`; `view <spec> [--section <i>]`; exit 2 = off
+- `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--hide] [--freeze-baseline] [--check-baseline]`
 - `reskin/canon-from-reskin.mjs` — migrate bridge — `<s> [--force]`
 - `reskin/capture-content.mjs` — content model — `--url <u> --out <d>`
 - `reskin/deployed-gate.mjs` — preview gates — `preview|all --page <s>`; 124 = none
 - `reskin/dom-equality.mjs` — content gate — `--source --rendered --report`
 - `reskin/donor-probe.mjs` — adoption gate — `--tokens <f> --rendered <u|f>`
+- `reskin/foundation-css.mjs` — base CSS — `[--check]`
 - `reskin/figma-donor.mjs` — Figma donor — `capture <u> | curate | stamp`; 3 = blocked
 - `reskin/figma-gate.mjs` — Figma gates — `boxes | all --page <s> --url <u|f>`; 124 = none
 - `reskin/reskin-ledger.mjs` — gate ledger — `record <s> | eyeball | residual | show`
@@ -89,7 +90,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
-- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table> [--pin]`
+- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path --template --origin`; `--gate <table> [--pin]`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`
 - `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--headed|--archive <date>]`; exit 3 = blocked
@@ -105,5 +106,5 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `spec/spec-sheet.mjs` — contact sheet: `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants: `[--cut 0.5]`
 - `stardust/impeccable-version-check.mjs` — newer impeccable?: `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer: `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
+- `stardust/ledger.mjs` — status.jsonl writer: `<skill> <phase> start|end|blocked [--detail] [--track] [--strict]`; `tail|last`
 - `stardust/state.mjs` — page status writer: `advance <slug…> --to <status> [--by]`; `summary [--slugs]`

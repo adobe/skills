@@ -568,7 +568,7 @@ if (playwrightOk) {
     return ready;
   };
 
-  await check('geometry on a preview: previewSelector measures the deployed card (560 vs 560); the same entry with only selector ".card" is unmeasurable there', async () => {
+  await check('geometry on a preview: previewSelector measures the deployed card (560 vs 560); with only selector ".card" a path to the same card is derived from its text', async () => {
     await withPreview({}, async (server) => {
       const url = `${server.origin}/ns/home`;
       const measure = async (name, change) => {
@@ -583,9 +583,12 @@ if (playwrightOk) {
       assert.deepEqual([card.status, card.got, card.want, card.root, card.detail], ['PASS', 560, 560, '1:7', '560 vs 560 (±1)']);
       assert.deepEqual(found.results.filter((x) => x.status !== 'PASS'), []);
       const lost = await measure('geo-plain', (checks) => { delete checks.sections.s02.geometry[0].previewSelector; });
-      const miss = lost.results.find((x) => x.slot === 's02' && x.id === 'g1');
-      assert.deepEqual([miss.status, miss.got, miss.detail], ['FAIL', null, 'unmeasurable: .card matched nothing in the section']);
-      assert.deepEqual(lost.results.filter((x) => x.status !== 'PASS').map((x) => x.id), ['g1']);
+      const derived = lost.results.find((x) => x.slot === 's02' && x.id === 'g1');
+      assert.deepEqual([derived.status, derived.got], ['PASS', 560]);
+      assert.deepEqual(lost.results.filter((x) => x.status !== 'PASS'), []);
+      const file = JSON.parse(readFileSync(join(workDir(join(scratch, 'geo-plain', 'stardust'), 'home'), 'preview-selectors.json'), 'utf8'));
+      assert.deepEqual(file.derived, [{ key: 's02 geometry g1', selector: ':scope > :nth-child(1) > :nth-child(1) > :nth-child(4)' }]);
+      assert.deepEqual(file.missed, []);
     });
   });
 
@@ -602,13 +605,24 @@ if (playwrightOk) {
     });
   });
 
-  await check('CLI geometry --target preview: a selector the deployed DOM lacks is one indented unmeasurable line, exit 1', async () => {
+  await check('CLI geometry --target preview: a selector the deployed DOM lacks is derived from its text; one it cannot find there is a warn line and stays unmeasurable, exit 1', async () => {
     await withPreview({}, async (server) => {
+      const checks = previewChecks();
+      delete checks.sections.s02.geometry[0].previewSelector;
+      const p = previewProject('cli-geometry-derived', checks);
+      const r = await run(stepArgs('geometry', p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.match(r.stdout, /^previewSelector: derived 1, kept \d+, not derived 0 \(preview-selectors\.json\)$/m);
+      assert.match(r.stdout, /^geometry PASS 10\/10$/m);
+    });
+    const page = customPreview('renamed', PLAIN, (html) => html.replace('Try it</a>', 'Try it now</a>'));
+    await withPreview({ pages: { '/ns/home': page } }, async (server) => {
       const checks = previewChecks();
       delete checks.sections.s02.geometry[0].previewSelector;
       const p = previewProject('cli-geometry-miss', checks);
       const r = await run(stepArgs('geometry', p, `${server.origin}/ns/home`), { cwd: p.root });
       assert.equal(r.status, 1, r.all);
+      assert.match(r.stdout, /^ {2}warn: s02 geometry g1: no element with the text "new try it" in the preview's section$/m);
       assert.match(r.stdout, /^geometry FAIL 1\/10$/m);
       assert.match(r.stdout, /^ {2}s02 g1 width \(node I1:7;5:7\): unmeasurable: \.card matched nothing in the section$/m);
     });
