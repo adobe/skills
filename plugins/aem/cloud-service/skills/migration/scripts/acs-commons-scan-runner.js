@@ -200,11 +200,46 @@ function runAcsCommonsScan(workspaceRoot) {
   return { ok: true, findings: out.findings, rawFindings: out.rawFindings, warnings: [] };
 }
 
-const ACS_NAME = /^(com\.adobe\.acs\.|acscommons\.)|acs-aem-commons/;
+const ACS_NAME = /(^|[\s/:])(com\.adobe\.acs\.|acscommons\.)|acs-aem-commons|(^|[/:])acs-commons\b/;
+
+/** True when a bundle, package, class or JCR path name belongs to ACS AEM Commons. */
+function isAcsCommonsName(value) {
+  return typeof value === 'string' && ACS_NAME.test(value);
+}
 
 /** True when a BPA target's class, file or bundle belongs to ACS AEM Commons itself. */
 function isAcsCommonsTarget(t) {
-  return [t.className, t.filePath, t.bundle].some(v => typeof v === 'string' && ACS_NAME.test(v));
+  return [t.className, t.filePath, t.bundle].some(isAcsCommonsName);
+}
+
+/**
+ * The ACS AEM Commons rows of a BPA report (any code), as runbook findings: one row per
+ * installed ACS bundle or package (`INST`, with version and state), and one row per other
+ * BPA code and subtype with its count. BPA reports what is installed on the source instance;
+ * the local scan adds how the repository uses ACS Commons.
+ */
+function summarizeAcsBpaTargets(targets) {
+  const findings = [];
+  const rawFindings = [];
+  const groups = new Map();
+  for (const t of targets) {
+    if (t.code === 'INST') {
+      const kind = t.subtype === 'custom.package' ? 'package' : 'bundle';
+      const state = t.state ? ` (${t.state})` : '';
+      findings.push({ location: t.className, detail: `installed ${kind}${t.version ? ` ${t.version}` : ''}${state} on the source instance (BPA \`INST\`). Upgrade is customer-owned`, severity: 'medium' });
+      rawFindings.push({ pattern: 'acsCommons', kind: 'bpa-installed', file: t.className, line: null, version: t.version || null, state: t.state || null, snippet: t.className });
+      continue;
+    }
+    const key = `${t.code}|${t.subtype || ''}`;
+    const g = groups.get(key) || { code: t.code, subtype: t.subtype, first: t.className, count: 0 };
+    g.count++;
+    groups.set(key, g);
+  }
+  for (const g of groups.values()) {
+    findings.push({ location: g.first, detail: `BPA \`${g.code}\`${g.subtype ? ` (${g.subtype})` : ''}: ${g.count} finding(s) on ACS AEM Commons — resolved with the customer-owned ACS Commons upgrade, not by the migration skill`, severity: 'medium' });
+    rawFindings.push({ pattern: 'acsCommons', kind: 'bpa', bpaCode: g.code, file: g.first, line: null, count: g.count, snippet: g.subtype || null });
+  }
+  return { findings, rawFindings };
 }
 
 /**
@@ -239,7 +274,7 @@ function linkAcsBpaFindings(entries) {
   return { findings, rawFindings };
 }
 
-module.exports = { runAcsCommonsScan, featureOf, FEATURES, isAcsCommonsTarget, linkAcsBpaFindings };
+module.exports = { runAcsCommonsScan, featureOf, FEATURES, isAcsCommonsName, isAcsCommonsTarget, linkAcsBpaFindings, summarizeAcsBpaTargets };
 
 // CLI: node acs-commons-scan-runner.js <workspaceRoot> → findings as JSON, paths relative to the root.
 if (require.main === module) {

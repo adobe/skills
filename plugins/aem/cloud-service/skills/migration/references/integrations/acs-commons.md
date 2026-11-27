@@ -11,7 +11,10 @@ ACS AEM Commons is an open-source library maintained outside Adobe's AEM product
 
 ## How it is detected
 
-`scripts/acs-commons-scan-runner.js` (pattern `acsCommons`, part of the Step 0 runbook; also runnable on its own with `node scripts/acs-commons-scan-runner.js <workspaceRoot>`). Read-only text scans, so every row is a candidate to confirm:
+BPA first, like the other runbook patterns (pattern `acsCommons`, part of the Step 0 runbook):
+
+1. **BPA CSV.** The BPA report has no ACS Commons pattern code; its ACS Commons filter matches findings by name. The runbook does the same with `com.adobe.acs.*` bundles, `acs-aem-commons-*` / `acs-commons-*` packages, `acscommons.*` classes and `/apps/acs-commons/…` paths. It lists each ACS bundle and package installed on the source instance (`INST`, with version and state), and one row per other BPA code with its count (for example `CAV`, `LUI`, `URS`, `NBCC`, `DG`).
+2. **Repository, always.** `scripts/acs-commons-scan-runner.js` (also runnable on its own with `node scripts/acs-commons-scan-runner.js <workspaceRoot>`) adds what only the repository shows. With no BPA rows it is the only source. Read-only text scans, so every row is a candidate to confirm:
 
 | Source | What is found |
 |---|---|
@@ -19,7 +22,10 @@ ACS AEM Commons is an open-source library maintained outside Adobe's AEM product
 | Java | `import com.adobe.acs.commons.<feature>…`, one row per feature with the number of files |
 | OSGi configs | `com.adobe.acs.commons.*` PIDs in config folders, one row per feature |
 | Content | `sling:resourceType="acs-commons/…"` in `jcr_root` XML, and the number of Redirect Manager rules |
-| BPA report (when one is loaded) | Findings of any BPA pattern whose class, file or bundle is ACS AEM Commons itself (`com.adobe.acs.*`, `acscommons.*`, `acs-aem-commons-*` bundles), one **informational** row per BPA pattern and bundle. They stay in their own pattern's section too, so they are not counted twice. |
+
+CAM does not return the ACS rows of a BPA report yet, so with CAM alone the BPA part is empty: that is not a clean result, and the repository scan still runs. BPA rows of the patterns CAM does return (for example `lui`, `guavaCache`) that name ACS AEM Commons are added as **informational** rows, one per pattern and bundle; they stay in their own pattern's section too.
+
+`INST` shows what runs on the source instance; `pom.xml` shows what the repository deploys. When they differ (for example ACS Commons installed by hand, not from the repository), the customer adds it to the repository for AEM as a Cloud Service.
 
 ## What to tell the customer, per finding
 

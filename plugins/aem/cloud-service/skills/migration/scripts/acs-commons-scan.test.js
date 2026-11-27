@@ -8,6 +8,7 @@ const path = require('path');
 
 const { runAcsCommonsScan, featureOf } = require('./acs-commons-scan-runner.js');
 const { gatherFindings, generateRunbook, renderRunbook, PATTERN_META, CANONICAL_PATTERNS } = require('./runbook-generator.js');
+const { getBpaFindings } = require('./bpa-findings-helper.js');
 
 function mkworkspace() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'acs-scan-test-'));
@@ -46,11 +47,13 @@ function acsProject() {
   return root;
 }
 
-test('acsCommons is a report-only, heuristic content-scan pattern with no BPA tier', () => {
+test('acsCommons is a report-only pattern: BPA first, an empty BPA result is not clean, the local scan always adds repo usage', () => {
   assert.ok(CANONICAL_PATTERNS.includes('acsCommons'));
   const meta = PATTERN_META.acsCommons;
   assert.strictEqual(meta.strategy, 'content-scan');
-  assert.deepStrictEqual(meta.bpaSlugs, []);
+  assert.deepStrictEqual(meta.bpaSlugs, ['acsCommons']);
+  assert.ok(meta.bpaIncomplete, 'CAM returns no ACS rows, so zero BPA rows must not read as clean');
+  assert.ok(meta.unionLocal);
   assert.ok(meta.heuristic);
   assert.ok(meta.reportOnly);
   assert.strictEqual(meta.reference, 'references/integrations/acs-commons.md', 'the report-only banner links the pattern\'s own reference');
@@ -223,4 +226,69 @@ test('cli: node acs-commons-scan-runner.js <root> prints workspace-relative find
   assert.ok(out.findings.length >= 4);
   assert.ok(out.findings.every((f) => !f.location.startsWith(root)), 'locations are relative to the workspace');
   assert.strictEqual(spawnSync(process.execPath, [path.join(__dirname, 'acs-commons-scan-runner.js')], { encoding: 'utf8' }).status, 2);
+});
+
+// ── BPA first: ACS AEM Commons rows of a BPA CSV (installed artifacts and findings of any code) ──
+
+const BPA_HEADER = 'code,type,subtype,importance,identifier,other,message,moreInfo,context';
+const BPA_ACS_ROWS = [
+  'INST,installed.artifact,custom.bundle,INFO,com.adobe.acs.acs-aem-commons-bundle,\\N,The com.adobe.acs.acs-aem-commons-bundle custom bundle was detected.,https://www.adobe.com/go/aem_pd_INST,"{""data"":{""symbolicName"":""com.adobe.acs.acs-aem-commons-bundle"",""state"":""ACTIVE"",""version"":""4.3.4""},""type"":""custom.bundle""}"',
+  'INST,installed.artifact,custom.package,INFO,adobe/consulting:acs-aem-commons-content:4.1.0,\\N,The adobe/consulting:acs-aem-commons-content:4.1.0 custom package was detected.,https://www.adobe.com/go/aem_pd_INST,"{""data"":{""canonicalId"":""adobe/consulting:acs-aem-commons-content:4.1.0""},""type"":""custom.package""}"',
+  'INST,installed.artifact,custom.bundle,INFO,com.acme.core,\\N,The com.acme.core custom bundle was detected.,https://www.adobe.com/go/aem_pd_INST,"{""data"":{""symbolicName"":""com.acme.core"",""state"":""ACTIVE"",""version"":""1.0.0""},""type"":""custom.bundle""}"',
+  'CAV,content.area.violation,\\N,MAJOR,/apps/acs-commons/components/authoring/graphiciconselect,/libs/granite/ui/components/foundation/form/select,The path violates content areas.,https://www.adobe.com/go/aem_pd_CAV,\\N',
+  'CAV,content.area.violation,\\N,MAJOR,/apps/acs-commons/components/content/audio/cq:dialog/content/items,/libs/granite/ui/components/foundation/container/items,The path violates content areas.,https://www.adobe.com/go/aem_pd_CAV,\\N',
+  'LUI,legacy.user.interface,legacy.dialog.classic,MAJOR,/apps/acs-commons/components/utilities/sitemap/dialog,\\N,A classic dialog was found.,https://www.adobe.com/go/aem_pd_LUI,\\N',
+  'LUI,legacy.user.interface,legacy.dialog.classic,MAJOR,/apps/acme/components/teaser/dialog,\\N,A classic dialog was found.,https://www.adobe.com/go/aem_pd_LUI,\\N',
+  '_COUNT_INST,_count.installed.artifact,custom.bundle,INFO,3,\\N,Count: 3,\\N,"{""data"": {""unfilteredTotal"": 3}}"',
+];
+function bpaCsv(root, rows = BPA_ACS_ROWS) {
+  return write(root, 'bpa.csv', `${[BPA_HEADER, ...rows].join('\n')}\n`);
+}
+
+test('getBpaFindings(acsCommons) returns the ACS AEM Commons rows of any BPA code, with version and state', async () => {
+  const root = mkworkspace();
+  const res = await getBpaFindings('acsCommons', { bpaFilePath: bpaCsv(root), collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 });
+  assert.ok(res.success, res.error);
+  const ids = res.targets.map(t => t.className).sort();
+  assert.deepStrictEqual(ids, [
+    '/apps/acs-commons/components/authoring/graphiciconselect',
+    '/apps/acs-commons/components/content/audio/cq:dialog/content/items',
+    '/apps/acs-commons/components/utilities/sitemap/dialog',
+    'adobe/consulting:acs-aem-commons-content:4.1.0',
+    'com.adobe.acs.acs-aem-commons-bundle',
+  ], 'customer rows and summary rows are not ACS rows');
+  const bundle = res.targets.find(t => t.className === 'com.adobe.acs.acs-aem-commons-bundle');
+  assert.strictEqual(bundle.code, 'INST');
+  assert.strictEqual(bundle.version, '4.3.4');
+  assert.strictEqual(bundle.state, 'ACTIVE');
+  assert.strictEqual(res.targets.find(t => t.className.startsWith('adobe/consulting')).version, '4.1.0');
+});
+
+test('with a BPA CSV the ACS section lists the installed artifacts and one row per BPA code, plus the repo usage', async () => {
+  const root = acsProject();
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: bpaCsv(root), collectionsDir: path.join(root, 'uc'), getEffectivePom: noPom });
+  const rows = gathered.findingsByPattern.acsCommons;
+  const bundle = rows.find(f => f.location === 'com.adobe.acs.acs-aem-commons-bundle');
+  assert.match(bundle.detail, /installed bundle 4\.3\.4 \(ACTIVE\)/);
+  assert.match(rows.find(f => f.location === 'adobe/consulting:acs-aem-commons-content:4.1.0').detail, /installed package 4\.1\.0/);
+  assert.match(rows.find(f => /BPA `CAV`/.test(f.detail)).detail, /2 finding\(s\)/);
+  assert.match(rows.find(f => /BPA `LUI`/.test(f.detail)).detail, /1 finding\(s\)/);
+  assert.ok(rows.some(f => /Generic Lists/.test(f.detail)), 'the local scan still adds the repo usage');
+  assert.ok(!rows.some(f => /com\.acme/.test(f.location)), 'customer bundles are not ACS rows');
+  assert.strictEqual(rows.filter(f => /BPA `LUI`/.test(f.detail)).length, 1, 'no second row from the cross-pattern link');
+  assert.strictEqual(gathered.sourceByPattern.acsCommons, 'csv+content-scan');
+});
+
+test('a BPA source without ACS rows (CAM today) does not mark ACS clean: the local scan runs', async () => {
+  const root = acsProject();
+  const gathered = await gatherFindings({ workspaceRoot: root, preFetchedBpa: { scheduler: [] }, getEffectivePom: noPom });
+  assert.ok(gathered.findingsByPattern.acsCommons.some(f => /Generic Lists/.test(f.detail)));
+  assert.strictEqual(gathered.sourceByPattern.acsCommons, 'content-scan');
+});
+
+test('the cross-pattern BPA link also recognises /apps/acs-commons paths', async () => {
+  const root = acsProject();
+  const preFetchedBpa = { lui: [{ className: '/apps/acs-commons/components/utilities/sitemap/dialog', identifier: 'legacy.dialog.classic' }] };
+  const gathered = await gatherFindings({ workspaceRoot: root, preFetchedBpa, getEffectivePom: noPom });
+  assert.ok(gathered.findingsByPattern.acsCommons.some(f => f.informational && /BPA `lui`/.test(f.detail)));
 });

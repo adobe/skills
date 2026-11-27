@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isAcsCommonsName } = require('./acs-commons-scan-runner.js');
 
 // Pattern to subtype mapping (matching cam-bpa-fetcher.ts)
 const PATTERN_TO_SUBTYPE = {
@@ -59,6 +60,10 @@ const CONTENT_SUBTYPES = [
   'unsupported.runmode',
 ];
 
+// ACS AEM Commons rows of any BPA code (installed artifacts, content, Java), matched by
+// name like the report's ACS Commons filter. Not a BPA subtype: a key of its own.
+const ACS_COMMONS_KEY = 'acs.commons';
+
 // Every subtype this parser extracts, recorded in the collection's
 // `meta.parsedSubtypes`. A collection written by an older parser lacks newer
 // subtypes even when its CSV has them, so readers re-parse the CSV instead of
@@ -73,11 +78,12 @@ const PARSED_SUBTYPES = [
   'oak.index.definition',
   'java.io.inputstream',
   ...CONTENT_SUBTYPES,
+  ACS_COMMONS_KEY,
 ];
 // What collections written before `meta.parsedSubtypes` existed can be trusted
 // for: every subtype above except those added since.
 const LEGACY_PARSED_SUBTYPES = PARSED_SUBTYPES.filter(
-  subtype => subtype !== 'java.io.inputstream' && subtype !== 'oak.index.definition'
+  subtype => subtype !== 'java.io.inputstream' && subtype !== 'oak.index.definition' && subtype !== ACS_COMMONS_KEY
 );
 
 /**
@@ -626,6 +632,29 @@ function extractBundle(finding) {
 }
 
 /**
+ * ACS AEM Commons rows of any BPA code (summary rows excluded), keyed by the raw
+ * identifier (bundle, package, class or JCR path). Installed artifacts (`INST`) keep
+ * their version and state from the context JSON or the package id.
+ */
+function processAcsCommonsFindings(findings) {
+  const identifiers = {};
+  for (const finding of findings) {
+    const code = String(finding.code || '');
+    const identifier = String(finding.identifier || '').trim();
+    if (!code || code.startsWith('_') || !isAcsCommonsName(identifier)) continue;
+    let data = {};
+    try { data = JSON.parse(finding.context || '{}')?.data || {}; } catch (_) { /* free-text context */ }
+    const row = { code, subtype: finding.subtype && finding.subtype !== '\\N' ? finding.subtype : '', importance: finding.importance || '' };
+    const parts = identifier.split(':');
+    const version = data.version || (finding.subtype === 'custom.package' && parts.length === 3 ? parts[2] : '');
+    if (version) row.version = version;
+    if (data.state) row.state = data.state;
+    (identifiers[identifier] = identifiers[identifier] || []).push(row);
+  }
+  return { subtype: ACS_COMMONS_KEY, identifiers };
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -797,6 +826,19 @@ function createUnifiedCollection(bpaData, outputDir) {
       totalFindings += values.length;
     });
     console.log(`Found ${Object.values(coll.identifiers).flat().length} ${subtype} findings`);
+  }
+
+  // ACS AEM Commons rows of any code. Keys are RAW identifiers, like the content subtypes.
+  const acsCollection = processAcsCommonsFindings(findings);
+  const acsIds = Object.keys(acsCollection.identifiers);
+  if (acsIds.length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(ACS_COMMONS_KEY);
+    subtypes[mongoSafeSubtype] = {};
+    acsIds.forEach(identifier => {
+      subtypes[mongoSafeSubtype][identifier] = acsCollection.identifiers[identifier];
+      totalFindings += acsCollection.identifiers[identifier].length;
+    });
+    console.log(`Found ${acsIds.length} ACS AEM Commons identifiers`);
   }
 
   // Create unified collection structure with metadata

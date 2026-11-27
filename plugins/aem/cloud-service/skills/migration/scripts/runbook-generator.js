@@ -100,7 +100,7 @@ const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./
 const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan, scanUnsupportedRunmodes, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
-const { runAcsCommonsScan, isAcsCommonsTarget, linkAcsBpaFindings } = require('./acs-commons-scan-runner.js');
+const { runAcsCommonsScan, isAcsCommonsTarget, linkAcsBpaFindings, summarizeAcsBpaTargets } = require('./acs-commons-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
@@ -305,11 +305,16 @@ const PATTERN_META = {
     // ACS AEM Commons is an open-source third-party library, not part of AEM. The
     // runbook reports the version and the features in use and recommends an upgrade;
     // it never changes or upgrades it — the customer owns that work.
-    bpaSlugs: [],
+    // BPA first: a BPA CSV gives the installed ACS artifacts and the ACS rows of every
+    // BPA code. CAM does not return these rows, so an empty BPA result is not "clean"
+    // (bpaIncomplete), and the local scan always adds the repository's own use (unionLocal).
+    bpaSlugs: ['acsCommons'],
+    bpaIncomplete: true,
+    unionLocal: true,
     heuristic: true,
     reportOnly: true,
     reference: 'references/integrations/acs-commons.md',
-    description: 'ACS AEM Commons usage: the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills. Detected heuristically by a text scan.',
+    description: 'ACS AEM Commons: from a BPA CSV, the ACS bundles and packages installed on the source instance (version, state) and the ACS rows of every BPA code; from the repository, the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills.',
     promptPattern: 'acs commons',
     sampleOverride: 'Use the migration skill: assess my ACS AEM Commons usage for AEM as a Cloud Service (report only, no upgrade).',
   },
@@ -323,6 +328,11 @@ const CONTENT_SCANNERS = {
   dispatcherConversion: runDispatcherScan,
   assetWorkflowMigration: runAssetWorkflowScan,
   acsCommons: runAcsCommonsScan,
+};
+
+// BPA targets → runbook findings for patterns that summarise rather than list one row per target.
+const BPA_SUMMARIZERS = {
+  acsCommons: summarizeAcsBpaTargets,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
@@ -466,13 +476,20 @@ async function gatherFindings(options = {}) {
           const targets = bpaSubtypeFilter
             ? res.targets.filter(t => bpaSubtypeFilter.includes(t.identifier))
             : res.targets;
-          for (const t of targets) if (isAcsCommonsTarget(t)) acsBpaTargets.push({ pattern, target: t });
+          for (const t of targets) if (pattern !== 'acsCommons' && isAcsCommonsTarget(t)) acsBpaTargets.push({ pattern, target: t });
           if (PATTERN_META[pattern].strategy === 'java-scan') {
             // Kept raw for the java-scan merge below (needs className/identifier/bundle).
             (bpaTargetsByPattern[pattern] = bpaTargetsByPattern[pattern] || []).push(...targets);
           }
-          merged.push(...targets.map(normalizeBpaTarget));
-          mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
+          const summarize = BPA_SUMMARIZERS[pattern];
+          if (summarize) {
+            const summary = summarize(targets);
+            merged.push(...summary.findings);
+            mergedRaw.push(...summary.rawFindings);
+          } else {
+            merged.push(...targets.map(normalizeBpaTarget));
+            mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
+          }
         } else if (res.availablePatterns) {
           // Benign: the report parsed fine but this pattern is absent — a
           // legitimate "clean" result. Stay silent.
@@ -637,24 +654,33 @@ async function gatherFindings(options = {}) {
   if (workspaceRoot) {
     for (const pattern of CANONICAL_PATTERNS) {
       if (PATTERN_META[pattern].strategy !== 'content-scan') continue;
-      if (scannedBy[pattern]) continue; // BPA already provided findings
+      const union = Boolean(scannedBy[pattern] && PATTERN_META[pattern].unionLocal);
+      if (scannedBy[pattern] && !union) continue; // BPA already provided findings
       const scan = CONTENT_SCANNERS[pattern];
       if (!scan) continue;
       const res = scan(workspaceRoot);
       if (res.ok) {
-        findingsByPattern[pattern] = res.findings;
-        rawFindingsByPattern[pattern] = res.rawFindings;
-        sourceByPattern[pattern] = 'content-scan';
-        scannedBy[pattern] = 'content-scan';
+        if (union) {
+          // BPA owns what it reported; the local scan adds what only the repository shows.
+          findingsByPattern[pattern].push(...res.findings);
+          rawFindingsByPattern[pattern].push(...res.rawFindings);
+          sourceByPattern[pattern] = `${sourceByPattern[pattern]}+content-scan`;
+        } else {
+          findingsByPattern[pattern] = res.findings;
+          rawFindingsByPattern[pattern] = res.rawFindings;
+          sourceByPattern[pattern] = 'content-scan';
+        }
+        scannedBy[pattern] = sourceByPattern[pattern];
         if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
       }
     }
   }
 
-  // ── acsCommons: BPA rows raised against ACS AEM Commons itself (any pattern) are
-  //    listed in its report-only section as informational rows; they stay in
-  //    their own pattern too. ──
-  if (acsBpaTargets.length > 0 && findingsByPattern.acsCommons) {
+  // ── acsCommons without ACS rows from BPA (CAM today): BPA rows of the other
+  //    patterns raised against ACS AEM Commons itself are listed in its report-only
+  //    section as informational rows; they stay in their own pattern too. ──
+  const acsFromBpa = (rawFindingsByPattern.acsCommons || []).some(r => r.kind === 'bpa' || r.kind === 'bpa-installed');
+  if (acsBpaTargets.length > 0 && findingsByPattern.acsCommons && !acsFromBpa) {
     const linked = linkAcsBpaFindings(acsBpaTargets);
     findingsByPattern.acsCommons.push(...linked.findings);
     rawFindingsByPattern.acsCommons.push(...linked.rawFindings);
