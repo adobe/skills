@@ -94,6 +94,7 @@ v2 evals without modification.
 | `replica-measure-first/`     | Entry point (`replica`)   | One small page recreated from scratch: `source-spec.mjs capture` at both widths before any CSS, `compare` exit 0 before the first gate round, clean re-authoring, content verbatim. |
 | `replica-extend/`           | Entry point (`replica`)   | A delivered one-page run extended with `--extend-next 1`: pass `x1` opened on the ledger with its track, the spec and the foundation frozen, the roster selected with `--skip-captured --select-only` before any capture, the delivered page never captured again, the new page's type routed to sibling tier or to Phases 3–4. |
 | `replica-extend-noop/`      | Entry point (`replica`)   | The same delivered project resumed without `--extend*`: the ledger read, the state report, nothing written and nothing re-run, the extend commands named as the way to add pages. |
+| `replica-reference-rendering/` | Entry point (`replica`) | The first round of a scroll-jacked page whose stitched capture stalls and which links a static page mode: the page record and the reference stay the inventory URL, no substitution the owner did not accept, the pixel probe recorded as gate-blocked, the owner told how a pixel number could honestly be had. |
 | `rollout-gated-archetype/`   | Entry point (`rollout`)   | A replica-flow site of six migrated pages with no AEM target: inventory, block dedup and plan from the scripts; a page type whose archetype is over the bar with no residual entry is blocked with its gate command, one with a documented residual ships; default content is not planned as a block; nothing is reported as delivered. |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
@@ -139,20 +140,22 @@ node plugins/stardust/evals/fixture-site/serve.mjs          # http://localhost:8
 | `/` | A store home page: header, hero, "today" band, three product cards, about, footer. |
 | `/visit/` | A store visit page, the small one: header, opening hours, directions, "today" band, footer. |
 | `/?unstable=1`, `/visit/?unstable=1` | The same page with a notice whose height differs on every load: not one page between two captures (`reference.mjs freeze` exits 2, `gate.sh` exits 5). |
+| `/board/` | A scroll-jacked board of this week's arrivals: `html` and `body` clip and a script moves the content, so window scrolling is a no-op and stitched capture stalls (`stitch-shot.mjs` exits 1). |
+| `/board/?page-mode=static` | The board's static page mode for screen readers: the same items as a table, in normal flow. Another rendering, which `gate.sh` refuses as the board's reference (exit 7). |
 | `/__fixture` | The identity of the server as JSON, for a setup script to check before it reuses a port. |
 
-Both pages switch layout at 700 px, so 1440 and 360 are two layouts. The
+The pages switch layout at 700 px, so 1440 and 360 are two layouts. The
 "today" band is painted from a per-request counter: same text, same height,
 other colours, which is what a frozen reference measures as its noise floor
 and masks. Everything else is byte-stable. The images are SVG files written
 for the fixture and the fonts are system fonts.
 
-The six `replica-*` scenarios target it. Each has a `setup.sh` that calls
+The seven `replica-*` scenarios target it. Each has a `setup.sh` that calls
 `fixture-site/start.sh`: it starts the server detached from the checkout
 (the site's files are never copied into the work directory), reuses one that
 already answers as the fixture, and the server stops by itself after an hour
 without a request. `replica-round-cap`, `replica-frozen-reference`,
-`replica-measure-first` and `replica-extend` also have a `fixture/` (the
+`replica-measure-first`, `replica-reference-rendering` and `replica-extend` also have a `fixture/` (the
 project a resumed run starts from, recorded against the fixture site;
 provenance in each `fixture-notes.md`) and a `scenario.json` that installs
 it, so `scripts/skill-eval.mjs --scenario` and `runner/run.mjs` start from

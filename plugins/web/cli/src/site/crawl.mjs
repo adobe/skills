@@ -94,10 +94,17 @@ function normalizedUrl(raw) {
  * Group the scanned URLs with their language variants. As Google requires, two URLs that a
  * read sitemap lists are variants only when each declares the other. A declared URL that no
  * read sitemap lists (another origin, a sitemap not read) can't answer: it is taken on trust
- * from each URL that declares it, and joins no groups together.
+ * from each URL that declares it, and joins no groups together. A path tag counts as declared
+ * when any declaration read names it, whichever URLs the filters and limit selected.
  */
-function groupVariants(scanned) {
+function groupVariants(scanned, nodes) {
   const answers = (from, to) => to === from || !to.read || to.declares.has(from);
+  const pathDeclared = new Set();
+  for (const node of nodes) {
+    for (const [target, tags] of node.declares) {
+      if (answers(node, target) && tags.has(target.lang)) pathDeclared.add(target);
+    }
+  }
   const owner = new Map();
   const groups = [];
   for (const start of scanned) {
@@ -131,10 +138,11 @@ function groupVariants(scanned) {
     url: proposed.get(fallback) === 1 ? fallback : owned.map((m) => m.url).sort()[0],
     variants: [...members]
       .filter(([m, tags]) => owner.get(m) === members || [...tags].some((t) => t !== 'x-default'))
-      .map(([m, tags]) => ({
-        lang: [...new Set([m.lang, ...tags])].filter((t) => t && t !== 'x-default'),
-        url: m.url,
-      })),
+      .map(([m, tags]) => {
+        const lang = [...new Set([m.lang, ...tags])].filter((tag) => tag && tag !== 'x-default');
+        const pathLang = m.lang && !pathDeclared.has(m) ? m.lang : null;
+        return { lang, pathLang, url: m.url };
+      }),
   }));
 }
 
@@ -179,7 +187,8 @@ async function fetchBody({ url, timeoutMs, headers }) {
  * @param {{ strategy?: 'sitemaps'|'http', include?: string[], exclude?: string[],
  *   limit?: number, timeoutMs?: number, headers?: object }} [options]
  * @returns {Promise<{ origin: string, strategy: string, total: number, valid: number,
- *   urls: {url: string, variants: {url: string, lang: string[]}[]}[], scannedUrls: string[],
+ *   urls: {url: string, variants: {url: string, lang: string[], pathLang: string|null}[]}[],
+ *   scannedUrls: string[],
  *   sitemaps: string[], errors: {url: string, message: string}[] }>}
  */
 export async function crawl(origin, options = {}) {
@@ -351,7 +360,7 @@ export async function crawl(origin, options = {}) {
     strategy,
     total: seen.size,
     valid: scanned.length,
-    urls: groupVariants(scanned),
+    urls: groupVariants(scanned, nodes.values()),
     scannedUrls: scanned.map((node) => node.url),
     sitemaps,
     errors,

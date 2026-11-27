@@ -1,0 +1,251 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-25T08:22:31.015Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "board",
+  "url": "http://localhost:8780/board/",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-25T08:22:31.015Z",
+  "finalUrl": "http://localhost:8780/board/",
+  "title": "The board: this week at the Fixture Store",
+  "description": "Everything that arrived at the shop this week, on one board.",
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "The board"
+    },
+    {
+      "tag": "h3",
+      "text": "Stoneware mug, moss glaze"
+    },
+    {
+      "tag": "h3",
+      "text": "Willow log basket"
+    },
+    {
+      "tag": "h3",
+      "text": "Brass desk lamp"
+    },
+    {
+      "tag": "h3",
+      "text": "Linen tea towel, two stripes"
+    },
+    {
+      "tag": "h3",
+      "text": "Oak bread board"
+    },
+    {
+      "tag": "h3",
+      "text": "Enamel milk pan"
+    },
+    {
+      "tag": "h3",
+      "text": "Wool blanket, slate"
+    },
+    {
+      "tag": "h3",
+      "text": "Beeswax candles, pair"
+    },
+    {
+      "tag": "h3",
+      "text": "Cast iron trivet"
+    },
+    {
+      "tag": "h3",
+      "text": "Rush seat stool"
+    },
+    {
+      "tag": "h3",
+      "text": "Glass carafe"
+    },
+    {
+      "tag": "h3",
+      "text": "Hemp shopping net"
+    },
+    {
+      "tag": "h3",
+      "text": "Copper watering can"
+    },
+    {
+      "tag": "h3",
+      "text": "Ash spoon set"
+    },
+    {
+      "tag": "h3",
+      "text": "Clay plant pot, large"
+    },
+    {
+      "tag": "h3",
+      "text": "Canvas apron"
+    },
+    {
+      "tag": "h3",
+      "text": "Brass bottle opener"
+    },
+    {
+      "tag": "h3",
+      "text": "Wicker lamp shade"
+    },
+    {
+      "tag": "h2",
+      "text": "Fixture Store"
+    },
+    {
+      "tag": "h2",
+      "text": "Hours"
+    },
+    {
+      "tag": "h2",
+      "text": "More"
+    }
+  ],
+  "body": [
+    "This week at the store",
+    "Everything that arrived this week, on one board. Scroll it like a shelf: the board moves, the page stays put.",
+    "Stoneware mug, moss glazeKiln on Mill Road18.00",
+    "Kiln on Mill Road",
+    "18.00",
+    "Willow log basketRiverside weavers42.00",
+    "Riverside weavers",
+    "42.00",
+    "Brass desk lampThe lamp room96.00",
+    "The lamp room",
+    "96.00",
+    "Linen tea towel, two stripesLoom 412.00",
+    "Loom 4",
+    "12.00",
+    "Oak bread boardJoinery at the yard34.00",
+    "Joinery at the yard",
+    "34.00",
+    "Enamel milk panNorthgate works28.00",
+    "Northgate works",
+    "28.00",
+    "Wool blanket, slateHill farm mill120.00",
+    "Hill farm mill",
+    "120.00",
+    "Beeswax candles, pairApiary lane9.00",
+    "Apiary lane",
+    "9.00",
+    "Cast iron trivetNorthgate works22.00",
+    "Northgate works",
+    "22.00",
+    "Rush seat stoolJoinery at the yard88.00",
+    "Joinery at the yard",
+    "88.00",
+    "Glass carafeFurnace on Quay Street31.00",
+    "Furnace on Quay Street",
+    "31.00",
+    "Hemp shopping netLoom 48.00",
+    "Loom 4",
+    "8.00",
+    "Copper watering canThe lamp room64.00",
+    "The lamp room",
+    "64.00",
+    "Ash spoon setJoinery at the yard19.00",
+    "Joinery at the yard",
+    "19.00",
+    "Clay plant pot, largeKiln on Mill Road26.00",
+    "Kiln on Mill Road",
+    "26.00",
+    "Canvas apronStitch room38.00",
+    "Stitch room",
+    "38.00",
+    "Brass bottle openerThe lamp room11.00",
+    "The lamp room",
+    "11.00",
+    "Wicker lamp shadeRiverside weavers47.00",
+    "Riverside weavers",
+    "47.00"
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "Static page mode (for screen readers)",
+      "href": "/board/?page-mode=static"
+    },
+    {
+      "label": "Fixture Store",
+      "href": "/"
+    },
+    {
+      "label": "Shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About",
+      "href": "/#about"
+    },
+    {
+      "label": "Visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "Open today",
+      "href": "/visit/#hours"
+    },
+    {
+      "label": "Plan a visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "This week's shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About the shop",
+      "href": "/#about"
+    }
+  ],
+  "links": [
+    "http://localhost:8780/board/?page-mode=static",
+    "http://localhost:8780/",
+    "http://localhost:8780/#shelf",
+    "http://localhost:8780/#about",
+    "http://localhost:8780/visit/",
+    "http://localhost:8780/visit/#hours"
+  ],
+  "media": {
+    "imgs": [],
+    "allImgCount": 0,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--ink": "#1d2420",
+    "--muted": "#55605a",
+    "--paper": "#f4efe6",
+    "--card": "#fffdf8",
+    "--green": "#1f3a2e",
+    "--brass": "#b0762a",
+    "--line": "#d9d0c0",
+    "--wrap": "1120px",
+    "--gutter": "32px"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 22,
+    "mainTextLen": 829,
+    "realImageCount": 0,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 1925
+    }
+  },
+  "screenshot": "assets/screenshots/board.png",
+  "renderedHtml": "pages/board.html"
+}

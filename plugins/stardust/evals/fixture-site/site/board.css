@@ -1,0 +1,24 @@
+/* The board page. html.app: the board as visitors get it, scroll-jacked (html and body clip, a script moves the
+   track); html.static: the static page mode for screen readers, another layout in normal flow. */
+html.app, html.app body { height: 100%; overflow: hidden; }
+.track { will-change: transform; }
+.mode-link { display: flex; gap: 24px; margin: 0 auto; padding-top: 8px; padding-bottom: 8px; font: 13px/1.4 Helvetica, Arial, sans-serif; }
+.board { padding: 56px 0 72px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; list-style: none; margin: 40px 0 0; padding: 0; }
+.tiles li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px 20px 24px; min-height: 180px; }
+.tiles p { color: var(--muted); margin: 0; }
+.tiles .price { font: 700 18px/1 Helvetica, Arial, sans-serif; color: var(--ink); margin-top: 16px; }
+
+html.static .mode-link { background: #f3d9a4; max-width: none; }
+html.static .board h1 { font-size: 40px; }
+html.static .list { margin-top: 32px; }
+html.static .list caption { text-align: left; font: 700 20px/1.2 Helvetica, Arial, sans-serif; margin-bottom: 12px; }
+html.static .list td { text-align: left; font-weight: 400; }
+html.static .list td:last-child { text-align: right; font-weight: 700; }
+
+@media (max-width: 700px) {
+  .tiles { grid-template-columns: 1fr; gap: 16px; }
+  .tiles li { min-height: 0; }
+  .board { padding: 40px 0 48px; }
+  html.static .list .from { display: none; }
+}

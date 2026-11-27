@@ -29,7 +29,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b|--pages-file f] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60] [--skip-captured <state> [--reserve-slugs f] [--skip-failed] [--first-run-order]] [--select-only]`
+- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b|--pages-file f] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60] [--skip-captured <state>] [--select-only]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
@@ -43,10 +43,10 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/extend-roster.mjs` — extend pass: roster, publish guard — `select --candidates f --out f [--named] [--max n] [--slugs-out f] [--reserved-out f]`; `output --pass d --unit u --files a,b`; `publish --pass d`
-- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b | --paths-if-present a,b | --from <manifest>]`; `check` (a new `absent[]` path: `added`)
-- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL
-- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
+- `replica/extend-roster.mjs` — extend pass — `select --candidates f --out f [--named] [--max n] [--reserved-out f --opening f]`; `output --pass d --unit u --files a,b`; `publish --pass d`
+- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b|--paths-if-present a,b|--from <manifest>]`; `check`
+- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--sample <n>] [--prune-captures] [--no-preflight] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL, 4 = captures do not fit on disk
+- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`; `--unit <slug,…|@file>` = a delivery unit's close check, exit 2 = a page without a gate row or with a stale pass
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`
 - `replica/html-slice.mjs` — one captured element — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded JSON view — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
@@ -55,6 +55,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
 - `replica/reference.mjs` — primed frozen origin + noise floor — `freeze <url> <dir> --width <px> [--captures 2] [--force]`; `status|mask <dir>`; `assess <a.png> <b.png>`; exit 2 = unstable
+- `replica/reference-url.mjs` — is the live URL the inventory's page (gate.sh runs it) — `<slug> <live-url>`; exit 7 = another rendering
 - `replica/rounds.mjs` — round cap ledger, exit 6 — `check|record|decide|status <dir> --stage <s>`; `count <root>`
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`

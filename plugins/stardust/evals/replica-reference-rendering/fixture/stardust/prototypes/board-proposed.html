@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The board: this week at the Fixture Store</title>
+<meta name="description" content="Everything that arrived at the shop this week, on one board.">
+<!-- stardust replica prototype: board (re-authored from stardust/replica/spec/board-1440.json) -->
+<style>
+  :root {
+    --c-ink: #1d2420; --c-muted: #55605a; --c-paper: #f4efe6; --c-card: #fffdf8; --c-green: #1f3a2e;
+    --c-brass: #b0762a; --c-line: #d9d0c0; --c-foot: #d8d3c8; --c-foot-dim: #9aa39d; --c-foot-rule: #3a433e;
+    --f-sans: Helvetica, Arial, sans-serif; --f-serif: Georgia, "Times New Roman", serif;
+    --container: 1120px; --gutter: 32px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--c-paper); color: var(--c-ink); font: 17px/1.6 var(--f-serif); }
+  a { color: var(--c-green); }
+  h1, h2, h3 { font-family: var(--f-sans); line-height: 1.15; margin: 0 0 16px; }
+  p { margin: 0 0 16px; }
+  .container { max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+  .modes { display: flex; gap: 24px; padding-top: 8px; padding-bottom: 8px; margin: 0 auto; font: 13px/1.4 var(--f-sans); }
+  .masthead { background: var(--c-card); border-bottom: 1px solid var(--c-line); }
+  .masthead__bar { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+  .masthead__brand { display: flex; align-items: center; gap: 12px; font: 700 20px/1 var(--f-sans); color: var(--c-ink); text-decoration: none; }
+  .masthead__nav ul { display: flex; align-items: center; gap: 28px; list-style: none; margin: 0; padding: 0; font: 500 15px/1 var(--f-sans); }
+  .masthead__nav a { color: var(--c-ink); text-decoration: none; }
+  .masthead__nav .cta { background: var(--c-green); color: var(--c-paper); padding: 10px 16px; border-radius: 999px; }
+  .board { padding: 56px 0 72px; }
+  .board__eyebrow { font: 600 13px/1.4 var(--f-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-brass); }
+  .board__title { font-size: 56px; letter-spacing: -0.02em; }
+  .board__lede { font-size: 20px; color: var(--c-muted); max-width: 36em; }
+  .arrivals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; list-style: none; margin: 40px 0 0; padding: 0; }
+  .arrival { background: var(--c-card); border: 1px solid var(--c-line); border-radius: 8px; padding: 20px 20px 24px; min-height: 180px; }
+  .arrival__name { font-size: 20px; margin-bottom: 8px; }
+  .arrival__maker { color: var(--c-muted); margin: 0; }
+  .arrival__price { font: 700 18px/1 var(--f-sans); margin: 16px 0 0; }
+  .colophon { background: var(--c-ink); color: var(--c-foot); padding: 56px 0 32px; font: 15px/1.6 var(--f-sans); }
+  .colophon a { color: var(--c-foot); }
+  .colophon h2 { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; margin-bottom: 12px; }
+  .colophon ul { list-style: none; margin: 0; padding: 0; }
+  .colophon__cols { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 48px; }
+  .colophon__note { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--c-foot-rule); font-size: 13px; color: var(--c-foot-dim); }
+  @media (max-width: 700px) {
+    :root { --gutter: 20px; }
+    body { font-size: 16px; }
+    .board { padding: 40px 0 48px; }
+    .board__title { font-size: 34px; }
+    .board__lede { font-size: 17px; }
+    .masthead__bar { flex-direction: column; align-items: flex-start; height: auto; padding-top: 16px; padding-bottom: 16px; gap: 14px; }
+    .masthead__nav ul { gap: 16px; font-size: 14px; flex-wrap: wrap; }
+    .masthead__nav .cta { padding: 8px 12px; }
+    .arrivals { grid-template-columns: 1fr; gap: 16px; }
+    .arrival { min-height: 0; }
+    .colophon__cols { grid-template-columns: 1fr; gap: 28px; }
+  }
+</style>
+</head>
+<body>
+<p class="modes container"><a href="/board/?page-mode=static">Static page mode (for screen readers)</a></p>
+<header class="masthead">
+  <div class="container masthead__bar">
+    <a class="masthead__brand" href="/" aria-label="Fixture Store, home">
+      <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="8" fill="#1f3a2e"/><path d="M9 14h18l-2 13H11z" fill="#f4efe6"/><path d="M13 14a5 5 0 0 1 10 0" fill="none" stroke="#f4efe6" stroke-width="2"/></svg>
+      <span>Fixture Store</span>
+    </a>
+    <nav class="masthead__nav" aria-label="Main">
+      <ul>
+        <li><a href="/#shelf">Shelf</a></li>
+        <li><a href="/#about">About</a></li>
+        <li><a href="/visit/">Visit</a></li>
+        <li><a class="cta" href="/visit/#hours">Open today</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main>
+  <section class="board">
+    <div class="container">
+      <p class="board__eyebrow">This week at the store</p>
+      <h1 class="board__title">The board</h1>
+      <p class="board__lede">Everything that arrived this week, on one board. Scroll it like a shelf: the board moves, the page stays put.</p>
+      <ul class="arrivals">
+        <li class="arrival"><h3 class="arrival__name">Stoneware mug, moss glaze</h3><p class="arrival__maker">Kiln on Mill Road</p><p class="arrival__price">18.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Willow log basket</h3><p class="arrival__maker">Riverside weavers</p><p class="arrival__price">42.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Brass desk lamp</h3><p class="arrival__maker">The lamp room</p><p class="arrival__price">96.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Linen tea towel, two stripes</h3><p class="arrival__maker">Loom 4</p><p class="arrival__price">12.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Oak bread board</h3><p class="arrival__maker">Joinery at the yard</p><p class="arrival__price">34.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Enamel milk pan</h3><p class="arrival__maker">Northgate works</p><p class="arrival__price">28.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Wool blanket, slate</h3><p class="arrival__maker">Hill farm mill</p><p class="arrival__price">120.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Beeswax candles, pair</h3><p class="arrival__maker">Apiary lane</p><p class="arrival__price">9.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Cast iron trivet</h3><p class="arrival__maker">Northgate works</p><p class="arrival__price">22.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Rush seat stool</h3><p class="arrival__maker">Joinery at the yard</p><p class="arrival__price">88.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Glass carafe</h3><p class="arrival__maker">Furnace on Quay Street</p><p class="arrival__price">31.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Hemp shopping net</h3><p class="arrival__maker">Loom 4</p><p class="arrival__price">8.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Copper watering can</h3><p class="arrival__maker">The lamp room</p><p class="arrival__price">64.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Ash spoon set</h3><p class="arrival__maker">Joinery at the yard</p><p class="arrival__price">19.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Clay plant pot, large</h3><p class="arrival__maker">Kiln on Mill Road</p><p class="arrival__price">26.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Canvas apron</h3><p class="arrival__maker">Stitch room</p><p class="arrival__price">38.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Brass bottle opener</h3><p class="arrival__maker">The lamp room</p><p class="arrival__price">11.00</p></li>
+        <li class="arrival"><h3 class="arrival__name">Wicker lamp shade</h3><p class="arrival__maker">Riverside weavers</p><p class="arrival__price">47.00</p></li>
+      </ul>
+    </div>
+  </section>
+</main>
+<footer class="colophon">
+  <div class="container colophon__cols">
+    <div>
+      <h2>Fixture Store</h2>
+      <p>12 Sample Lane<br>Testville</p>
+    </div>
+    <div>
+      <h2>Hours</h2>
+      <p>Tuesday to Saturday, 10:00 to 18:00<br>Closed Sunday and Monday</p>
+    </div>
+    <div>
+      <h2>More</h2>
+      <ul>
+        <li><a href="/visit/">Plan a visit</a></li>
+        <li><a href="/#shelf">This week's shelf</a></li>
+        <li><a href="/#about">About the shop</a></li>
+      </ul>
+    </div>
+  </div>
+  <p class="container colophon__note">A fixture for automated evaluations. Nothing here is for sale.</p>
+</footer>
+</body>
+</html>

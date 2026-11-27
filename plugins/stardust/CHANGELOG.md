@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.47.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.9...plugin/stardust/v0.47.0) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
+
+### Features
+
+* **stardust:** a delivery unit closes only when every page it shipped has a gate row ([#788](https://github.com/adobe/skills/issues/788)) ([d53aadc](https://github.com/adobe/skills/commit/d53aadc8ffe463a642d8312320b6693a16604f6c)), closes [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#790](https://github.com/adobe/skills/issues/790) [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793)
+
+## [0.46.9](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.8...plugin/stardust/v0.46.9) (2026-11-26)
+
+
+### Bug Fixes
+
+* **stardust:** deploy-batch fails a page when a request gets no answer ([#831](https://github.com/adobe/skills/issues/831)) ([d84e94b](https://github.com/adobe/skills/commit/d84e94bf52481de228191728be93867cd218cf9a))
+
 ## [0.46.8](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.7...plugin/stardust/v0.46.8) (2026-11-25)
 
 
