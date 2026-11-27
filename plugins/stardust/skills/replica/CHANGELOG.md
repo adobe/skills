@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/adobe/skills/compare/replica-v1.8.6...replica-v1.9.0) (2026-11-27)
+
+
+### Features
+
+* **stardust:** a delivery unit closes only when every page it shipped has a gate row ([#788](https://github.com/adobe/skills/issues/788)) ([d53aadc](https://github.com/adobe/skills/commit/d53aadc8ffe463a642d8312320b6693a16604f6c)), closes [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#790](https://github.com/adobe/skills/issues/790) [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793)
+
 ## [1.8.6](https://github.com/adobe/skills/compare/replica-v1.8.5...replica-v1.8.6) (2026-11-27)
 
 
