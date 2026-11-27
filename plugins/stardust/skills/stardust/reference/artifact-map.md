@@ -380,7 +380,8 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
 | `canon/**` | yes | prototype | the design canon |
-| `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
+| `canon-source/**` except `assets/screenshots/` | yes | extract; reskin (Figma donor) | donor capture |
+| `canon-source/foundation/**`, `canon-source/*-candidates.json`, `canon-source/spec-tables.json` | yes | reskin `figma-donor` | Figma donor capture; ignore under `--confidential` |
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
 | `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#156) |
 | `current/assets/screenshots/` | **no** | extract | rewritten on every extract |
@@ -390,7 +391,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
 | `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#156) |
 | `**/gates/**/*.png` except `baseline.png` | **no** | replica | captures and diffs, re-taken when needed (`gate-all.mjs --help`) |
-| `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
+| `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger; `curation-rules.json` is the authored Figma rules, the only non-mechanical `curate` input |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
 | `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
@@ -402,7 +403,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
 | `scripts/**` | yes (for now) | extract / reskin / replica / spec | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
-| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
+| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps; `.work/reskin/figma/` is the raw Figma REST cache |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
 | `_storage-state.json`, `*-clearance.json` | **never** | extract | captured session cookies; secrets |
 

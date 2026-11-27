@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/adobe/skills/compare/stardust-v1.7.0...stardust-v1.8.0) (2026-11-27)
+
+
+### Features
+
+* **stardust:** reskin takes a Figma donor — headless capture, deterministic curation ([#439](https://github.com/adobe/skills/issues/439)) ([81d94fa](https://github.com/adobe/skills/commit/81d94fa41404a328134c570c7e398ecf459405bb)), closes [#744](https://github.com/adobe/skills/issues/744)
+
 # [1.7.0](https://github.com/adobe/skills/compare/stardust-v1.6.2...stardust-v1.7.0) (2026-11-27)
 
 

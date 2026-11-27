@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.47.0",
+      "version": "0.48.0",
       "category": "design",
       "keywords": [
         "design",
@@ -35,7 +35,7 @@
       "name": "web",
       "source": "./plugins/web",
       "description": "Browser automation and web page analysis skills using playwright-cli: connect via CDP, probe bot protection, dismiss overlays, capture DOM trees, reduce pages to skeletons, extract page resources.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "category": "web",
       "keywords": [
         "browser",
