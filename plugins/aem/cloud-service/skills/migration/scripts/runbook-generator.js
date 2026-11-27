@@ -308,7 +308,7 @@ const PATTERN_META = {
     bpaSlugs: [],
     heuristic: true,
     reportOnly: true,
-    reference: 'references/third-party/acs-commons.md',
+    reference: 'references/integrations/acs-commons.md',
     description: 'ACS AEM Commons usage: the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills. Detected heuristically by a text scan.',
     promptPattern: 'acs commons',
     sampleOverride: 'Use the migration skill: assess my ACS AEM Commons usage for AEM as a Cloud Service (report only, no upgrade).',

@@ -53,7 +53,7 @@ test('acsCommons is a report-only, heuristic content-scan pattern with no BPA ti
   assert.deepStrictEqual(meta.bpaSlugs, []);
   assert.ok(meta.heuristic);
   assert.ok(meta.reportOnly);
-  assert.strictEqual(meta.reference, 'references/third-party/acs-commons.md', 'the report-only banner links the pattern\'s own reference');
+  assert.strictEqual(meta.reference, 'references/integrations/acs-commons.md', 'the report-only banner links the pattern\'s own reference');
   assert.match(meta.description, /customer-owned/i);
 });
 
@@ -113,7 +113,7 @@ test('gatherFindings runs the ACS scan and the runbook marks it report-only and 
   const section = md.split('## ACS AEM Commons')[1].split('\n## ')[0];
   assert.match(section, /Report only/);
   assert.match(section, /never upgrades/i);
-  assert.match(section, /references\/third-party\/acs-commons\.md/);
+  assert.match(section, /references\/integrations\/acs-commons\.md/);
   assert.match(section, /acs-aem-commons-all 5\.3\.4/);
   assert.doesNotMatch(section, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'paths are workspace-relative');
 });

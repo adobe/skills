@@ -1,9 +1,9 @@
 ---
 name: migration
 description: |
-  Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV/cache and
-  CAM/MCP discovery, one pattern per session. Use to review/scan a project for AEMaaCS
-  migration — generates a read-only migration-runbook.md — or to fix specific Cloud Service
+  Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV/cache or
+  CAM/MCP, one pattern per session. Use to review/scan a project for AEMaaCS
+  migration (read-only migration-runbook.md) or to fix specific Cloud Service
   blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
   DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
@@ -11,8 +11,8 @@ description: |
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager ($[secret:]/$[env:]), converts AMS/on-prem
   Dispatcher configs, validates migrated code on a local Cloud SDK (beta), migrates asset
-  workflows, and restructures a project into the Cloud Service layout (ui.apps, ui.config,
-  ui.content, all; beta).
+  workflows, lists ACS AEM Commons use, and restructures a project into the Cloud Service
+  layout (ui.apps, ui.config, ui.content, all; beta).
 license: Apache-2.0
 metadata:
   version: "1.3.1"
@@ -63,7 +63,7 @@ Find the branch for the request and read its file before anything else. Each of 
 | **H — Asset workflow migration** | migrate DAM asset workflows (`DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions); or mentions Adobe's Asset Workflow Migration Tool / `wf-migrator` / `aem-cloud-migration` | [references/asset-workflow/flow.md](references/asset-workflow/flow.md): four steps around Adobe's `wf-migrator`, which makes every change. The skill runs it and guides the review; it never edits project files itself. Never present a failed run as done. |
 | **I — Repository restructuring** (beta) | restructure the project for AEM as a Cloud Service; split a content package into code (`ui.apps`) and content (`ui.content`); create `ui.config` or the `all` package; or mentions the Repository Modernizer | [references/repo-structure/flow.md](references/repo-structure/flow.md): five steps around Adobe's `repository-modernizer`. The plan review with the user is required. The tool's output is a copy: check it, then adopt it on a branch. Run this before the other branches when the project has no `ui.config` or `all`. |
 
-**ACS AEM Commons** (`acsCommons`, third-party): report only; read [references/third-party/acs-commons.md](references/third-party/acs-commons.md). **Never** change its version, configs, code or content; the upgrade is customer-owned.
+**ACS AEM Commons** (`acsCommons`, third-party): report only; read [references/integrations/acs-commons.md](references/integrations/acs-commons.md). **Never** change its version, configs, code or content; the upgrade is customer-owned.
 
 **Branch B — Java / HTL / BPA pattern migration:**
 

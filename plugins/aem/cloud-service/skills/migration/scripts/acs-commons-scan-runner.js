@@ -30,7 +30,7 @@ const SKIP_DIRS = new Set(['node_modules', 'target', '.git', 'dist', 'build', 'o
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 // Feature key (package segment after com.adobe.acs.commons) → label and what it typically
-// needs on Cloud Service. Hints are starting points; references/third-party/acs-commons.md
+// needs on Cloud Service. Hints are starting points; references/integrations/acs-commons.md
 // says to confirm each against the ACS AEM Commons documentation.
 const FEATURES = {
   redirects: { label: 'Redirect Manager', hint: 'migrate and verify every redirect rule on Cloud Service' },
