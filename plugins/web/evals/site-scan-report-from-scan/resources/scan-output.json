@@ -7,393 +7,393 @@
     {
       "url": "https://www.northwind-outdoor.com/en/",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-1",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-1" },
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-1" },
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-1" }
+        { "lang": ["en", "en-CA"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-1" },
+        { "lang": ["de"], "pathLang": null, "url": "https://www.northwind-outdoor.com/de/produkte/artikel-1" },
+        { "lang": ["fr-FR"], "pathLang": null, "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-1" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-2",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-2" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-2" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-3",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-3" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-3" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-4",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-4" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-4" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-5",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-5" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-5" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-6",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-6" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-6" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-7",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-7" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-7" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-8",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-8" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-8" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-9",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-9" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-9" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-10",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-10" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-10" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-11",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-11" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-11" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-12",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-12" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-12" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-13",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-13" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-13" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-14",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-14" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-14" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-15",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-15" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-15" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-16",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-16" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-16" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-17",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-17" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-17" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-18",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-18" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-18" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-19",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-19" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-19" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-20",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-20" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-20" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-21",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-21" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-21" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-22",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-22" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-22" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-23",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-23" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-23" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-24",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-24" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-24" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-25",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-25" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-25" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-26",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-26" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-26" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-27",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-27" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-27" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-28",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-28" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-28" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-29",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-29" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-29" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-30",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-30" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-30" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-31",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-31" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-31" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-32",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-32" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-32" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-33",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-33" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-33" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-34",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-34" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-34" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-35",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-35" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-35" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-36",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-36" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-36" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-37",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-37" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-37" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-38",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-38" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-38" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-39",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-39" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-39" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/products/item-40",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/products/item-40" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/products/item-40" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-2",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-2" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-2" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-3",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-3" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-3" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-4",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-4" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-4" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-5",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-5" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-5" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-6",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-6" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-6" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-7",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-7" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-7" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-8",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-8" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-8" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-9",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-9" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-9" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-10",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-10" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-10" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-11",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-11" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-11" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/produkte/artikel-12",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/produkte/artikel-12" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/produkte/artikel-12" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/de/",
       "variants": [
-        { "lang": ["de"], "url": "https://www.northwind-outdoor.com/de/" }
+        { "lang": ["de"], "pathLang": "de", "url": "https://www.northwind-outdoor.com/de/" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-2",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-2" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-2" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-3",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-3" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-3" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-4",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-4" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-4" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-5",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-5" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-5" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-6",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-6" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-6" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-7",
       "variants": [
-        { "lang": ["fr-FR"], "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-7" }
+        { "lang": ["fr-FR"], "pathLang": "fr-FR", "url": "https://www.northwind-outdoor.com/fr-fr/produits/article-7" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/archive/2019/post-1",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/archive/2019/post-1" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/archive/2019/post-1" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/archive/2019/post-2",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/archive/2019/post-2" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/archive/2019/post-2" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/archive/2019/post-3",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/archive/2019/post-3" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/archive/2019/post-3" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/archive/2019/post-4",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/archive/2019/post-4" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/archive/2019/post-4" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/en/archive/2019/post-5",
       "variants": [
-        { "lang": ["en"], "url": "https://www.northwind-outdoor.com/en/archive/2019/post-5" }
+        { "lang": ["en"], "pathLang": "en", "url": "https://www.northwind-outdoor.com/en/archive/2019/post-5" }
       ]
     },
     {
       "url": "https://www.northwind-outdoor.com/contact",
       "variants": [
-        { "lang": [], "url": "https://www.northwind-outdoor.com/contact" }
+        { "lang": [], "pathLang": null, "url": "https://www.northwind-outdoor.com/contact" }
       ]
     }
   ],
