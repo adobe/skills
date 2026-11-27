@@ -202,15 +202,18 @@ file enforces the rule, so no caller has to remember a flag:
   `extend start` without its `extend end`) and the guard is missing, they send and write nothing, and name the
   `publish` command that puts it back. The guard names its pass: one that names another pass, or none, is refused
   too, and only the open pass may run `publish`. A ledger that shows two passes open at once is refused by all three
-  scripts: write the earlier pass's `extend end` line first. The guard is committed with the checkpoints.
+  scripts: write the earlier pass's `extend end` line first. So is an `extend start` line without a track, which
+  `ledger.mjs` writes when `--track` is missing: close it with `replica extend end`, then open the pass with its
+  track. The guard is committed with the checkpoints.
 - **The pass's documents.** `migrate.mjs render` writes `stardust/migrated/`, never `content/`: the guard stays
   empty during migrate. The conversion of `handoff-contract.md` § 2 writes each `content/<page>.html`. Right after
   it, before the localizer and the PUT, the unit runs `$R output --pass $X --unit <unit> --files <them>`, then
   `$R publish --pass $X`. `--files` takes paths below `content/`: `visit/index.html`, not
   `content/visit/index.html`. `output` records the files, one per roster page, in `$X/outputs/<unit>.paths`. A new
-  fragment the pages need is one line in `$X/also.paths`, written by the unit that creates it. `publish` holds and
-  names any other new document: an owner's draft, or a file at a roster page no unit recorded. A page no unit
-  recorded is not sent, and `done-check.mjs` reports it unfinished. Units may run `publish` at the same time: it
+  fragment the pages need is one line in `$X/also.paths`, written by the unit that creates it. A roster page never
+  goes there: `publish` refuses it. `publish` holds and names any other new document: an owner's draft, or a file
+  at a roster page no unit recorded. A page no unit recorded is not sent, and `done-check.mjs` reports it
+  unfinished. Units may run `publish` at the same time: it
   works under a lock. A file at a destination of `$X/reserved.paths`, or a symbolic or hard link, is refused.
   `publish` also stops (exit 2) on a second file at a pass page's path, such as `visit.html` beside the recorded
   `visit/index.html`: remove or rename it.
@@ -259,9 +262,11 @@ The units:
   (`handoff-contract.md` § 3, `header_parity`).
 - **The end.** The guard stays through every check and every retry: a `pages_not_live` gap is closed by a
   re-deploy, and that re-deploy needs it. List each opening document that changed or went missing on disk:
-  `$F check --manifest $X/content-freeze.json`. Its `changed` and `missing` lines are opening documents, tracked by
-  git or not; a moved one shows as `missing`. Its `added` lines are the pass's own documents and held drafts. The
-  guard sent no opening document. Name each `changed` or `missing` one in the report and leave it as it is. The
+  `$F check --manifest $X/content-freeze.json`. Its `changed` and `missing` lines are files that were under
+  `content/` at the opening, tracked by git or not; a moved one shows as `missing`. Its `added` lines are the pass's
+  own documents and held drafts. The manifest skips dot-entries: a document below a dot-directory is in
+  `opening.paths`, so the pass never sends it, but an edit to it is not in this report. The guard sent no opening
+  document. Name each `changed` or `missing` one in the report and leave it as it is. The
   owner settles that edit, and the pass never restores it. Exit 1 is expected here: it never stops the pass. Then
   `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's — `replica
   handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail

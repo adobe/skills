@@ -89,7 +89,6 @@ for (const slug of order) {
     if (!converted.has(id) || converted.get(id) === slug) { converted.set(id, slug); convert.push({ id, edsBlockName: edsNameOf(id), ...kind }); }
     else reuse.push({ id, edsBlockName: edsNameOf(id), convertedBy: converted.get(id), ...kind });
   }
-  const pending = ['pending', 'stale', 'failed'].includes(p.delivery && p.delivery.status);
   steps.push({ slug, path: p.path, templateId: p.templateId, status: p.delivery.status, isRepresentative: convert.length > 0, convert, reuse });
 }
 

@@ -20,19 +20,21 @@ import { dirname, join, resolve } from 'node:path';
 
 /**
  * The track of the open extend pass in a run ledger (JSON lines), or null. A line that is not JSON is skipped; a
- * track is read in lower case, as ledger.mjs writes it. Throws when more than one pass is open: the ledger then does
- * not say which pass may publish. Pure.
+ * track is read in lower case, as ledger.mjs writes it. Throws when more than one pass is open, or one without a
+ * track: the ledger then does not say which pass may publish. Pure.
  */
 export function openExtendPass(ledgerText) {
   const open = new Set();
   for (const raw of String(ledgerText).split('\n')) {
     let l;
     try { l = JSON.parse(raw); } catch { continue; }
-    if (!l || l.skill !== 'stardust:replica' || l.phase !== 'extend' || !l.track) continue;
-    const track = String(l.track).trim().toLowerCase();
+    if (!l || l.skill !== 'stardust:replica' || l.phase !== 'extend') continue;
+    const track = String(l.track ?? '').trim().toLowerCase();
     if (l.event === 'start') open.add(track);
     if (l.event === 'end') open.delete(track);
   }
+  // ledger.mjs writes `extend start` without a track when --track is missing or blank: a pass is open then, and no guard can name it
+  if (open.has('')) throw new Error('an extend pass was opened without a track — nothing was sent or written; close it with `ledger.mjs replica extend end`, then open the pass again with --track x<N>');
   if (open.size > 1) throw new Error(`more than one extend pass is open (${[...open].sort().join(', ')}) — nothing was sent or written; close the earlier pass with its \`extend end\` line first`);
   return [...open][0] || null;
 }

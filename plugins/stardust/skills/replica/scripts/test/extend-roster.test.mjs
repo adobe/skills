@@ -292,6 +292,25 @@ await check('publish stops when also.paths names a file at a destination another
   }
 });
 
+await check('publish stops when also.paths names a file at a roster page no unit recorded: a page is published through `output`, never as a fragment — exit 2, the guard unchanged; the same file recorded by a unit is published', () => {
+  assert.equal(prun('publish', '--pass', X).code, 0);
+  const before = pr('content/.deploy-allow');
+  try {
+    pw('content/gone.html', '<main>a roster page, written but not recorded by a unit</main>\n');
+    pw(`${X}/also.paths`, '/gone.html\n');
+    const r = prun('publish', '--pass', X);
+    assert.equal(r.code, 2, r.err); assert.match(r.err, /refused \/gone\.html — \/gone is a roster page: a unit records it with `output`, not in also\.paths/);
+    assert.equal(pr('content/.deploy-allow'), before);
+    rmSync(join(proj, X, 'also.paths'));
+    assert.equal(prun('output', '--pass', X, '--unit', 'c-gone', '--files', 'gone.html').code, 0);
+    assert.equal(prun('publish', '--pass', X).code, 0);
+    assert.match(pr('content/.deploy-allow'), /^\/gone$/m);
+  } finally {
+    for (const f of ['content/gone.html', `${X}/also.paths`, `${X}/outputs/c-gone.paths`]) rmSync(join(proj, f), { force: true });
+    pw('content/.deploy-allow', before);
+  }
+});
+
 await check('publish: the guard names its pass, then lists the recorded outputs and also.paths as DA paths — never an opening document; a draft and a file at a roster page no unit recorded are held and named; a refused entry writes nothing', () => {
   pw('content/gone.html', '<main>a file at a roster page no unit recorded</main>\n');
   pw('content/draft.html', '<main>an owner draft, made during the pass</main>\n');
@@ -420,6 +439,22 @@ await check('two passes open in the ledger at once: the real deployer and the re
   pw('stardust/status.jsonl', `${closed}${line({ phase: 'extend', event: 'end', track: 'X2' })}`);
   rmSync(join(proj, 'content', '.deploy-allow')); puts.length = 0;
   assert.equal((await deploy('--force')).code, 0, 'X2 closes x2: no pass is open');
+});
+
+await check('an `extend start` line without a track — ledger.mjs writes one when --track is missing or blank — is an open pass that no guard can name: the real deployer and the real localizer refuse (no PUT, no byte changed), publish refuses, and its own `extend end` line clears it', async () => {
+  const closed = pr('stardust/status.jsonl');
+  for (const start of [{ phase: 'extend', event: 'start' }, { phase: 'extend', event: 'start', track: '   ' }]) {
+    pw('stardust/status.jsonl', `${closed}${line(start)}`); puts.length = 0;
+    const d = await deploy('--force');
+    assert.equal(d.code, 2, d.err); assert.match(d.err, /an extend pass was opened without a track/); assert.deepEqual(puts, []);
+    const l = spawnSync(process.execPath, [join(DEPLOY, 'localize-links.mjs'), '--source-host', 'src.test', '--content', 'content'], { cwd: proj, encoding: 'utf8' });
+    assert.equal(l.status, 1, l.stderr); assert.match(l.stderr, /opened without a track/);
+    const p = prun('publish', '--pass', X);
+    assert.equal(p.code, 2, p.err); assert.match(p.err, /opened without a track/);
+  }
+  assert.equal(pr('content/index.html'), INDEX);
+  pw('stardust/status.jsonl', `${closed}${line({ phase: 'extend', event: 'start' })}${line({ phase: 'extend', event: 'end' })}`); puts.length = 0;
+  assert.equal((await deploy('--force')).code, 0, 'the line has its end: no pass is open');
 });
 
 da.close();

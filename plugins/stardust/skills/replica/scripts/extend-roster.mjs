@@ -50,7 +50,8 @@
  *             at a roster page no unit recorded) is held and named. An entry that is missing, a symbolic or hard
  *             link, or whose destination was taken at the opening, exits 2 with nothing written. So does a second
  *             file at a destination a pass document holds (`visit.html` beside `visit/index.html`), listed in
- *             also.paths or not: rollout's autofix and library take the first file that matches a page's path. It reads
+ *             also.paths or not: rollout's autofix and library take the first file that matches a page's path. An
+ *             also.paths entry at a roster page no unit recorded exits 2 too: `output` publishes a page. It reads
  *             the records and replaces the guard under a lock (deploy/file-lock.mjs), so units may run it at once.
  *             Run it after every `output` and before every deploy of the pass; delete the guard after `extend end`.
  *
@@ -307,7 +308,9 @@ function buildGuard(o, track) {
     const dest = pathKey(`/${f}`);
     const why = !docs.has(f) ? `listed, but no such document under ${o.content}`
       : aliased(o.content, f) ? ALIASED
-        : takenWhy(reserved, dest) || (holder.has(dest) && holder.get(dest) !== f ? `shares the destination ${dest} with /${holder.get(dest)}` : '');
+        : takenWhy(reserved, dest) || (holder.has(dest) && holder.get(dest) !== f ? `shares the destination ${dest} with /${holder.get(dest)}` : '')
+          // a page is published by the unit that recorded it: also.paths is for fragments, as `output` says
+          || (pages.has(dest) && !owner.has(dest) ? `${dest} is a roster page: a unit records it with \`output\`, not in also.paths` : '');
     if (why) problems.push(`/${f} — ${why}`); else { holder.set(dest, f); keep.add(f); }
   }
   for (const f of docs) {
