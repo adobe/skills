@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.1.0](https://github.com/adobe/skills/compare/plugin/web/v2.0.0...plugin/web/v2.1.0) (2026-11-27)
+
+
+### Features
+
+* **web:** mark path-only site scan language tags ([#832](https://github.com/adobe/skills/issues/832)) ([309709f](https://github.com/adobe/skills/commit/309709f6ae75ab861c83ab491e82b2d953aa5a5c))
+
 # [2.0.0](https://github.com/adobe/skills/compare/plugin/web/v1.1.0...plugin/web/v2.0.0) (2026-11-24)
 
 
