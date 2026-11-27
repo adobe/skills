@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/adobe/skills/compare/stardust-v1.6.2...stardust-v1.7.0) (2026-11-27)
+
+
+### Features
+
+* **stardust:** a delivery unit closes only when every page it shipped has a gate row ([#788](https://github.com/adobe/skills/issues/788)) ([d53aadc](https://github.com/adobe/skills/commit/d53aadc8ffe463a642d8312320b6693a16604f6c)), closes [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#790](https://github.com/adobe/skills/issues/790) [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793)
+
 ## [1.6.2](https://github.com/adobe/skills/compare/stardust-v1.6.1...stardust-v1.6.2) (2026-11-27)
 
 
