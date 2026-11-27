@@ -29,7 +29,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b|--pages-file f] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60] [--skip-captured <state>] [--select-only]`
+- `extract/crawl.mjs` — pages, shots, capture gaps — `--url <u> [--pages a,b] [--max 25] [--link-first] [--out <dir>] [--dynamics] [--page-timeout 60]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
@@ -43,8 +43,8 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/extend-roster.mjs` — extend pass — `select --candidates f --out f [--named] [--max n] [--reserved-out f --opening f]`; `output --pass d --unit u --files a,b`; `publish --pass d`
-- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b|--paths-if-present a,b|--from <manifest>]`; `check`
+- `replica/extend-roster.mjs` — extend pass (`extend-pass.md`) — `select --candidates f --out f`; `output --pass d --unit u --files a`; `publish --pass d`
+- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--sample <n>] [--prune-captures] [--no-preflight] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL, 4 = captures do not fit on disk
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`; `--unit <slug,…|@file>` = a delivery unit's close check, exit 2 = a page without a gate row or with a stale pass
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`
@@ -75,7 +75,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/da-library.mjs` — DA library — `[--dry-run]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--content <dir>] [--json]`
-- `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--track <x<N>>] [--json]`
+- `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
