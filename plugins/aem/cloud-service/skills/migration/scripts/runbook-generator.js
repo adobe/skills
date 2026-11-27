@@ -101,6 +101,7 @@ const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan, scanUnsupportedRunmodes, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
 const { runAcsCommonsScan, isAcsCommonsTarget, linkAcsBpaFindings, summarizeAcsBpaTargets } = require('./acs-commons-scan-runner.js');
+const { getAcsCommonsFilter } = require('./unified-collection-reader.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
@@ -674,6 +675,16 @@ async function gatherFindings(options = {}) {
         if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
       }
     }
+  }
+
+  // ── acsCommons: a BPA CSV exported with the ACS Commons filter has none of its ACS
+  //    findings; say so in the section and the warnings (the repository scan still ran). ──
+  const acsFilter = bpaMode === 'csv' ? getAcsCommonsFilter(collectionsDir) : null;
+  if (acsFilter && findingsByPattern.acsCommons) {
+    const hidden = `${acsFilter.total - acsFilter.shown} of ${acsFilter.total} findings`;
+    findingsByPattern.acsCommons.push({ location: 'BPA report', detail: `exported with the ACS Commons filter: ${hidden} are not in the CSV. Export it again with ACS Commons findings included to list them`, severity: 'medium', informational: true });
+    rawFindingsByPattern.acsCommons.push({ pattern: 'acsCommons', kind: 'bpa-filtered', file: null, line: null, shown: acsFilter.shown, total: acsFilter.total, snippet: null });
+    scanWarnings.push(`The BPA CSV was exported with the ACS Commons filter: ${hidden} are not in it, so the runbook cannot list the ACS AEM Commons findings from BPA. Export the report again with ACS Commons findings included.`);
   }
 
   // ── acsCommons without ACS rows from BPA (CAM today): BPA rows of the other

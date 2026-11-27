@@ -655,6 +655,20 @@ function processAcsCommonsFindings(findings) {
 }
 
 /**
+ * A BPA CSV exported with the report's ACS Commons filter leaves out ACS AEM Commons
+ * findings. Its `__count.total` row then counts fewer findings (`identifier`) than the
+ * `data.unfilteredTotal` of its context. Returns `{ shown, total }`, or null when nothing is hidden.
+ */
+function readAcsCommonsFilter(findings) {
+  const row = findings.find(f => f.code === '_COUNT' && f.type === '__count.total');
+  if (!row) return null;
+  let total;
+  try { total = Number(JSON.parse(row.context || '{}')?.data?.unfilteredTotal); } catch (_) { return null; }
+  const shown = Number(row.identifier);
+  return Number.isFinite(total) && Number.isFinite(shown) && total > shown ? { shown, total } : null;
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -841,6 +855,8 @@ function createUnifiedCollection(bpaData, outputDir) {
     console.log(`Found ${acsIds.length} ACS AEM Commons identifiers`);
   }
 
+  const acsCommonsFilter = readAcsCommonsFilter(findings);
+
   // Create unified collection structure with metadata
   const subtypeKeys = Object.keys(subtypes);
   const unifiedCollection = {
@@ -853,7 +869,9 @@ function createUnifiedCollection(bpaData, outputDir) {
       parsedSubtypes: PARSED_SUBTYPES,
       // API → class → BPA bundles (java.io.inputstream only); lets the reader
       // emit one target per bundle so rows can be grouped per bundle downstream.
-      ...(inputStreamBundles ? { inputStreamBundles } : {})
+      ...(inputStreamBundles ? { inputStreamBundles } : {}),
+      // Set when the CSV was exported with the ACS Commons filter: its findings are not in it.
+      ...(acsCommonsFilter ? { acsCommonsFilter } : {})
     }
   };
 

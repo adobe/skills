@@ -200,7 +200,9 @@ function runAcsCommonsScan(workspaceRoot) {
   return { ok: true, findings: out.findings, rawFindings: out.rawFindings, warnings: [] };
 }
 
-const ACS_NAME = /(^|[\s/:])(com\.adobe\.acs\.|acscommons\.)|acs-aem-commons|(^|[/:])acs-commons\b/;
+// ACS AEM Commons only: the BPA report's ACS Commons filter keeps ACS AEM Tools (com.adobe.acs.tools,
+// acs-aem-tools-*, /apps/acs-tools) and other com.adobe.acs packages, so they are not matched either.
+const ACS_NAME = /(^|[\s/:])(com\.adobe\.acs\.commons\.|acscommons\.)|acs-aem-commons|(^|[/:])acs-commons\b/;
 
 /** True when a bundle, package, class or JCR path name belongs to ACS AEM Commons. */
 function isAcsCommonsName(value) {

@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { runAcsCommonsScan, featureOf } = require('./acs-commons-scan-runner.js');
+const { runAcsCommonsScan, featureOf, isAcsCommonsName } = require('./acs-commons-scan-runner.js');
 const { gatherFindings, generateRunbook, renderRunbook, PATTERN_META, CANONICAL_PATTERNS } = require('./runbook-generator.js');
 const { getBpaFindings } = require('./bpa-findings-helper.js');
 
@@ -277,6 +277,7 @@ test('with a BPA CSV the ACS section lists the installed artifacts and one row p
   assert.ok(!rows.some(f => /com\.acme/.test(f.location)), 'customer bundles are not ACS rows');
   assert.strictEqual(rows.filter(f => /BPA `LUI`/.test(f.detail)).length, 1, 'no second row from the cross-pattern link');
   assert.strictEqual(gathered.sourceByPattern.acsCommons, 'csv+content-scan');
+  assert.ok(!rows.some(f => /ACS Commons filter/.test(f.detail)), 'an unfiltered export has no filter row');
 });
 
 test('a BPA source without ACS rows (CAM today) does not mark ACS clean: the local scan runs', async () => {
@@ -291,4 +292,30 @@ test('the cross-pattern BPA link also recognises /apps/acs-commons paths', async
   const preFetchedBpa = { lui: [{ className: '/apps/acs-commons/components/utilities/sitemap/dialog', identifier: 'legacy.dialog.classic' }] };
   const gathered = await gatherFindings({ workspaceRoot: root, preFetchedBpa, getEffectivePom: noPom });
   assert.ok(gathered.findingsByPattern.acsCommons.some(f => f.informational && /BPA `lui`/.test(f.detail)));
+});
+
+test('names match ACS AEM Commons only, like the BPA ACS Commons filter: not ACS AEM Tools', () => {
+  for (const name of ['com.adobe.acs.acs-aem-commons-bundle', 'adobe/consulting:acs-aem-commons-content:4.1.0', 'com.adobe.acs.commons.util.ParameterUtil',
+    'acscommons.com.google.common.cache.LocalCache', '/apps/acs-commons/components/content/audio', 'acme_packages:acs-commons-generic-lists']) {
+    assert.ok(isAcsCommonsName(name), name);
+  }
+  for (const name of ['com.adobe.acs.acs-aem-tools-bundle', 'com.adobe.acs.tools.csv.impl.CsvUtil', '/apps/acs-tools/components/aemfiddle',
+    'adobe/consulting:acs-aem-tools-content:1.0.2', 'adobe/consulting:com.adobe.acs.bundles.sling-models:1.1.0', 'com.acme.core']) {
+    assert.ok(!isAcsCommonsName(name), name);
+  }
+});
+
+test('a BPA CSV exported with the ACS Commons filter is flagged: the section and the warnings say how many findings are hidden', async () => {
+  const root = acsProject();
+  const rows = [
+    'LUI,legacy.user.interface,legacy.dialog.classic,MAJOR,/apps/acme/components/teaser/dialog,\\N,A classic dialog was found.,https://www.adobe.com/go/aem_pd_LUI,\\N',
+    '_COUNT,__count.total,\\N,\\N,2,\\N, count: 2,\\N,"{""data"": {""unfilteredTotal"": 9}}"',
+  ];
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: bpaCsv(root, rows), collectionsDir: path.join(root, 'uc'), getEffectivePom: noPom });
+  const filterRow = gathered.findingsByPattern.acsCommons.find(f => /ACS Commons filter/.test(f.detail));
+  assert.ok(filterRow, 'the section names the filtered export');
+  assert.ok(filterRow.informational);
+  assert.match(filterRow.detail, /7 of 9 findings/);
+  assert.ok(gathered.analyzerWarnings.some(w => /ACS Commons filter/.test(w) && /7 of 9/.test(w)));
+  assert.ok(gathered.findingsByPattern.acsCommons.some(f => /Generic Lists/.test(f.detail)), 'the repository scan still runs');
 });

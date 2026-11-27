@@ -486,6 +486,11 @@ function processContentFromUnified(subtypeData, targets, pattern, subtype) {
   return count;
 }
 
+/** `{ shown, total }` when the cached BPA CSV was exported with the ACS Commons filter, else null. */
+function getAcsCommonsFilter(collectionsDir = './unified-collections') {
+  return readUnifiedCollection(collectionsDir)?.meta?.acsCommonsFilter || null;
+}
+
 /**
  * Fetch findings from unified collection (mimics cam-bpa-fetcher behavior).
  *
@@ -734,6 +739,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  getAcsCommonsFilter,
   hasUnifiedCollection,
   getAvailablePatterns,
   fetchUnifiedBpaFindings,
