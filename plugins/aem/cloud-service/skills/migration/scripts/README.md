@@ -38,6 +38,7 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 |---|---|---|
 | `scheduler`, `resourceChangeListener`, `event-migration`, `assetApi` | `cascade` | BPA/CAM → CSV → analyzer → LLM scan |
 | `replication` | `cascade` | BPA/CAM → CSV (`replication.agent`) → analyzer → LLM scan |
+| `admin-resource-resolver` | `cascade` | analyzer → LLM scan (no BPA subtype) |
 | `htlLint` | `html-scan` | `htl-lint-runner.js` (pure-Node regex over `.html`) |
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |

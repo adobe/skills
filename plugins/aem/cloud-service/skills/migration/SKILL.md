@@ -5,7 +5,7 @@ description: |
   CAM/MCP discovery, one pattern per session. Use to review/scan a project for AEMaaCS
   migration — generates a read-only migration-runbook.md — or to fix specific Cloud Service
   blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
-  DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
+  DAM AssetManager, administrative resource resolvers (admin-resource-resolver), HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
   Guava cache → Caffeine (guavaCache), java.io.InputStream triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
@@ -72,6 +72,7 @@ Find the branch for the request and read its file before anything else. Each of 
    - `replication` → **`{code-assessment}/replication/SKILL.md`** *(pattern guide)*
    - `eventListener` / `eventHandler` → **`{code-assessment}/event-migration/SKILL.md`** *(pattern guide — both JCR and OSGi Event Admin paths)*
    - `assetApi` → **`{code-assessment}/asset-manager/SKILL.md`** *(pattern guide)*
+   - `admin-resource-resolver` → **`{code-assessment}/admin-resource-resolver/guide.md`** *(pattern guide)*
    - `htlLint` → **`{code-assessment}/references/data-sly-test-redundant-constant.md`** *(reference — HTL lint is a single shared reference, not a dedicated pattern guide)*
    - `vault-package-dependencies` → **[references/vault-package-dependencies.md](references/vault-package-dependencies.md)** *(reference — heuristic `pom.xml` scan)*
    - `guavaCache` → **[references/guava-cache.md](references/guava-cache.md)** *(reference — Guava cache → Caffeine)*
@@ -135,7 +136,7 @@ If the user asks to fix everything or BPA mixes patterns, **ask which pattern fi
 
 First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows), I (repository restructuring).
 
-Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
+Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `admin-resource-resolver`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
 
@@ -147,7 +148,7 @@ In this order, and stop at the first that has findings for the active pattern:
 
 1. **The runbook cache**, `./migration-runbook.json`: reuse `findingsByPattern[<pattern>]` and tell the user that you do. Heuristic entries (`htlLint`, `osgiConfig`) are candidates: re-confirm each before editing.
 2. **`getBpaFindings`** for BPA patterns (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `cdw`). If MCP fails, obey **MCP errors and fallback**.
-3. **The pattern's own discovery:** `rg` for `htlLint`; `scripts/input-stream-runner.js` for `inputStream`, which always runs once because BPA names classes and not lines; the inventory of Branch E for `dispatcherConversion`.
+3. **The pattern's own discovery:** `{code-assessment}/scripts/analyze.sh <workspace> --pattern admin-resource-resolver` for `admin-resource-resolver`, which has no BPA subtype; `rg` for `htlLint`; `scripts/input-stream-runner.js` for `inputStream`, which always runs once because BPA names classes and not lines; the inventory of Branch E for `dispatcherConversion`.
 
 Every path serves **five findings per batch**. How to read the cache, the envelope, and the rules for `lui`, `inputStream`, `htlLint` and `osgiConfig` targets: [references/targets.md](references/targets.md). Read it before the first batch.
 

@@ -30,10 +30,10 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 16 migration patterns with a valid strategy', () => {
+test('registry includes all 17 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'admin-resource-resolver', 'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
     'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex', 'assetWorkflowMigration',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
@@ -48,6 +48,8 @@ test('registry includes all 16 migration patterns with a valid strategy', () => 
   assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
   assert.strictEqual(PATTERN_META.assetWorkflowMigration.strategy, 'content-scan');
   assert.deepStrictEqual(PATTERN_META.assetWorkflowMigration.bpaSlugs, []);
+  assert.strictEqual(PATTERN_META['admin-resource-resolver'].strategy, 'cascade');
+  assert.deepStrictEqual(PATTERN_META['admin-resource-resolver'].bpaSlugs, []);
 });
 
 test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
@@ -904,6 +906,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
     { pattern: 'scheduler', file: 'A.java', line: 3, snippet: 'Scheduler s;' },
     { pattern: 'resource-change-listener', file: 'B.java', line: 5, snippet: 'impl RCL' },
     { pattern: 'asset-manager', file: 'C.java', line: 7, snippet: 'AssetManager.createAsset' },
+    { pattern: 'admin-resource-resolver', file: 'E.java', line: 11, snippet: 'getAdministrativeResourceResolver(null)' },
     { pattern: 'inject-in-sling-model', file: 'D.java', line: 9, snippet: '@Inject' },
     { pattern: 'vault-package-dependencies', file: 'pom.xml', line: 12, snippet: '<group>day/cq60/product</group>' },
   ], warnings: ['w1'] };
@@ -913,6 +916,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
   assert.ok(res.findingsByPattern.scheduler, 'scheduler kept');
   assert.ok(res.findingsByPattern.resourceChangeListener, 'resource-change-listener → resourceChangeListener');
   assert.ok(res.findingsByPattern.assetApi, 'asset-manager → assetApi');
+  assert.strictEqual(res.rawFindingsByPattern['admin-resource-resolver'][0].file, 'E.java', 'admin-resource-resolver kept');
   assert.ok(!res.findingsByPattern['inject-in-sling-model'], 'non-migration slug dropped');
   assert.ok(!res.findingsByPattern['vault-package-dependencies'], 'vault-package-dependencies has no analyzer detector — dropped like non-migration slugs, detected via pom-scan instead');
   assert.deepStrictEqual(res.warnings, ['w1']);
@@ -1089,6 +1093,31 @@ test('benign "pattern not in CSV" stays silent and counts as clean', async () =>
   assert.strictEqual(gathered.findingsByPattern.scheduler.length, 0);
   assert.ok(!gathered.needsLlmScan.includes('scheduler'));
   assert.ok(!gathered.analyzerWarnings.some(w => /scheduler/.test(w)), 'no warning for a benign absence');
+});
+
+test('admin-resource-resolver has no BPA subtype: the analyzer owns it even when a BPA source is present', async () => {
+  const root = mkworkspace();
+  const csv = writeBpaCsv(root);
+  const payload = { findings: [
+    { pattern: 'admin-resource-resolver', file: 'core/Legacy.java', line: 12, snippet: 'factory.getAdministrativeResourceResolver(null)' },
+  ], warnings: [] };
+  const stub = writeAnalyzeStub(root, `#!/usr/bin/env bash\ncat <<'JSON'\n${JSON.stringify(payload)}\nJSON\n`);
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), analyzeScript: stub,
+  });
+  assert.strictEqual(gathered.sourceByPattern['admin-resource-resolver'], 'analyzer');
+  assert.strictEqual(gathered.rawFindingsByPattern['admin-resource-resolver'][0].line, 12);
+  assert.ok(!gathered.needsLlmScan.includes('admin-resource-resolver'));
+});
+
+test('admin-resource-resolver is not reported clean when the analyzer cannot run', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: writeBpaCsv(root), collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern['admin-resource-resolver'], undefined);
+  assert.ok(gathered.needsLlmScan.includes('admin-resource-resolver'));
 });
 
 test('runbook lui is filtered to dialog sub-types when sourced from BPA', async () => {

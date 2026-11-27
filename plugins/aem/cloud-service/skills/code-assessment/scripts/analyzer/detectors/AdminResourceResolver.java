@@ -123,10 +123,21 @@ public final class AdminResourceResolver implements Detector {
             warnings.add("parse-skip: " + o.rel + " — " + ex.getClass().getSimpleName());
             return;
         }
+        boolean inBlockComment = false;
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
+            String trimmed = line.trim();
+            if (inBlockComment) {
+                inBlockComment = !trimmed.contains("*/");
+                continue;
+            }
+            if (trimmed.startsWith("/*")) {
+                inBlockComment = !trimmed.contains("*/");
+                continue;
+            }
+            if (trimmed.startsWith("#") || trimmed.startsWith("!") || trimmed.startsWith("//")) continue;
             if (ADMIN_MAPPING.matcher(line).find() || ADMIN_DEFAULT_USER.matcher(line).find()) {
-                out.add(new Finding(pattern(), o.rel, i + 1, line.trim()));
+                out.add(new Finding(pattern(), o.rel, i + 1, trimmed));
             }
         }
     }

@@ -309,6 +309,7 @@ assert_absent  "service resolver not flagged"                  "$OUT" 'CleanServ
 assert_absent  "project's own AUTH_ADMIN not flagged"          "$OUT" 'UnrelatedAuthAdmin.java'
 assert_absent  "admin-like user names not flagged"             "$OUT" 'amended-clean.cfg.json'
 assert_absent  "non-service-user config not flagged"           "$OUT" 'OtherService.cfg.json'
+assert_absent  "commented-out admin mappings not flagged"      "$OUT" 'amended-commented'
 assert_absent  "comment and string mentions not flagged"       "$OUT" 'AdminFactoryCaller.java","line":\(19\|21\)'
 
 echo "----"

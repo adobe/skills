@@ -1,0 +1,4 @@
+{
+  // Example only, not active: "com.example.core:docService=admin"
+  "user.mapping": ["com.example.core:reportService=report-reader"]
+}
