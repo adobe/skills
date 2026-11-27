@@ -41,6 +41,8 @@ ACS AEM Commons is an open-source library maintained outside Adobe's AEM product
 
 These are starting points, not a compatibility guarantee: confirm each feature against the ACS AEM Commons documentation for the version the customer upgrades to.
 
+Sources for the package rows: the [ACS AEM Commons Maven guide](https://adobe-consulting-services.github.io/acs-aem-commons/pages/maven.html) (the 6.0.0 rename of `acs-aem-commons-content` to `acs-aem-commons-all`, the `cloud` classifier, `acs-aem-commons-bundle` as `provided`) and the [published `acs-aem-commons-all` versions](https://repo1.maven.org/maven2/com/adobe/acs/acs-aem-commons-all/maven-metadata.xml), which start at 6.0.0.
+
 ## Output
 
 The runbook section **ACS AEM Commons (third-party)** lists each finding with its location and what it needs, marked *Report only — third-party, customer-owned*. Put the same list in the migration runbook handed to the customer under third-party integrations, with an effort note per feature (for example "Redirect Manager: 1,240 rules to migrate and verify").
