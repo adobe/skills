@@ -51,6 +51,19 @@ rescoping before the suite is run against 0.14.0:
   merge-by-slug parallelism contract; new evals are needed rather than
   rescoped ones.
 
+### 0.33.0 notes
+
+- **`reskin-content-fidelity` uses a live-URL donor**, so
+  `donor_ingestion_design_source` and `provenance` stay correct for it.
+  A Figma-donor run would be scored on `figma-donor.mjs capture` and
+  node-id provenance instead (`donor-tokens.json#nodeRefs`,
+  `fetchTechnique: "figma-rest"` in `canon-source/_crawl-log.json`).
+- **`reskin-figma-full-site` scores the Figma-donor path** against the
+  real Figma API, with `FIGMA_TOKEN` and a file the runner pins: skill
+  activation, `--confidential`, the `--all` re-crawl and full-site
+  delivery. The script's own tests use a synthetic server instead
+  (`skills/reskin/scripts/test/fixtures/figma-kit/fake-figma.mjs`).
+
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
 master skill.
@@ -95,6 +108,7 @@ v2 evals without modification.
 | `replica-reference-rendering/` | Entry point (`replica`) | The first round of a scroll-jacked page whose stitched capture stalls and which links a static page mode: the page record and the reference stay the inventory URL, no substitution the owner did not accept, the pixel probe recorded as gate-blocked, the owner told how a pixel number could honestly be had. |
 | `rollout-gated-archetype/`   | Entry point (`rollout`)   | A replica-flow site of six migrated pages with no AEM target: inventory, block dedup and plan from the scripts; a page type whose archetype is over the bar with no residual entry is blocked with its gate command, one with a documented residual ships; default content is not planned as a block; nothing is reported as delivered. |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
+| `reskin-figma-full-site/`    | Entry point (`reskin`)    | A whole live site on a confidential Figma file: the reskin Figma path loads (`figma-donor` capture → curation rules → curate → stamp), a capped earlier crawl is redone with `--all`, pages typed, nothing Figma-derived tracked by git, the token in no file, `ledger.json#delivery` full-site unless the user opts out. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → `replica` by default, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |

@@ -50,6 +50,8 @@ const ALLOW = [
   'adoberesources.net', 'adobedc.net',
   // the Internet Archive API spec-inventory and spec-fetch read captures from (--archive)
   'archive.org',
+  // the Figma REST API the reskin Figma donor reads (api.figma.com) and design links
+  'figma.com',
 ];
 // Synthetic or runner-pinned eval sites — allowed under evals/ only.
 const EVAL_ALLOW = ['ledgerline.com', 'stripe.com'];
