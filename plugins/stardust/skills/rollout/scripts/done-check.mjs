@@ -16,10 +16,12 @@
  *   pages_unfinished:N             coverage rows not yet verified (pending, content-pending, converting, deployed, stale)
  *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false
  *   pages_not_live:N: <paths>      deployed or verified rows that do not answer 200 on the live host
- *   source_url_404:N: <paths>      the source's URL forms of a deployed or verified row (source.sourceUrl's path as the
- *                                  source wrote it, else the row's path; its no-slash and trailing-slash forms; `.html`
- *                                  only when the source used it) that the live host answers with neither 200 nor a 3xx
- *                                  redirect (HEAD, not followed): a link or bookmark to the old URL 404s
+ *   source_url_404:N: <paths>      reskin flow (state.json `flow`) only: the source's URL forms of a deployed or verified
+ *                                  row (source.sourceUrl's path as the source wrote it, plus its `.html`-dropped form
+ *                                  when the source used `.html`) that the live host answers with neither 200 nor a 3xx
+ *                                  redirect (HEAD, not followed): a link or bookmark to the old URL 404s. Clear it with a
+ *                                  `stardust/redirects.tsv` row (that form → the delivered path) wired into the redirects
+ *                                  sheet. No slash variant the source did not write is probed (an EDS leaf 404s on `/a/`)
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -182,20 +184,24 @@ export async function probeLive(host, paths, { fetchImpl = fetch, concurrency = 
 }
 
 /**
- * The URL forms a row's source address may be reached by: the source's path as written (`/a`, `/a/`, `/a.html`,
- * `/a/index.html`), then its no-slash and trailing-slash forms. `.html` stays only when the source used it.
+ * The URL forms a row's source address is reached by: the source's path as written (`/a`, `/a/`, `/a.html`,
+ * `/a/index.html`), then, when the source used `.html`, its `.html`-dropped form (`/a`, `/a/`). A slash variant the
+ * source never wrote is not a form: an EDS leaf answers `/a/` with 404 by design.
  */
 export function sourceUrlForms(page) {
   const raw = (page.source && page.source.sourceUrl) || pathOf(page);
   let path;
   try { path = new URL(raw, 'https://source.invalid').pathname; } catch { path = pathOf(page); }
-  const base = path.replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
-  const bare = base.replace(/\/+$/, '') || '/';
-  return [...new Set([path, bare, bare === '/' ? '/' : `${bare}/`])];
+  const dropped = path.replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+  return [...new Set([path, dropped])];
 }
 
-/** HEAD every source URL form of the delivered rows on the live host; returns the forms answering neither 200 nor 3xx. */
-export async function probeSourceForms(host, pages, { fetchImpl = fetch, concurrency = 8 } = {}) {
+/**
+ * HEAD every source URL form of the delivered rows on the live host; returns the forms answering neither 200 nor 3xx.
+ * Reskin flow only (`flow`, state.json): any other flow returns null — not probed, so no gap.
+ */
+export async function probeSourceForms(host, pages, { flow = null, fetchImpl = fetch, concurrency = 8 } = {}) {
+  if (flow !== 'reskin') return null;
   const origin = /^https?:\/\//.test(host) ? host.replace(/\/$/, '') : `https://${host}`;
   const paths = [...new Set(pages.filter((p) => DELIVERED.has(statusOf(p))).flatMap(sourceUrlForms))];
   const failing = new Set();
@@ -240,10 +246,11 @@ async function main() {
 
   const pages = pagesDoc.pages || [];
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
+  const flow = (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null;
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
-  const sourceUrl404 = OFFLINE ? null : await probeSourceForms(host, pages);
+  const sourceUrl404 = OFFLINE ? null : await probeSourceForms(host, pages, { flow });
   const chrome = arg('chrome', 'stardust/chrome');
-  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host, decisions: (readJSON(join(chrome, 'header-decisions.json'), {}) || {}).decisions || [] });
+  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host, decisions: (readJSON(join(chrome, 'header-decisions.json'), {}) || {}).decisions || [] });
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });

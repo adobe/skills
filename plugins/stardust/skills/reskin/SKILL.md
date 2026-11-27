@@ -320,9 +320,9 @@ the archetype and, through the bridge, moves siblings to `directed`.
   content-model slot; every module traces to `donor-modules.md` or an
   explicit new-module entry in `mapping.md`.
 - **No donor-token drift.** No colors, fonts, radii, or spacing
-  outside `donor-tokens.json`. An open-licence donor font (OFL, Apache)
-  is self-hosted; a licensed one is adopted as the family *token
-  string* with local fallback, never rebundled (`reference/gates.md` § (d)).
+  outside `donor-tokens.json`. A licensed donor font is adopted as the
+  family *token string* with local fallback, never rebundled
+  (`reference/gates.md` § (d)).
 - **No silent slot drops.** Anything excluded from the gate scope is a
   declared chrome delta or a ledger normalization — declared in
   `mapping.md`, executable in the normalize module.

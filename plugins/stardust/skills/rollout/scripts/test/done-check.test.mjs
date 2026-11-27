@@ -139,13 +139,32 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
 
 // --- source URL forms (stub fetch) ----------------------------------------------------------------
 const sourced = (slug, path, sourceUrl, status = 'verified') => ({ ...row(slug, path, status), source: { sourceUrl } });
-check('the source URL forms: the source path as written, its no-slash and trailing-slash forms; .html only when the source used it', () => {
-  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a')), ['/a', '/a/']);
-  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/?x=1')), ['/a/', '/a']);
-  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a.html')), ['/a.html', '/a', '/a/']);
-  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/index.html')), ['/a/index.html', '/a', '/a/']);
+check('the source URL forms: the source path as written, plus its .html-dropped form when the source used .html; no slash variant the source did not write', () => {
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a')), ['/a']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/?x=1')), ['/a/']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a.html')), ['/a.html', '/a']);
+  assert.deepEqual(sourceUrlForms(sourced('a', '/a', 'https://src.test/a/index.html')), ['/a/index.html', '/a/']);
   assert.deepEqual(sourceUrlForms(sourced('home', '/', 'https://src.test/')), ['/']);
-  assert.deepEqual(sourceUrlForms(row('b', '/b', 'verified')), ['/b', '/b/'], 'no sourceUrl: the row path');
+  assert.deepEqual(sourceUrlForms(row('b', '/b', 'verified')), ['/b'], 'no sourceUrl: the row path');
+});
+
+check('source_url_404: a leaf /a that answers 200 while /a/ answers 404 is complete (EDS leaves 404 on a trailing slash)', async () => {
+  const seen = [];
+  const fetchImpl = async (url) => { const p = new URL(url).pathname; seen.push(p); return { status: p === '/developer/tutorial' ? 200 : 404 }; };
+  const pages = [sourced('t', '/developer/tutorial', 'https://src.test/developer/tutorial')];
+  const failing = await probeSourceForms('main--site--org.aem.live', pages, { flow: 'reskin', fetchImpl });
+  assert.deepEqual(failing, []);
+  assert.deepEqual(seen, ['/developer/tutorial'], 'the slash form is never probed');
+  assert.equal(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], sourceUrl404: failing, library: null }).complete, true);
+});
+
+check('source_url_404 is reskin-only: replica, redesign and a project without a flow are not probed', async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; return { status: 404 }; };
+  const pages = [sourced('a', '/a', 'https://src.test/a/')];
+  for (const flow of ['replica', 'redesign', null]) assert.equal(await probeSourceForms('main--site--org.aem.live', pages, { flow, fetchImpl }), null, String(flow));
+  assert.equal(calls, 0);
+  assert.equal(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], sourceUrl404: null, library: null }).complete, true);
 });
 
 check('source_url_404: /a 404 while /a/ answers 200 is a gap; a 301 is ok; only delivered rows are probed, HEAD without following', async () => {
@@ -153,7 +172,7 @@ check('source_url_404: /a 404 while /a/ answers 200 is a gap; a 301 is ok; only 
   const served = { '/what-is-evh': 404, '/what-is-evh/': 200, '/moved': 301, '/moved/': 200, '/b': 308, '/b/': 200, '/c.html': 500, '/c': 200, '/c/': 200 };
   const fetchImpl = async (url, opts) => { seen.push([new URL(url).pathname, opts.method, opts.redirect]); return { status: served[new URL(url).pathname] ?? 404 }; };
   const pages = [sourced('evh', '/what-is-evh', 'https://src.test/what-is-evh'), sourced('m', '/moved', 'https://src.test/moved'), sourced('b', '/b', 'https://src.test/b/'), sourced('c', '/c', 'https://src.test/c.html'), sourced('p', '/p', 'https://src.test/p', 'pending')];
-  const failing = await probeSourceForms('https://main--site--org.aem.live/', pages, { fetchImpl, concurrency: 3 });
+  const failing = await probeSourceForms('https://main--site--org.aem.live/', pages, { flow: 'reskin', fetchImpl, concurrency: 3 });
   assert.deepEqual(failing, ['/what-is-evh', '/c.html']);
   assert.ok(seen.every(([, m, r]) => m === 'HEAD' && r === 'manual'));
   assert.ok(!seen.some(([p]) => p.startsWith('/p')), 'a pending row is not probed');

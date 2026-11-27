@@ -465,8 +465,7 @@ raises the share; `summary.json` and the fragment record it.
   `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
   out of `ramp PASS n/n` and counted as `(j unserved)`. First serve
   it: when the family's licence is open (OFL or Apache, from the
-  Google Fonts metadata or the donor's licence file), self-host the
-  weights used as woff2 under `/fonts/` with `font-display: swap` and
+  Google Fonts metadata or the donor's licence file), self-host it and
   re-run the gate. Otherwise log a `font.unserved` residual
   (`accepted` when a licensed face's files aren't supplied,
   `needs-owner` when it is meant to be served or the licence is
