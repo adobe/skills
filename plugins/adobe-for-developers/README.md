@@ -50,7 +50,3 @@ In Claude Code and GitHub Copilot CLI, the plugin's `PreToolUse` hook asks even 
 ## App Builder requirements
 
 The four App Builder skills run local helper scripts and the Adobe I/O CLI on the machine holding the app code. They require Node.js 20 or newer and Adobe I/O CLI 11.1.0 or newer; `app-builder-setup` checks these before offering fixes. The CLI sign-in is separate from the connector's sign-in. These workflows need local command execution, not just access to the hosted MCP server.
-
-## Source
-
-Skills and approval scripts are manually synchronized from [`plugins/adp-connector`](https://github.com/adobe-developer-platform/platform-internals-adp-connector/tree/447b10fd165a58ce9915d4dc91863045c3c7ba22/plugins/adp-connector), including the fixes from [adobe-developer-platform/platform-internals-adp-connector#78](https://github.com/adobe-developer-platform/platform-internals-adp-connector/pull/78). This distribution retains Apache-2.0 skill licenses, copies shared references and helpers as real files rather than symlinks, adds skill eval cases, and maintains approval-hook copies for Claude Code and Copilot CLI with an approval fallback if the check cannot run. Plugin manifests and release versions are managed here, not copied from the connector.

@@ -1,6 +1,5 @@
 {
   "skill_name": "dev-console-create-project",
-  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/plugins/adp-connector/skills/dev-console-create-project/SKILL.md",
   "evals": [
     {
       "id": 1,

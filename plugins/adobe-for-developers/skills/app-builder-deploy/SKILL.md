@@ -46,7 +46,7 @@ Summarize in plain words and ask once:
 - **Stage:** *"This will deploy **<project title>** to **Stage**: <n> actions (<names>) and the <extension> UI. They're uploaded to Adobe and replace the current Stage version. Deploy now?"*
 - **Production:** *"This will deploy **<project title>** to **Production**, which real users of <org> can reach once the app is approved. Reply 'deploy to Production' to continue."* Proceed only on an unambiguous Production confirmation.
 
-This consent covers the deploy and one retry after an agreed fix (Step 6), on the same target.
+This consent covers this one deploy only. Ask again before every further deploy, including a retry after a fix and the missing-action recovery in Step 6, and say what changed since the last attempt. Production again needs a new "deploy to Production" reply.
 
 ## Step 4 — Prepare
 
@@ -61,7 +61,7 @@ This consent covers the deploy and one retry after an agreed fix (Step 6), on th
 ## Step 5 — Deploy
 
 Note the time first (`node -e "console.log(Date.now())"`), then run `aio app deploy 2>&1` in the app folder with a 15-minute timeout (usually under a minute), and capture the output. The skip and hook messages go to stderr, so both streams are needed.
-- Use `aio app deploy -a <action>` (one action, faster) only when the developer asks, and only on Stage. It skips the published-app check and the extension registration. Afterwards, judge only that action in the Step 6 check: other actions listed as `missing` or `stale` were not part of this deploy. Retry with the same `-a`, and ask before running a full deploy.
+- Use `aio app deploy -a <action>` (one action, faster) only when the developer asks, and only on Stage. It skips the published-app check and the extension registration. Afterwards, judge only that action in the Step 6 check: other actions listed as `missing` or `stale` were not part of this deploy. A retry uses the same `-a`, after a new confirmation (Step 3); ask separately before running a full deploy instead.
 - Never add `--force-deploy`, `--force-publish` or `--force-events`, and never run `aio app undeploy`, on your own initiative. The only exception is the published-app override below.
 
 ## Step 6 — Report the real outcome
@@ -72,7 +72,7 @@ Classify the output. Don't rely on the exit code:
 |---|---|
 | `deployment will be skipped` | **Skipped:** the Production app is published, so nothing was updated. |
 | `skipped by hook` | **Partial:** name the part that was skipped. |
-| Non-zero exit or an error | **Failed:** nothing new is live for the part that failed. Use `references/deploy-failures.md`, offer the fix, and retry once after consent. |
+| Non-zero exit or an error | **Failed:** nothing new is live for the part that failed. Use `references/deploy-failures.md` and offer the fix. Retry at most once, and only after a new confirmation (Step 3). |
 | `Successful deployment` and none of the above | **Deployed**, once `verify-actions.mjs` passes (below). `Deployed <n> action(s)` may count fewer actions than the app has, and `No actions deployed` means the code was unchanged since the last upload from this computer. Both are fine if the check passes. |
 | Anything else | **Unconfirmed:** say so and show the last relevant lines. |
 
@@ -80,7 +80,7 @@ For a deployed app, verify and share:
 - **Actions:** run `node "<skill-dir>/scripts/verify-actions.mjs"`. It checks that every action of the app exists in the linked workspace, including a secured action's two entries. After `aio app clean` in Step 4 (a workspace switch or a shared workspace, where every action uploads again), add `--since <time noted before the deploy>`. This compares a local clock with Runtime's server timestamps: `stale` means freshness is **Unconfirmed**, not proof that the deploy left old code live.
   - Operational limits are configurable with `--max-pages 40` (per package), `--page-size 50`, `--command-timeout-seconds 60` and `--max-output-mb 64` (MiB per captured CLI stream). These are the defaults; each takes a positive whole number. Timeout and buffer settings also apply while reading app configuration. Page size stays within Runtime's documented 1–50 range, numeric conversions must remain safe, and the buffer cannot exceed Node's string-size limit.
   - Reaching the page budget returns `ok: false` with `verified: false`, never a partial inventory reported as missing actions. Increase `--max-pages` to read more; do not treat an incomplete inventory as deployment failure.
-  - `missing` not empty: run `aio app clean`, deploy once more (with the same `-a` after a one-action deploy), and verify again. Report **Partial** if anything is still missing.
+  - `missing` not empty: report **Partial**, name the missing actions, and offer to run `aio app clean` and deploy once more (with the same `-a` after a one-action deploy). Do this only after a new confirmation (Step 3), then verify again. If the developer declines or anything is still missing, the result stays **Partial**.
   - `stale` not empty: report **Unconfirmed** and explain `freshnessWarning`. Check that the local clock is synchronized before concluding the code is old. Don't clean or redeploy solely because of this comparison, and don't widen the time threshold to make it pass: doing so could accept genuinely stale code.
   - `unknownUpdate` not empty: the CLI didn't report when those actions were last updated, so freshness can't be confirmed. Report them as **Unconfirmed**.
   - `ok: false` with an `error` (the check itself couldn't run): report the deploy as **Unconfirmed**, not as deployed.
@@ -105,7 +105,7 @@ For a deployed app, verify and share:
 ## Rules
 
 - Never print or read aloud `.env`, `.aio` or tokens. Use `app-context.mjs` for project details.
-- No deploy without the Step 3 confirmation. Production needs an explicit "Production" in it.
+- No deploy, including a retry, without its own Step 3 confirmation. Production needs an explicit "Production" in it.
 - Show names, not raw IDs, in the conversation.
 - **Developer Terms:** if a connector tool returns the Developer Terms message instead of data, run the Terms flow from `app-builder-setup` Step 5 (show the Terms link, and call `accept_developer_terms` only after the developer explicitly agrees), then retry the call. Never read that message as an empty list or a mismatch. If they don't agree, stop.
 - If an error isn't covered, call `search_adobe_docs` with the exact error text before guessing.

@@ -1,6 +1,5 @@
 {
   "skill_name": "app-builder-setup",
-  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trigger/skill/app-builder-setup.json",
   "evals": [
     {
       "id": 1,

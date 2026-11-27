@@ -1,11 +1,15 @@
 {
   "skill_name": "app-builder-deploy",
-  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trigger/skill/app-builder-deploy.json",
   "evals": [
     {
       "id": 1,
       "prompt": "My App Builder deploy exited successfully but said deployment will be skipped because the Production app is published. Did anything go live?",
       "expected_output": "Reports that this attempt was skipped, not deployed, despite the successful exit code. Explains that the previously published version remains live. Describes the retract, deploy, and resubmit path without running it or force-deploying."
+    },
+    {
+      "id": 2,
+      "prompt": "I confirmed 'deploy to Production' and the App Builder deploy printed Successful deployment, but verify-actions.mjs reports the action generic as missing. Fix it.",
+      "expected_output": "Reports the deploy as Partial and names the missing action. Explains that the CLI's local upload record likely skipped it, and offers to run aio app clean and deploy to Production once more. Asks for a new 'deploy to Production' confirmation before cleaning or redeploying; the earlier confirmation does not cover the retry. Does not use --force-deploy."
     }
   ]
 }

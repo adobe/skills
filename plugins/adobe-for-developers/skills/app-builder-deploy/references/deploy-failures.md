@@ -1,6 +1,6 @@
 # Deploy failures: symptom → cause → fix
 
-Match the first error line of `aio app deploy` (or `aio app build`) against this table. Fix only with the developer's consent, then retry once. Don't add `--force-*` flags to get past an error. The only forced deploy is the explicit published-app override in SKILL Step 6.
+Match the first error line of `aio app deploy` (or `aio app build`) against this table. Fix only with the developer's consent. Every retry or "deploy again" below happens at most once, and only after a new deploy confirmation (SKILL Step 3; Production again needs "deploy to Production"). Don't add `--force-*` flags to get past an error. The only forced deploy is the explicit published-app override in SKILL Step 6.
 
 | Output contains | Likely cause | Fix |
 |---|---|---|
