@@ -14,13 +14,15 @@
 //          frame's copy is the page's copy (replica's pixel-compare.mjs).
 //   register  B4: the divergence register of the step results already on disk (no browser).
 //   all    join → geometry → ramp → pixel → register in one run, with summary.json and the ledger fragment.
-// Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
+//   type-css  the CSS of every Type entry from its Figma text node (figma-gate/type-css.mjs), written to
+//          <dir>/reskin/figma-type/<slug>.css and into the reskin page, so B3 passes by construction.
+// Writes go only under <dir>/.work/reskin/gates/ (type-css: also reskin/figma-type/ and the page). Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup · 3 bot challenge on a live target
 // · 124 no verdict (a step crashed or timed out: re-run, never a fix iteration).
-import { existsSync, readdirSync, realpathSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -34,6 +36,7 @@ export const HELP = `Usage:
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs type-css --page <slug> --url <file|localhost url> [--dir stardust]
   (geometry, ramp, pixel and all take --target preview --reskin <file> like join;
    register takes --target preview alone, to read the preview run's files;
    geometry, ramp, pixel, register and all take --waiver-budget <pct>)
@@ -191,6 +194,18 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          Run it under run-bg when it may exceed a shell's limit:
            run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
            run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
+type-css Runs the join (drift stops here, exit 1) and validates the checks file like ramp, then writes the type of
+         every Type entry from its Figma text node, through the same normalizers, weightMap and familyEquivalence as
+         ramp: one rule per entry on its selector scoped to its section, each branch raised by :not(#figma-type) (one
+         more per narrower width), color in a rule of its own that leaves :hover, :focus-visible and :active to the
+         page, the narrower widths in @media (max-width) blocks (899px across the 900px line, else the midpoint), a
+         color equal to a :root token value as var(<token>). Writes <dir>/reskin/figma-type/<slug>.css and puts it in
+         the page as its last <style data-figma-type> (replacing one already there) when --url is a file;
+         stream-render.mjs puts it in every later render of <slug>. Prints "type-css <r> rule(s) for <n> type
+         entr(ies) → <file>", then "fonts to serve: <family>, …" (each first family the rules name; one the page does
+         not load is font.unserved in ramp). Two entries with one selector at one width and different styles are
+         "FAIL type-css conflict <width> <selector>: <a> vs <b>" (exit 1): give them distinct selectors. Local only:
+         --target preview is exit 2 (deploy lifts the rules into block CSS).
 --dir <d>  the stardust directory (default stardust).
 --waiver-budget <pct>  the share of the coverage floor waivers may excuse, 0 to 100 (default 25); recorded in summary.json,
          the ledger fragment and the invocation.
@@ -267,6 +282,7 @@ const SPEC = {
   pixel: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
   register: { values: ['--page', '--target', '--waiver-budget', '--dir'], bools: [], positional: [] },
   all: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
+  'type-css': { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
 };
 
 // The name of an unknown flag, cut at the first character that cannot be part of one (`--flag=<value>`).
@@ -418,11 +434,45 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   for (const r of unasserted) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): advisory, ${r.detail}`);
   for (const r of unserved) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): font.unserved, ${r.detail}`);
+  if (failing.some((r) => r.slot !== null) && ready.target.regime === 'local') {
+    const file = pageFile(ready.target.url);
+    if (file && existsSync(file) && !/<style data-figma-type>/i.test(readFileSync(file, 'utf8'))) {
+      log(`  hint: the page has no <style data-figma-type>: run figma-gate.mjs type-css --page ${opts.page} --url ${opts.url} --dir ${dir}`);
+    }
+  }
   if (literals.length) {
     const shown = literals.slice(0, 5).map((l) => `line ${l.line} ${l.literal} → ${l.token}`).join('; ');
     log(`advisory ramp: ${literals.length} token literal(s) outside :root (${shown}${literals.length > 5 ? '; …' : ''}): use var(<token>)`);
   }
   return pass ? 0 : 1;
+}
+
+// The file behind a file: URL, else null (a localhost page is served, not written).
+const pageFile = (url) => (/^file:/i.test(url) ? fileURLToPath(url) : null);
+
+async function typeCssStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('type-css needs --page <slug>');
+  if (!opts.url) throw new UsageError('type-css needs --url <file|localhost url>: the reskin page');
+  if (opts.target === 'preview') throw new UsageError('type-css writes the reskin page (local only); deploy lifts its <style data-figma-type> rules into block CSS');
+  const [{ prepare }, { typeCss, typeCssPath, injectTypeCss }, { parseNormalizations }, { rootTokens }] = await Promise.all([
+    helper('prepare'), helper('type-css'), helper('rules', 'figma'), helper('root-tokens', 'render'),
+  ]);
+  const ready = await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts), waiverBudget: opts.waiverBudget });
+  if (ready.drift) {
+    logDrift(ready.join, log);
+    return 1;
+  }
+  const norm = parseNormalizations(ready.rules.normalizations, []);
+  const out = typeCss({ join: ready.join, checks: ready.checks, boxes: ready.boxes, norm, rootEntries: rootTokens(ready.tokens).entries, slug: opts.page });
+  for (const c of out.conflicts) log(`FAIL type-css conflict ${c.width} ${c.selector}: ${c.a} vs ${c.b} (give them distinct selectors)`);
+  const file = typeCssPath(dir, opts.page);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, out.css);
+  const page = pageFile(ready.target.url);
+  if (page) writeFileSync(page, injectTypeCss(readFileSync(page, 'utf8'), out.css));
+  log(`type-css ${out.rules} rule(s) for ${out.entries} type entr${out.entries === 1 ? 'y' : 'ies'} → ${file}${page ? `, and in ${page}` : ' (re-render the page with stream-render.mjs to put it in)'}`);
+  if (out.families.length) log(`fonts to serve: ${out.families.join(', ')}`);
+  return out.conflicts.length ? 1 : 0;
 }
 
 async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
@@ -658,7 +708,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     if (!(pct >= 0 && pct <= 100)) throw new UsageError(`--waiver-budget is a percentage from 0 to 100, got "${opts['waiver-budget']}"`);
     opts.waiverBudget = pct;
   }
-  const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
+  const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, 'type-css': typeCssStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });

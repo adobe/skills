@@ -80,6 +80,8 @@
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
+ *         <dir>/reskin/figma-type/<slug>.css when present (figma-gate.mjs type-css): the page's last
+ *         <style data-figma-type>.
  * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/** and
  *         <out dir>/assets/img/**;
  *         with --register <dir>/state.json.
@@ -91,6 +93,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
 import { donorModulesEds } from './figma/eds-map.mjs';
+import { injectTypeCss, typeCssPath } from './figma-gate/type-css.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
          [--localize-images] [--register [--type <t>]]
@@ -1211,8 +1214,12 @@ async function main(argv) {
     console.log(`localized ${loc.map.size}/${result.images.length} image(s) → ${relative(process.cwd(), assetsDir)}/img/`);
     for (const f of loc.failed) console.error(`WARN image kept remote: ${f.url} (${f.why})`);
   }
+  const typeFile = typeCssPath(dir, slug);
+  const figmaType = existsSync(typeFile);
+  if (figmaType) result = { ...result, html: injectTypeCss(result.html, readFileSync(typeFile, 'utf8')) };
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, result.html);
+  if (figmaType) console.log(`figma type: ${relative(process.cwd(), typeFile)} → <style data-figma-type>`);
   console.log(`rendered ${slug} → ${relative(process.cwd(), out)} (${result.slots} slot(s), ${result.vars} token vars)`);
   if (reg) registerCli(reg, slug, out, dir);
   for (const w of result.warnings) console.log(`warning: ${w}`);

@@ -74,7 +74,9 @@ where `stream-render` falls short. Either way the renderer:
   text styles are `--type-<kebab(key)>-*`: `cardTitle` is
   `--type-card-title-size`, and a camelCase name silently falls back);
   root names the donor does not supply (`absent`) go to the page's
-  `flags[]`. Use the rendered-page conventions the Phase 5 probe
+  `flags[]`. When `reskin/figma-type/<slug>.css` exists
+  (`figma-gate.mjs type-css`), it goes in as the last
+  `<style data-figma-type>`: module type from Figma outranks tag tokens. Use the rendered-page conventions the Phase 5 probe
   asserts against: content in `<main>`, `.container` for the measure,
   `.btn` for the donor primary button (`gates.md` § Rendered-page
   conventions);

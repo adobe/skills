@@ -369,6 +369,17 @@ node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/
 
 B4, the divergence register (`.work/reskin/gates/<slug>/figma/register.md`), is informational.
 
+**Module type comes from Figma, never from tag tokens.** Once the checks
+file is written, and after every change to it, run
+`figma-gate.mjs type-css --page <slug> --url stardust/reskin/pages/<slug>.html`
+before `all`. It writes each Type entry's style from its Figma text node to
+`reskin/figma-type/<slug>.css` and into the page as its last
+`<style data-figma-type>`; `stream-render.mjs` re-applies it on every
+render, and deploy lifts each section's rules into that block's CSS. Never
+hand-tune a Figma type value in page CSS. A B3 type FAIL after `type-css` is
+an inline or `!important` rule outranking it, or an entry whose selector
+misses the element: fix that, then re-run `type-css`.
+
 **The checks file.** `stardust/reskin/figma-checks/<slug>.json` is the
 agent's reading of the frames, taken from `figma-gate.mjs boxes
 --module Mn` outlines: per section, the page selectors and the Figma

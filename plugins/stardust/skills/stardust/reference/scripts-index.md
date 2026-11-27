@@ -69,7 +69,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `reskin/donor-probe.mjs` — adoption gate — `--tokens <f> --rendered <u|f>`
 - `reskin/foundation-css.mjs` — base CSS — `[--check]`
 - `reskin/figma-donor.mjs` — Figma donor — `capture <u> | curate | stamp`; 3 = blocked
-- `reskin/figma-gate.mjs` — Figma gates — `boxes | all --page <s> --url <u|f>`; 124 = none
+- `reskin/figma-gate.mjs` — Figma gate — `boxes | all | type-css --page <s>`; 124 = none
 - `reskin/reskin-ledger.mjs` — gate ledger — `record <s> | eyeball | residual | show`
 - `reskin/reskin-preflight.mjs` — migrate ready? 0 = yes — `[--json]`
 - `reskin/slot-coverage.mjs` — slot gate — `--model <f> --rendered <u|f>`

@@ -92,7 +92,7 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted =
 const blank = (s) => s.replace(/[^\n]/g, ' ');
 
 // A color literal as `rgb(r, g, b)`: hex, or rgb()/rgba() with alpha 1. Anything else is null.
-function normalizeColor(text) {
+export function normalizeColor(text) {
   const s = String(text).trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
   if (hex) {
