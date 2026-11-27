@@ -52,19 +52,20 @@ Only same-origin URLs count toward the scan; fragments are dropped. `--include` 
 { "origin": "https://example.com", "strategy": "sitemaps", "total": 2, "valid": 2,
   "urls": [{ "url": "https://example.com/",
     "variants": [
-      { "lang": ["en", "en-CA", "nl"], "url": "https://example.com/en/a" },
-      { "lang": ["fr-FR"], "url": "https://example.com/fr-fr/a" }
+      { "lang": ["en", "en-CA"], "pathLang": "en", "url": "https://example.com/en/a" },
+      { "lang": ["fr-FR"], "pathLang": null, "url": "https://example.com/fr-fr/a" }
     ] }],
   "sitemaps": ["https://example.com/sitemap.xml"],
   "errors": [] }
 ```
 
 `.urls[].url` names a group: its `x-default` URL when no other group shares it, else its
-lexically first sitemap URL. Read pages from `.urls[].variants[]`: each `lang` unions a path
-tag (such as `fr-FR`) with the `hreflang` tags declared for that URL, in canonical case
-(`[]` when unknown). Two URLs the sitemaps list are variants only when each declares the
-other, as Google requires. An alternate no read sitemap lists (another origin, a sitemap
-not read) is trusted from each URL that declares it, so it can appear in several groups.
+lexically first sitemap URL. Read pages from `.urls[].variants[]`: each `lang` combines
+path-derived and declared `hreflang` tags without duplicates or `x-default`. `pathLang`
+marks a tag inferred only from the path, or is `null`. Two URLs the sitemaps list are
+variants only when each declares the other, as Google requires. An alternate no read
+sitemap lists (another origin, a sitemap not read) is trusted from each URL that declares
+it, so it can appear in several groups.
 With no alternates, including on `--strategy http`, each URL is its own group.
 
 `total`, `valid`, and `--limit` still count individual same-origin URLs, not groups.

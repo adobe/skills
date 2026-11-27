@@ -46,7 +46,7 @@ test('site scan prints grouped JSON and lists only selected URLs in text', async
         <xhtml:link rel="alternate" hreflang="fr" href="${origin}/fr/p"/>
       </url>
       <url><loc>${origin}/fr/p</loc>
-        <xhtml:link rel="alternate" hreflang="en" href="${origin}/en/p"/>
+        <xhtml:link rel="alternate" hreflang="en-CA" href="${origin}/en/p"/>
       </url>
     </urlset>`);
   });
@@ -62,8 +62,8 @@ test('site scan prints grouped JSON and lists only selected URLs in text', async
       {
         url: `${origin}/`,
         variants: [
-          { lang: ['en'], url: `${origin}/en/p` },
-          { lang: ['fr'], url: `${origin}/fr/p` },
+          { lang: ['en', 'en-CA'], pathLang: 'en', url: `${origin}/en/p` },
+          { lang: ['fr'], pathLang: null, url: `${origin}/fr/p` },
         ],
       },
     ]);
