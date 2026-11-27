@@ -100,7 +100,10 @@
  *                older version's record, a --compare-only pass). `gate-all.mjs --only <slugs> --skip-existing`
  *                gates exactly those again. A pass by override and a FAIL are not checked against the inputs, nor
  *                is a page gate-all cannot key (no content file or migrated HTML, no blocks/, no shared code: its
- *                passes are recorded without a key, and the table row stands alone).
+ *                passes are recorded without a key, and the table row stands alone). A row gate-all measured
+ *                against a reference the inconsistency register substituted (`referenceSubstitution`) counts, and
+ *                gets one `<slug>: gated at <w> against a substituted reference [SUBSTITUTED …]` line; a refused
+ *                reference is an error row (a --sample run keeps it, so it holds the unit at once).
  *                Exit 2 when a page is NOT gated at a width.
  *
  *   --tables <dir>  where gate-all.mjs writes the pixel tables (`prototypes-<w>/`, `all-<w>/`); when
@@ -631,12 +634,14 @@ export function publishedRuns(dir, width) {
   }
   return { rows, samples };
 }
-// unitCheck(slugs, { tables, widths, runs, verify }) → { pages: [{ slug, widths: { <w>: { state, pct, why } } }], ungated, pending, failing }.
+// unitCheck(slugs, { tables, widths, runs, verify }) → { pages: [{ slug, widths: { <w>: { state, pct, why } } }], ungated, pending, failing, substituted }.
 // state: pass | fail (a measured row) | sweep (sampled out by a --sample run) | stale (a pass row `verify(slug, w)`
 // answers a reason for: its recorded pass no longer holds) | error (a row without a percentage) | none.
+// substituted: [{ slug, width, substitution }], each a measured row taken against a reference the register substituted
+// (reference-url.mjs): it counts as gated, and is named.
 export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.widths, runs = publishedRuns, verify = null } = {}) {
   const byWidth = Object.fromEntries(widths.map((w) => [w, runs(tables, w)]));
-  const pages = []; const ungated = []; const pending = []; const failing = [];
+  const pages = []; const ungated = []; const pending = []; const failing = []; const substituted = [];
   for (const slug of slugs) {
     const out = {};
     for (const w of widths) {
@@ -654,6 +659,7 @@ export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.w
       else if (sampledOut) cell = { state: 'sweep', pct: null, why: 'sampled out — pending the all-pages run' };
       else if (row) cell = { state: 'error', pct: row.pct ?? null, why: `row without a measurement (${row.error || (probeErrors.length ? `probe-error: ${probeErrors.map((e) => (e && e.probe) || e).join(', ')}` : 'no percentage')}) in ${hit.file}` };
       else cell = { state: 'none', pct: null, why: `no row in ${join(tables, `all-${w}`)} (summary.json or runs/)` };
+      if ((cell.state === 'pass' || cell.state === 'fail') && row.referenceSubstitution) { cell.substitution = row.referenceSubstitution; substituted.push({ slug, width: w, substitution: row.referenceSubstitution }); }
       out[w] = cell;
       if (cell.state === 'none' || cell.state === 'error' || cell.state === 'stale') ungated.push({ slug, width: w, why: cell.why });
     }
@@ -661,7 +667,7 @@ export function unitCheck(slugs, { tables = DEFAULTS.tables, widths = DEFAULTS.w
     if (Object.values(out).some((c) => c.state === 'fail')) failing.push(slug);
     pages.push({ slug, widths: out });
   }
-  return { pages, ungated, pending, failing };
+  return { pages, ungated, pending, failing, substituted };
 }
 // The unit check's view of gate-all's § REUSE (passInputs): a pass row stands while its page's recorded pass matches the
 // page's local build inputs now. gate-all.mjs is imported here only, so the sidecar run never loads it.
@@ -684,8 +690,9 @@ async function unitCli(o) {
   else {
     for (const p of r.pages) console.log(`${p.slug}  ${o.widths.map((w) => `${w}=${p.widths[w].state}${p.widths[w].pct != null ? ` ${p.widths[w].pct}%` : ''}`).join('  ')}`);
     for (const g of r.ungated) console.log(`${g.slug}: NOT gated at ${g.width} — ${g.why}`);
+    for (const x of r.substituted) console.log(`${x.slug}: gated at ${x.width} against a substituted reference${substitutedNote(x.substitution)}`);
     const gated = r.pages.length - new Set(r.ungated.map((g) => g.slug)).size;
-    console.log(`gate-evidence --unit: ${r.pages.length} page(s) — ${gated} with a row or sampled out at every width${r.failing.length ? ` (${r.failing.length} failing: ${r.failing.slice(0, 8).join(', ')}${r.failing.length > 8 ? ', …' : ''} — fix within the round cap or record the decision)` : ''}, ${r.pending.length} pending the all-pages run, ${new Set(r.ungated.map((g) => g.slug)).size} NOT gated${r.ungated.length ? ' — the unit is not done: gate them (gate-all.mjs --only <slugs> --eds-host <host>, both widths; --skip-existing gates again only what is not a standing pass), or run the unit with --sample' : ''}`);
+    console.log(`gate-evidence --unit: ${r.pages.length} page(s) — ${gated} with a row or sampled out at every width${r.failing.length ? ` (${r.failing.length} failing: ${r.failing.slice(0, 8).join(', ')}${r.failing.length > 8 ? ', …' : ''} — fix within the round cap or record the decision)` : ''}, ${r.pending.length} pending the all-pages run, ${r.substituted.length ? `${new Set(r.substituted.map((x) => x.slug)).size} against a substituted reference, ` : ''}${new Set(r.ungated.map((g) => g.slug)).size} NOT gated${r.ungated.length ? ' — the unit is not done: gate them (gate-all.mjs --only <slugs> --eds-host <host>, both widths; --skip-existing gates again only what is not a standing pass), or run the unit with --sample' : ''}`);
   }
   return r.ungated.length ? 2 : 0;
 }

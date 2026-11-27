@@ -313,7 +313,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             block text in turn, from stardust/current/pages/<slug>.json and stardust/eds-schema/
                             (n is raised to the template count); each pick is printed with why. Writes a runs/ file
                             (summary.* untouched) whose _provenance.sample { n, from, picked } lets gate-evidence.mjs
-                            --unit hold the picked pages to a row and count the rest as pending the all-pages run
+                            --unit hold the picked pages to a row and count the rest as pending the all-pages run.
+                            A page whose reference is refused is never a pick and never left out: its error row stays
   --prune-captures          a measured page that FAILS loses its PNGs too (frozen references stay); pixel.json records
                             capturesPruned, --compare-only keeps that measurement, --skip-existing re-captures the page
   --no-preflight            skip the disk check below (the memory line is advice either way)
@@ -994,15 +995,15 @@ export function passInputs(d, inputs) {
 }
 /**
  * inputsPage(slug, { state, coverage }) → the page as localInputs reads it outside a gate run (gate-evidence --unit):
- * the state.json row and the ledger row merged as selectPages merges them: a deployed state row as it is, else its
- * deployedPath or the ledger path, and the ledger's deployed URL before the state row's.
+ * the page selectPages hands a gate run that names it (--only <slug> with a build host), so its path resolves as the
+ * run resolved it: a deployed state row as it is, a delivered ledger row's path, else any ledger row's path or the
+ * migrated file's (a unit's first gate, before update-coverage). The host is a placeholder: localInputs reads paths.
+ * A page no run would select: its state row.
  */
+const UNIT_HOST = 'https://unit-check.invalid';
 export function inputsPage(slug, { state = null, coverage = null } = {}) {
-  const st = (state && Array.isArray(state.pages) ? state.pages : []).find((x) => x && x.slug === slug) || {};
-  const row = (Array.isArray(coverage) ? coverage : (coverage && Array.isArray(coverage.pages) ? coverage.pages : [])).find((x) => x && x.slug === slug) || {};
-  if (st.status === 'deployed' && st.liveUrl && st.url) return { ...st, slug };
-  const path = typeof row.path === 'string' && row.path.startsWith('/') ? row.path : undefined;
-  return { ...st, slug, liveUrl: (row.delivery && row.delivery.deployedUrl) || st.liveUrl, deployedPath: st.deployedPath || path };
+  const [page] = selectPages({ state, coverage, stage: 'published', only: [slug], edsHost: UNIT_HOST }).pages;
+  return page || { ...((state && Array.isArray(state.pages) ? state.pages : []).find((x) => x && x.slug === slug) || {}), slug };
 }
 // The recorded PIXEL pass --compare-only takes instead of the PNGs it no longer has: null when nothing was dropped, a
 // record is gone, or the masks or eds URL differ from the ones the pass was measured with (--skip-existing: recordedPass).

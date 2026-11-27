@@ -2063,6 +2063,7 @@ check('gate-all --deadline-hint prints the formula\'s value for 1, 20 and 100 se
     const hint = (args, env) => { const r = gateAll(['--deadline-hint', ...args], env); assert.equal(r.status, 0, r.stderr); assert.deepEqual([shots(), spawned()], [[], []], 'nothing launched'); return r.stdout; };
     assert.equal(hint(['--only', 'p7']), '900\n');
     assert.equal(hint(['--only', slugs.slice(0, 20).join(',')]), '2700\n');
+    assert.equal(hint(['--only', slugs.slice(0, 60).join(','), '--sample', '30']), '3900\n', 'a --sample run counts its picks: 30, not the 60 named (7500)');
     assert.equal(hint([]), '12300\n');
     assert.equal(hint(['--skip-existing', '--width', '360']), '12300\n', 'a --skip-existing page counts in full');
     assert.equal(hint(['--only', slugs.slice(0, 20).join(','), '--origin-concurrency', '1', '--eds-concurrency', '2', '--probe-concurrency', '1']), '5100\n');
@@ -2204,6 +2205,22 @@ check('--sample: gates the picked pages only, prints why, writes a runs/ file wi
     assert.equal(r.status, 1); assert.match(r.stderr, /--sample picks, among a delivery unit's pages/);
     r = gateAll(['--only', 'a', '--sample', '0']);
     assert.equal(r.status, 1);
+  } finally { done(); }
+});
+check('--sample × a refused reference (reference-url.mjs): the refused page is no pick and is not left out; its error row stays in the run, so the unit is held on it now, and the picks are drawn from the other pages', () => {
+  const { root, out, gateAll, shots, done } = sandbox(['a', 'b', 'c', 'd']);
+  try {
+    writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: ['a', 'b', 'c', 'd'].map((slug, i) => ({ slug, template: i < 3 ? 'detail' : 'list', url: `https://origin.example/${slug}`, status: 'deployed', liveUrl: `https://eds.example/${slug}` })) }));
+    mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    for (const [slug, words] of [['a', 100], ['b', 800], ['c', 300], ['d', 50]]) writeFileSync(join(root, 'stardust/current/pages', `${slug}.json`), JSON.stringify({ stats: { wordCount: words }, url: `https://origin.example/${slug}${slug === 'b' ? '?page-mode=static' : ''}` }));
+    const r = gateAll(['--only', 'a,b,c,d', '--sample', '1']);
+    assert.equal(r.status, 2, 'the refused page is an error row');
+    assert.deepEqual(shots(), ['https://eds.example/c', 'https://eds.example/d', 'https://origin.example/c', 'https://origin.example/d'], 'b, the longest page, is refused: c stands for its template');
+    assert.match(r.stderr, /sample 2 of 4 page\(s\) gated now, 1 with a refused reference kept as error rows; the other 1 wait/);
+    const runs = readdirSync(join(out, 'runs'));
+    const rec = JSON.parse(readFileSync(join(out, 'runs', runs[0]), 'utf8'));
+    assert.deepEqual([rec._provenance.sample.from, rec._provenance.sample.picked.map((x) => x.slug), rec.rows.map((x) => x.slug)], [['a', 'b', 'c', 'd'], ['c', 'd'], ['b', 'c', 'd']]);
+    assert.match(rec.rows.find((x) => x.slug === 'b').error, /^reference-refused: /);
   } finally { done(); }
 });
 check('preflight × browser budget: the memory line reads the budget in force (budgetPeak) and names the setting to lower; it never changes the budget, so an explicit --max-browsers or STARDUST_MAX_BROWSERS stands', () => {
