@@ -4,7 +4,7 @@ description: Same-design migration — re-platform a site to AEM Edge Delivery (
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 metadata:
-  version: "1.4.1"
+  version: "1.8.6"
 ---
 
 # stardust:replica — same-design migration
@@ -145,9 +145,7 @@ CSS):
    `cap-probe.mjs <live-url> --write-design stardust/current/DESIGN.json`
    first). Any other live-vs-prototype box check goes through
    `measure.mjs --against`, never an authored probe.
-4. **The captured screenshot** for what CSS does not name: composition,
-   image crops, paint effects.
-5. **`source-spec.mjs compare <spec> <prototype-url>` exits 0 at every
+4. **`source-spec.mjs compare <spec> <prototype-url>` exits 0 at every
    width BEFORE the first gate round.**
 
 **Fonts** (§ Fonts policy): the captured faces are self-hosted as-is,
@@ -176,7 +174,7 @@ archetype, per breakpoint, live URL against the served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # ONE server, ONE port; one that answers but is not yours is never killed — take another port
-LIVE="https://<site>/<path>"
+LIVE="https://<site>/<path>"   # state.json pages[].url (gate doc § Hardening rule 13)
 G=stardust/replica/gates/<slug>-1440
 # A round = gate.sh through run-bg, never a hand-written wrapper. The FIRST round of a
 # breakpoint and the CONFIRMATION round after the last fix run --full; the others are pixel rounds.
@@ -198,8 +196,9 @@ node stardust/scripts/replica/gate-all.mjs --stage prototype --proto-base "$PROT
 visual-diff flags none or justified; pixel aligned ≤ 10 % with the offsets
 within their bound; |Δh| ≤ 8 px; `Clipped: 0`; declared repeated units
 within 4 px; no horizontal overflow; `cap-probe: PASS`. Exit 124 (deadline),
-5 (unstable reference) and 3 (blocked — escalate `--headed`) are never a
-verdict: fix the capture and re-run.
+5 (unstable reference), 7 (not the inventory's page: § Hardening rule 13) and 3
+(blocked — escalate `--headed`) are never a verdict: fix the capture and
+re-run.
 
 - **Reading a failing round** (gate doc § Reading the band breakdown): the
   offset steps are the fix list — fix every one in ONE round; bands are read

@@ -57,9 +57,28 @@
       "matchPackageNames": ["@adobe/aio-cli-plugin-certificate"],
       "matchFileNames": ["plugins/app-builder/**"],
       "enabled": false
+    },
+    {
+      "description": "The Tessl CLI that the workflows install. Its updates within a major version merge by themselves once every check is green and the release is a week old, also below 1.0. They are ci(deps) commits, so they release nothing.",
+      "matchPackageNames": ["@tessl/cli"],
+      "matchFileNames": [".github/workflows/**"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "deps",
+      "automerge": true
     }
   ],
   "customManagers": [
+    {
+      "customType": "regex",
+      "description": "A version in a workflow that is not an action, annotated on the line above with a comment that holds renovate: datasource=<datasource> depName=<name>, such as the Tessl CLI that tesslio/setup-tessl installs. The version is the first one on the next line that follows a colon or an equals sign.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)[ \\t]*\\r?\\n[^\\n]*?[:=][ \\t]*[\"']?(?<currentValue>v?\\d[^\\s\"']*)"
+      ]
+    },
     {
       "customType": "regex",
       "description": "GitHub Actions that skills name in their text, their eval criteria and the workflow templates they hand out, as owner/repo@version. Renovate's own manager for actions reads only this repository's workflows.",

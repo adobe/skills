@@ -1,0 +1,41 @@
+{
+  "context": "replica — the frozen reference. Two first gate rounds at 1440 against the fixture site: `visit`, whose page repaints one band on every load (same height), and `visit-notice`, whose page changes height on every load. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Judge from the transcript and the work directory.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "rounds_through_gate_sh",
+      "max_score": 15,
+      "description": "Both rounds are `stardust/scripts/replica/gate.sh <slug> <live-url> <prototype-url> 1440 <label>` runs (directly or through run-bg.mjs), with the reference left at its default: no --live-origin and no GATE_REFERENCE=live, no stitch-shot.mjs and pixel-compare.mjs called by hand in place of the gate."
+    },
+    {
+      "name": "stable_reference_frozen",
+      "max_score": 15,
+      "description": "stardust/replica/gates/visit-1440/ holds baseline.png and baseline.json written by reference.mjs freeze (through gate.sh or called before it): primed, two kept captures, stable true, a noise floor above 0 and one variable region with its mask."
+    },
+    {
+      "name": "noise_floor_reported",
+      "max_score": 15,
+      "description": "The report on `visit` says the round was gated against a frozen reference and gives the noise floor and the rows excluded from the pixel number as the gate printed them (the `gate.sh: reference: frozen …, noise floor …% in 1 region(s) — … rows excluded` line), and its verdict from the gate's pixel line. It does not present the page's own repainted band as a defect of the prototype."
+    },
+    {
+      "name": "unstable_is_not_a_verdict",
+      "max_score": 25,
+      "description": "For `visit-notice` the gate ended with exit 5 (reference UNSTABLE). The report says there is no verdict for it: neither PASS nor FAIL, and not a counted round (no round for it in a rounds.json, no verdict-*.json in its gate directory unless a later forced freeze was declared, see the next item). A report that calls it failed, passed, or 'gated' fails."
+    },
+    {
+      "name": "unstable_evidence_read",
+      "max_score": 15,
+      "description": "The cause is taken from the evidence, stardust/replica/gates/visit-notice-1440/reference-unstable.json or reference.mjs's line: the heights of the kept captures differ (by 70 px or more), the page is not one page from load to load. If the run then freezes the reference with `reference.mjs freeze … --force`, it does so after reading that evidence, says that the reference is recorded as unstable, and says what the number of the round that follows is worth. Stopping at exit 5 with the cause and the two ways forward (pin the page's state, or --force) passes too."
+    },
+    {
+      "name": "no_handmade_reference",
+      "max_score": 10,
+      "description": "No baseline.png, baseline.json or live.png is produced for visit-notice by copying or renaming a capture (ref-1.png, prime.png, a screenshot) or by hand-editing JSON, and the thresholds of reference.mjs (--height-max, --floor-max, --variable-max) are not raised to make the freeze succeed."
+    },
+    {
+      "name": "scope_kept",
+      "max_score": 5,
+      "description": "One round per slug at 1440 and nothing more: no edit to the prototype, no second round for `visit`, no round at 360, no redo of extract or of the direction step."
+    }
+  ]
+}

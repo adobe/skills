@@ -1,3 +1,24 @@
+## [1.3.2](https://github.com/adobe/skills/compare/deploy-v1.3.1...deploy-v1.3.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **stardust:** deploy-batch fails a page when a request gets no answer ([#831](https://github.com/adobe/skills/issues/831)) ([d84e94b](https://github.com/adobe/skills/commit/d84e94bf52481de228191728be93867cd218cf9a))
+
+## [1.3.1](https://github.com/adobe/skills/compare/deploy-v1.3.0...deploy-v1.3.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+
+# [1.3.0](https://github.com/adobe/skills/compare/deploy-v1.2.1...deploy-v1.3.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
 ## [1.2.1](https://github.com/adobe/skills/compare/deploy-v1.2.0...deploy-v1.2.1) (2026-11-20)
 
 

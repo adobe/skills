@@ -10,8 +10,8 @@ Phase 1 already replaced content with tokens (`{TEXT}`, `{HEADING:n}`,
 - Token Vocabulary
 - Rules: 1 repeated patterns, 2 decorative wrappers, 3 layout containers,
   4 utility classes, 5 tracking attributes, 6 forms, 7 navigation, 8 tables,
-  9 cookie/overlay panels, 10 re-typing sections
-- Output Format: skeleton.html, manifest.json schema
+  9 cookie/overlay panels, 10 re-typing sections, 11 empty sections
+- Output Format: skeleton.html (size limit), manifest.json schema
 
 ## Token Vocabulary
 
@@ -35,17 +35,18 @@ Tokens you produce in Phase 2:
 |-------|---------|
 | `{REPEAT:N}` | N more items identical to the pattern above |
 | `{FORM:N-fields}` | Entire form collapsed (when > 3 fields) |
-| `{NAV:N-items}` | Navigation collapsed (when > 5 links) |
+| `{NAV:N-items}` | The rest of a list of > 5 links, after the first 2 kept |
 
 ## Rules
 
 ### 1. Identify repeated patterns
 
-Find groups of 3+ structurally identical siblings — same tag, same token
-pattern inside, same nesting depth. "Structurally identical" means the
-token sequence matches (e.g., `{IMAGE:WxH} {HEADING:3} {TEXT} {LINK:*}`
-in the same wrapper structure). Keep 2 representative items, then add
-`{REPEAT:N}` where N is the remaining count.
+Find groups of 3+ structurally identical siblings that each contain at least
+one token — same tag, same token pattern inside, same nesting depth. Siblings
+without a token (`<br>`, empty dots) stay as they are. "Structurally
+identical" means the token sequence matches (e.g., `{IMAGE:WxH} {HEADING:3}
+{TEXT} {LINK:*}` in the same wrapper structure). Keep 2 representative items,
+then add `{REPEAT:N}` where N is the remaining count.
 
 Example — 6 identical card divs become:
 ```html
@@ -53,13 +54,13 @@ Example — 6 identical card divs become:
   {IMAGE:400x300}
   <h3>{HEADING:3}</h3>
   <p>{TEXT}</p>
-  <a>{LINK:Read more}</a>
+  {LINK:Read more}
 </div>
 <div class="card">
   {IMAGE:400x300}
   <h3>{HEADING:3}</h3>
   <p>{TEXT}</p>
-  <a>{LINK:Read more}</a>
+  {LINK:Read more}
 </div>
 {REPEAT:4}
 ```
@@ -92,10 +93,18 @@ Remove classes matching these patterns:
 - Grid columns: `col-*`
 - Display: `d-*`, `flex`, `block`, `inline`
 - Color: `bg-*`, `text-*` when followed by a color name
-- Animation: `fade-*`, `slide-*`, `inview-*`, `js-*`, `is-*`
+- Animation: `fade-*`, `slide-*`, `inview-*`, `js-*`
 
-Keep all semantic classes (`hero`, `card`, `carousel-slide`, `nav-item`,
-`footer`, `testimonial`, etc.).
+Keep semantic classes (`hero`, `card`, `nav-item`, `footer`, `testimonial`,
+a block name). Strip state classes (`is-*`, `has-*`, `active`, `open`,
+`selected`) and design-system modifiers: a BEM `--` modifier or a
+design-system prefix plus a size, colour or variant, such as
+`hds-button--primary` or `btn-lg`.
+
+Block options are the exception: on an element with `data-block-name`, keep
+the plain option words next to the block name (`columns four icon-sm text-sm`,
+`three-up compact`). Still strip the patterns above, state classes and
+design-system modifiers there.
 
 ### 5. Strip tracking data attributes
 
@@ -112,20 +121,26 @@ count. Keep the `<form>` tag with its `action` and `method` attributes.
 
 ### 7. Collapse complex navigation
 
-If a `<nav>` or navigation-like list has more than 5 `{LINK:*}` or
-`{CTA:*}` items, keep 2 representative items and replace the rest with
-`{NAV:N-items}`.
+Lists of links follow this rule, not rule 1. A `<nav>` or navigation-like
+list of 5 or fewer `{LINK:*}` or `{CTA:*}` items stays whole; a longer one
+keeps its first 2 and replaces the rest with `{NAV:N-items}`. Count each list
+of peer links on its own: a `<nav>` holding several lists is one list only
+when its links aren't grouped. Repeated content items (cards, teasers) follow
+rule 1, never `{NAV}`.
 
 ### 8. Preserve table structure
 
-Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more exist, add
-`{REPEAT:N}` after the second row.
+Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more rows that contain
+a token exist, replace them with `{REPEAT:N}` after the second row.
 
 ### 9. Strip cookie consent / overlay panels
 
-Cookie consent panels, GDPR modals, and similar overlays should be collapsed
-to a single line: `<div id="cookie-panel">{FORM:N-fields}</div>` or removed
-entirely. These are not part of the page structure.
+Cookie consent panels, GDPR modals and similar overlays are not part of the
+page structure. Count the overlay's `{INPUT}` and `{SELECT}` tokens in
+Phase 1, before rule 6. With more than 3, collapse it to
+`<div id="cookie-panel">{FORM:N-fields}</div>`; with 1 to 3, keep it and
+every field token, even repeated ones (rule 1 doesn't collapse them), with no
+`{FORM}`; with none, remove it. Never write `{FORM:0-fields}`.
 
 ### 10. Re-type sections
 
@@ -143,17 +158,32 @@ manifest. Common re-typings:
 | columns | `class="footer"`, `<footer>` | footer-nav |
 | carousel | tab-pane structure | tabs |
 
+### 11. Drop empty sections
+
+Drop a section left with no content token after the other rules (no token
+but `{ICON}`): only wrappers, carousel arrows or dots, a background, a lone
+`{ICON}`. `{REPEAT:N}` and `{NAV:N-items}` are not content: judge the items
+kept (2 carousel dots and `{REPEAT:4}` are still empty). This holds whether
+Phase 1 returned it empty or the rules emptied it. List the index of each
+section you drop, by this rule or rule 9, under `droppedSections` in
+manifest.json. The other sections keep their Phase 1 index; don't renumber.
+
 ## Output Format
 
 ### skeleton.html
 
-Concatenate all sections with comment separators:
+Concatenate the retained sections with comment separators:
 ```html
 <!-- section:INDEX type:TYPE xpath:XPATH -->
 TOKENIZED_HTML
 ```
 
 Pretty-print with 2-space indentation.
+
+Without its `<!-- section:… -->` lines and with whitespace removed,
+`skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
+(all sections, whitespace removed). If it is, collapse more (rules 1, 7 and 8)
+before writing.
 
 ### manifest.json
 
@@ -184,7 +214,8 @@ Pretty-print with 2-space indentation.
       },
       "styledSection": null
     }
-  ]
+  ],
+  "droppedSections": [5, 12]
 }
 ```
 

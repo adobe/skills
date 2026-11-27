@@ -1,0 +1,141 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-20T07:55:46.155Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "visit",
+  "url": "http://localhost:8780/visit/",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-20T07:55:46.155Z",
+  "finalUrl": "http://localhost:8780/visit/",
+  "title": "Visit the Fixture Store",
+  "description": "Opening hours and directions for the shop on Sample Lane.",
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Visit the store"
+    },
+    {
+      "tag": "h2",
+      "text": "Opening hours"
+    },
+    {
+      "tag": "h2",
+      "text": "Getting here"
+    },
+    {
+      "tag": "h2",
+      "text": "On the board today"
+    },
+    {
+      "tag": "h2",
+      "text": "Fixture Store"
+    },
+    {
+      "tag": "h2",
+      "text": "Hours"
+    },
+    {
+      "tag": "h2",
+      "text": "More"
+    }
+  ],
+  "body": [
+    "Sample Lane, by the old mill",
+    "The door is green and the bell is loud. Come in, put your bag down and ask what arrived this week.",
+    "Ten minutes on foot from the station: follow the river, cross at the footbridge, second door after the bakery. There are bicycle stands in the yard.",
+    "The colour of the day is chalked up by the door."
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "Fixture Store",
+      "href": "/"
+    },
+    {
+      "label": "Shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About",
+      "href": "/#about"
+    },
+    {
+      "label": "Visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "Open today",
+      "href": "/visit/#hours"
+    },
+    {
+      "label": "Plan a visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "This week's shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About the shop",
+      "href": "/#about"
+    }
+  ],
+  "links": [
+    "http://localhost:8780/",
+    "http://localhost:8780/#shelf",
+    "http://localhost:8780/#about",
+    "http://localhost:8780/visit/",
+    "http://localhost:8780/visit/#hours"
+  ],
+  "media": {
+    "imgs": [
+      {
+        "src": "http://localhost:8780/img/map.svg",
+        "alt": "A sketch map with the river, the footbridge and the shop",
+        "w": 200,
+        "h": 150
+      }
+    ],
+    "allImgCount": 1,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--ink": "#1d2420",
+    "--muted": "#55605a",
+    "--paper": "#f4efe6",
+    "--card": "#fffdf8",
+    "--green": "#1f3a2e",
+    "--brass": "#b0762a",
+    "--line": "#d9d0c0",
+    "--wrap": "1120px",
+    "--gutter": "32px"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 7,
+    "mainTextLen": 466,
+    "realImageCount": 1,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 1258
+    }
+  },
+  "screenshot": "assets/screenshots/visit.png",
+  "renderedHtml": "pages/visit.html"
+}

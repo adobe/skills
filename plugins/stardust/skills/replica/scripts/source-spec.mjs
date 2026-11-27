@@ -73,7 +73,10 @@ Spec JSON: { _provenance, page: { url, width, viewport, docHeight, scrollWidth, 
   rootWrapsChrome, tier }, sections: [{ i, region: header|main|footer, y, h, background, paddingTop,
   paddingBottom, selectorHint, firstText }], nodes: [{ section, region, kind: text|image|control, tag, role
   (h1…h6 | link | button), text, x, y, w, h, fontFamily, fontSize, lineHeight, fontWeight, letterSpacing,
-  textTransform, textAlign, color, lines, href } | { …, kind: image, fit, natural: [w, h], src, bg }],
+  textTransform, textAlign, color, lines, href, scroll } | { …, kind: image, fit, natural: [w, h], src, bg,
+  shape: { pos, r, clip, mask, by } }]  (scroll = "sticky <top>" | "fixed <top>" when the node holds its place
+  while the page scrolls; shape = the image's object-position and what cuts it; page.records names both, and
+  compare checks them only against a spec that recorded them),
   tokens: { fonts, loadedFaces, textStyles, colours, container: { left, right, content, leftCommon } },
   truncated: { text, image } }. Coordinates are document px at scroll 0 after the settle. At most ${TEXT_CAP}
   text/control nodes and ${IMAGE_CAP} image boxes are kept per width (the brief says when more were dropped).
@@ -154,6 +157,28 @@ export function collectInPage({ main, textCap, imageCap, textMax }) {
   const docW = Math.max(de.scrollWidth, vw);
   const boxOf = (r) => ({ x: Math.round(r.left + sx), y: Math.round(r.top + sy), w: Math.round(r.width), h: Math.round(r.height) });
   const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : null; };
+  // What the rest geometry cannot show. `scroll`: the node sits in a sticky / fixed box (its own or an ancestor's) —
+  // it holds one place while the page scrolls, so a stitched capture shows it elsewhere than a static copy of it.
+  const scrollMemo = new Map();
+  const scrollOf = (el) => {
+    if (!el || el === document.body || el === de) return null;
+    if (scrollMemo.has(el)) return scrollMemo.get(el);
+    const cs = getComputedStyle(el);
+    const v = cs.position === 'sticky' || cs.position === 'fixed' ? `${cs.position} ${cs.top === 'auto' ? 'auto' : Math.round(parseFloat(cs.top))}` : scrollOf(el.parentElement || (el.getRootNode() && el.getRootNode().host));
+    scrollMemo.set(el, v);
+    return v;
+  };
+  // `shape` of an image: where it is anchored in its box and what cuts it — its own radius / clip-path / mask, else
+  // those of the nearest ancestor (up to 4) that clips it. Two boxes of one size can still draw two pictures.
+  const cutOf = (cs) => ({ r: /[1-9]/.test(cs.borderRadius) ? cs.borderRadius : null, clip: cs.clipPath && cs.clipPath !== 'none' ? cs.clipPath : null, mask: [cs.maskImage, cs.webkitMaskImage].some((m) => m && m !== 'none') });
+  const shapeOf = (el, cs) => {
+    let c = cutOf(cs); let by = null;
+    for (let a = el.parentElement, i = 0; !(c.r || c.clip || c.mask) && a && a !== document.body && i < 4; a = a.parentElement, i += 1) {
+      const as = getComputedStyle(a); const k = cutOf(as);
+      if ((k.clip || k.mask) || (k.r && /hidden|clip/.test(`${as.overflowX} ${as.overflowY}`))) { c = k; const q = a.getBoundingClientRect(); by = [Math.round(q.width), Math.round(q.height)]; }
+    }
+    return { pos: cs.objectPosition || null, ...(c.r ? { r: c.r } : {}), ...(c.clip ? { clip: c.clip } : {}), ...(c.mask ? { mask: true } : {}), ...(by ? { by } : {}) };
+  };
   const SKIP = /^(SCRIPT|STYLE|LINK|META|TEMPLATE|NOSCRIPT|BR|HEAD|TITLE|BASE|WBR)$/;
   const fileOf = (src) => { const s = String(src || ''); if (!s) return ''; if (/^data:/i.test(s)) return `${s.split(/[;,]/)[0]}…`; const p = s.split(/[?#]/)[0].replace(/\/+$/, ''); return p.slice(p.lastIndexOf('/') + 1); };
 
@@ -291,7 +316,7 @@ export function collectInPage({ main, textCap, imageCap, textMax }) {
       section: si, region, kind, tag: boxEl.tagName.toLowerCase(), role: roleOf(el), text: cut(text, textMax), ...boxOf(r),
       fontFamily: fs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), fontSize: num(fs.fontSize), lineHeight: fs.lineHeight === 'normal' ? 'normal' : num(fs.lineHeight),
       fontWeight: fs.fontWeight, letterSpacing: fs.letterSpacing === 'normal' ? 0 : num(fs.letterSpacing), textTransform: fs.textTransform, textAlign: fs.textAlign, color: fs.color,
-      lines: lineCount(boxEl), ...(a ? { href: a.getAttribute('href') } : {}),
+      lines: lineCount(boxEl), ...(a ? { href: a.getAttribute('href') } : {}), ...(scrollOf(boxEl) ? { scroll: scrollOf(boxEl) } : {}),
     });
   };
   const pushImage = (el, cs, si, region, bg) => {
@@ -304,12 +329,13 @@ export function collectInPage({ main, textCap, imageCap, textMax }) {
     const n = { section: si, region, kind: 'image', tag: tag === 'img' && el.parentElement && el.parentElement.tagName === 'PICTURE' ? 'picture' : tag, role: roleOf(el), text: cut(norm(el.getAttribute('alt') || el.getAttribute('aria-label') || el.getAttribute('title') || ''), textMax), ...boxOf(r) };
     if (bg) { const m = cs.backgroundImage.match(/url\((["']?)([^"')]*)\1\)/); Object.assign(n, { bg: true, fit: cs.backgroundSize, src: m ? cut(m[2], 200) : '' }); }
     else {
-      n.fit = cs.objectFit;
+      n.fit = cs.objectFit; n.shape = shapeOf(el, cs);
       if (tag === 'img') { n.natural = [el.naturalWidth, el.naturalHeight]; n.src = cut(el.currentSrc || el.getAttribute('src') || '', 200); }
       else if (tag === 'video') { n.natural = [el.videoWidth, el.videoHeight]; n.src = cut(el.currentSrc || el.getAttribute('src') || el.getAttribute('poster') || '', 200); }
       else if (tag === 'iframe') n.src = cut(el.getAttribute('src') || '', 200);
     }
     const a = el.closest('a[href]'); if (a) n.href = a.getAttribute('href');
+    if (scrollOf(el)) n.scroll = scrollOf(el);
     nodes.push(n);
   };
   const pushField = (el, cs, si, region) => {
@@ -349,7 +375,7 @@ export function collectInPage({ main, textCap, imageCap, textMax }) {
   return {
     page: {
       url: location.href, width: window.innerWidth, viewport: vw, docHeight: Math.max(de.scrollHeight, document.body ? document.body.scrollHeight : 0), scrollWidth: de.scrollWidth,
-      root: rootName, rootFallback: !matched, ...(rootError ? { rootError } : {}),
+      root: rootName, rootFallback: !matched, ...(rootError ? { rootError } : {}), records: ['scroll', 'shape'],
       rootWrapsChrome: !!(root !== document.body && root.querySelector('header, footer') && [...root.querySelectorAll('header, footer')].some((e) => secSet.has(e))),
     },
     sections, nodes, stacks,
@@ -476,7 +502,30 @@ const FONT_TOL = 0.5;
 const numDiff = (a, b, tol) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) > tol : a !== b);
 
 /** One pair → box deltas (Δy relative to each side's section top), font deltas, line counts, and whether it is off. */
-export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL, subst = []) {
+const pxList = (v) => String(v || '').match(/-?\d+(?:\.\d+)?(?:px|%)?/g) || [];
+/** Two radius / position strings are the same when their numbers agree within 1 (same units, same count). */
+export function sameLengths(a, b, tol = 1) {
+  const [x, y] = [pxList(a), pxList(b)];
+  return x.length === y.length && x.every((v, i) => v.replace(/[-\d.]/g, '') === y[i].replace(/[-\d.]/g, '') && Math.abs(parseFloat(v) - parseFloat(y[i])) <= tol);
+}
+/** The scroll and shape deltas of a pair, only for what the live spec recorded (`records`; an older spec has neither). */
+export function scrollShapeDelta(l, b, records = [], tol = DEFAULT_TOL) {
+  const out = {};
+  if (records.includes('scroll')) {
+    const [ls, bs] = [l.scroll || 'static', b.scroll || 'static'];
+    if (ls.split(' ')[0] !== bs.split(' ')[0] || !sameLengths(ls, bs, tol)) out.scroll = [ls, bs];
+  }
+  if (records.includes('shape') && l.shape && b.shape) {
+    const [x, y] = [l.shape, b.shape];
+    if (!sameLengths(x.pos, y.pos)) out['object-position'] = [x.pos, y.pos];
+    if (!sameLengths(x.r, y.r)) out.radius = [x.r || 'none', y.r || 'none'];
+    if ((x.clip || 'none').replace(/\s+/g, '') !== (y.clip || 'none').replace(/\s+/g, '')) out.clip = [x.clip || 'none', y.clip || 'none'];
+    if (!!x.mask !== !!y.mask) out.mask = [x.mask ? 'yes' : 'no', y.mask ? 'yes' : 'no'];
+    if (x.by && y.by && (Math.abs(x.by[0] - y.by[0]) > tol || Math.abs(x.by[1] - y.by[1]) > tol)) out['clip-box'] = [x.by.join('×'), y.by.join('×')];
+  }
+  return out;
+}
+export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL, subst = [], records = []) {
   const d = { dx: b.x - l.x, dy: (b.y - (bSec ? bSec.y : 0)) - (l.y - (lSec ? lSec.y : 0)), dw: b.w - l.w, dh: b.h - l.h, font: {}, lines: null };
   if (isText(l)) {
     if (numDiff(l.fontSize, b.fontSize, FONT_TOL)) d.font.size = [l.fontSize, b.fontSize];
@@ -493,6 +542,7 @@ export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL, subst = []) {
     if (l.lines !== b.lines) d.lines = [l.lines, b.lines];
     if (normText(l.text) !== normText(b.text)) d.text = [l.text, b.text];
   } else if ((l.fit || '') !== (b.fit || '')) d.font.fit = [l.fit, b.fit];
+  Object.assign(d.font, scrollShapeDelta(l, b, records, tol));
   const styleOff = Object.keys(d.font).length > 0 || !!d.lines || !!d.text;
   const wTol = d.subst ? Math.max(tol, 2, 0.06 * l.w) : tol;
   const boxOff = Math.abs(d.dx) > wTol || Math.abs(d.dw) > wTol || Math.abs(d.dh) > tol;
@@ -557,7 +607,7 @@ export function compareSpecs(live, build0, { tol = DEFAULT_TOL, subst = [] } = {
     if (!r.live) { out.extra.push(...inSec(build, r.build.i)); continue; }
     const p = pairNodes(inSec(live, r.live.i), inSec(build, r.build.i));
     out.missing.push(...p.missing); out.extra.push(...p.extra);
-    const ds = p.pairs.map((q) => ({ section: r.live.i, live: q.live, build: q.build, how: q.how, ...nodeDelta(q.live, q.build, r.live, r.build, tol, subst) })).sort((a, b) => a.live.y - b.live.y || a.live.x - b.live.x);
+    const ds = p.pairs.map((q) => ({ section: r.live.i, live: q.live, build: q.build, how: q.how, ...nodeDelta(q.live, q.build, r.live, r.build, tol, subst, (live.page && live.page.records) || []) })).sort((a, b) => a.live.y - b.live.y || a.live.x - b.live.x);
     // a node whose only delta is Δy, sitting below an off node of its section, is displaced by it — counted, not listed
     let firstOffBottom = Infinity;
     for (const d of ds) {
@@ -644,6 +694,11 @@ export function formatBrief(spec, { path = '' } = {}) {
   if (st.length > 14) L.push(`  … ${st.length - 14} more style(s): view <spec> --tsv`);
   L.push(`fonts    ${tokens.fonts.slice(0, 4).map((f) => `${clip(f.stack, 48)} ×${f.n}`).join(' · ') || '—'}${tokens.fonts.length > 4 ? ` · +${tokens.fonts.length - 4}` : ''}`);
   L.push(`colours  ${tokens.colours.slice(0, 8).map((c) => `${shortColour(c.color)} ×${c.n}`).join(' · ') || '—'}${tokens.colours.length > 8 ? ` · +${tokens.colours.length - 8}` : ''}`);
+  // what a box-by-box copy at rest would miss: nodes that hold their place while the page scrolls, images cut to a shape
+  const held = nodes.filter((n) => n.scroll && n.region === 'main');
+  if (held.length) L.push(`scroll   ${held.length} node(s) in the main region sit in a sticky / fixed box (${[...new Set(held.map((n) => `section ${n.section}: ${n.scroll}`))].slice(0, 4).join(' · ')}) — author the same box sticky, at the same top`);
+  const cutN = nodes.filter((n) => n.shape && (n.shape.r || n.shape.clip || n.shape.mask)).length;
+  if (cutN) L.push(`shapes   ${cutN} image(s) are cut by a radius, clip-path or mask (view --kind image: the [..] column)`);
   const c = tokens.container;
   L.push(c.left == null ? 'container  no text in the main region' : `container  left ${c.left}  right ${c.right}  content ${c.content}  (commonest left edge x ${c.leftCommon.x}, ${c.leftCommon.n} node(s))`);
   if (path) L.push(`spec → ${path}   (nodes: source-spec.mjs view ${path} --section <i>)`);
@@ -656,13 +711,24 @@ export function queryNodes(spec, { section = null, kind = null, grep = null } = 
   return spec.nodes.filter((n) => (section === null || n.section === section) && (!kind || n.kind === kind) && (!re || re.test(`${n.text || ''} ${n.tag} ${n.role || ''} ${n.src || ''}`)));
 }
 
-const TSV_FIELDS = ['section', 'region', 'kind', 'tag', 'role', 'x', 'y', 'w', 'h', 'fontFamily', 'fontSize', 'lineHeight', 'fontWeight', 'letterSpacing', 'textTransform', 'textAlign', 'color', 'lines', 'fit', 'natural', 'src', 'href', 'text'];
+const TSV_FIELDS = ['section', 'region', 'kind', 'tag', 'role', 'x', 'y', 'w', 'h', 'fontFamily', 'fontSize', 'lineHeight', 'fontWeight', 'letterSpacing', 'textTransform', 'textAlign', 'color', 'lines', 'fit', 'natural', 'src', 'href', 'scroll', 'text'];
+/** The trailing [..] of a node row: its scroll box, and for an image what cuts it and a non-centred anchor. */
+export function extraOf(n) {
+  const x = [];
+  if (n.scroll) x.push(n.scroll);
+  if (n.shape) {
+    if (n.shape.r) x.push(`r ${n.shape.r}`); if (n.shape.clip) x.push(`clip ${clip(n.shape.clip, 28)}`); if (n.shape.mask) x.push('mask');
+    if (n.shape.by) x.push(`cut by ${n.shape.by.join('×')}`);
+    if (n.shape.pos && !/^50% 50%$/.test(n.shape.pos) && /cover|none/.test(n.fit || '')) x.push(`pos ${n.shape.pos}`);
+  }
+  return x.length ? `  [${x.join('; ')}]` : '';
+}
 export function formatNodes(nodes, { tsv = false, max = VIEW_MAX } = {}) {
   if (tsv) return [TSV_FIELDS.join('\t'), ...nodes.map((n) => TSV_FIELDS.map((k) => (n[k] == null ? '' : (Array.isArray(n[k]) ? n[k].join('×') : String(n[k]).replace(/[\t\n]/g, ' ')))).join('\t'))].join('\n');
   const L = ['sec kind    tag/role      x      y     w     h  style                                        text'];
   for (const n of nodes.slice(0, max)) {
     const style = n.kind === 'image' ? `${n.fit || ''}${n.natural ? ` natural ${n.natural.join('×')}` : ''} ${fileKey(n.src) || ''}`.trim() : `${fontOf(n)} ${shortColour(n.color)} ${n.lines}L${n.textAlign && !/^(start|left)$/.test(n.textAlign) ? ` ${n.textAlign}` : ''}`;
-    L.push(`${pad(n.section, 3)} ${padE(n.kind, 7)} ${padE(clip(n.role ? `${n.tag}/${n.role}` : n.tag, 10), 10)} ${pad(n.x, 5)} ${pad(n.y, 6)} ${pad(n.w, 5)} ${pad(n.h, 5)}  ${padE(clip(style, 44), 44)} ${n.kind === 'image' ? clip(n.text, 40) : `"${clip(n.text, 48)}"`}${n.href ? `  → ${clip(n.href, 30)}` : ''}`);
+    L.push(`${pad(n.section, 3)} ${padE(n.kind, 7)} ${padE(clip(n.role ? `${n.tag}/${n.role}` : n.tag, 10), 10)} ${pad(n.x, 5)} ${pad(n.y, 6)} ${pad(n.w, 5)} ${pad(n.h, 5)}  ${padE(clip(style, 44), 44)} ${n.kind === 'image' ? clip(n.text, 40) : `"${clip(n.text, 48)}"`}${n.href ? `  → ${clip(n.href, 30)}` : ''}${extraOf(n)}`);
   }
   L.push(nodes.length > max ? `${max} of ${nodes.length} node(s) — narrow with --section / --kind / --grep, or raise --max` : `${nodes.length} node(s)`);
   return L.join('\n');

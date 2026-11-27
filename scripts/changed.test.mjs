@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evalPluginDirs, releaseDirs, skillDirs, tesslPluginDirs, touched } from './lib/changed.mjs';
+import { evalPluginDirs, evalTargetDirs, releaseDirs, skillDirs, tesslPluginDirs, touched } from './lib/changed.mjs';
 import { commit, run, tree, write } from './lib/testing.mjs';
 
 const TREE = {
@@ -51,6 +51,32 @@ test('a change outside every Tessl plugin evaluates all of them; one inside eval
   assert.deepEqual(evalPluginDirs(['plugins/c/skills/s/SKILL.md'], plugins), ['plugins/c']);
   assert.deepEqual(evalPluginDirs(['plugins/b/README.md'], plugins), ['plugins/a', 'plugins/c']);
   assert.deepEqual(evalPluginDirs(['README.md', '.github/workflows/x.yml'], plugins), []);
+});
+
+test('a change to the eval tooling evaluates every plugin', () => {
+  const plugins = ['plugins/a', 'plugins/c'];
+  assert.deepEqual(evalPluginDirs(['scripts/tessl-eval.mjs'], plugins), plugins);
+  assert.deepEqual(evalPluginDirs(['.github/workflows/tessl-eval.yml'], plugins), plugins);
+});
+
+// A new plugin has a root plugin.json and no Tessl manifest yet: CI builds that after the merge.
+const NEW_PLUGIN = {
+  'plugins/new/plugin.json': JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', name: 'new' }),
+  'plugins/new/evals/scenario/task.md': 'task',
+  'plugins/new/skills/four/SKILL.md': 'four',
+};
+
+test('a plugin with a root plugin.json is an eval target before it has a Tessl manifest', (t) => {
+  const root = tree(t, { ...TREE, ...NEW_PLUGIN });
+  assert.deepEqual(evalTargetDirs(root), ['plugins/a', 'plugins/c', 'plugins/new']);
+});
+
+test('a new plugin is evaluated on its own, not as a change that belongs to no plugin', (t) => {
+  const root = tree(t, TREE);
+  const before = commit(root);
+  write(root, NEW_PLUGIN);
+  const after = commit(root);
+  assert.equal(run(t, 'changed.mjs', ['tessl-plugins', `${before}...${after}`], { cwd: root }).stdout, 'plugins/new\n');
 });
 
 test('the command prints what changed between two commits', (t) => {

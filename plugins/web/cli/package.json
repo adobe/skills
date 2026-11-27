@@ -26,9 +26,9 @@
     "commander": "15.1.0"
   },
   "devDependencies": {
-    "@playwright/cli": "0.1.24",
+    "@playwright/cli": "0.1.25",
     "esbuild": "0.28.2",
-    "oxfmt": "^0.78.0",
+    "oxfmt": "^0.79.0",
     "oxlint": "^1.88.0"
   },
   "imports": {

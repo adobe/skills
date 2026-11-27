@@ -14,7 +14,7 @@
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
 #       [--no-dismiss] [--locale <tag>] [--mask <yA:h[@yB],…>] [--live-origin]
-#       [--gate-against-baseline] [--help]
+#       [--gate-against-baseline] [--no-hold-timers] [--hold-min <ms>] [--help]
 #
 # Origin reference (the default origin of every round):
 #   No usable frozen reference in the evidence dir (`stitch-shot.mjs baseline <dir> --url --width`:
@@ -36,6 +36,9 @@
 #   rows — joins the pixel-compare --mask list (with any --mask of the caller), and one line says what
 #   the round was gated against:
 #   `gate.sh: reference: frozen <capturedAt>, noise floor 2.31% in 2 region(s) — 708 rows excluded`.
+#   A reference whose captures differed without the timer hold carries a `hint` (reference.mjs § HINT): repeated
+#   once, `gate.sh: hint: …` after that line (stderr on the exit-5 path). Advice only: no verdict or exit code reads it.
+#   A round under the hold (the default) has none: only --no-hold-timers / GATE_HOLD_TIMERS=0 rounds can print it.
 #   It holds the PIXEL target still only: a --full round's probes still navigate the live URL.
 #   --live-origin   this round gates against a live capture instead, as every round did before the
 #            reference: live.png captured when absent and reused (unprimed, no noise floor, no mask); a
@@ -53,6 +56,19 @@
 #   freeze is never a round (the round that follows counts as any other; an UNSTABLE re-freeze is exit 5, nothing
 #   frozen). One frozen without recorded flags (an older reference.mjs or stitch-shot --freeze-baseline) is reused:
 #   `gate.sh: reference: reused — settings not recorded`.
+#
+# Reference URL (source-fidelity-gate.md § Hardening rule 13): <live-url> must be the page as stardust/state.json lists
+#   it for <slug>, and so must the URL its page record was captured from. `reference-url.mjs <slug> <live-url>` decides
+#   (its --help: the folds that are the same page). Another rendering (a query such as page-mode=static, another
+#   path or host) ends the round first, exit 7, its REFUSED line on stderr: nothing captured, nothing counted. A
+#   substitution the inconsistency register records runs, and the round says so after its reference line,
+#   `gate.sh: reference: SUBSTITUTED: <alt> stands in for <url> (…), accepted by R-<nn> …`, and in verdict-<label>.json
+#   `reference.substitution`. No stardust/state.json, or no row or URL for the slug: the helper's
+#   `reference: unchecked: <why>` line on stdout, the round runs. The guard fails closed: without reference-url.mjs
+#   beside this script, or when it ends with any other code than 0 or 7, or exits 0 without one of its lines (a crash,
+#   a usage error, a state.json it cannot read), the round does not run (exit 1, before the cap and any capture; the
+#   helper's stderr is kept): re-copy the replica scripts dir. No opt-out: the helper reads files only, so every such
+#   failure has a repair, and the inconsistency register is how another rendering is accepted.
 #
 # Stage (the round's budget, its pixel bound and its probes; written to verdict-<label>.json `stage`):
 #   prototype    the build URL is local (http://localhost*, http://127.0.0.1*, file:*) AND its path ends in
@@ -115,11 +131,12 @@
 #            (text / controls cut or hidden by an overflow ancestor — no live hit;
 #            #125, a fixed-height card clipped every link on a pixel-PASS page),
 #            content-presence live vs build in the PUBLISHED stage only (§ Stage), and unit-geometry when stardust/replica/units.json declares a
-#            repeated-unit family for the slug — and only their verdict lines are
-#            printed. Evidence per probe lands next to the pixel evidence:
+#            repeated-unit family for the slug (none: one `unit-geometry: NOT RUN` line, not a verdict) — and only
+#            their verdict lines are printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
 #            chrome-parity-<label>.txt, clip-<label>.{txt,json},
-#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
+#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}, header-contract-<label>.txt
+#            (§ Header contract). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -131,7 +148,8 @@
 #            Exit with --full: the pixel rc when it is not a verdict (above); 124 on
 #            any probe deadline; else the pixel verdict, then 2 on a structural 🔴,
 #            a chrome delta, a clipped count > 0, a content-presence MISSING / HIDDEN
-#            link or heading, or a required unit off; 1 when a probe errored (it gave
+#            link or heading, a required unit off, or a header contract without a verdict
+#            at this stage (§ Header contract); 1 when a probe errored (it gave
 #            no verdict), 0 only when every probe ran and passed.
 #            Concurrency: a --full round holds up to SIX Chromiums at its peak
 #            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
@@ -146,6 +164,23 @@
 #   --mask <yA:h[@yB],…>  rows excluded from the pixel number (pixel-compare --mask; repeatable) — merged with
 #                       the reference's self-varying rows
 #   --live-origin | --gate-against-baseline   § Origin reference
+#   Timer hold — ON by default at 2000 ms: stitch-shot's timer hold (its --help; a bare stitch-shot or reference.mjs
+#                       call stays unheld) on the reference and both captures, so a page whose carousel advances on its
+#                       own is captured in one state on both sides. Before the compare one line,
+#                       `gate.sh: timers held (≥ 2000 ms) — live <n> (<delays>), build <n>`; two sides under different
+#                       holds, or a hold this round asked for that a capture did not record, end the round, exit 1,
+#                       nothing compared.
+#   --no-hold-timers    this round captures without the hold (exit 125 together with --hold-timers / --hold-min)
+#   --hold-min <ms>     the hold with a higher threshold (floor 2000)
+#   --hold-timers       the hold, asked for: at GATE_HOLD_TIMERS's threshold when that is a number, else 2000
+#                       Precedence: a flag wins over GATE_HOLD_TIMERS (0 = off, 1 = 2000, a number = that threshold),
+#                       which wins over the default.
+#                       The reference follows the round: one frozen without the hold meets a held round and is frozen
+#                       again ONCE, under the settings it recorded plus the hold —
+#                       `gate.sh: reference: re-frozen — capture settings changed (holdTimers): the gates hold timers by
+#                       default …` — and later rounds reuse it. A round that names no hold (no flag, no variable) takes a
+#                       held reference's threshold; a --no-hold-timers / GATE_HOLD_TIMERS=0 round freezes a held one
+#                       again without it, and keeps an unheld one as it is.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -173,11 +208,13 @@
 # missing/blocked side must never be compared, and a blocked round has no
 # verdict. Exit codes: 0 gate PASS, 2 gate FAIL (the pixel criterion, or horizontal
 # overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict), 4 build-side identity assertion failed
+# retry — re-queue, not a verdict; also a guard that could not run: § Round cap,
+# § Reference URL), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 5 origin reference UNSTABLE — nothing frozen, no verdict, not a counted
 # round (§ Origin reference), 124 instrument deadline exceeded (not a measurement —
-# see below), 125 unknown argument (usage), 6 round refused by the cap.
+# see below), 125 unknown argument (usage), 6 round refused by the cap, 7 another rendering than
+# the inventory's page (§ Reference URL).
 #
 # Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
 #   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (§ Stage); at the cap, or after a recorded
@@ -190,6 +227,27 @@
 #   script, or when its check ends with any code other than 0 or 6, the round does not run
 #   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
 #   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
+#
+# Header contract (--full, the prototype stage): the header's behaviour is recorded from the source and first
+#   compared here, before the header is converted to a block. No browser: `chrome-compare.mjs --status` answers.
+#   No stardust/chrome/header-contract.json, in a replica project (stardust/state.json flow "replica"; without that
+#   line in state.json nothing is asked): EVERY page's --full round prints
+#     header contract: NOT RECORDED — <the chrome-explore command for this round's <live-url>>
+#   a failed probe like NOT COMPARED below, until a contract exists — any page can be the one explored. A site with
+#   no header gets through by recording it: the explorer writes a contract with no root and no control, and a build
+#   without a header compares clean against it.
+#   With a contract, `--status` reads it and its round ledger (stardust/chrome/rounds.json, stage prototype) and
+#   answers for the page the contract was recorded on — the round whose <live-url> is the contract's `url` (host
+#   and path); every other page prints nothing. One verdict line, in every --full round of that page:
+#     header contract: NOT COMPARED at this stage — <the chrome-explore and chrome-compare commands to run>
+#     header contract: FAIL at this stage — <n> counted round(s) of 3, the last one a FAIL: …
+#     header contract: PASS at this stage (…)  |  header contract: CAPPED at this stage — … (closed with a class per error)
+#   NOT RECORDED, NOT COMPARED and FAIL count as a failed probe (exit 2) once the pixel criterion passes; PASS and
+#   CAPPED do not. No environment variable turns the probe off (STARDUST_ROUND_CAP=0 is the round cap's only).
+#   The comparison has its own cap (chrome-compare.mjs --help § Round cap): after its three rounds a class per
+#   remaining error closes the stage, so a prototype that cannot carry the behaviour still passes this probe.
+#   Fails closed: a contract or ledger that cannot be read, or a chrome-compare.mjs without --status, is
+#   `header contract: ERROR` and the round ends without a verdict (exit 1) — re-copy the diff scripts dir.
 #
 # Measure first: a prototype-stage round for a page and width with no source spec
 #   (stardust/replica/spec/<slug>-<width>.json) prints one advisory line naming the
@@ -219,6 +277,8 @@
 #   GATE_CHROME_REGION   "header=<liveSel>|<buildSel>[;footer=…]" when chrome-parity cannot resolve a region (its exit 4)
 #   GATE_REGIME          prototype | local-build | published — the stage, whatever the build URL (§ Stage)
 #   GATE_REFERENCE       live = every round gates against a live capture (--live-origin); default frozen
+#   GATE_HOLD_TIMERS     0 = --no-hold-timers on every round; a number of ms (≥ 2000) = --hold-min <ms>; 1 = 2000;
+#                        unset = the default, held at 2000 (a flag wins over it)
 set -u
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -239,6 +299,10 @@ CONSENT=""
 DISMISS_EXTRA=""
 LOCALE=""
 MASK=""
+# The timer hold's threshold in ms, empty = off (header Timer hold): the default 2000, then GATE_HOLD_TIMERS, then the
+# flags. HOLD_SET=1 = the variable or a flag named it; 0 = the default, which yields to a held reference's threshold.
+HOLD=2000; HOLD_SET=0; HOLD_ON=0; HOLD_OFF=0; HOLD_MIN=""
+case "${GATE_HOLD_TIMERS:-}" in '') ;; 0) HOLD=""; HOLD_SET=1 ;; 1) HOLD_SET=1 ;; *) HOLD=$GATE_HOLD_TIMERS; HOLD_SET=1 ;; esac
 case "${GATE_REFERENCE:-frozen}" in
   frozen) BASELINE=1 ;;
   live) BASELINE=0 ;;
@@ -258,11 +322,24 @@ while [ $# -gt 0 ]; do
     --mask) MASK="${MASK:+$MASK,}${2:?--mask needs yA:h[@yB],…}"; shift 2 ;;
     --gate-against-baseline) BASELINE=1; shift ;;
     --live-origin) BASELINE=0; shift ;;
+    --hold-timers) HOLD_ON=1; shift ;;
+    --no-hold-timers) HOLD_OFF=1; shift ;;
+    --hold-min) HOLD_MIN=${2:?--hold-min needs a number of ms}; shift 2 ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
 done
 
+if [ "$HOLD_OFF" = 1 ] && { [ "$HOLD_ON" = 1 ] || [ -n "$HOLD_MIN" ]; }; then
+  echo "gate.sh: --no-hold-timers contradicts --hold-timers / --hold-min — drop one (see --help)" >&2; exit 125
+fi
+if [ "$HOLD_OFF" = 1 ]; then HOLD=""; HOLD_SET=1
+elif [ -n "$HOLD_MIN" ]; then HOLD=$HOLD_MIN; HOLD_SET=1
+elif [ "$HOLD_ON" = 1 ]; then HOLD=${HOLD:-2000}; HOLD_SET=1; fi
+if [ -n "$HOLD" ]; then
+  case "$HOLD" in *[!0-9]*) HOLD_OK=0 ;; *) HOLD_OK=1; [ "$HOLD" -ge 2000 ] || HOLD_OK=0 ;; esac
+  [ "$HOLD_OK" = 1 ] || { echo "gate.sh: --hold-min / GATE_HOLD_TIMERS needs a whole number of ms, at least 2000 (got '$HOLD')" >&2; exit 125; }
+fi
 if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
   echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
 fi
@@ -282,6 +359,8 @@ build_opts() {
   fi
   # --locale reaches the reference, both captures and every probe (they all take the flag).
   if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
+  # the timer hold: the reference and both captures (stitch-shot's flags; the probes do not stitch)
+  if [ -n "$HOLD" ]; then STITCH_OPTS+=(--hold-timers --hold-min "$HOLD"); fi
 }
 build_opts
 # chrome-parity only: the declared font substitutions (one <brand>=<substitute> per line) and region overrides.
@@ -314,6 +393,21 @@ esac
 # What the two-stage instruments take: pixel-compare's --offset-max bound (local-build = the prototype's 8 px) and
 # unit-geometry's served-side selector (local-build serves the delivered blocks = published).
 case "$REGIME" in local-build) OFFSET_STAGE=prototype; UNIT_STAGE=published ;; *) OFFSET_STAGE=$REGIME; UNIT_STAGE=$REGIME ;; esac
+# Reference URL (header § Reference URL): before the cap is asked and before anything is fetched. Exit 7 = another
+# rendering than the inventory's page, nothing ran; a substitution the register records rides to the reference line.
+REF_SUB=""
+# The guard fails closed: no helper, another exit, or exit 0 without one of its lines ends the round (exit 1), its stderr kept.
+[ -f "$HERE/reference-url.mjs" ] || { echo "gate.sh: $HERE/reference-url.mjs missing: the reference URL cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; }
+REF_URL_LINE=$(node "$HERE/reference-url.mjs" "$SLUG" "$LIVE_URL"); rc=$?
+REF_URL_LINE=$(printf '%s\n' "$REF_URL_LINE" | tail -1)
+case "$rc:$REF_URL_LINE" in
+  "7:"*) echo "gate.sh: $REF_URL_LINE" >&2
+     echo "gate.sh: REFUSED (exit 7): the live side is not the page the inventory lists, so the round did not run and is not counted" >&2; exit 7 ;;
+  "0:reference: SUBSTITUTED: "*) REF_SUB=${REF_URL_LINE#reference: } ;;
+  "0:reference: unchecked: "*) echo "gate.sh: $REF_URL_LINE" ;;
+  "0:reference: the inventory URL "*) ;;
+  *) echo "gate.sh: reference-url.mjs exited $rc${REF_URL_LINE:+ ($REF_URL_LINE)}: the reference URL could not be checked, so the round does not run (its stderr above); re-copy the replica scripts dir (replica SKILL.md § Setup), or repair what it names" >&2; exit 1 ;;
+esac
 # Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
 # one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
 ROUND_VERDICT=0
@@ -353,27 +447,44 @@ if [ "$BASELINE" = 1 ]; then
   ORIGIN=frozen
   if BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then HAVE_BASE=1; fi
 fi
+# The timer hold a capture was taken with, from its record (capture.json or baseline.json `timers.hold`): the
+# threshold in ms, or nothing (no hold, or no readable record).
+record_hold() { node -e 'try { const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).timers; if (t && t.hold) process.stdout.write(String(t.hold)); } catch { /* no record: no hold */ }' "$1" 2>/dev/null; }
 # Capture settings (header § Origin reference, Settings): `reference.mjs settings <dir> <this round's flags>` answers
 # `same`, `changed: <names>` or `not recorded`. Changed → the reference is frozen again below (REFREEZE names what
 # changed); an older reference.mjs without the subcommand answers nothing and the reference is reused as before.
-REFREEZE=""
+REFREEZE=""; INHERITED=""; INHERIT=$HAVE_BASE; HOLD_WHY=""
+# The hold against the reference's (header Timer hold). A round that names none takes a held reference's threshold; a
+# round that turns it off never reuses a held reference.
+REF_HOLD=""; [ "$HAVE_BASE" = 1 ] && REF_HOLD=$(record_hold "$DIR/baseline.json")
+if [ "$HOLD_SET" = 0 ] && [ -n "$REF_HOLD" ] && [ "$REF_HOLD" != "$HOLD" ]; then
+  HOLD=$REF_HOLD; INHERITED=" --hold-timers --hold-min $HOLD"; build_opts
+fi
 if [ "$HAVE_BASE" = 1 ]; then
   SETTINGS=$(node "$HERE/reference.mjs" settings "$DIR" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} 2>/dev/null | tail -1)
   case "$SETTINGS" in
     "changed: "*) REFREEZE=${SETTINGS#changed: }; HAVE_BASE=0 ;;
     "not recorded") echo "gate.sh: reference: reused — settings not recorded (frozen by an older version: delete $DIR/baseline.json to freeze it under this round's flags)" ;;
+    same) ;;
+    # no answer: with the timer hold asked for, nothing says the reference was frozen with it — never reused
+    *) if [ -n "$HOLD" ]; then echo "gate.sh: reference.mjs settings gave no answer for $DIR (${SETTINGS:-nothing}) — under the timer hold (the default; --no-hold-timers turns it off) the reference is not reused unchecked; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; fi ;;
   esac
+  if [ -z "$HOLD" ] && [ -n "$REF_HOLD" ]; then REFREEZE="${REFREEZE:+$REFREEZE, }holdTimers"; HAVE_BASE=0; INHERIT=0; fi
+  # the default hold against a reference frozen without it: frozen again under the settings it recorded (below), once
+  if [ "$HOLD_SET" = 0 ]; then case "$REFREEZE" in holdTimers) HOLD_WHY=": the gates hold timers by default and this reference was frozen without the hold — frozen again once (--no-hold-timers or GATE_HOLD_TIMERS=0 keeps a round unheld)" ;; *holdTimers*) HOLD_WHY=": the gates hold timers by default and this reference was frozen without the hold"; INHERIT=0 ;; *) [ -n "$REFREEZE" ] && INHERIT=0 ;; esac
+  elif [ -n "$REFREEZE" ]; then INHERIT=0; fi
 fi
-# A reused reference's settings that this round omits are taken from it (reference.mjs settings --inherit, one
-# argument per line): the build capture and the probes then see the page the reference was frozen from.
-if [ "$HAVE_BASE" = 1 ]; then
-  INHERITED=""
+# A reference's settings that this round omits are taken from it (reference.mjs settings --inherit, one argument per
+# line): the build capture and the probes then see the page the reference was frozen from — and so does the freeze
+# that only adds the default hold (a round that also changes a setting inherits nothing, as gate-all does).
+if [ "$INHERIT" = 1 ]; then
   while IFS= read -r a; do
     case "$a" in
       --consent) IFS= read -r CONSENT; INHERITED="$INHERITED --consent $CONSENT" ;;
       --dismiss) IFS= read -r DISMISS_EXTRA; INHERITED="$INHERITED --dismiss $DISMISS_EXTRA" ;;
       --no-dismiss) DISMISS=0; INHERITED="$INHERITED --no-dismiss" ;;
       --locale) IFS= read -r LOCALE; INHERITED="$INHERITED --locale $LOCALE" ;;
+      --hold-min) IFS= read -r HOLD; INHERITED="$INHERITED --hold-timers --hold-min $HOLD" ;;
     esac
   done < <(node "$HERE/reference.mjs" settings "$DIR" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} --inherit 2>/dev/null)
   if [ -n "$INHERITED" ]; then build_opts; echo "gate.sh: reference: settings this round omits are the frozen reference's —$INHERITED (the build capture and the probes run under them)"; fi
@@ -487,9 +598,11 @@ if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
   rc=$?
   WHY=$(grep -E '^reference:' "$REF_LINE" 2>/dev/null | tail -1)
   case "$rc" in
-    0) [ -n "$REFREEZE" ] && echo "gate.sh: reference: re-frozen — capture settings changed ($REFREEZE)"
+    0) [ -n "$REFREEZE" ] && echo "gate.sh: reference: re-frozen — capture settings changed ($REFREEZE)$HOLD_WHY"
        echo "gate.sh: ${WHY:-reference: frozen}" ;;
     2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
+       [ -n "$HOLD_WHY" ] && echo "gate.sh: reference: was being frozen again — capture settings changed ($REFREEZE)$HOLD_WHY" >&2
+       HINT=$(grep -E '^hint: ' "$REF_LINE" 2>/dev/null | tail -1); [ -n "$HINT" ] && echo "gate.sh: $HINT" >&2
        FLAGS="${STITCH_OPTS[*]-}" # the round's overlay and locale flags: the forced freeze must capture the same page
        echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W${FLAGS:+ $FLAGS} --force" >&2
        exit 5 ;;
@@ -522,6 +635,12 @@ else
     echo "gate.sh: $DIR/live.png predates the fixed-layer capture (no fixedLayers in live.capture.json) — retaking it so both sides capture alike"
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
   fi
+  # A live capture taken under another timer hold than this round's (none against one, or another threshold) would
+  # be compared with a build captured this round's way: retake it.
+  if [ -f "$DIR/live.png" ] && [ "$(record_hold "$DIR/live.capture.json")" != "$HOLD" ]; then
+    echo "gate.sh: $DIR/live.png was captured with timer hold '$(record_hold "$DIR/live.capture.json")', this round's is '${HOLD}' — retaking it so both sides capture alike"
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
+  fi
   if [ ! -f "$DIR/live.png" ]; then
     capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
     retry_once "live capture" capture_live
@@ -538,6 +657,18 @@ capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$H
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && capture_failed build "$rc"
+# Timer hold (header --hold-timers): both sides were captured under the same hold, or nothing is compared — a held
+# origin against an unheld build (or the reverse) is two instruments. The origin's record is the frozen baseline's
+# on a frozen round, the live capture's otherwise.
+ORIGIN_REC="$DIR/live.capture.json"; [ "$ORIGIN" = frozen ] && ORIGIN_REC="$DIR/baseline.json"
+LIVE_HOLD=$(record_hold "$ORIGIN_REC"); BUILD_HOLD=$(record_hold "$DIR/build.capture.json")
+if [ "$LIVE_HOLD" != "$BUILD_HOLD" ] || [ "$BUILD_HOLD" != "$HOLD" ]; then
+  echo "gate.sh: timer hold differs — origin '${LIVE_HOLD}' ($ORIGIN_REC), build '${BUILD_HOLD}', this round '${HOLD}' (ms; empty = none): not comparing. Delete $DIR/baseline.png + baseline.json (or live.png) and re-run the round" >&2; exit 1
+fi
+if [ -n "$HOLD" ]; then
+  held() { node -e 'const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).timers; process.stdout.write(`${t.held}${t.delays.length ? ` (${t.delays.join(", ")} ms)` : ""}`);' "$1" 2>/dev/null; }
+  echo "gate.sh: timers held (≥ $HOLD ms) — live $(held "$ORIGIN_REC"), build $(held "$DIR/build.capture.json")"
+fi
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
 # no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
@@ -579,10 +710,12 @@ if [ "$ORIGIN" = frozen ]; then
   node -e 'const b = (() => { try { return JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch { return {}; } })();
     const v = Array.isArray(b.variable) ? b.variable : []; const rows = v.reduce((n, r) => n + (Number(r.h) || 0), 0);
     const floor = typeof b.noiseFloor === "number" ? `noise floor ${b.noiseFloor.toFixed(2)}%${v.length ? ` in ${v.length} region(s)` : ", no self-varying region"} — ${rows} rows excluded` : "noise floor not measured (frozen without priming — reference.mjs freeze --force measures it) — 0 rows excluded";
-    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);' "$DIR/baseline.json" "$BASE_AT"
+    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);
+    if (typeof b.hint === "string" && b.hint) console.log(`gate.sh: hint: ${b.hint}`);' "$DIR/baseline.json" "$BASE_AT"
 else
   echo "gate.sh: reference: a live capture (--live-origin / GATE_REFERENCE=live, or no reference.mjs) — not primed, no noise floor measured, no rows excluded"
 fi
+[ -n "$REF_SUB" ] && echo "gate.sh: reference: $REF_SUB"
 # The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
 # (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
 # the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
@@ -616,14 +749,14 @@ case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
 # Written for every round that reached a pixel verdict (0 or 2); a --full round writes it again with its probes.
 write_verdict() { # $@: probe triples (name rc evidence-file; an empty file = the probe did not run)
   [ "$ROUND_VERDICT" = 1 ] || return 0
-  G_PENDING="${VERDICT_PENDING:-}" G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
+  G_PENDING="${VERDICT_PENDING:-}" G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" G_SUB="$REF_SUB" \
   node -e 'const [out, round, width, ...a] = process.argv.slice(1); const fs = require("fs"); const e = process.env; const n = (k) => Number(e[k] || 0);
     const read = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
     const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] };
     const j = read(e.G_PXJ) || {}; const al = j.aligned && j.aligned.used ? j.aligned : null; const b = e.G_ORIGIN === "frozen" ? read(e.G_BASE) || {} : null;
     const pixel = { rc: n("G_PIXEL_RC"), diff: e.G_DIFF, json: read(e.G_PXJ) ? e.G_PXJ : null, pct: j.pct ?? null, alignedPct: al ? al.pct : j.pct ?? null, alignedUsed: !!al, totalShift: al ? al.totalShift : 0,
       steps: al ? al.steps.slice(0, 12) : [], offsetBound: j.offsets ? j.offsets.bound : null, maskedRows: j.maskedRows ?? 0, noiseFloor: b && typeof b.noiseFloor === "number" ? b.noiseFloor : null, reason: j.reason ?? null };
-    const reference = b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" };
+    const reference = { ...(b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" }), ...(e.G_SUB ? { substitution: e.G_SUB } : {}) };
     fs.writeFileSync(out, JSON.stringify({ round, width: Number(width), stage: e.G_STAGE, pixel, reference, probes, ...(e.G_PENDING ? { pending: "probes" } : {}), structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
     "$DIR/verdict-$LBL.json" "$LBL" "$W" "$@" 2>/dev/null || true
 }
@@ -676,6 +809,13 @@ if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
   capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$UNIT_STAGE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
+# Header contract (header § Header contract): at the prototype stage — with a contract on disk, has it a verdict here?
+# Without one, in a replica project (state.json flow), it was never recorded.
+RC_HC=0; HC=""
+if [ "$REGIME" = prototype ] && { [ -f stardust/chrome/header-contract.json ] || grep -qE '"flow"[[:space:]]*:[[:space:]]*"replica"' stardust/state.json 2>/dev/null; }; then
+  HC="$DIR/header-contract-$LBL.txt"
+  node "$DIFF/chrome-compare.mjs" --status --stage prototype --page "$LIVE_URL" --build "$BUILD_URL" > "$HC" 2>&1; RC_HC=$?
+fi
 wait $P_CD; RC_CD=$?
 wait $P_VD; RC_VD=$?
 wait $P_CP; RC_CP=$?
@@ -717,10 +857,22 @@ fi
 if [ -n "$P_UG" ]; then
   UNITS=$(grep -E '^(Units:|unit-geometry: none declared)' "$UG" | head -1 | cut -c1-200)
   verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
+  # no family for this slug: the check did not run, and the round says so (not a verdict, the exit code does not read it)
+  case "$UNITS" in *'none declared'*) echo "unit-geometry: NOT RUN — no family in $UNITS_FILE applies to $SLUG: the repeated-unit check did not run" ;; esac
+else
+  if [ -f "$UNITS_FILE" ]; then echo "unit-geometry: NOT RUN — $DIFF/unit-geometry.mjs is missing: the repeated-unit check did not run"
+  else echo "unit-geometry: NOT RUN — no $UNITS_FILE: no repeated-unit family is declared, the repeated-unit check did not run"; fi
 fi
-echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
+if [ -n "$HC" ]; then
+  HC_LINE=$(grep -E '^header contract: ' "$HC" | head -1)
+  case "$RC_HC" in
+    0|2) if [ -n "$HC_LINE" ]; then echo "$HC_LINE"; else rm -f "$HC"; HC=""; RC_HC=0; fi ;; # no line: the contract is another page's, or none and no replica flow
+    *) echo "header contract: ERROR (exit $RC_HC) — $(head -1 "$HC" | cut -c1-200) — no verdict; repair it, or re-copy the diff scripts dir" ;;
+  esac
+fi
+echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG}${HC:+ $HC} $DIR/vdiff-$LBL/"
 write_verdict content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \
-  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}"
+  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}" header-contract "$RC_HC" "$HC"
 
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural content 🔴, a
@@ -736,7 +888,9 @@ for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$PIXEL_RC"; do 
 [ "${CLIP_N:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "${PRESENCE_N:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "$RC_UG" = 2 ] && exit 2
+# the header contract has no passing or capped comparison at the prototype stage (header § Header contract)
+[ "$RC_HC" = 2 ] && exit 2
 # A probe that errored gave no verdict, so the round is not a pass: 3 (bot challenge) passes through,
 # anything else is the capture/compare error class (1). Only 0 and 2 carry a verdict.
-for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
+for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$RC_HC"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
 exit 0

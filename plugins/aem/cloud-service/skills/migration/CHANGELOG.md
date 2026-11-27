@@ -1,3 +1,5 @@
+## [1.3.1](https://github.com/adobe/skills/compare/migration-v1.3.0...migration-v1.3.1) (2026-11-26)
+
 # [1.3.0](https://github.com/adobe/skills/compare/migration-v1.2.0...migration-v1.3.0) (2026-11-15)
 
 

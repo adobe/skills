@@ -30,8 +30,8 @@
  *   never a silently swallowed value.
  *
  * start  returns at once. The job runs detached under run-capped.mjs
- *        (default --timeout 900 s — a background job without a deadline is the
- *        hang class run-capped exists for; 0 disables) in its own process
+ *        (a deadline always applies — a background job without one is the
+ *        hang class run-capped exists for; § Deadline below) in its own process
  *        group, stdout+stderr in <dir>/<job>.log, state in <dir>/<job>.json.
  *        --slots (default 3; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
  *        soft concurrency cap: a job waits, first come first served, until fewer
@@ -73,6 +73,28 @@
  *        way through the recorded childPid. Nothing is ever signalled unless its
  *        identity matches (below).
  *
+ * Deadline: which one applies, in this order, and the start line, the launched
+ * line and the state (`timeoutSec`, `timeoutSource`) say which:
+ *   1. `--timeout <s>` (source `--timeout`): always wins; 0 disables. SECONDS: a
+ *      value above 86400 (24 h) is refused, exit 125, nothing started — a
+ *      recorded job was given 3600000 (milliseconds), and a deadline that never
+ *      comes is how a hung job stays forever.
+ *   2. the launched script's own hint (source `hint from <script>`). The
+ *      convention, for any script: the command is `node <script> [args…]`
+ *      (nothing between node and the script, no wrapper in front) and the
+ *      script's source carries the marker `run-bg:deadline-hint`. Only then is
+ *      `node <script> <same args> --deadline-hint` run, in the job's cwd: it
+ *      prints one integer — the seconds this job may take — and exits 0 without
+ *      doing any work. The marker is read, never guessed: a script that does not
+ *      know the flag is never run a second time (it would start its work).
+ *      An answer that is not one integer in 1–21600 (6 h), a non-zero exit, or
+ *      none within 5 s (RUN_BG_HINT_MS) is no hint, and one line says so.
+ *   3. 900 s (source `default`).
+ * Why a hint: a job's time follows its size and the flat 900 s does not — in 23
+ * recorded sessions 32 roster gate jobs (gate-all.mjs, the first script to
+ * answer) were killed at the default, 19 of the 66 above 15 pages, and each was
+ * started again with a longer --timeout.
+ *
  * Liveness: a job's state records the wrapper pid AND its process start time
  * (`ps -o lstart`, the same on macOS and procps Linux) — a bare pid names a
  * recycled process after a reboot or a busy day, and EPERM answers for a
@@ -97,13 +119,23 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
 
 export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
+// --timeout is in seconds. Above this it is refused: a recorded job was given 3600000 (milliseconds), and a deadline
+// that never comes (or, past 2^31 ms, a timer that fires at once) is not a deadline.
+export const MAX_TIMEOUT_SEC = 86400;
+// The deadline hint (header § Deadline): a script whose source carries the marker answers `--deadline-hint` with the
+// seconds its job may take. A hint is bounded (a wrong one must not let a hung job run for a day) and asked once, at
+// start, with a short wait: no usable answer leaves the default.
+export const HINT_FLAG = '--deadline-hint';
+export const HINT_MARKER = 'run-bg:deadline-hint';
+export const HINT_MAX_SEC = 21600;
+export const HINT_WAIT_MS = 5000;
 // Each capture is a Chromium and a `gate.sh --full` round holds three at its peak, so the cap bounds the Chromiums at
 // three per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
 // percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine or
@@ -144,7 +176,13 @@ const HELP = `Usage:
   node run-bg.mjs status [--tail <n>] [--grep <re>] [--all] [<job>…]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
-  (all: [--dir <d>], default ${DEFAULT_DIR})`;
+  (all: [--dir <d>], default ${DEFAULT_DIR})
+Deadline of a job (exit 124 at the deadline: no verdict), named on the start line and in the job's state:
+  --timeout <s>   wins. SECONDS; 0 disables; above ${MAX_TIMEOUT_SEC} (24 h) refused, nothing started (milliseconds?)
+  else the hint   of \`node <script> …\` when the script's source carries the marker ${HINT_MARKER}: it is asked
+                  \`node <script> <same args> ${HINT_FLAG}\` and prints the seconds its job may take (1–${HINT_MAX_SEC}),
+                  exit 0, no work done; no usable answer within ${HINT_WAIT_MS / 1000} s = no hint
+  else            ${DEFAULT_TIMEOUT_SEC} s`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -219,22 +257,51 @@ const isPending = (st) => ['queued', 'running'].includes(phase(st));
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
 
 // ---- start -------------------------------------------------------------------------------------
-export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS } = {}) {
+/**
+ * The launched script's deadline hint (header § Deadline) → null when the command is not asked (not `node <script> …`,
+ * or the script's source does not carry HINT_MARKER — it is then never run), { script, seconds } for a usable answer,
+ * { script, why } for a script that carries the marker and gave none. Never throws.
+ */
+export function deadlineHint(cmd, args = [], { cwd = process.cwd(), waitMs = Number(process.env.RUN_BG_HINT_MS) || HINT_WAIT_MS } = {}) {
+  const file = args[0];
+  if (!cmd || !(cmd === process.execPath || /^node(?:\.exe)?$/.test(basename(cmd))) || typeof file !== 'string' || file.startsWith('-') || !/\.[cm]?js$/.test(file)) return null;
+  try { const p = resolve(cwd, file); if (statSync(p).size > 4e6 || !readFileSync(p, 'utf8').includes(HINT_MARKER)) return null; } catch { return null; }
+  const script = basename(file);
+  const r = spawnSync(cmd, [...args, HINT_FLAG], { cwd, encoding: 'utf8', timeout: waitMs, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 65536 });
+  if (r.error) return { script, why: r.error.code === 'ETIMEDOUT' ? `no answer within ${waitMs / 1000}s` : String(r.error.code || r.error.message) };
+  if (r.status !== 0) return { script, why: `exit ${r.status ?? r.signal}` };
+  const text = String(r.stdout || '').trim();
+  if (!/^\d{1,9}$/.test(text)) return { script, why: 'its answer is not one integer' };
+  const seconds = Number(text);
+  if (seconds < 1 || seconds > HINT_MAX_SEC) return { script, why: `${seconds}s is outside 1–${HINT_MAX_SEC}` };
+  return { script, seconds };
+}
+
+// timeoutSec: a number = the caller's --timeout (it wins; 0 disables); null / undefined = the script's hint, else the default.
+export function start(dir, name, cmd, args, { timeoutSec = null, slots = DEFAULT_SLOTS } = {}) {
   if (!name || !NAME_RE.test(name)) throw new UsageError(`run-bg: --name must match ${NAME_RE} (got "${name}")\n${HELP}`);
   if (!cmd) throw new UsageError(`run-bg: start needs a command after --\n${HELP}`);
-  if (!Number.isFinite(timeoutSec) || timeoutSec < 0) throw new UsageError(`run-bg: --timeout must be a number of seconds (0 disables)\n${HELP}`);
+  const given = timeoutSec != null;
+  if (given && (!Number.isFinite(timeoutSec) || timeoutSec < 0)) throw new UsageError(`run-bg: --timeout must be a number of seconds (0 disables)\n${HELP}`);
+  if (given && timeoutSec > MAX_TIMEOUT_SEC) throw new UsageError(`run-bg: --timeout ${timeoutSec} refused, nothing started — the value is in SECONDS and the most is ${MAX_TIMEOUT_SEC} (24 h); ${timeoutSec} reads as milliseconds (${Math.round(timeoutSec / 1000)} s?). 0 disables the deadline.`);
   if (!Number.isInteger(slots) || slots < 1) throw new UsageError(`run-bg: --slots must be a positive integer\n${HELP}`);
   mkdirSync(dir, { recursive: true });
   const prev = readState(dir, name);
   if (prev && isPending(prev)) throw new UsageError(`run-bg: ${name} is still ${phase(prev)} (wrapper pid ${prev.wrapperPid}) — pick another --name, or \`clean --all\` to stop it`, 2);
+  let deadline = { sec: timeoutSec, source: '--timeout', note: null };
+  if (!given) {
+    const h = deadlineHint(cmd, args);
+    deadline = h && h.seconds ? { sec: h.seconds, source: `hint from ${h.script}`, note: null }
+      : { sec: DEFAULT_TIMEOUT_SEC, source: 'default', note: h ? `${h.script} gave no usable deadline hint (${h.why}) — the default ${DEFAULT_TIMEOUT_SEC}s applies` : null };
+  }
   // Written once, before the spawn; from here on the wrapper is the file's only writer.
-  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec: deadline.sec, timeoutSource: deadline.source, slots, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
   writeState(dir, st);
   const fd = openSync(logPath(dir, name), 'w');
   const child = spawn(process.execPath, [SELF, '__run', '--dir', dir, '--name', name], { detached: true, stdio: ['ignore', fd, fd], cwd: process.cwd(), env: process.env });
   closeSync(fd);
   child.unref();
-  return { name, log: logPath(dir, name), wrapperPid: child.pid };
+  return { name, log: logPath(dir, name), wrapperPid: child.pid, timeoutSec: deadline.sec, timeoutSource: deadline.source, note: deadline.note };
 }
 
 // The detached wrapper: record its identity, take a slot (FIFO), run the command under run-capped, record the exit.
@@ -252,7 +319,7 @@ async function runWrapper(dir, name) {
   const run = runCapped(st.cmd, st.args, { timeoutSec: st.timeoutSec, label: name }); // spawns synchronously
   const child = childOf(process.pid);
   st = writeState(dir, { ...st, launchedAt: new Date().toISOString(), childPid: child?.pid ?? null, childStart: child?.start ?? null });
-  console.log(`run-bg: ${name} launched ${st.launchedAt} (timeout ${st.timeoutSec || 'none'}s): ${[st.cmd, ...st.args].join(' ')}`);
+  console.log(`run-bg: ${name} launched ${st.launchedAt} (timeout ${st.timeoutSec || 'none'}s${st.timeoutSource ? `, ${st.timeoutSource}` : ''}): ${[st.cmd, ...st.args].join(' ')}`);
   const code = await run;
   writeState(dir, { ...st, endedAt: new Date().toISOString(), exit: code, timedOut: code === DEADLINE_EXIT });
   console.log(`run-bg: ${name} ended exit=${code}`);
@@ -376,7 +443,7 @@ export async function clean(dir, { all = false } = {}) {
 // ---- cli ---------------------------------------------------------------------------------------
 function parse(argv) {
   const [sub, ...rest] = argv;
-  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
+  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: null, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
   const num = (flag, v) => { const n = Number(v); if (!Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number (got ${v})\n${HELP}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -406,7 +473,8 @@ async function cli(argv) {
     case 'start': {
       const [cmd, ...args] = o.cmd;
       const r = start(o.dir, o.name, cmd, args, { timeoutSec: o.timeoutSec, slots: o.slots });
-      console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
+      if (r.note) console.error(`run-bg: ${r.note}`);
+      console.log(`run-bg: queued ${r.name} → ${r.log}   (deadline ${r.timeoutSec ? `${r.timeoutSec}s` : 'none'}, ${r.timeoutSource}; next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
     case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return r.pending ? STILL_RUNNING_EXIT : 0; }

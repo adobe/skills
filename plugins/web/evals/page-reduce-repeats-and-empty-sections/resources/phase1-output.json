@@ -1,0 +1,308 @@
+{
+  "url": "https://www.harborlane-coffee.example/",
+  "title": "Harbor Lane Coffee | Small-batch roasters",
+  "viewport": {
+    "width": 1280
+  },
+  "templateHash": "184467021",
+  "sections": [
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/header[1]",
+      "xpathWithDetails": "//*[@data-testid=\"site-header\"]",
+      "tokenizedHtml": "<header class=\"site-header is-sticky\" data-testid=\"site-header\"><div class=\"site-header__inner container\">{ICON}<nav class=\"main-nav\" aria-label=\"Main\"><ul class=\"main-nav__list d-flex\"><li class=\"nav-item nav-item--top\">{LINK:Coffee}</li><li class=\"nav-item nav-item--top\">{LINK:Equipment}</li><li class=\"nav-item nav-item--top\">{LINK:Subscriptions}</li><li class=\"nav-item nav-item--top\">{LINK:Cafés}</li><li class=\"nav-item nav-item--top\">{LINK:Wholesale}</li><li class=\"nav-item nav-item--top\">{LINK:Journal}</li><li class=\"nav-item nav-item--top\">{LINK:About us}</li><li class=\"nav-item nav-item--top\">{LINK:Contact}</li></ul></nav><div class=\"site-header__actions\">{CTA:Sign in}{ICON}</div></div></header>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasCTA",
+        "isInsideAHeaderLikeElement"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/header[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 0
+    },
+    {
+      "sectionType": "hero",
+      "xpath": "/html[1]/body[1]/main[1]/section[1]",
+      "xpathWithDetails": "//*[@data-testid=\"hero\"]",
+      "tokenizedHtml": "<section class=\"hero hero--dark is-visible mt-8 pb-12 fade-in\" data-testid=\"hero\"><div class=\"hero__content container\"><h1 class=\"hero__title text-white\">{HEADING:1}</h1><p class=\"hero__lede mb-6\">{TEXT}</p><button type=\"button\" class=\"btn btn-lg\">{CTA:Shop the spring roast}</button></div><div class=\"hero__media\"><picture class=\"hero__picture\">{IMAGE:1440x640}</picture></div></section>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasCTA",
+        "hasImages",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/section[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 1
+    },
+    {
+      "sectionType": "columns",
+      "xpath": "/html[1]/body[1]/main[1]/div[1]",
+      "xpathWithDetails": "//*[@data-testid=\"promo-pair\"]",
+      "tokenizedHtml": "<div class=\"promo-pair row\" data-testid=\"promo-pair\"><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p>{CTA:Browse beans}</div></div><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p>{CTA:Find a café}</div></div></div>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasCTA",
+        "hasImages",
+        "hasMultipleColumns",
+        "isGridLayout"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/div[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 2
+    },
+    {
+      "sectionType": "cards",
+      "xpath": "/html[1]/body[1]/main[1]/section[2]",
+      "xpathWithDetails": "/html/body/main/section[2]",
+      "tokenizedHtml": "<section class=\"feature-cards three-up compact\" data-block-name=\"feature-cards\"><h2 class=\"section-title\">{HEADING:2}</h2><div class=\"feature-cards__grid grid\"><article class=\"feature-card\">{IMAGE:400x260}<h3>{HEADING:3}</h3><p>{TEXT}</p>{CTA:Meet the farmers}</article><article class=\"feature-card\"><div class=\"feature-card__video\">{VIDEO}</div><h3>{HEADING:3}</h3><p>{TEXT}</p><p class=\"feature-card__note\">{TEXT}</p></article><article class=\"feature-card\"><span class=\"feature-card__icon\">{ICON}</span><h3>{HEADING:3}</h3><ul class=\"feature-card__facts\"><li>{TEXT}</li><li>{TEXT}</li><li>{TEXT}</li></ul>{LINK:How we roast}</article></div></section>",
+      "layout": {
+        "numCols": 3,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasCTA",
+        "hasImages",
+        "hasMultipleColumns",
+        "isGridLayout"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/section[2]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 3
+    },
+    {
+      "sectionType": "carousel",
+      "xpath": "/html[1]/body[1]/main[1]/section[3]",
+      "xpathWithDetails": "//*[@data-testid=\"product-carousel\"]",
+      "tokenizedHtml": "<section class=\"product-carousel\" data-testid=\"product-carousel\"><h2 class=\"section-title\">{HEADING:2}</h2><div class=\"product-carousel__viewport overflow-hidden\"><ul class=\"product-carousel__track _track_3fa9c_21 d-flex\"><li class=\"product-carousel__slide is-active\" data-slide-index=\"0\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li><li class=\"product-carousel__slide\" data-slide-index=\"1\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li><li class=\"product-carousel__slide\" data-slide-index=\"2\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li><li class=\"product-carousel__slide\" data-slide-index=\"3\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li><li class=\"product-carousel__slide\" data-slide-index=\"4\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li><li class=\"product-carousel__slide\" data-slide-index=\"5\"><div class=\"product-card ui-card ui-card--elevated ui-card--md\"><div class=\"product-card__image\">{IMAGE:320x320}</div><h3 class=\"product-card__name\">{HEADING:3}</h3><p class=\"product-card__notes text-muted\">{TEXT}</p><p class=\"product-card__price\">{TEXT}</p><button class=\"ui-button ui-button--primary ui-button--sm\" type=\"button\">{CTA:Add to cart}</button></div></li></ul></div></section>",
+      "layout": {
+        "numCols": 6,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasCTA",
+        "hasImages",
+        "hasMultipleColumns",
+        "hasComplexHiddenElements"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/section[3]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 4
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/section[3]/div[2]",
+      "xpathWithDetails": "/html/body/main/section[3]/div[2]",
+      "tokenizedHtml": "<div class=\"product-carousel__controls d-flex\"><button type=\"button\" class=\"product-carousel__arrow product-carousel__arrow--prev\" aria-label=\"Previous\">{ICON}</button><ol class=\"product-carousel__dots\"><li class=\"product-carousel__dot is-active\"><button type=\"button\" aria-label=\"Go to slide 1\"></button></li><li class=\"product-carousel__dot\"><button type=\"button\" aria-label=\"Go to slide 2\"></button></li><li class=\"product-carousel__dot\"><button type=\"button\" aria-label=\"Go to slide 3\"></button></li><li class=\"product-carousel__dot\"><button type=\"button\" aria-label=\"Go to slide 4\"></button></li><li class=\"product-carousel__dot\"><button type=\"button\" aria-label=\"Go to slide 5\"></button></li><li class=\"product-carousel__dot\"><button type=\"button\" aria-label=\"Go to slide 6\"></button></li></ol><button type=\"button\" class=\"product-carousel__arrow product-carousel__arrow--next\" aria-label=\"Next\">{ICON}</button></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/section[3]/div[2]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 5
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/section[3]/div[3]",
+      "xpathWithDetails": "/html/body/main/section[3]/div[3]",
+      "tokenizedHtml": "<div class=\"product-carousel__counter\" aria-live=\"polite\"></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/section[3]/div[3]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 6
+    },
+    {
+      "sectionType": "columns",
+      "xpath": "/html[1]/body[1]/footer[1]",
+      "xpathWithDetails": "/html/body/footer",
+      "tokenizedHtml": "<footer class=\"site-footer bg-dark pt-12\"><div class=\"footer-nav container grid\"><div class=\"footer-nav__column\"><h4 class=\"footer-nav__title\">{HEADING:4}</h4><ul class=\"footer-nav__list\"><li class=\"footer-nav__item\">{LINK:Single origin}</li><li class=\"footer-nav__item\">{LINK:Blends}</li><li class=\"footer-nav__item\">{LINK:Decaf}</li><li class=\"footer-nav__item\">{LINK:Espresso}</li><li class=\"footer-nav__item\">{LINK:Cold brew}</li><li class=\"footer-nav__item\">{LINK:Gift cards}</li><li class=\"footer-nav__item\">{LINK:Brewers}</li><li class=\"footer-nav__item\">{LINK:Grinders}</li><li class=\"footer-nav__item\">{LINK:Mugs}</li></ul></div><div class=\"footer-nav__column\"><h4 class=\"footer-nav__title\">{HEADING:4}</h4><ul class=\"footer-nav__list\"><li class=\"footer-nav__item\">{LINK:Our story}</li><li class=\"footer-nav__item\">{LINK:Careers}</li><li class=\"footer-nav__item\">{LINK:Press}</li><li class=\"footer-nav__item\">{LINK:Sustainability}</li></ul></div></div><div class=\"site-footer__bottom container\"><p class=\"text-small\">{TEXT}</p>{LINK:Privacy}{LINK:Terms}</div></footer>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasBackground",
+        "hasMultipleColumns",
+        "isGridLayout",
+        "isInsideAFooterLikeElement"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/footer[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 7
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/div[3]",
+      "xpathWithDetails": "//*[@id=\"consent-banner\"]",
+      "tokenizedHtml": "<div id=\"consent-banner\" class=\"consent-banner consent-banner--bottom is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Cookie consent\"><div class=\"consent-banner__body\"><p class=\"consent-banner__text\">{TEXT}{LINK:Cookie policy}{TEXT}</p></div><div class=\"consent-banner__actions\"><button type=\"button\" class=\"ui-button ui-button--secondary\">{TEXT}</button><button type=\"button\" class=\"ui-button ui-button--primary\">{TEXT}</button></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[3]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 8
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[4]",
+      "xpathWithDetails": "//*[@id=\"consent-preferences\"]",
+      "tokenizedHtml": "<div id=\"consent-preferences\" class=\"consent-modal consent-modal--wide is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Cookie preferences\"><h2 class=\"consent-modal__title\">{HEADING:2}</h2><form class=\"consent-modal__form\" method=\"post\"><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><button type=\"submit\" class=\"ui-button ui-button--primary\">{TEXT}</button></form></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[4]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 9
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[5]",
+      "xpathWithDetails": "//*[@id=\"region-dialog\"]",
+      "tokenizedHtml": "<div id=\"region-dialog\" class=\"region-modal is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Choose your region\">{SELECT:2}</div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[5]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 10
+    },
+    {
+      "sectionType": "hero",
+      "xpath": "/html[1]/body[1]/main[1]/img[1]",
+      "xpathWithDetails": "/html/body/main/img[1]",
+      "tokenizedHtml": "{IMAGE:1440x480}",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasImages"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/img[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 11
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/header[1]",
+      "xpathWithDetails": "/html/body/main/header[1]",
+      "tokenizedHtml": "<header class=\"shop-subheader\"><nav class=\"shop-subnav\" aria-label=\"Shop\"><ul class=\"shop-subnav__group\"><li class=\"shop-subnav__item\">{LINK:Whole bean}</li><li class=\"shop-subnav__item\">{LINK:Ground}</li><li class=\"shop-subnav__item\">{LINK:Pods}</li><li class=\"shop-subnav__item\">{LINK:Samplers}</li></ul><ul class=\"shop-subnav__group\"><li class=\"shop-subnav__item\">{LINK:Pour-over}</li><li class=\"shop-subnav__item\">{LINK:Espresso machines}</li><li class=\"shop-subnav__item\">{LINK:Kettles}</li><li class=\"shop-subnav__item\">{LINK:Filters}</li></ul></nav></header>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasMultipleColumns"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/header[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 12
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/p[1]",
+      "xpathWithDetails": "/html/body/main/p[1]",
+      "tokenizedHtml": "<p>{TEXT}<br><br><br>{TEXT}</p>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/p[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 13
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[6]",
+      "xpathWithDetails": "//*[@id=\"topics-dialog\"]",
+      "tokenizedHtml": "<div id=\"topics-dialog\" class=\"topics-modal is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Email topics\"><h2 class=\"topics-modal__title\">{HEADING:2}</h2><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[6]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 14
+    }
+  ]
+}

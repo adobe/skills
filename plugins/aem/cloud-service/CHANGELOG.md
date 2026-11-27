@@ -1,5 +1,7 @@
 # Changelog
 
+## [1.4.5](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.4...plugin/aem-cloud-service/v1.4.5) (2026-11-26)
+
 ## [1.4.4](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.3...plugin/aem-cloud-service/v1.4.4) (2026-11-17)
 
 

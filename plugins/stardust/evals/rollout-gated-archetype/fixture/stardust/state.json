@@ -1,0 +1,181 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:migrate",
+    "writtenAt": "2026-11-20T09:10:00Z",
+    "stardustVersion": "0.42.2"
+  },
+  "site": {
+    "originUrl": "https://shop.example.com",
+    "deployUrl": null,
+    "extractedAt": "2026-11-20T07:30:00Z",
+    "pageCap": 6,
+    "totalDiscovered": 6,
+    "crawled": 6
+  },
+  "direction": {
+    "phrase": "preserve",
+    "resolvedAt": "2026-11-20T07:40:00Z"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-20T07:20:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://shop.example.com/",
+      "title": "Fixture Store: things for a slower day",
+      "type": "home",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/home.json",
+      "prototypePath": "stardust/prototypes/home-proposed.html",
+      "migratedPath": "stardust/migrated/index.html"
+    },
+    {
+      "slug": "products-mug",
+      "url": "https://shop.example.com/products/mug/",
+      "title": "Stoneware mug | Fixture Store",
+      "type": "product",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/products-mug.json",
+      "prototypePath": "stardust/prototypes/products-mug-proposed.html",
+      "migratedPath": "stardust/migrated/products/mug/index.html"
+    },
+    {
+      "slug": "products-lamp",
+      "url": "https://shop.example.com/products/lamp/",
+      "title": "Desk lamp | Fixture Store",
+      "type": "product",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/products-lamp.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/products/lamp/index.html"
+    },
+    {
+      "slug": "products-basket",
+      "url": "https://shop.example.com/products/basket/",
+      "title": "Woven basket | Fixture Store",
+      "type": "product",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/products-basket.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/products/basket/index.html"
+    },
+    {
+      "slug": "visit",
+      "url": "https://shop.example.com/visit/",
+      "title": "Visit the Fixture Store",
+      "type": "info",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/visit.json",
+      "prototypePath": "stardust/prototypes/visit-proposed.html",
+      "migratedPath": "stardust/migrated/visit/index.html"
+    },
+    {
+      "slug": "about",
+      "url": "https://shop.example.com/about/",
+      "title": "About the Fixture Store",
+      "type": "info",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:30:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-20T08:30:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-11-20T09:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/about.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/about/index.html"
+    }
+  ]
+}

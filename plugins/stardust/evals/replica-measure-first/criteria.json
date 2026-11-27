@@ -1,0 +1,41 @@
+{
+  "context": "replica — measure first. One small page of the fixture site is recreated from scratch and taken to its first prototype gate round at 1440 and 360. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Judge the ORDER of the steps from the transcript (tool calls in sequence) and the artifacts from the work directory.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "spec_captured_before_css",
+      "max_score": 25,
+      "description": "`source-spec.mjs capture http://localhost:8780/visit/ --slug visit` runs for both gate widths, and stardust/replica/spec/visit-1440.json and visit-360.json exist, BEFORE the first write of the prototype's CSS (the first Write or Edit of stardust/prototypes/visit-proposed.html or of a stylesheet it links). A capture after the CSS exists, or at one width only, fails."
+    },
+    {
+      "name": "authored_from_the_measured_values",
+      "max_score": 15,
+      "description": "The prototype's CSS carries the values of the spec, not round guesses: among others the 1120 px container with 32 px gutters (20 px at 360), the 56 px h1 (34 px at 360), the 12 px vertical padding of the opening-hours cells, the 72 px header bar. The run reads them from the spec (the capture's printed brief or `source-spec.mjs view`) or, for what the spec cannot name, from the source's stylesheet through css-rules.mjs."
+    },
+    {
+      "name": "compare_exit_0_before_first_round",
+      "max_score": 25,
+      "description": "`source-spec.mjs compare stardust/replica/spec/visit-<width>.json <prototype-url>` runs against the served prototype and exits 0 at 1440 and at 360 BEFORE the first gate.sh round of that width. A round started while compare still exits 2, or with no compare at that width, fails. Deltas that compare names are fixed before the round, and those fixes are not gate rounds."
+    },
+    {
+      "name": "clean_reauthoring",
+      "max_score": 10,
+      "description": "stardust/prototypes/visit-proposed.html is re-authored: semantic markup with its own class names and tokenized CSS (custom properties). It is not the captured visit.html or the live DOM pasted, and the site's stylesheet is not ported whole or linked from the live origin."
+    },
+    {
+      "name": "content_verbatim",
+      "max_score": 10,
+      "description": "Every heading, paragraph, table cell, link label and href, and the image's alt text of the page, header and footer included, are those of stardust/current/pages/visit.json: nothing reworded, dropped or added. The band the server repaints on every load is reproduced as one captured state."
+    },
+    {
+      "name": "first_round_at_both_widths",
+      "max_score": 10,
+      "description": "One prototype gate round per width (1440 and 360) runs through gate.sh against the served prototype, each leaves a verdict-<label>.json and a counted round in its gate directory's rounds.json, and the run stops there: no fix round. The report gives each round's pixel line, and the height delta, as the gate printed them."
+    },
+    {
+      "name": "order_reported",
+      "max_score": 5,
+      "description": "The final message says what came before the rounds: the spec captured at both widths before any CSS, and the compare result per width. It does not claim a compare exit 0 that the transcript does not show."
+    }
+  ]
+}

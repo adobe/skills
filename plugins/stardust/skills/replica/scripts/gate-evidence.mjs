@@ -131,6 +131,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameS
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
+import { parseSubstituted } from './reference-url.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -377,6 +378,9 @@ export function runLint(lint, page) {
   return l ? { ok: l.p0 === 0 && l.p1 === 0, line: l.line } : { ok: false, line: `delivery-lint printed no summary line (exit ${code})` };
 }
 
+// A pixel gate measured against a substituted reference (reference-url.mjs: an inconsistency-register entry let another
+// rendering stand in for the inventory URL) says so in its evidence line: a pass, but not against the page visitors see.
+export const substitutedNote = (s) => (s ? ` [SUBSTITUTED reference: ${s.url} for ${s.inventoryUrl} (${s.entry}): a pass against that rendering, not the page visitors see]` : '');
 // Every gate one page earns from the jobs attributed to it. Returns { gates, evidence, facts, notes }; the caller merges.
 export function derive(page, jobs, o, ctx) {
   const mine = jobs.filter((j) => attribute(j, page, ctx));
@@ -407,8 +411,9 @@ export function derive(page, jobs, o, ctx) {
       const row = (t.published && t.published[page.slug]) || (t.prototype && t.prototype[page.slug]) || null;
       if (!row) { open(`pixel-gate-${w}`, `no row in the pixel table (${[t.published && 'all', t.prototype && 'prototypes'].filter(Boolean).map((n) => `${n}-${w}`).join(', ')}) — run gate-all.mjs${t.published ? '' : ' --stage prototype'} so the page is measured`); continue; }
       const regime = t.published && t.published[page.slug] ? 'published' : 'prototype';
-      facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
-      const line = `${row.alignedUsed && row.alignedPct != null ? `aligned ${fmtPct(row.alignedPct)} (unaligned ${fmtPct(row.pct)}), offsets ${row.totalShift}px` : fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]`;
+      const sub = row.referenceSubstitution || null;
+      facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime, ...(sub ? { referenceSubstitution: sub } : {}) };
+      const line = `${row.alignedUsed && row.alignedPct != null ? `aligned ${fmtPct(row.alignedPct)} (unaligned ${fmtPct(row.pct)}), offsets ${row.totalShift}px` : fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]${substitutedNote(sub)}`;
       if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
       continue;
     }
@@ -418,8 +423,9 @@ export function derive(page, jobs, o, ctx) {
     const label = j.instArgs[4] && !j.instArgs[4].startsWith('--') ? j.instArgs[4] : 'iter';
     const regime = regimeOf(j);
     const ov = parseOverflow(j.log);
-    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime };
-    const line = `${v.alignedPct != null ? `aligned ${fmtPct(v.alignedPct)} (unaligned ${fmtPct(v.pct)}${v.offsets ? `; ${v.offsets}` : ''}) (` : `${fmtPct(v.pct)} (`}${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
+    const sub = parseSubstituted(j.log);
+    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime, ...(sub ? { referenceSubstitution: sub } : {}) };
+    const line = `${v.alignedPct != null ? `aligned ${fmtPct(v.alignedPct)} (unaligned ${fmtPct(v.pct)}${v.offsets ? `; ${v.offsets}` : ''}) (` : `${fmtPct(v.pct)} (`}${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]${substitutedNote(sub)}`;
     const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
     // The overflow assert and the --full element lines outrank the pixel line: a build wider than its viewport, a
     // clipped text / control or a MISSING / HIDDEN link never earns the gate (#125).

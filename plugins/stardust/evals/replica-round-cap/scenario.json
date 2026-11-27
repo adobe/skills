@@ -1,0 +1,10 @@
+{
+  "description": "A replica run resumed on one page whose prototype gate at 1440 has spent its three counted rounds (fixture/), against the fixture site on localhost (setup.sh starts it and copies the plugin scripts)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixture",
+      "installPath": "."
+    }
+  }
+}

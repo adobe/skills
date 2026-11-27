@@ -1,3 +1,31 @@
+## [1.6.2](https://github.com/adobe/skills/compare/stardust-v1.6.1...stardust-v1.6.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
+## [1.6.1](https://github.com/adobe/skills/compare/stardust-v1.6.0...stardust-v1.6.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **stardust:** end real Chrome with SIGTERM instead of its 10 s teardown hang ([#794](https://github.com/adobe/skills/issues/794)) ([fc14908](https://github.com/adobe/skills/commit/fc149088457c8ce7ed88e7a7c9bba8e1e0c44d05))
+
+# [1.6.0](https://github.com/adobe/skills/compare/stardust-v1.5.0...stardust-v1.6.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** the header contract gets a round cap, a class for each open error, and a first comparison at the prototype stage ([#783](https://github.com/adobe/skills/issues/783)) ([586c76b](https://github.com/adobe/skills/commit/586c76b6395b6a04ef8efe143d08170463627e5d))
+
+# [1.5.0](https://github.com/adobe/skills/compare/stardust-v1.4.0...stardust-v1.5.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
 # [1.4.0](https://github.com/adobe/skills/compare/stardust-v1.3.0...stardust-v1.4.0) (2026-11-19)
 
 

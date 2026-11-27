@@ -1,0 +1,10 @@
+{
+  "description": "A replica run resumed before the first gate round of one page and of its variant that changes height on every load (fixture/), against the fixture site on localhost (setup.sh starts it and copies the plugin scripts)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixture",
+      "installPath": "."
+    }
+  }
+}

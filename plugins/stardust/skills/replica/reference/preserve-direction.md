@@ -176,6 +176,11 @@ One entry per inconsistency. Every field is mandatory:
 - **Where:** <page types / sections affected>
 ```
 
+A reference substitution (gate doc § Hardening rule 13) adds one field,
+`- **Reference substitution:** <alternate URL> for <inventory URL>: <which
+rendering, the first-viewport comparison, the user's acceptance>`;
+`reference-url.mjs` reads both URLs from it.
+
 Rules:
 
 - **Findings are inconsistencies, not preferences.** "The two card grids use

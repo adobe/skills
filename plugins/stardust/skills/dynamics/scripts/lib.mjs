@@ -97,6 +97,8 @@ const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contract
 if (!CONTRACTS) stopOnSetupError(Object.assign(new Error('dynamics/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' }));
 /** The triage vocabulary (reference/triage.md, classes-and-signals.md) and the class labels: every writer of feature rows checks against them — one copy, lib/taxonomy.mjs. */
 export const { TAXONOMY, CLASS_NAMES } = await import(CONTRACTS.href);
+/** Where sync-sheets finds its DA token (lib/da-token.mjs, the rule deploy and rollout use). */
+export const { daTokenSource, readDaToken } = await import(CONTRACTS.href);
 
 /* ----------------------------------------------------------- vendors ---- */
 let VENDORS = null;

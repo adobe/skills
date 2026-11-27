@@ -107,6 +107,8 @@
  *     --ua <string>       user agent                        (default: the browser's own)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --hold-timers       repeating timers of --hold-min ms or more never tick (default OFF; § Timer hold below)
+ *     --hold-min <ms>     a higher threshold for the hold; implies --hold-timers (default and floor 2000)
  *     --freeze-baseline   origin baseline (opt-in, default OFF): the capture is
  *                         frozen as <dir>/baseline.png + baseline.json beside
  *                         <out.png>, for gate.sh --gate-against-baseline (below)
@@ -115,6 +117,23 @@
  *   node skills/replica/scripts/stitch-shot.mjs baseline <dir> [--url <u>] [--width <px>]
  *   node skills/replica/scripts/stitch-shot.mjs record <live.json> --origin live|baseline …
  *                         the gate's bookkeeping, no browser (HELP § Origin baseline)
+ *
+ * Timer hold (--hold-timers, default OFF — without it a capture is what it was): an auto-advancing carousel is
+ * captured on whatever slide the timer clear catches, and the clear moves by seconds between identical captures (a
+ * consent click that reloads the page restarts the carousel's clock after --wait is spent). The hold is an init
+ * script — it runs before any page script in every document, a reload included — that wraps setInterval and
+ * setTimeout (installTimerHold):
+ *   - a setInterval of --hold-min ms or more is registered (a real id) and its callback never runs;
+ *   - a setTimeout of --hold-min ms or more fires ONCE as the page asked (anti-flicker reveals, delayed script
+ *     loading and late consent UI are one-shot timeouts of that length); the NEXT link of a chain is held: one
+ *     armed while such a callback runs, or the same callback code with the same delay as one that already fired on
+ *     this document (a carousel that re-arms from a transition-end handler; another callback with that delay still
+ *     fires; the same code armed twice with one delay, and bound functions, which share one source text, read as a
+ *     chain). A chain is not known before its first tick, so a
+ *     timeout-driven carousel is captured after exactly one advance, an interval-driven one on its first slide;
+ *   - shorter timers and requestAnimationFrame are untouched.
+ * The record says timers { hold, held, intervals, chains, delays } for the captured document. A hold that was
+ * asked for and is not installed there is exit 1, no PNG — never a capture that reads as held.
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -126,7 +145,7 @@
  * after the dismissal sweeps), freeze ('applied' | 'failed: <msg>'), fontsFailed ([] | the dead faces' families |
  * null + fontCheck "failed: <msg>"), fixedLayers ('once', the count, late = those
  * that appeared after scroll 0), heightChange ({ initial, final[, capped] } — only
- * when the document's height changed during the capture), at }. Removed when a capture starts, written
+ * when the document's height changed during the capture), timers (only with --hold-timers), at }. Removed when a capture starts, written
  * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
  * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
@@ -174,9 +193,18 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --ua <string>     user agent (default: the browser's own — real Chrome's; the standard headers ride either way)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
+  --hold-timers     hold autoplay-class timers from document start, in every document (a reload included); default OFF.
+                    A setInterval of --hold-min ms or more never ticks. A setTimeout of that length fires once; the next
+                    link of a chain (armed inside such a callback, or the same callback code and delay as one that fired) is held —
+                    so an interval carousel is captured on its first slide, a timeout-chain one after one advance.
+                    Shorter timers and requestAnimationFrame are untouched. The record gets timers { hold, held,
+                    intervals, chains, delays }; a hold that is not installed in the captured document is exit 1, no PNG.
+                    Pass it to BOTH sides (gate.sh / gate-all / reference.mjs carry it and record it on the reference).
+  --hold-min <ms>   a higher threshold for the hold; implies --hold-timers (default 2000, which is also the floor:
+                    below it are the timers pages render with, and the capture's own in-page waits)
   --freeze-baseline freeze this capture as the origin baseline (opt-in; default OFF): it is ALWAYS written as
                     baseline.png in <out.png>'s dir (+ baseline.json: capturedAt, url, width, vh, height, settle,
-                    chunks, fontsFailed), both atomic — <out.png> names the dir only; a freeze aimed at live.png
+                    chunks, fontsFailed[, timers]), both atomic — <out.png> names the dir only; a freeze aimed at live.png
                     writes baseline.png beside it and never touches live.png (one stderr line). Refused (exit 2,
                     nothing written) when a baseline exists (pass --force) or the capture's fonts failed.
   --check-baseline  capture a fresh shot to <out.png> and print its Δheight vs the frozen baseline in <out.png>'s
@@ -201,7 +229,7 @@ bookkeeping — no browser, no network:
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
 failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, freeze, fontsFailed, deadFaces (family|weight|style of each), fixedLayers,
-[heightChange,] at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page read after the dismissal sweeps); freeze =
+[heightChange,] [timers,] at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page read after the dismissal sweeps); freeze =
 'applied' | 'failed: <msg>' (the animation / transition freeze, a constructed stylesheet so a strict style-src CSP cannot
 reject it; a failure is a WARNING, never an exit); heightChange = { initial, final[, capped] }, present only when the
 document's height changed during the capture (the PNG is the settled height; growth past the cap is a WARNING); fontsFailed = [] (every declared face loaded), or the
@@ -223,7 +251,7 @@ export class UsageError extends Error { constructor(msg) { super(msg); this.name
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: null, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: null, wait: null, timeout: 60000, holdTimers: null, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -237,6 +265,8 @@ export function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--hold-timers') { opts.holdTimers = opts.holdTimers ?? HOLD_MIN_DEFAULT; }
+    else if (a === '--hold-min') { opts.holdTimers = holdMinOf(rest[i += 1]); }
     else if (a === '--freeze-baseline') { opts.freezeBaseline = true; }
     else if (a === '--check-baseline') { opts.checkBaseline = true; }
     else if (a === '--force') { opts.force = true; }
@@ -285,6 +315,60 @@ export function planCapture(initialH, vh, scrollTo) {
 }
 // capture.json's heightChange: null when the height the capture started with is the one it ended with.
 export const heightChangeOf = (initialH, finalH, capped = false) => (initialH === finalH && !capped ? null : { initial: initialH, final: finalH, ...(capped ? { capped: true } : {}) });
+
+// ── The timer hold (--hold-timers; header § Timer hold) ────────────────────────────────────────
+export const HOLD_MIN_DEFAULT = 2000;
+// The floor is the default: the hold was measured at 2000 ms, pages render with shorter timers, and the capture's own
+// in-page waits are timeouts of up to 1500 ms — a threshold at or below them could hold the instrument.
+export const HOLD_MIN_FLOOR = HOLD_MIN_DEFAULT;
+export function holdMinOf(v) {
+  const n = Number(v);
+  if (v == null || String(v).trim() === '' || !Number.isFinite(n) || n < HOLD_MIN_FLOOR) throw new UsageError(`--hold-min needs a number of ms, at least ${HOLD_MIN_FLOOR} (got ${v})`);
+  return n;
+}
+// Runs IN THE PAGE before any page script (timerHoldScript serializes it), and in the tests on a stub window: wraps
+// win.setInterval and win.setTimeout as the header says. A held timer still returns a real, unique id, so the page's
+// clearInterval / clearTimeout work. → the state the capture reads back (win.__sdTimerHold, not enumerable):
+// { min, held, intervals, chains, delays (the held delays: unique, at most 20) }.
+export function installTimerHold(win, min) {
+  if (win.__sdTimerHold) return win.__sdTimerHold;
+  const state = { min, held: 0, intervals: 0, chains: 0, delays: [] };
+  const nativeTimeout = win.setTimeout; const nativeInterval = win.setInterval;
+  const noop = () => {};
+  const ms = (d) => { const n = Number(d); return Number.isFinite(n) ? n : 0; };
+  const fired = new Set(); // delay + callback source of the long timeouts that ran on this document
+  const sig = (cb, d) => `${d}|${Function.prototype.toString.call(cb)}`;
+  let running = 0; // > 0 while the callback of a long timeout runs
+  const hold = (kind, d) => {
+    state.held += 1; state[kind] += 1;
+    if (state.delays.length < 20 && !state.delays.includes(d)) state.delays.push(d);
+    return nativeTimeout.call(win, noop, 0); // an id of the page's own timer pool
+  };
+  win.setInterval = function setInterval(cb, delay, ...args) {
+    const d = ms(delay);
+    return d >= min ? hold('intervals', d) : nativeInterval.call(win, cb, delay, ...args);
+  };
+  win.setTimeout = function setTimeout(cb, delay, ...args) {
+    const d = ms(delay);
+    if (d < min || typeof cb !== 'function') return nativeTimeout.call(win, cb, delay, ...args);
+    if (running > 0 || fired.has(sig(cb, d))) return hold('chains', d);
+    return nativeTimeout.call(win, function longTimeout(...a) {
+      fired.add(sig(cb, d)); running += 1;
+      try { return cb.apply(this, a); } finally { running -= 1; }
+    }, delay, ...args);
+  };
+  Object.defineProperty(win, '__sdTimerHold', { value: state });
+  return state;
+}
+// The init script: installTimerHold itself, serialized (the tested rule is the rule that runs).
+export const timerHoldScript = (min) => `(${installTimerHold})(window, ${Number(min)})`;
+// What the capture read back from the captured document (win.__sdTimerHold) → the record's `timers`. A document
+// without the state, or with another threshold, is not a held capture: throws (exit 1, nothing written).
+export function timersOutcome(state, min) {
+  if (!state || typeof state !== 'object' || state.min !== min || !Number.isInteger(state.held)) throw new Error(`--hold-timers: the timer hold is not installed in the captured document (${state ? JSON.stringify(state).slice(0, 80) : 'no state'}) — not captured: this capture would read as held`);
+  return { hold: min, held: state.held, intervals: state.intervals, chains: state.chains, delays: [...state.delays].sort((a, b) => a - b) };
+}
+export const timersLine = (t) => `timers held: ${t.held} of ≥ ${t.hold} ms (${t.intervals} interval(s), ${t.chains} timeout chain link(s)${t.delays.length ? `; delays ${t.delays.join(', ')} ms` : ''})${t.chains ? ' — a timeout chain is held after its first tick: that region shows the state after one advance' : ''}`;
 
 // ── The animation / transition freeze ─────────────────────────────────────────────────────────
 export const FREEZE_CSS = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}';
@@ -364,7 +448,7 @@ export function readBaselineProvenance(dir) {
 
 // baseline.json: when the origin was frozen, for which page (url, width) and under which capture settings
 // (vh, settle), what it measured (height, chunks) and whether every declared font face loaded.
-export function baselineProvenance({ url, width, vh, height, settle = false, chunks = null, fontsFailed = [], fixedLayers = null, capturedAt = new Date().toISOString() }) {
+export function baselineProvenance({ url, width, vh, height, settle = false, chunks = null, fontsFailed = [], fixedLayers = null, timers = null, capturedAt = new Date().toISOString() }) {
   return {
     writtenBy: BASELINE_WRITER,
     schema: BASELINE_SCHEMA,
@@ -377,6 +461,7 @@ export function baselineProvenance({ url, width, vh, height, settle = false, chu
     chunks: chunks == null ? null : Number(chunks),
     fontsFailed: Array.isArray(fontsFailed) ? fontsFailed : [],
     fixedLayers,
+    ...(timers ? { timers } : {}), // only a capture taken with --hold-timers has it
   };
 }
 
@@ -686,6 +771,8 @@ async function main() {
       viewport: { width: opts.width, height: opts.vh },
       stateUrl: url,
     });
+    // --hold-timers: on the context, so every document of every page gets it before its own scripts (a reload too).
+    if (opts.holdTimers) await ctx.addInitScript({ content: timerHoldScript(opts.holdTimers) });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page must never be stitched as if it were the source.
@@ -722,6 +809,10 @@ async function main() {
 
     // A denial page a script rendered after domcontentloaded (gotoLive read the entry): exit 3, no PNG, no sidecar.
     const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
+
+    // --hold-timers: what the hold did on the document that is captured (a reload starts a new count). Fails closed.
+    const timers = opts.holdTimers ? timersOutcome(await page.evaluate(() => { const s = window.__sdTimerHold; return s ? { min: s.min, held: s.held, intervals: s.intervals, chains: s.chains, delays: s.delays } : null; }), opts.holdTimers) : null;
+    if (timers) console.log(timersLine(timers));
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     // A constructed stylesheet (applyFreeze): a strict style-src CSP rejects an injected <style>. Never throws.
@@ -860,7 +951,7 @@ async function main() {
       // the one clamped to the CURRENT height: a document that shrank under
       // the scroll is at its (new) bottom, not stalled.
       if (scrollStalled(prevActualY, actualY, target)) {
-        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe, rely on content-diff/visual-diff against this URL and tell the user. Never gate against another rendering of it (a static, print, AMP or no-JS mode) instead (source-fidelity-gate.md § Hardening rule 13).`);
       }
       prevActualY = actualY;
       const buf = await page.screenshot();
@@ -880,10 +971,10 @@ async function main() {
     if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
     else writeFileSync(out, pngBuf);
     if (opts.freezeBaseline) {
-      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
+      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, timers }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
-    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, freeze, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, ...(heightChange ? { heightChange } : {}), at: new Date().toISOString() }, null, 2)}\n`);
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, freeze, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, ...(heightChange ? { heightChange } : {}), ...(timers ? { timers } : {}), at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);

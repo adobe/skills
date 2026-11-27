@@ -15,7 +15,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_OUT, HELP, TEXT_CAP, TOTAL_OFFSET_MAX, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, nodeDelta, normText, parseFontSubstFile, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
+import { DEFAULT_OUT, HELP, TEXT_CAP, TOTAL_OFFSET_MAX, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, extraOf, nodeDelta, normText, parseFontSubstFile, sameLengths, scrollShapeDelta, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'source-spec.mjs');
@@ -24,15 +24,15 @@ const SCRIPT = join(HERE, '..', 'source-spec.mjs');
 const IMG = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="${c}"/></svg>`)}`;
 const LOREM = 'Every measurement on this page is read before a single rule is written, so the first build starts from numbers and not from a guess about how the page was put together by its authors.';
 function fixturePage(variant = 'live') {
-  const b = variant === 'b'; const c = variant === 'c';
+  const b = variant === 'b'; const c = variant === 'c'; const d = variant === 'd'; // d: the same boxes at rest, but nothing sticky and another image radius
   const css = `*{box-sizing:border-box}html,body{margin:0}body{font:16px/24px Arial,sans-serif;color:#222}
 header.top{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:#fff;border-bottom:1px solid #ddd}
 .brand{font-weight:700;font-size:20px}nav a{margin-left:24px;color:#036;text-decoration:none;font-size:15px}
 .hero{background:#0b2545;color:#fff;padding:96px 120px}.hero h1{font:700 ${b ? 54 : 56}px/1.1 Georgia,serif;margin:0 0 24px}
 .hero p{font-size:20px;line-height:30px;max-width:640px;margin:0 0 32px}.btn{display:inline-block;background:#f6c343;color:#111;padding:14px 28px;font-weight:700;text-decoration:none;text-transform:uppercase;font-size:14px;letter-spacing:1px}
 .cards{padding:80px 120px;background:#f4f4f4}.cards h2,.story h2{font:700 32px/40px Georgia,serif;margin:0 0 32px}
-.grid{display:flex;gap:32px}.card{flex:0 0 calc((100% - 64px) / 3);background:#fff}.card img{display:block;width:100%;height:200px;object-fit:cover}.card h3{font-size:20px;line-height:28px;margin:16px 16px 8px}.card p{margin:0 16px 20px;color:#555}
-.story{padding:80px 120px}.story p{max-width:720px;margin:0 0 16px}
+.grid{display:flex;gap:32px}.card{flex:0 0 calc((100% - 64px) / 3);background:#fff}.card img{display:block;width:100%;height:200px;object-fit:cover;border-radius:${d ? 8 : 24}px}.card h3{font-size:20px;line-height:28px;margin:16px 16px 8px}.card p{margin:0 16px 20px;color:#555}
+.story{padding:80px 120px}.story p{max-width:720px;margin:0 0 16px}${d ? '' : '.story h2{position:sticky;top:20px}'}
 footer{background:#111;color:#bbb;padding:40px 120px;font-size:14px}footer a{color:#fff;margin-right:16px}
 @media (max-width:600px){header.top{padding:0 16px;height:56px}nav{display:none}.hero{padding:48px 16px}.hero h1{font-size:${b ? 30 : 32}px}.hero p{font-size:16px;line-height:24px}
 .cards,.story{padding:40px 16px}.cards h2,.story h2{font-size:24px;line-height:32px;margin-bottom:20px}.grid{flex-direction:column;gap:20px}.card{flex:none}footer{padding:24px 16px}${b ? '.story p.lede{padding-right:90px}' : ''}}`;
@@ -50,7 +50,7 @@ footer{background:#111;color:#bbb;padding:40px 120px;font-size:14px}footer a{col
 function startFixtures(port = 0, host = null) {
   const h = host || Object.values(networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal)?.address || '127.0.0.1';
   const server = createServer((req, res) => {
-    const m = new URL(req.url, 'http://x/').pathname.match(/^\/(live|build-([abc]))$/);
+    const m = new URL(req.url, 'http://x/').pathname.match(/^\/(live|build-([abcd]))$/);
     if (!m) { res.writeHead(404); res.end('not here'); return; }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     res.end(fixturePage(m[1] === 'live' || m[2] === 'a' ? 'live' : m[2]));
@@ -60,7 +60,7 @@ function startFixtures(port = 0, host = null) {
 if (process.argv.includes('--serve')) {
   const i = process.argv.indexOf('--serve');
   const { base } = await startFixtures(Number(process.argv[i + 1]) || 8767, process.argv[i + 2] || null);
-  console.log(`source-spec fixtures on ${base}  (/live /build-a /build-b /build-c)`);
+  console.log(`source-spec fixtures on ${base}  (/live /build-a /build-b /build-c /build-d)`);
   await new Promise(() => {});
 }
 
@@ -182,6 +182,27 @@ await check('sectionTable: steps each within the tolerance are no cause while th
   assert.equal(rows.filter((r) => r.first).length, 1); assert.equal(rows[0].first, true); assert.equal(rows[0].status, 'cause');
   assert.match(rows[0].notes.join(' '), /accumulated: steps within the 2px tolerance add up to 9px \(bound 8px\)/);
   assert.equal(TOTAL_OFFSET_MAX, 8);
+});
+await check('scroll and shape: a node that holds its place while the page scrolls, and an image cut to a shape, are deltas — only against a spec that recorded them', () => {
+  const t0 = (o) => ({ kind: 'text', tag: 'p', text: 'Seasonal', x: 0, y: 0, w: 200, h: 24, fontFamily: 'Arial', fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0, color: 'rgb(0, 0, 0)', lines: 1, ...o });
+  const REC = ['scroll', 'shape'];
+  assert.deepEqual(nodeDelta(t0({ scroll: 'sticky 20' }), t0({}), null, null, 2, [], REC).font.scroll, ['sticky 20', 'static'], 'the recorded case: a sticky column authored static passed the comparison and failed the pixels');
+  assert.equal(nodeDelta(t0({ scroll: 'sticky 20' }), t0({}), null, null, 2, [], REC).off, true);
+  assert.equal(nodeDelta(t0({ scroll: 'sticky 20' }), t0({ scroll: 'sticky 21' }), null, null, 2, [], REC).off, false, 'the top within the tolerance');
+  assert.deepEqual(nodeDelta(t0({ scroll: 'sticky 20' }), t0({ scroll: 'sticky 112' }), null, null, 2, [], REC).font.scroll, ['sticky 20', 'sticky 112']);
+  assert.deepEqual(nodeDelta(t0({ scroll: 'sticky 20' }), t0({ scroll: 'fixed 20' }), null, null, 2, [], REC).font.scroll, ['sticky 20', 'fixed 20']);
+  assert.equal(nodeDelta(t0({}), t0({}), null, null, 2, [], REC).off, false);
+  assert.equal(nodeDelta(t0({ scroll: 'sticky 20' }), t0({}), null, null, 2, [], []).off, false, 'a spec from before the field: not compared');
+  const im = (shape) => ({ kind: 'image', tag: 'img', text: '', x: 0, y: 0, w: 320, h: 264, fit: 'cover', shape });
+  const live = im({ pos: '50% 100%', r: '160px', by: [320, 264] });
+  assert.equal(scrollShapeDelta(live, im({ pos: '50% 100%', r: '160.4px', by: [321, 264] }), REC).radius, undefined, 'within 1 px');
+  assert.deepEqual(scrollShapeDelta(live, im({ pos: '50% 50%', r: '138.1px', by: [320, 264] }), REC), { 'object-position': ['50% 100%', '50% 50%'], radius: ['160px', '138.1px'] });
+  assert.deepEqual(scrollShapeDelta(live, im({ pos: '50% 100%' }), REC).radius, ['160px', 'none']);
+  assert.deepEqual(scrollShapeDelta(im({ pos: '50% 50%', clip: 'circle(50%)' }), im({ pos: '50% 50%', mask: true }), REC), { clip: ['circle(50%)', 'none'], mask: ['no', 'yes'] });
+  assert.deepEqual(scrollShapeDelta(live, im({ pos: '50% 50%' }), []), {}, 'not recorded: not compared');
+  assert.equal(sameLengths('50% 100%', '50% 100%'), true); assert.equal(sameLengths('8px', '8%'), false); assert.equal(sameLengths('8px 4px', '8px'), false);
+  assert.equal(extraOf(t0({ scroll: 'sticky 20' })), '  [sticky 20]'); assert.equal(extraOf(t0({})), '');
+  assert.equal(extraOf(live), '  [r 160px; cut by 320×264; pos 50% 100%]');
 });
 await check('parseFontSubstFile + nodeDelta: a declared substitution is not a family delta and its glyph-width difference is bounded at 6 % (min 2 px); undeclared, both are off', () => {
   assert.deepEqual(parseFontSubstFile('# brand faces\n"Brand Sans" = Arimo\n\nbad line\n'), [{ live: 'brand sans', build: 'arimo' }]);
@@ -393,6 +414,14 @@ if (playwrightOk) {
       assert.equal(r.status, 2, show(r)); console.log(r.stdout.trimEnd().replace(/^/gm, '    '));
       assert.match(r.stdout, /MISSING on the build — in the spec, by live section \(3\)/); assert.match(r.stdout, /section 2 main {3}h3 {5}"Card title number 3"/); assert.match(r.stdout, /\[img\] Card 3 picture/);
       assert.match(r.stdout, /EXTRA on the build — not in the spec, by build section \(1\)\n {2}section 3 main {3}link {3}"Read the whole story"/); assert.match(r.stdout, /3 missing, 1 extra$/m);
+    });
+    await check('e2e (d) the same boxes at rest, but a sticky heading authored static and another image radius: both are named, exit 2', async () => {
+      const r = await run(['compare', specAt(1440), `${base}/build-d`]);
+      assert.equal(r.status, 2, show(r)); console.log(r.stdout.trimEnd().replace(/^/gm, '    '));
+      assert.match(r.stdout, /scroll sticky 20→static/); assert.match(r.stdout, /radius 24px→8px/);
+      assert.match(r.stdout, /0 section\(s\) with a height delta, total offset 0px, 4 node\(s\) off, 0 missing, 0 extra/);
+      const brief = await run(['view', specAt(1440)]);
+      assert.match(brief.stdout, /^scroll {3}1 node\(s\) in the main region sit in a sticky \/ fixed box \(section \d+: sticky 20\)/m); assert.match(brief.stdout, /^shapes {3}3 image\(s\) are cut/m);
     });
     await check('e2e view: --section prints that section\'s nodes; --kind + --tsv feed a command; no flag is the brief', async () => {
       const r = await run(['view', specAt(360), '--section', '1']);
