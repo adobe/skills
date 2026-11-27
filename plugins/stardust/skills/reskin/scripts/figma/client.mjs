@@ -4,15 +4,19 @@
 // retried; the message names the token's source variable, its length and whether it has the figd_
 // personal-access-token prefix, never its characters); 404 and other 4xx → exit 2; 429 waits
 // Retry-After when it is within maxWaitSec, else exit 3 at once quoting the plan headers; 5xx and
-// network errors back off min(2^n s, maxWaitSec) up to maxRetries, then exit 3. Every error message is redacted of the token.
+// network errors back off min(2^n s, maxWaitSec) up to maxRetries, then exit 3; any other fetch failure (a request
+// that could not be built) fails at once without the runtime's message, which can quote the header value. The token
+// is trimmed, and one with characters outside printable ASCII fails before the first request. Every error message is
+// redacted of the token, raw and trimmed.
 import { FigmaError, UsageError } from './errors.mjs';
 
 const DEFAULT_BASE = 'https://api.figma.com';
 const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function redact(text, token) {
-  const s = String(text ?? '');
-  return token ? s.split(token).join('[redacted]') : s;
+  let s = String(text ?? '');
+  for (const t of [token, token?.trim?.()].filter(Boolean)) s = s.split(t).join('[redacted]');
+  return s;
 }
 
 const query = (params) => Object.entries(params)
@@ -47,15 +51,16 @@ const reasonOf = async (res, token) => {
 export const PAT_PREFIX = 'figd_';
 export function describeToken(token, source = 'FIGMA_TOKEN') {
   const t = String(token ?? '');
-  const shape = t.startsWith(PAT_PREFIX)
+  const shape = t.trim().startsWith(PAT_PREFIX)
     ? 'prefix looks like a Figma personal access token'
     : `unexpected prefix: Figma personal access tokens start with ${PAT_PREFIX}`;
   const space = t !== t.trim() ? '; it has leading or trailing whitespace' : '';
-  return `the token came from ${source} (${t.length} characters; ${shape}${space})`;
+  const inner = /[^\x21-\x7e]/.test(t.trim()) ? '; it has characters outside printable ASCII (a line break, space or control character)' : '';
+  return `the token came from ${source} (${t.length} characters; ${shape}${space}${inner})`;
 }
 
 export function createClient({
-  token,
+  token: rawToken,
   tokenSource = 'FIGMA_TOKEN',
   base = process.env.FIGMA_API_BASE || DEFAULT_BASE,
   fetchImpl = fetch,
@@ -70,10 +75,16 @@ export function createClient({
   if (!parsed || !(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && loopback))) {
     throw new UsageError(`FIGMA_API_BASE must be an https URL (or http on localhost for tests), got "${apiBase}"`);
   }
+  // A header value takes printable ASCII only: fetch would reject anything else and quote the value in its error.
+  const token = typeof rawToken === 'string' ? rawToken.trim() : rawToken;
+  if (token && /[^\x21-\x7e]/.test(token)) {
+    throw new UsageError(`${tokenSource} cannot be sent as a header: ${describeToken(rawToken, tokenSource)}. Set it to the personal access token alone, on one line.`);
+  }
+  const scrub = (v) => redact(v, rawToken);
   const state = { planTier: null };
   const fail = (msg, opts) => {
-    const info = Object.fromEntries(Object.entries(opts.info || {}).map(([k, v]) => [k, typeof v === 'string' ? redact(v, token) : v]));
-    return new FigmaError(redact(msg, token), { ...opts, info });
+    const info = Object.fromEntries(Object.entries(opts.info || {}).map(([k, v]) => [k, typeof v === 'string' ? scrub(v) : v]));
+    return new FigmaError(scrub(msg), { ...opts, info });
   };
 
   async function request(url, { withToken, label }) {
@@ -84,8 +95,10 @@ export function createClient({
         // Token-bearing requests never follow a redirect: fetch would forward X-Figma-Token.
         res = await fetchImpl(url, withToken ? { headers: { 'X-Figma-Token': token }, redirect: 'manual' } : {});
       } catch (e) {
+        // fetch reports a network failure as a TypeError with a cause; one without a cause was never sent.
+        if (!e?.cause) throw fail(`Figma request for ${label} could not be sent (${e?.name || 'Error'}); not retried.`, { exitCode: 3, status: 0 });
         if (attempt < maxRetries) { await sleep(backoff); continue; }
-        throw fail(`Figma unreachable (${label}): ${e.cause?.code || e.message} after ${attempt + 1} attempt(s)`, { exitCode: 3, status: 0 });
+        throw fail(`Figma unreachable (${label}): ${e.cause.code || 'network error'} after ${attempt + 1} attempt(s)`, { exitCode: 3, status: 0 });
       }
       const tier = res.headers.get('x-figma-plan-tier');
       if (tier) state.planTier = tier;

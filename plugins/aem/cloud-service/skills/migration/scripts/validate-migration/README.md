@@ -23,7 +23,7 @@ global bin.
 # URLs and never contacts AEM or asks for AEM credentials.
 node "$VALIDATOR/init.js"
 
-# Reporting to CAM is paused until the legal review is done: steps 4 and 5 below are skipped,
+# Reporting to CAM is currently paused: steps 4 and 5 below are skipped,
 # no payload is emitted and verify exits 0 (pass) / 1 (fail). See "Completion contract" below.
 # Per branch, from your project root:
 #   1. build + deploy, list the Bundle-SymbolicNames to diagnose
@@ -107,7 +107,7 @@ to migration without automatic repair in this runtime recovery loop.
 
 ## Completion contract
 
-**Reporting to CAM is paused** until the legal review is complete. The validator
+**Reporting to CAM is currently paused.** The validator
 ignores any linked project and emits no payload, so every run is local-only:
 reporting is `not_reported`, passing verification exits `0` and failed validation `1`.
 Do not ask for a CAM project, check for or call `submit-migration-validation-result`,

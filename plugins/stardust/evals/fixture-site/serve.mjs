@@ -8,6 +8,10 @@
 //   /visit/                a store visit page: header, opening hours, directions, "today" band, footer (the small page)
 //   /?unstable=1           either page with a notice block whose HEIGHT differs on every load — a page
 //   /visit/?unstable=1     that is not one page between two captures (reference.mjs freeze exits 2)
+//   /board/                a scroll-jacked board of this week's arrivals: html and body clip, a script moves the
+//                          content, so window scrolling is a no-op (stitch-shot exits 1 on a scroll stall)
+//   /board/?page-mode=static  the same content in a static page mode for screen readers: another layout, in
+//                          normal flow, that stitches (the rendering a gate must not take as the board's reference)
 //   /__fixture             the identity and load counter as JSON: {"fixture":"stardust-evals-store",…}
 //
 // What changes between loads: the "today" band of both pages is painted from a per-request
@@ -71,6 +75,8 @@ const server = createServer((req, res) => {
   try { path = decodeURIComponent(url.pathname); } catch { return send(400, 'text/plain; charset=utf-8', 'Bad request\n'); }
   let rel = normalize(path).replace(/^([/\\])+/, '');
   if (rel === '' || rel.endsWith(sep)) rel += 'index.html';
+  // the static page mode: a page that has a static.html beside its index.html serves it for ?page-mode=static
+  if (url.searchParams.get('page-mode') === 'static' && rel.endsWith('index.html') && existsSync(join(SITE, rel.replace(/index\.html$/, 'static.html')))) rel = rel.replace(/index\.html$/, 'static.html');
   const file = join(SITE, rel);
   const type = TYPES[extname(file)];
   if (!file.startsWith(SITE + sep) || rel.startsWith('_') || !type || !existsSync(file) || !statSync(file).isFile()) return send(404, 'text/plain; charset=utf-8', 'Not found\n');

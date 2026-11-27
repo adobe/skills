@@ -194,6 +194,8 @@ async function call(method, url, { token, body } = {}, { retries = 4, backoffMs 
     return { status, text, attempts: attempt + 1 };
   }
 }
+// A step landed only on a 2xx or 3xx: status 0 is a transport failure that outlasted its retries, not a success.
+const stepFailed = (r) => r.status === 0 || r.status >= 400;
 
 async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
   // admin 200 != delivered; GET the rendered .plain.html on the delivery tree
@@ -233,7 +235,7 @@ async function deployOne(page, args, ledger, logLine) {
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
   if (put.status === 401) return tokenHalt('put', put);
   rec.put = put.status;
-  if (put.status >= 400) {
+  if (stepFailed(put)) {
     rec.status = 'put-fail';
     rec.lastError = `PUT ${put.status} ${put.text}`;
     await logLine({ path: page.webPath, step: 'put', status: put.status, text: put.text, attempts: put.attempts });
@@ -244,7 +246,7 @@ async function deployOne(page, args, ledger, logLine) {
   const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args);
   if (prev.status === 401) return tokenHalt('preview', prev);
   rec.preview = prev.status;
-  if (prev.status >= 400) {
+  if (stepFailed(prev)) {
     rec.status = 'preview-fail';
     rec.lastError = `preview ${prev.status} ${prev.text}`;
     await logLine({ path: page.webPath, step: 'preview', status: prev.status, text: prev.text, attempts: prev.attempts });
@@ -256,7 +258,7 @@ async function deployOne(page, args, ledger, logLine) {
     const live = await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, args);
     if (live.status === 401) return tokenHalt('live', live);
     rec.live = live.status;
-    if (live.status >= 400) {
+    if (stepFailed(live)) {
       rec.status = 'live-fail';
       rec.lastError = `live ${live.status} ${live.text}`;
       await logLine({ path: page.webPath, step: 'live', status: live.status, text: live.text, attempts: live.attempts });

@@ -13,7 +13,7 @@ export default buildConfig({
 Site: {{url}}
 Save everything the work produces in ./out/ (relative to your working directory),
 then summarize what you found in a few sentences.`,
-  contract: `Output format: ./out/urls.json {"valid": number, "urls": [{"url": "...", "lang": "fr-FR" or ""}], "errors": [{"url": "...", "message": "..."}]}, where urls holds only the URLs kept after your filters, lang is the language tag in the URL path (empty when there is none) and errors lists every sitemap or page that could not be fetched.`,
+  contract: `Output format: ./out/urls.json {"valid": number, "urls": [{"url": "...", "variants": [{"url": "...", "lang": ["fr-FR"]}]}], "errors": [{"url": "...", "message": "..."}]}, where valid counts selected URLs, urls groups their language variants including declared alternates, each lang array combines path and sitemap tags (empty when unknown), and errors lists sitemaps or pages that could not be fetched.`,
   tests: parse(readFileSync(join(suiteDir, 'cases.yaml'), 'utf-8')),
   assert: [{ file: 'assert.mjs', fn: 'scanMatches' }],
 });

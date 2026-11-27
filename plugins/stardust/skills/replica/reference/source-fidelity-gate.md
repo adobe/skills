@@ -627,17 +627,30 @@ rather than erroring.
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live
     source has no pass to report.
-13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
-    cannot measure them.** On pages where `html`/`body` are
-    `overflow:hidden` and an inner container scrolls, the document reports
-    the full content height but `window.scrollTo` is a no-op — every chunk
-    would capture the top viewport and the rows below would stitch as
-    zero-filled black: a silently fictitious pixel diff. stitch-shot now
-    detects the stall and exits 1 with the signature `stitch-shot error:
-    scroll stall at chunk target …px: window scroll is a no-op
-    (window.scrollY stuck at …px) while the document reports …px`.
-    Capturing the inner scroller is future work; for now record the page as
-    gate-blocked for the pixel probe and rely on content-diff/visual-diff.
+13. **Inner-scroller, scroll-jacked and virtual-scroll pages fail loud, and
+    no other rendering stands in for them.** When `html`/`body` are
+    `overflow:hidden` and an inner container scrolls, `window.scrollTo` is a
+    no-op: every chunk would capture the top viewport and the rows below
+    would stitch as black, a fictitious pixel diff. stitch-shot detects the
+    stall and exits 1 (`stitch-shot error: scroll stall at chunk target
+    …px: window scroll is a no-op …`). Capturing the inner scroller is
+    future work. Until then, on such a page (or one whose sections script
+    positions, so the document is no taller than the viewport):
+    - record the pixel probe as gate-blocked, gate the page with
+      content-diff and visual-diff against the SAME URL, and say in the run
+      summary which rendering the gate could not measure;
+    - never substitute another rendering as the reference: a static or
+      screen-reader mode (`?page-mode=static`), a print, AMP, reader or
+      no-JS view is another layout, not the page visitors see. The
+      reference is the page as the inventory lists it (`state.json`
+      `pages[].url`), and its page record is captured from that URL.
+      `reference-url.mjs` owns what counts as the same page; gate.sh
+      refuses anything else (exit 7) and gate-all makes it an error row;
+    - a substitution exists only when the user accepts it after comparing
+      the first viewport of both renderings at each gate width: one
+      inconsistency-register entry with a `- **Reference substitution:**`
+      field naming both URLs. Every gate output then marks its pass as one
+      against a substituted reference, and the run summary tells the user.
 14. **Captures assert fonts loaded — a silent font fork is a false
     measurement.** A webfont that fails to fetch renders the ENTIRE live
     capture in fallback type: wrong wraps, wrong line counts, wrong section
@@ -789,10 +802,9 @@ none visible on a local harness):
 shipped the other pages unmeasured; the owner's first feedback was that they "don't look
 formatted as the original". A runner then gated every deployed page on stitched 1440 captures
 and pixel-compare, and a fix program took the roster from 3 to 67 PASS. Then the coupon-listing
-page PASSED at **6.7 % / Δh 69 px** while every one of its 284 cards was broken: a fixed-height
-card with `overflow: hidden`, the body ~30 px too low, the description clipped mid-glyph, the
-details link pushed under the primary button — and the sort control reading a different default
-than the origin. The links WERE in the served DOM; pure CSS geometry. Pixelmatch underweights
+page PASSED at **6.7 % / Δh 69 px** while every one of its 284 cards was broken (fixed-height
+cards with `overflow: hidden`, descriptions clipped mid-glyph, links pushed under buttons). The
+links WERE in the served DOM; pure CSS geometry. Pixelmatch underweights
 small text inside otherwise matching shapes (the text-only number, `--text-boxes`, read 16.5 %).
 "PASS" meant "right shapes at the right places", not "every element present and legible".
 Element presence and legibility are checkable — so `gate-all.mjs` checks them.
@@ -804,10 +816,9 @@ and settle them the same way (`measure-live.mjs`), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
 clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #156). **Verdict, per page — all four:**
 
-1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`).
-2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
-   a render thousands of px too tall; a union (white-padded) metric was tried and rejected
-   (white gaps score as matches), so the guard is explicit.
+1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`);
+   published offsets pass within the height tolerance, no step over 200 px.
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %).
 3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
    in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
    ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
@@ -839,10 +850,15 @@ Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
 counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
-visible in the artifact. Sites without bot management measure identically on both tiers.
+visible in the artifact.
 `--eds-host` gates a code branch against the same content (branch hosts
 serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
 the two captures at the row's band, never the whole pages.
+
+**Disk and memory.** A capturing run refuses (exit 4) when its peak captures plus a 2 GB
+reserve do not fit (`--help` § Preflight); `--prune-captures` keeps a failing page's measurement,
+not its PNGs; a delivery unit short of either gates `--only <its slugs> --sample <n>`, never
+nothing (`handoff-contract.md` § 1 row 5).
 
 **What a failing row means (#126).** The row's evidence decides the fix, mechanically: clip
 groups, HIDDEN links or unit deltas confined to one block → fix the BLOCK (CSS or encoder) and

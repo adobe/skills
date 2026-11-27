@@ -117,7 +117,7 @@ function negations(cond) {
     if (cond[i] === '(') depth += 1;
     else if (cond[i] === ')') depth -= 1;
     else if (i === cond.length || (cond[i] === ',' && depth === 0)) {
-      if (/^\s*not\s+(?!\()/i.test(cond.slice(start, i))) flip(start, i);
+      if (/^\s*not\s+(?![\s(])/i.test(cond.slice(start, i))) flip(start, i);
       start = i + 1;
     }
   }

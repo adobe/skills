@@ -1,28 +1,34 @@
 {
-  "context": "The capture has 67 valid URLs: 46 en (including 5 under /en/archive/), 13 de, 7 fr-FR and one /contact with no language. Two sitemaps failed: sitemap-es.xml (HTTP 404) and sitemap-fr.xml.gz (timeout). Judge urls.txt and answer.md.",
+  "context": "The capture has 67 valid URLs: 46 en (including 5 under /en/archive/), 13 de, 7 fr-FR and one /contact with no language. Only the item-1 group declares hreflang: /en/products/item-1 is declared en-CA, so its en comes from the path alone (pathLang en); /de/produkte/artikel-1 and /fr-fr/produits/article-1 are declared as their paths say (pathLang null). Every other language comes from the URL path alone (pathLang set). Two sitemaps failed: sitemap-es.xml (HTTP 404) and sitemap-fr.xml.gz (timeout). Judge urls.txt and answer.md.",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "counts_by_language",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Reports page counts per language from the variants' lang arrays: 46 en (41 without the archive), 13 de, 7 fr-FR, plus one page with no language (/contact). The en-CA declared for /en/products/item-1 may be counted within en or on its own. Counts before and after removing the archive are both acceptable if stated clearly."
+    },
+    {
+      "name": "declared_vs_guessed",
       "max_score": 20,
       "category": "INTENT",
-      "description": "Reports page counts per language from the lang field: 46 en (41 without the archive), 13 de, 7 fr-FR, plus one page with no language (/contact). Counts before and after removing the archive are both acceptable if stated clearly."
+      "description": "Separates declared languages from guesses: only /en/products/item-1 (declared en-CA), /de/produkte/artikel-1 (de) and /fr-fr/produits/article-1 (fr-FR) have a declared language. The languages of the other pages, and the en of /en/products/item-1, come only from the URL path and are unconfirmed."
     },
     {
       "name": "archive_excluded",
-      "max_score": 20,
+      "max_score": 15,
       "category": "INTENT",
       "description": "urls.txt contains no /en/archive/ URL and keeps the other URLs (62 in total, one per line, each an absolute URL from the capture)."
     },
     {
       "name": "errors_checked",
-      "max_score": 25,
+      "max_score": 20,
       "category": "INTENT",
       "description": "Says the inventory may be incomplete because two sitemaps failed: sitemap-es.xml (404) and sitemap-fr.xml.gz (timeout), so Spanish pages are possibly missing (or the site has no Spanish sitemap) and the French list is probably partial."
     },
     {
       "name": "next_step",
-      "max_score": 20,
+      "max_score": 15,
       "category": "DESIGN",
       "description": "Recommends a concrete follow-up: rerun the scan (higher --timeout for the French sitemap), and/or use `web site scan --strategy http` with a --limit to cross-check what the sitemaps miss."
     },

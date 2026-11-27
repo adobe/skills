@@ -101,6 +101,9 @@ jobs:
 
       # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+        with:
+          # renovate: datasource=npm depName=@tessl/cli
+          version: '0.122.0'
 
       - uses: ai-ecoverse/boy-scout@beb07aa7b5a822f1e36f0eb593af6df3931f3256  # v1.1.0
 
@@ -125,6 +128,9 @@ jobs:
 
       # for the Tessl lint warnings of an import; needs no token
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+        with:
+          # renovate: datasource=npm depName=@tessl/cli
+          version: '0.122.0'
 
       - name: What is brought in from another repository meets the rules of this one
         env:

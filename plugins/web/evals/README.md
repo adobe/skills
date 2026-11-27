@@ -17,8 +17,9 @@ So scenarios give the agent browser output captured from live pages in
 | page-reduce-repeats-and-empty-sections | page-reduce | `web page reduce` output for an invented coffee shop (repeats, token-less siblings, grouped and long link lists, carousel controls, an image-only section, overlays with 0, 1, 3 and 4 fields) |
 | page-langs-audit-from-capture | page-langs | browser-step output of `web page langs` (signals and text) from a local en/es/de test page, URL rewritten |
 | page-prep-throwaway-session-cleanup | page-prep | `web page overlays` detection report from https://www.20minutes.fr/ |
-| site-scan-report-from-scan | site-scan | `web site scan` output for an invented store (3 languages, an archive, two failed sitemaps) |
+| site-scan-report-from-scan | site-scan | `web site scan` output for an invented store (3 languages, mostly guessed from the path; an archive; two failed sitemaps) |
 | site-scan-empty-sitemap | site-scan | `web site scan` error (EMPTY_RESULT) for a site with no sitemap |
+| site-scan-blocked-proxy | site-scan | `web site scan` error (EMPTY_RESULT) for an invented site that answers 403; the user has an unblocker proxy |
 | page-cache-offline-replay | page-cache | none |
 | domain-mask-demo-domain | domain-mask | none |
 

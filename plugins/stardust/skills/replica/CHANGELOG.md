@@ -1,3 +1,52 @@
+# [1.9.0](https://github.com/adobe/skills/compare/replica-v1.8.6...replica-v1.9.0) (2026-11-27)
+
+
+### Features
+
+* **stardust:** a delivery unit closes only when every page it shipped has a gate row ([#788](https://github.com/adobe/skills/issues/788)) ([d53aadc](https://github.com/adobe/skills/commit/d53aadc8ffe463a642d8312320b6693a16604f6c)), closes [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#790](https://github.com/adobe/skills/issues/790) [#792](https://github.com/adobe/skills/issues/792) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793) [#793](https://github.com/adobe/skills/issues/793)
+
+## [1.8.6](https://github.com/adobe/skills/compare/replica-v1.8.5...replica-v1.8.6) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
+## [1.8.5](https://github.com/adobe/skills/compare/replica-v1.8.4...replica-v1.8.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs one recorded unit per width, with a deadline sized to its roster ([#821](https://github.com/adobe/skills/issues/821)) ([d0e4c34](https://github.com/adobe/skills/commit/d0e4c34bbbc059de2eb9840064a0ad3f8b3e98cd))
+
+## [1.8.4](https://github.com/adobe/skills/compare/replica-v1.8.3...replica-v1.8.4) (2026-11-24)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint reads not followed by extra whitespace correctly ([#728](https://github.com/adobe/skills/issues/728)) ([ebeca8c](https://github.com/adobe/skills/commit/ebeca8ce731c8d1cb9864af4eea922108118092e)), closes [#688](https://github.com/adobe/skills/issues/688)
+
+## [1.8.3](https://github.com/adobe/skills/compare/replica-v1.8.2...replica-v1.8.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** a recorded gate pass is the whole verdict, written per page and reused only while the page's inputs are unchanged ([#793](https://github.com/adobe/skills/issues/793)) ([38a3255](https://github.com/adobe/skills/commit/38a3255c81ec76be0d63ddce5a324795d58650cf))
+
+## [1.8.2](https://github.com/adobe/skills/compare/replica-v1.8.1...replica-v1.8.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the all-pages gate runs a page's probes beside its captures, inside one browser budget per job ([#792](https://github.com/adobe/skills/issues/792)) ([fede929](https://github.com/adobe/skills/commit/fede92993e633b33b86213f767385274b4d4ef6f))
+
+## [1.8.1](https://github.com/adobe/skills/compare/replica-v1.8.0...replica-v1.8.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **stardust:** the roster gate judges offsets with the height tolerance, so pages inside the pixel bar stop failing on small shifts ([#790](https://github.com/adobe/skills/issues/790)) ([50de2af](https://github.com/adobe/skills/commit/50de2afe042861b295af64cc4c68e86255caed54))
+
 # [1.8.0](https://github.com/adobe/skills/compare/replica-v1.7.0...replica-v1.8.0) (2026-11-21)
 
 

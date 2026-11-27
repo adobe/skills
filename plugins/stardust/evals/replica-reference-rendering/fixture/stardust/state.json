@@ -1,0 +1,47 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica",
+    "writtenAt": "2026-11-25T08:40:00Z",
+    "stardustVersion": "0.46.7"
+  },
+  "site": {
+    "originUrl": "http://localhost:8780",
+    "deployUrl": null,
+    "extractedAt": "2026-11-25T08:22:31Z",
+    "pageCap": 1,
+    "totalDiscovered": 1,
+    "crawled": 1
+  },
+  "direction": {
+    "phrase": "preserve",
+    "resolvedAt": "2026-11-25T08:25:00Z"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-25T08:20:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "board",
+      "url": "http://localhost:8780/board/",
+      "title": "The board: this week at the Fixture Store",
+      "type": null,
+      "status": "prototyped",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-25T08:22:31Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-11-25T08:40:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/board.json",
+      "prototypePath": "stardust/prototypes/board-proposed.html",
+      "migratedPath": null
+    }
+  ]
+}

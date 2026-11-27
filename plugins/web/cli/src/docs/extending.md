@@ -40,7 +40,10 @@ plugin run through the extended binary with `WEB=acme-web`.
 Everything exported by the library; nothing else is public.
 
 - `runCli(argv, deps)`: build the program, parse, print errors as JSON, return the exit
-  code. `deps.extend(program, deps)` runs after the stock groups are registered.
+  code. `deps.extend(program, deps)` runs after the stock groups are registered. A
+  `site scan` with a proxy changes process-wide settings until it ends: every request of the
+  process goes through the proxy, with its CA and, with `--insecure`, without certificate
+  checks. A second proxied scan in the same process meanwhile exits 2 (`UNSUPPORTED`).
 - `createProgram(deps)`: the commander root alone, when you need to own parsing; thrown
   errors are then yours to print (`fail`).
 - `runPageCommand(command, deps, { url, fn, records })`: run `fn(driver, session, opts)` on a page.

@@ -57,6 +57,19 @@
 #   frozen). One frozen without recorded flags (an older reference.mjs or stitch-shot --freeze-baseline) is reused:
 #   `gate.sh: reference: reused — settings not recorded`.
 #
+# Reference URL (source-fidelity-gate.md § Hardening rule 13): <live-url> must be the page as stardust/state.json lists
+#   it for <slug>, and so must the URL its page record was captured from. `reference-url.mjs <slug> <live-url>` decides
+#   (its --help: the folds that are the same page). Another rendering (a query such as page-mode=static, another
+#   path or host) ends the round first, exit 7, its REFUSED line on stderr: nothing captured, nothing counted. A
+#   substitution the inconsistency register records runs, and the round says so after its reference line,
+#   `gate.sh: reference: SUBSTITUTED: <alt> stands in for <url> (…), accepted by R-<nn> …`, and in verdict-<label>.json
+#   `reference.substitution`. No stardust/state.json, or no row or URL for the slug: the helper's
+#   `reference: unchecked: <why>` line on stdout, the round runs. The guard fails closed: without reference-url.mjs
+#   beside this script, or when it ends with any other code than 0 or 7, or exits 0 without one of its lines (a crash,
+#   a usage error, a state.json it cannot read), the round does not run (exit 1, before the cap and any capture; the
+#   helper's stderr is kept): re-copy the replica scripts dir. No opt-out: the helper reads files only, so every such
+#   failure has a repair, and the inconsistency register is how another rendering is accepted.
+#
 # Stage (the round's budget, its pixel bound and its probes; written to verdict-<label>.json `stage`):
 #   prototype    the build URL is local (http://localhost*, http://127.0.0.1*, file:*) AND its path ends in
 #                -proposed.html (stardust/prototypes/<slug>-proposed.html), or GATE_REGIME=prototype
@@ -195,11 +208,13 @@
 # missing/blocked side must never be compared, and a blocked round has no
 # verdict. Exit codes: 0 gate PASS, 2 gate FAIL (the pixel criterion, or horizontal
 # overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict), 4 build-side identity assertion failed
+# retry — re-queue, not a verdict; also a guard that could not run: § Round cap,
+# § Reference URL), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 5 origin reference UNSTABLE — nothing frozen, no verdict, not a counted
 # round (§ Origin reference), 124 instrument deadline exceeded (not a measurement —
-# see below), 125 unknown argument (usage), 6 round refused by the cap.
+# see below), 125 unknown argument (usage), 6 round refused by the cap, 7 another rendering than
+# the inventory's page (§ Reference URL).
 #
 # Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
 #   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (§ Stage); at the cap, or after a recorded
@@ -378,6 +393,21 @@ esac
 # What the two-stage instruments take: pixel-compare's --offset-max bound (local-build = the prototype's 8 px) and
 # unit-geometry's served-side selector (local-build serves the delivered blocks = published).
 case "$REGIME" in local-build) OFFSET_STAGE=prototype; UNIT_STAGE=published ;; *) OFFSET_STAGE=$REGIME; UNIT_STAGE=$REGIME ;; esac
+# Reference URL (header § Reference URL): before the cap is asked and before anything is fetched. Exit 7 = another
+# rendering than the inventory's page, nothing ran; a substitution the register records rides to the reference line.
+REF_SUB=""
+# The guard fails closed: no helper, another exit, or exit 0 without one of its lines ends the round (exit 1), its stderr kept.
+[ -f "$HERE/reference-url.mjs" ] || { echo "gate.sh: $HERE/reference-url.mjs missing: the reference URL cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; }
+REF_URL_LINE=$(node "$HERE/reference-url.mjs" "$SLUG" "$LIVE_URL"); rc=$?
+REF_URL_LINE=$(printf '%s\n' "$REF_URL_LINE" | tail -1)
+case "$rc:$REF_URL_LINE" in
+  "7:"*) echo "gate.sh: $REF_URL_LINE" >&2
+     echo "gate.sh: REFUSED (exit 7): the live side is not the page the inventory lists, so the round did not run and is not counted" >&2; exit 7 ;;
+  "0:reference: SUBSTITUTED: "*) REF_SUB=${REF_URL_LINE#reference: } ;;
+  "0:reference: unchecked: "*) echo "gate.sh: $REF_URL_LINE" ;;
+  "0:reference: the inventory URL "*) ;;
+  *) echo "gate.sh: reference-url.mjs exited $rc${REF_URL_LINE:+ ($REF_URL_LINE)}: the reference URL could not be checked, so the round does not run (its stderr above); re-copy the replica scripts dir (replica SKILL.md § Setup), or repair what it names" >&2; exit 1 ;;
+esac
 # Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
 # one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
 ROUND_VERDICT=0
@@ -685,6 +715,7 @@ if [ "$ORIGIN" = frozen ]; then
 else
   echo "gate.sh: reference: a live capture (--live-origin / GATE_REFERENCE=live, or no reference.mjs) — not primed, no noise floor measured, no rows excluded"
 fi
+[ -n "$REF_SUB" ] && echo "gate.sh: reference: $REF_SUB"
 # The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
 # (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
 # the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
@@ -718,14 +749,14 @@ case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
 # Written for every round that reached a pixel verdict (0 or 2); a --full round writes it again with its probes.
 write_verdict() { # $@: probe triples (name rc evidence-file; an empty file = the probe did not run)
   [ "$ROUND_VERDICT" = 1 ] || return 0
-  G_PENDING="${VERDICT_PENDING:-}" G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
+  G_PENDING="${VERDICT_PENDING:-}" G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" G_SUB="$REF_SUB" \
   node -e 'const [out, round, width, ...a] = process.argv.slice(1); const fs = require("fs"); const e = process.env; const n = (k) => Number(e[k] || 0);
     const read = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
     const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] };
     const j = read(e.G_PXJ) || {}; const al = j.aligned && j.aligned.used ? j.aligned : null; const b = e.G_ORIGIN === "frozen" ? read(e.G_BASE) || {} : null;
     const pixel = { rc: n("G_PIXEL_RC"), diff: e.G_DIFF, json: read(e.G_PXJ) ? e.G_PXJ : null, pct: j.pct ?? null, alignedPct: al ? al.pct : j.pct ?? null, alignedUsed: !!al, totalShift: al ? al.totalShift : 0,
       steps: al ? al.steps.slice(0, 12) : [], offsetBound: j.offsets ? j.offsets.bound : null, maskedRows: j.maskedRows ?? 0, noiseFloor: b && typeof b.noiseFloor === "number" ? b.noiseFloor : null, reason: j.reason ?? null };
-    const reference = b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" };
+    const reference = { ...(b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" }), ...(e.G_SUB ? { substitution: e.G_SUB } : {}) };
     fs.writeFileSync(out, JSON.stringify({ round, width: Number(width), stage: e.G_STAGE, pixel, reference, probes, ...(e.G_PENDING ? { pending: "probes" } : {}), structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
     "$DIR/verdict-$LBL.json" "$LBL" "$W" "$@" 2>/dev/null || true
 }
