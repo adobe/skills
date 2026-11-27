@@ -37,9 +37,9 @@ const FEATURES = {
   redirectmaps: { label: 'Redirect Map Manager', hint: 'redirect maps usually move to Dispatcher or CDN rewrites; verify each rule' },
   mcp: { label: 'Manage Controlled Processes', hint: 'review each process; long-running bulk jobs need re-testing on Cloud Service' },
   users: { label: 'Ensure Service User', hint: 'typically replaced by repoinit for service users and permissions' },
-  oak: { label: 'Ensure Oak Index', hint: 'typically replaced by index definitions deployed under /oak:index' },
+  oak: { label: 'Ensure Oak Index', hint: 'not supported on AEM as a Cloud Service; deploy index definitions under /oak:index instead' },
   replication: { label: 'Replication / Dispatcher flush utilities', hint: 'Cloud Service has no replication agents (Sling Content Distribution); review flush and replication use' },
-  versionedclientlibs: { label: 'Versioned ClientLibs', hint: 'Cloud Service versions client libraries itself; check whether it is still needed' },
+  versionedclientlibs: { label: 'Versioned ClientLibs', hint: 'not supported on AEM as a Cloud Service, which versions client library URLs itself; remove it' },
   httpcache: { label: 'HTTP Cache', hint: 'Cloud Service relies on the CDN and Dispatcher cache; review' },
   errorpagehandler: { label: 'Error Page Handler', hint: 'check the feature against the ACS Commons Cloud Service documentation' },
   genericlists: { label: 'Generic Lists', hint: 'check the feature against the ACS Commons Cloud Service documentation' },
@@ -51,6 +51,8 @@ const DEFAULT_HINT = 'check the feature against the ACS Commons Cloud Service do
 
 /** The feature a class, package or PID under com.adobe.acs.commons belongs to. */
 function featureOf(name) {
+  // Versioned ClientLibs lives in the shared `rewriter` package; name it by its class.
+  if (/\.VersionedClientlibs/i.test(String(name || ''))) return { key: 'versionedclientlibs', label: FEATURES.versionedclientlibs.label };
   const m = /^com\.adobe\.acs\.commons\.([a-z0-9_]+)/i.exec(String(name || ''));
   const key = m ? m[1].toLowerCase() : 'unknown';
   return { key, label: (FEATURES[key] && FEATURES[key].label) || key };

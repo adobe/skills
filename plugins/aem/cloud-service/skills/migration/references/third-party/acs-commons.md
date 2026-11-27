@@ -25,15 +25,16 @@ ACS AEM Commons is an open-source library maintained outside Adobe's AEM product
 
 | Finding | What it typically needs on AEM as a Cloud Service |
 |---|---|
-| `acs-aem-commons-all` without the `cloud` classifier | Cloud Service uses the `-all` package with the `cloud` classifier (ACS Commons 5.x and later). Upgrade and re-test. |
-| Older `acs-aem-commons-bundle` / `-content` / `-ui.*` artifacts | Replace with the `-all` package (`cloud` classifier) as part of the customer-owned upgrade. |
+| `acs-aem-commons-all` without the `cloud` classifier | On Cloud Service the container package embeds `acs-aem-commons-all` (ACS Commons 6.0.0 and later) with the `cloud` classifier. Upgrade and re-test. |
+| `acs-aem-commons-content` (before 6.0.0) or the older `-ui.*` packages | Renamed to `acs-aem-commons-all` in 6.0.0: replace it with `-all` (`cloud` classifier) as part of the customer-owned upgrade. |
+| `acs-aem-commons-bundle` | Still the dependency for ACS Commons Java APIs (`provided` scope); keep it and align its version with the `-all` package. |
 | Redirect Manager (with rule count) | Supported in current releases; migrate and verify every rule. |
 | Redirect Map Manager | Redirect maps usually move to Dispatcher or CDN rewrites; verify each rule. |
 | Manage Controlled Processes (MCP) | Review each process; long-running bulk jobs need re-testing. |
 | Ensure Service User | Typically replaced by **repoinit** for service users and permissions. |
-| Ensure Oak Index | Typically replaced by index definitions deployed under `/oak:index` (see the code-assessment `tuning-oak-query-indexes` skill). |
+| Ensure Oak Index | Not supported on Cloud Service: deploy index definitions under `/oak:index` instead (see the code-assessment `tuning-oak-query-indexes` skill). |
 | Replication / Dispatcher flush utilities | Cloud Service has no replication agents (Sling Content Distribution); review flush and replication use. |
-| Versioned ClientLibs | Cloud Service versions client libraries itself; check whether it is still needed. |
+| Versioned ClientLibs | Not supported on Cloud Service, which versions client library URLs itself; remove it. |
 | HTTP Cache | Cloud Service relies on the CDN and Dispatcher cache; review. |
 | Email service | Outbound email needs advanced networking on Cloud Service; review. |
 | Any other feature | Check it against the ACS AEM Commons documentation for AEM as a Cloud Service. |

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.acme</groupId>
+  <artifactId>acme</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <modules>
+    <module>core</module>
+    <module>ui.config</module>
+  </modules>
+  <properties>
+    <acs.version>5.7.0</acs.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>com.adobe.acs</groupId>
+      <artifactId>acs-aem-commons-content</artifactId>
+      <version>${acs.version}</version>
+      <classifier>min</classifier>
+      <type>zip</type>
+    </dependency>
+  </dependencies>
+</project>

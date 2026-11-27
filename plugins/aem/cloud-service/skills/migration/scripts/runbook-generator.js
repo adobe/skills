@@ -302,12 +302,13 @@ const PATTERN_META = {
     label: 'ACS AEM Commons (third-party)',
     severity: 'medium',
     strategy: 'content-scan',
-    // ACS AEM Commons is an open-source third-party library, not part of AEM. Agreed
-    // handling: report the version and the features in use, recommend an upgrade, and
-    // never change or upgrade it — the customer owns that work.
+    // ACS AEM Commons is an open-source third-party library, not part of AEM. The
+    // runbook reports the version and the features in use and recommends an upgrade;
+    // it never changes or upgrades it — the customer owns that work.
     bpaSlugs: [],
     heuristic: true,
     reportOnly: true,
+    reference: 'references/third-party/acs-commons.md',
     description: 'ACS AEM Commons usage: the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills. Detected heuristically by a text scan.',
     promptPattern: 'acs commons',
     sampleOverride: 'Use the migration skill: assess my ACS AEM Commons usage for AEM as a Cloud Service (report only, no upgrade).',
@@ -325,6 +326,8 @@ const CONTENT_SCANNERS = {
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
+// Report-only patterns (third-party, customer-owned) have no apply workflow, so they stay out of the totals.
+const MIGRATABLE_PATTERNS = CANONICAL_PATTERNS.filter(p => !PATTERN_META[p].reportOnly);
 
 /** Normalize a BPA target into the runbook's display shape. */
 function normalizeBpaTarget(t) {
@@ -749,8 +752,8 @@ function renderRunbook(gathered, ctx = {}) {
   const root = ctx.workspaceRoot;
   const lines = [];
 
-  const total = CANONICAL_PATTERNS.reduce((n, p) => n + actionable(findingsByPattern[p]).length, 0);
-  const withFindings = CANONICAL_PATTERNS.filter(p => actionable(findingsByPattern[p]).length > 0);
+  const total = MIGRATABLE_PATTERNS.reduce((n, p) => n + actionable(findingsByPattern[p]).length, 0);
+  const withFindings = MIGRATABLE_PATTERNS.filter(p => actionable(findingsByPattern[p]).length > 0);
 
   lines.push('# AEM Cloud Service — Migration Runbook');
   lines.push('');
@@ -765,7 +768,7 @@ function renderRunbook(gathered, ctx = {}) {
   lines.push('|-------|-------|');
   lines.push(`| Generated | ${ctx.generatedAt || new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC |`);
   lines.push(`| Total findings | **${total}** |`);
-  lines.push(`| Patterns with findings | **${withFindings.length}** of ${CANONICAL_PATTERNS.length} |`);
+  lines.push(`| Patterns with findings | **${withFindings.length}** of ${MIGRATABLE_PATTERNS.length} |`);
   lines.push('');
 
   lines.push('### Findings by pattern');
@@ -778,7 +781,7 @@ function renderRunbook(gathered, ctx = {}) {
     const src = needsLlmScan.includes(p)
       ? '_needs LLM scan_'
       : sourceLabel(sourceByPattern[p]);
-    lines.push(`| ${meta.label} | ${meta.severity} | ${count === 0 ? '—' : `**${count}**`} | ${src} |`);
+    lines.push(`| ${meta.label} | ${meta.reportOnly ? 'report only' : meta.severity} | ${count === 0 ? '—' : `**${count}**`} | ${src} |`);
   }
   lines.push('');
 
@@ -805,7 +808,7 @@ function renderRunbook(gathered, ctx = {}) {
     lines.push(meta.description);
     lines.push('');
     if (meta.reportOnly) {
-      lines.push('> 🧾 **Report only — third-party, customer-owned.** The migration skill never upgrades or changes it. Share this list with the customer and plan the upgrade and any rework as custom development; see `references/third-party/acs-commons.md`.');
+      lines.push(`> 🧾 **Report only — third-party, customer-owned.** The migration skill never upgrades or changes it. Share this list with the customer and plan the upgrade and any rework as custom development; see \`${meta.reference}\`.`);
       lines.push('');
     }
     if (meta.heuristic) {
@@ -987,14 +990,14 @@ async function generateRunbook(options = {}) {
   let totalFindings = 0;
   for (const p of CANONICAL_PATTERNS) {
     patternCounts[p] = actionable(gathered.findingsByPattern[p]).length;
-    totalFindings += patternCounts[p];
+    if (!PATTERN_META[p].reportOnly) totalFindings += patternCounts[p];
   }
 
   return {
     success: true,
     outputPath,
     cachePath,
-    message: `Runbook written to ${outputPath} — ${totalFindings} findings across ${CANONICAL_PATTERNS.filter(p => patternCounts[p] > 0).length} pattern(s).`,
+    message: `Runbook written to ${outputPath} — ${totalFindings} findings across ${MIGRATABLE_PATTERNS.filter(p => patternCounts[p] > 0).length} pattern(s).`,
     totalFindings,
     patternCounts,
     needsLlmScan: gathered.needsLlmScan,

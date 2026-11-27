@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const { runAcsCommonsScan, featureOf } = require('./acs-commons-scan-runner.js');
-const { gatherFindings, renderRunbook, PATTERN_META, CANONICAL_PATTERNS } = require('./runbook-generator.js');
+const { gatherFindings, generateRunbook, renderRunbook, PATTERN_META, CANONICAL_PATTERNS } = require('./runbook-generator.js');
 
 function mkworkspace() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'acs-scan-test-'));
@@ -53,6 +53,7 @@ test('acsCommons is a report-only, heuristic content-scan pattern with no BPA ti
   assert.deepStrictEqual(meta.bpaSlugs, []);
   assert.ok(meta.heuristic);
   assert.ok(meta.reportOnly);
+  assert.strictEqual(meta.reference, 'references/third-party/acs-commons.md', 'the report-only banner links the pattern\'s own reference');
   assert.match(meta.description, /customer-owned/i);
 });
 
@@ -156,6 +157,31 @@ test('linked BPA rows are informational: the ACS finding count and the runbook t
   const section = md.split('## ACS AEM Commons')[1].split('\n## ')[0];
   assert.match(section, new RegExp(`\\*\\*Findings:\\*\\* ${local} \\(\\+2 informational\\)`));
   assert.match(section, /content scan \+ BPA \/ CAM/);
+});
+
+test('report-only findings stay out of the runbook totals: there is nothing to migrate in them', async () => {
+  const root = acsProject();
+  const outputPath = path.join(root, 'runbook.md');
+  const res = await generateRunbook({ workspaceRoot: root, outputPath, cachePath: path.join(root, 'runbook.json'), getEffectivePom: noPom });
+  assert.ok(res.patternCounts.acsCommons > 0, 'ACS findings are still counted per pattern');
+  const migratable = Object.entries(res.patternCounts).filter(([p]) => p !== 'acsCommons');
+  assert.strictEqual(res.totalFindings, migratable.reduce((n, [, c]) => n + c, 0));
+  assert.match(res.message, new RegExp(`${res.totalFindings} findings across ${migratable.filter(([, c]) => c > 0).length} pattern`));
+  const md = fs.readFileSync(outputPath, 'utf8');
+  assert.match(md, new RegExp(`\\| Total findings \\| \\*\\*${res.totalFindings}\\*\\* \\|`));
+  assert.match(md, /\| ACS AEM Commons \(third-party\) \| report only \|/);
+});
+
+test('features ACS documents as incompatible with Cloud Service are named and say so', () => {
+  const root = mkworkspace();
+  write(root, 'core/src/main/java/com/acme/C.java', 'package com.acme;\nimport com.adobe.acs.commons.oak.EnsureOakIndexManager;\nclass C {}\n');
+  write(root, 'ui.config/src/main/content/jcr_root/apps/acme/osgiconfig/config/com.adobe.acs.commons.rewriter.impl.VersionedClientlibsTransformerFactory.cfg.json', '{}\n');
+  const { findings } = runAcsCommonsScan(root);
+  for (const label of ['Ensure Oak Index', 'Versioned ClientLibs']) {
+    const f = findings.find(x => x.detail.startsWith(`${label}:`));
+    assert.ok(f, `${label} is recognised`);
+    assert.match(f.detail, /not supported on AEM as a Cloud Service/);
+  }
 });
 
 test('cli: node acs-commons-scan-runner.js <root> prints workspace-relative findings as JSON; no root is exit 2', () => {
