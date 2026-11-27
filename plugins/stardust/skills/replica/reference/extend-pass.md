@@ -73,10 +73,10 @@ site's URL is refused, not crawled); exactly one of `--extend` / `--extend-next`
 (`0` would lift the crawl cap); every `--extend` URL http(s) on that site, without a query string. Then Setup runs:
 its copy steps and those of `handoff-contract.md` § 4, plus `../../extract/scripts/` → `stardust/scripts/extract/`,
 from the installed plugin (the project's copies can predate this pass's flags). Leave each skill's `test/` directory
-out of the copy. With `--extend`, the named roster of
-§ 2 is then checked once, `--out stardust/.work/extend-preflight.txt`, before `extend start`: its exit 2 — a named
-page with a query string, or whose destination is delivered or an existing content document — refuses the pass with
-that message, and nothing is opened.
+out of the copy. With `--extend`, the named roster of § 2 is then checked once, `--out
+stardust/.work/extend-preflight.txt`, before the opening: its exit 2 — a named page that is no http(s) URL, has a
+query string, or whose destination is delivered or an existing content document — refuses the pass with that
+message. Nothing is opened, and no pass directory is written.
 
 Every ledger line of the pass — replica, extract, migrate, rollout — carries `--track x<N>`, so its pairs never
 close or reopen another pass's.
@@ -84,16 +84,18 @@ close or reopen another pass's.
 ## Opening — idempotent on the open track
 
 `git status --porcelain -- content/` must be empty (else stop: an uncommitted content edit is the owner's to
-settle). The `extend start` line carries the request and the opening commit, so a session that ends mid-opening
-loses neither. Everything the pass keeps under `$X` is committed with the checkpoints. A clone of the last
+settle). The opening snapshot comes first, before `extend start`: `opening.paths` and `content-freeze.json` say
+which documents exist, with their bytes, when the pass opens. The `extend start` line then carries the request and
+the opening commit. Everything the pass keeps under `$X` is committed with the checkpoints. A clone of the last
 checkpoint resumes it.
 
 ```bash
 L="node stardust/scripts/stardust/ledger.mjs"; F="node stardust/scripts/replica/foundation-freeze.mjs"
 X=stardust/replica/extend/x1
-$L replica extend start --track x1 --detail "extend-next 300 @ $(git rev-parse HEAD)" --strict   # never a value starting with --
 mkdir -p $X; echo "--extend-next 300" > $X/request.txt; git rev-parse HEAD > $X/base.txt
 (cd content && find . -name '*.html' | sed 's|^\.||' | sort) > $X/opening.paths   # every document now, ignored ones too
+$F freeze --paths content --out $X/content-freeze.json   # their bytes: the closing report compares against it
+$L replica extend start --track x1 --detail "extend-next 300 @ $(cat $X/base.txt)" --strict   # never a value starting with --
 SPEC="PRODUCT.md DESIGN.md DESIGN.json stardust/current/PRODUCT.md stardust/current/DESIGN.md stardust/current/DESIGN.json"
 for f in $SPEC; do [ -f "$f" ] && mkdir -p "$X/spec/$(dirname "$f")" && cp -p "$f" "$X/spec/$f"; done   # the opening bytes
 $F freeze --paths-if-present "$(echo $SPEC | tr ' ' ,)" --out $X/spec-freeze.json   # a missing one is recorded absent
@@ -101,9 +103,13 @@ $F freeze --from stardust/rollout/foundation-freeze.json --out $X/foundation-fre
 cp $X/foundation-freeze.json stardust/rollout/.ff.tmp && mv stardust/rollout/.ff.tmp stardust/rollout/foundation-freeze.json
 ```
 
-Resuming an open pass whose track has no `extract start` yet: re-make each missing piece — `request.txt` and
-`base.txt` from the `extend start` detail, `opening.paths`, the spec copy, `spec-freeze.json` — and never replace
-one that exists. `$X/foundation-freeze.json` is the evidence the foundation
+A session that ends before `extend start` opened nothing: the next one starts the opening again, and writes the
+four files again. Once `extend start` is on the ledger, `opening.paths` and `content-freeze.json` are never made
+again: the content tree can have changed since. If one is missing then, write a `blocked` line and stop.
+
+Resuming an open pass whose track has no `extract start` yet: re-make each other missing piece — `request.txt`
+and `base.txt` from the `extend start` detail, the spec copy, `spec-freeze.json` — and never replace one that
+exists. `$X/foundation-freeze.json` is the evidence the foundation
 was re-frozen for this pass: missing, both foundation lines run again (the rollout manifest is replaced only after
 it exists); present, only the copy runs again. Once `extract start` is written, all of them exist; one missing is a
 `blocked` line, not a re-made baseline.
@@ -195,7 +201,8 @@ file enforces the rule, so no caller has to remember a flag:
 - **Fail closed.** Both scripts read the run ledger beside `content/`. While it shows an extend pass open (an
   `extend start` without its `extend end`) and the guard is missing, they send and write nothing, and name the
   `publish` command that puts it back. The guard names its pass: one that names another pass, or none, is refused
-  too, and only the open pass may run `publish`. The guard is committed with the checkpoints.
+  too, and only the open pass may run `publish`. A ledger that shows two passes open at once is refused by all three
+  scripts: write the earlier pass's `extend end` line first. The guard is committed with the checkpoints.
 - **The pass's documents.** `migrate.mjs render` writes `stardust/migrated/`, never `content/`: the guard stays
   empty during migrate. The conversion of `handoff-contract.md` § 2 writes each `content/<page>.html`. Right after
   it, before the localizer and the PUT, the unit runs `$R output --pass $X --unit <unit> --files <them>`, then
@@ -251,11 +258,13 @@ The units:
   touches `blocks/header/` or `blocks/footer/`, the header is explored and compared again before `done-check.mjs`
   (`handoff-contract.md` § 3, `header_parity`).
 - **The end.** The guard stays through every check and every retry: a `pages_not_live` gap is closed by a
-  re-deploy, and that re-deploy needs it. List each opening document that changed, moved or went missing on disk:
-  `git diff --no-renames --diff-filter=MD --name-only $(cat $X/base.txt) -- 'content/*.html'`. The guard sent none
-  of them. Name each in the report and leave it as it is. The owner settles that edit, and the pass never restores
-  it. Then `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's —
-  `replica handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail
+  re-deploy, and that re-deploy needs it. List each opening document that changed or went missing on disk:
+  `$F check --manifest $X/content-freeze.json`. Its `changed` and `missing` lines are opening documents, tracked by
+  git or not; a moved one shows as `missing`. Its `added` lines are the pass's own documents and held drafts. The
+  guard sent no opening document. Name each `changed` or `missing` one in the report and leave it as it is. The
+  owner settles that edit, and the pass never restores it. Exit 1 is expected here: it never stops the pass. Then
+  `done-check.mjs --track x<N>` exit 0 — the pass's own `I-dashboard end`, never an earlier pass's — `replica
+  handoff end --track x<N>`, `$F check` on the spec manifest, `replica extend end --track x<N> --detail
   "<n> pages delivered (x<N>), <total> live[; <n> older documents not relinked (relink-pending.txt)]"`. Only
   then `rm content/.deploy-allow`, the last step of the pass. A pass that ends before Phase 5 (rejected, or 0 new
   pages) never wrote a guard.

@@ -20,11 +20,15 @@ work directory a git repository of one commit, as a delivered project is; the fi
 What the documented commands do on it, run from a copy after `setup.sh` with
 Playwright installed:
 
-- `ledger.mjs last replica` → the `handoff end` line; `ledger.mjs replica
-  extend start --track x1 --detail "extend-next 1" --strict` exits 0.
-- `content/index.html` is the delivered home document. The opening lists it
-  in `opening.paths` (`/index.html`). The selection below records its
-  destination `/` in `reserved.paths`: no output of the pass may take it.
+- `ledger.mjs last replica` → the `handoff end` line. The opening snapshot
+  comes next, before the pass is open: `opening.paths` (`/index.html`) and
+  `foundation-freeze.mjs freeze --paths content --out
+  stardust/replica/extend/x1/content-freeze.json` → `frozen 1 files`. Then
+  `ledger.mjs replica extend start --track x1 --detail "extend-next 1"
+  --strict` exits 0.
+- `content/index.html` is the delivered home document. The selection below
+  records its destination `/` in `reserved.paths`: no output of the pass may
+  take it.
 - `foundation-freeze.mjs freeze --paths-if-present <the six spec files> --out
   stardust/replica/extend/x1/spec-freeze.json` → `frozen 6 files`;
   `freeze --from stardust/rollout/foundation-freeze.json` → `frozen 3 files`,

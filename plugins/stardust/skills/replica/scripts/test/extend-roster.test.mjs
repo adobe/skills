@@ -83,6 +83,19 @@ await check('select --named: a query url, a delivered or document destination ex
   assert.match(ok2.err, /dropped https:\/\/ex\.test\/p — already captured \(\/p\)/, 'captured, not delivered (an interrupted capture): dropped');
 });
 
+await check('select --named: a url that is no http(s) url — a relative path, another scheme — is refused (exit 2, nothing written), never dropped into an empty roster', () => {
+  for (const [bad, why] of [['/visit', /refused \/visit — not an http\(s\) url/], ['ftp://ex.test/a', /refused ftp:\/\/ex\.test\/a — not an http\(s\) url/], ['visit', /not an http\(s\) url/]]) {
+    write('named-bad.txt', `${bad}\n`);
+    const r = run('select', '--named', '--candidates', 'named-bad.txt', '--out', 'named-bad-roster.txt');
+    assert.equal(r.code, 2, `${bad}: ${r.err}`); assert.match(r.err, why);
+    assert.equal(existsSync(join(root, 'named-bad-roster.txt')), false);
+  }
+  // discovered candidates keep the old rule: one that is no url is dropped, the rest are kept
+  write('cand-bad.txt', '/relative\nhttps://ex.test/about\n');
+  const d = run('select', '--candidates', 'cand-bad.txt', '--out', 'cand-bad-roster.txt');
+  assert.equal(d.code, 0, d.err); assert.equal(read('cand-bad-roster.txt'), 'https://ex.test/about\n');
+});
+
 await check('select: the slug reservations are written before the roster — a failure writing them leaves no roster (resume selects again)', () => {
   mkdirSync(join(root, 'slugs-dir'), { recursive: true }); write('slugs-dir/x', '');   // a directory where the file goes: its rename fails
   const r = run('select', '--candidates', 'cand.txt', '--out', 'late-roster.txt', '--slugs-out', 'slugs-dir');
@@ -140,6 +153,15 @@ await check('select --reserved-out: every destination taken at the opening — a
   pw('named.txt', 'https://src.test/footer\n');
   const named = prun('select', '--named', '--candidates', 'named.txt', '--out', 'named-roster.txt');
   assert.equal(named.code, 2); assert.match(named.err, /refused https:\/\/src\.test\/footer — delivered at \/footer/);
+});
+
+await check('select reads the deploy ledgers of the project the --state names, whatever the working directory: a ledger-only footer stays reserved when the script runs from elsewhere', () => {
+  const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), 'extend-roster-cwd-')));
+  const r = spawnSync(process.execPath, [SCRIPT, 'select', '--candidates', join(proj, 'cand.txt'), '--out', join(elsewhere, 'roster.txt'), '--state', join(proj, 'stardust/state.json'), '--coverage', join(proj, 'stardust/rollout/coverage/pages.json'), '--content', join(proj, 'content')], { cwd: elsewhere, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /dropped https:\/\/src\.test\/footer — delivered at \/footer/, 'the footer is live only in stardust/deploy/ledger-c1.json');
+  assert.doesNotMatch(readFileSync(join(elsewhere, 'roster.txt'), 'utf8'), /\/footer/);
+  rmSync(elsewhere, { recursive: true, force: true });
 });
 
 await check('a deploy ledger that cannot be read stops select (exit 2, named, no roster): a reservation is never dropped silently', () => {
@@ -244,9 +266,30 @@ await check('publish stops on a second file at a pass output\'s destination (vis
   pw('content/visit.html', '<main>DRAFT-MARKER a competing leaf, never delivered</main>\n');
   const r = prun('publish', '--pass', X);
   assert.equal(r.code, 2, r.err);
-  assert.match(r.err, /refused \/visit\.html — shares the destination \/visit with the pass output \/visit\/index\.html: remove or rename it/);
+  assert.match(r.err, /refused \/visit\.html — shares the destination \/visit with the pass document \/visit\/index\.html: remove or rename it/);
   assert.equal(pr('content/.deploy-allow'), before);
   rmSync(join(proj, 'content', 'visit.html'));
+});
+
+await check('publish stops when also.paths names a file at a destination another kept file holds — the leaf beside a recorded page, or two fragments at one destination: exit 2, the guard unchanged', () => {
+  assert.equal(prun('publish', '--pass', X).code, 0);
+  const before = pr('content/.deploy-allow');
+  try {
+    pw('content/visit.html', '<main>a leaf at the destination of the recorded visit/index.html</main>\n');
+    pw(`${X}/also.paths`, '/visit.html\n');
+    let r = prun('publish', '--pass', X);
+    assert.equal(r.code, 2, r.err); assert.match(r.err, /refused \/visit\.html — shares the destination \/visit with \/visit\/index\.html/);
+    assert.equal(pr('content/.deploy-allow'), before);
+    rmSync(join(proj, 'content', 'visit.html'));
+    pw('content/fragments/promo.html', '<div>a</div>\n'); pw('content/fragments/promo/index.html', '<div>b</div>\n');
+    pw(`${X}/also.paths`, '/fragments/promo.html\n/fragments/promo/index.html\n');
+    r = prun('publish', '--pass', X);
+    assert.equal(r.code, 2, r.err); assert.match(r.err, /refused \/fragments\/promo\/index\.html — shares the destination \/fragments\/promo with \/fragments\/promo\.html/);
+    assert.equal(pr('content/.deploy-allow'), before);
+  } finally {
+    for (const f of ['content/visit.html', 'content/fragments/promo.html', 'content/fragments/promo', `${X}/also.paths`]) rmSync(join(proj, f), { recursive: true, force: true });
+    pw('content/.deploy-allow', before);
+  }
 });
 
 await check('publish: the guard names its pass, then lists the recorded outputs and also.paths as DA paths — never an opening document; a draft and a file at a roster page no unit recorded are held and named; a refused entry writes nothing', () => {
@@ -357,6 +400,26 @@ await check('a second pass: with x2 open, a retried `publish --pass x1` writes n
     assert.equal(l.status, 1, l.stderr); assert.match(l.stderr, why);
   }
   assert.equal(pr('content/index.html'), INDEX);
+});
+
+await check('two passes open in the ledger at once: the real deployer and the real localizer refuse (no PUT, no byte changed), with a guard of either pass, and publish refuses too', async () => {
+  const closed = pr('stardust/status.jsonl');
+  assert.match(closed, /"track":"x2"/, 'the check above left pass x2 open');
+  pw('stardust/status.jsonl', `${closed}${line({ phase: 'extend', event: 'start', track: 'x3' })}`);   // x2 is still open
+  for (const guard of ['# pass x2\n/team\n', '# pass x3\n/team\n']) {
+    pw('content/.deploy-allow', guard); puts.length = 0;
+    const d = await deploy('--force');
+    assert.equal(d.code, 2, d.err); assert.match(d.err, /more than one extend pass is open \(x2, x3\)/); assert.deepEqual(puts, []);
+    const l = spawnSync(process.execPath, [join(DEPLOY, 'localize-links.mjs'), '--source-host', 'src.test', '--content', 'content'], { cwd: proj, encoding: 'utf8' });
+    assert.equal(l.status, 1, l.stderr); assert.match(l.stderr, /more than one extend pass is open/);
+  }
+  const p = prun('publish', '--pass', X.replace('x1', 'x3'));
+  assert.equal(p.code, 2, p.err); assert.match(p.err, /more than one extend pass is open/);
+  assert.equal(pr('content/index.html'), INDEX);
+  // a track written in upper case by hand is the same pass
+  pw('stardust/status.jsonl', `${closed}${line({ phase: 'extend', event: 'end', track: 'X2' })}`);
+  rmSync(join(proj, 'content', '.deploy-allow')); puts.length = 0;
+  assert.equal((await deploy('--force')).code, 0, 'X2 closes x2: no pass is open');
 });
 
 da.close();

@@ -9,7 +9,8 @@
  *                            and no `extend end` in the run ledger beside the content tree
  *                            (<content>/../stardust/status.jsonl).
  *
- * It fails closed. It throws when a pass is open and the guard file is missing. It also throws when the pass the guard
+ * It fails closed. It throws when the ledger shows more than one pass open. It throws when a pass is open and the
+ * guard file is missing. It also throws when the pass the guard
  * names (its `# pass x1` line, which `publish` writes) is not the open one: a guard left by an earlier pass, or one
  * that names no pass while a pass is open, authorizes nothing. No guard file and no open pass: null, and the caller
  * behaves as it always did.
@@ -17,16 +18,22 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-/** The track of an open extend pass in a run ledger (JSON lines), or null. A line that is not JSON is skipped. Pure. */
+/**
+ * The track of the open extend pass in a run ledger (JSON lines), or null. A line that is not JSON is skipped; a
+ * track is read in lower case, as ledger.mjs writes it. Throws when more than one pass is open: the ledger then does
+ * not say which pass may publish. Pure.
+ */
 export function openExtendPass(ledgerText) {
   const open = new Set();
   for (const raw of String(ledgerText).split('\n')) {
     let l;
     try { l = JSON.parse(raw); } catch { continue; }
     if (!l || l.skill !== 'stardust:replica' || l.phase !== 'extend' || !l.track) continue;
-    if (l.event === 'start') open.add(l.track);
-    if (l.event === 'end') open.delete(l.track);
+    const track = String(l.track).trim().toLowerCase();
+    if (l.event === 'start') open.add(track);
+    if (l.event === 'end') open.delete(track);
   }
+  if (open.size > 1) throw new Error(`more than one extend pass is open (${[...open].sort().join(', ')}) — nothing was sent or written; close the earlier pass with its \`extend end\` line first`);
   return [...open][0] || null;
 }
 
