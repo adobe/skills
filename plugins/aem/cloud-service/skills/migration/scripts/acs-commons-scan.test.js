@@ -68,6 +68,36 @@ test('runAcsCommonsScan reports the dependency version, resolving a ${property}'
   assert.match(res.findings.find((f) => /acs-aem-commons-all/.test(f.detail)).location, /pom\.xml:6$/);
 });
 
+// A container pom whose ACS dependency gets its version and classifier from elsewhere.
+const ACS_DEP = (inner) => `<project><dependencies><dependency><groupId>com.adobe.acs</groupId><artifactId>acs-aem-commons-all</artifactId>${inner}</dependency></dependencies></project>`;
+const PARENT_POM = '<project><dependencyManagement><dependencies><dependency><groupId>com.adobe.acs</groupId><artifactId>acs-aem-commons-all</artifactId><version>6.17.4</version><classifier>cloud</classifier><type>zip</type></dependency></dependencies></dependencyManagement></project>';
+const allDetail = (root, rel) => runAcsCommonsScan(root).findings.find((f) => f.location.startsWith(path.join(root, rel))).detail;
+
+test('a dependency whose version and classifier are managed in another pom is not flagged as missing `cloud`', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', PARENT_POM);
+  write(root, 'all/pom.xml', ACS_DEP('<type>zip</type>'));
+  const detail = allDetail(root, 'all/pom.xml');
+  assert.doesNotMatch(detail, /no `cloud` classifier/);
+  assert.match(detail, /managed outside this pom: confirm .*`cloud`/);
+});
+
+test('a classifier set by a property this pom does not define is reported as unknown, not missing', () => {
+  const root = mkworkspace();
+  write(root, 'all/pom.xml', ACS_DEP('<version>6.17.4</version><classifier>${acs.classifier}</classifier><type>zip</type>'));
+  const detail = allDetail(root, 'all/pom.xml');
+  assert.doesNotMatch(detail, /no `cloud` classifier/);
+  assert.match(detail, /`\$\{acs\.classifier\}` is set outside this pom/);
+});
+
+test('a FileVault <embedded> entry is not a second finding: the dependency carries version and classifier', () => {
+  const root = mkworkspace();
+  write(root, 'all/pom.xml', `<project><build><plugins><plugin><configuration><embeddeds><embedded><groupId>com.adobe.acs</groupId><artifactId>acs-aem-commons-all</artifactId><target>/apps/acme-vendor-packages/container/install</target></embedded></embeddeds></configuration></plugin></plugins></build>${ACS_DEP('<version>6.17.4</version><classifier>cloud</classifier><type>zip</type>').replace('<project>', '').replace('</project>', '')}</project>`);
+  const deps = runAcsCommonsScan(root).findings.filter((f) => /acs-aem-commons-all/.test(f.detail));
+  assert.strictEqual(deps.length, 1);
+  assert.doesNotMatch(deps[0].detail, /cloud` classifier:|confirm/);
+});
+
 test('runAcsCommonsScan groups Java imports by feature and counts files', () => {
   const res = runAcsCommonsScan(acsProject());
   const lists = res.rawFindings.find((f) => f.kind === 'java' && f.feature === 'genericlists');

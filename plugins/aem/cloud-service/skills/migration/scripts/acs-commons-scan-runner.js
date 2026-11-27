@@ -9,9 +9,9 @@
  * customisations built on it may break).
  *
  * Four read-only sources, all local:
- *   - pom.xml          `com.adobe.acs:acs-aem-commons-*` dependencies / embeds, with the
- *                      version (a `${property}` is resolved from the same pom) and whether
- *                      the `cloud` classifier is used
+ *   - pom.xml          `com.adobe.acs:acs-aem-commons-*` dependencies, with the version
+ *                      (a `${property}` is resolved from the same pom) and whether the
+ *                      `cloud` classifier is used (unknown when another pom manages it)
  *   - Java             `import com.adobe.acs.commons.<feature>…`, counted per feature
  *   - OSGi configs     `com.adobe.acs.commons.*` PIDs under a config folder, per feature
  *   - Content          `sling:resourceType="acs-commons/…"` in `.content.xml`, with the
@@ -87,13 +87,26 @@ const tag = (block, name) => {
   return m ? m[1] : '';
 };
 
-// pom.xml: <dependency> and <embedded> blocks for com.adobe.acs:acs-aem-commons-*.
+// The `cloud` classifier note. Only what this pom shows is flagged: a version and classifier
+// managed by another pom, or a classifier from a property defined elsewhere, is reported as unknown.
+function classifierNote(artifactId, rawVersion, classifier, props) {
+  if (artifactId !== 'acs-aem-commons-all') return '';
+  const ref = /^\$\{([^}]+)\}$/.exec(classifier);
+  const value = ref ? props[ref[1]] : classifier;
+  if (value === 'cloud') return '';
+  if (ref && value === undefined) return ` — classifier \`${classifier}\` is set outside this pom: confirm it resolves to \`cloud\``;
+  if (!classifier && !rawVersion) return ' — version and classifier are managed outside this pom: confirm the managed entry uses the `cloud` classifier';
+  return ' — no `cloud` classifier: on AEM as a Cloud Service the `-all` package is used with the `cloud` classifier';
+}
+
+// pom.xml: <dependency> blocks for com.adobe.acs:acs-aem-commons-*. A FileVault <embedded>
+// entry only selects one of these dependencies, so it is not reported again.
 function scanPom(file, text, out) {
   const props = {};
   const propsBlock = /<properties>([\s\S]*?)<\/properties>/.exec(text);
   if (propsBlock) for (const m of propsBlock[1].matchAll(/<([\w.-]+)>\s*([^<]*?)\s*<\/\1>/g)) props[m[1]] = m[2];
-  for (const m of text.matchAll(/<(dependency|embedded)>([\s\S]*?)<\/\1>/g)) {
-    const block = m[2];
+  for (const m of text.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)) {
+    const block = m[1];
     const artifactId = tag(block, 'artifactId');
     if (tag(block, 'groupId') !== 'com.adobe.acs' || !artifactId.startsWith('acs-aem-commons')) continue;
     const raw = tag(block, 'version');
@@ -102,9 +115,7 @@ function scanPom(file, text, out) {
     const classifier = tag(block, 'classifier');
     const line = lineAt(text, m.index + m[0].indexOf('<artifactId>'));
     const snippet = `${artifactId} ${version}${classifier ? ` (classifier ${classifier})` : ''}`;
-    const cloudNote = artifactId === 'acs-aem-commons-all' && classifier !== 'cloud'
-      ? ' — no `cloud` classifier: on AEM as a Cloud Service the `-all` package is used with the `cloud` classifier'
-      : '';
+    const cloudNote = classifierNote(artifactId, raw, classifier, props);
     out.findings.push({ location: `${file}:${line}`, detail: `${snippet}${cloudNote}. Version upgrade is customer-owned`, severity: 'medium' });
     out.rawFindings.push({ pattern: 'acsCommons', kind: 'dependency', file, line, artifactId, version, classifier, snippet });
   }

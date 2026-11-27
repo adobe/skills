@@ -15,7 +15,7 @@ ACS AEM Commons is an open-source library maintained outside Adobe's AEM product
 
 | Source | What is found |
 |---|---|
-| `pom.xml` | `com.adobe.acs:acs-aem-commons-*` in `<dependency>` or `<embedded>`, with the version (a `${property}` is resolved from the same pom) and the classifier |
+| `pom.xml` | `com.adobe.acs:acs-aem-commons-*` in `<dependency>`, with the version (a `${property}` is resolved from the same pom) and the classifier. A missing `cloud` classifier is flagged only when the pom shows it; a version and classifier managed by another pom, or a classifier from a property defined elsewhere, is reported as unknown, to confirm. |
 | Java | `import com.adobe.acs.commons.<feature>…`, one row per feature with the number of files |
 | OSGi configs | `com.adobe.acs.commons.*` PIDs in config folders, one row per feature |
 | Content | `sling:resourceType="acs-commons/…"` in `jcr_root` XML, and the number of Redirect Manager rules |
