@@ -1,0 +1,11 @@
+{
+  "skill_name": "dev-console-create-project",
+  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/plugins/adp-connector/skills/dev-console-create-project/SKILL.md",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want a new Developer Console API project. Show the plan, but do not create it yet.",
+      "expected_output": "Plans a default project, not App Builder. Explains that an unspecified name comes from get_next_project_name using the selected consumerOrgId, rather than a naming prompt or invented name. Does not call create_project or claim a project was created."
+    }
+  ]
+}

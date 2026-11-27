@@ -1,0 +1,11 @@
+{
+  "skill_name": "io-events-registration",
+  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trajectory/skill/io-events-registration/wf-evals-18.json",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Rename the selected event registration to 'Renamed Webhook' without changing its webhook URL or events. Show the proposed change only; do not apply it.",
+      "expected_output": "Proposes patch_event_registration with one replace operation on /name and value Renamed Webhook, not update_event_registration. Leaves webhook_url, events_of_interest, delivery_type and enabled unchanged. Does not invent a registration ID or execute the patch."
+    }
+  ]
+}

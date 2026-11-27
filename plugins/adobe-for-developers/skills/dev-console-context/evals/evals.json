@@ -1,0 +1,11 @@
+{
+  "skill_name": "dev-console-context",
+  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trajectory/skill/dev-console-context/wf-evals-01.json",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Now show me my full project context, including the credential and what it's subscribed to.",
+      "expected_output": "Resolves missing context without inventing IDs or creating resources. Calls get_credential_services for each credential returned by get_credentials before presenting credentials with their subscribed APIs. Keeps the confirmed context breadcrumb and pairs displayed IDs with names."
+    }
+  ]
+}

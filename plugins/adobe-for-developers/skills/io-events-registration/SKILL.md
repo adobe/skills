@@ -17,7 +17,7 @@ Guide the user through creating an event registration to receive events from Ado
 
 ### Step 1 — Org, Project, Workspace
 
-1. Call `get_organisations` → ask user to pick org. Store both `id` (numeric) and `code` (IMS org code).
+1. Resolve the target org using the [shared account-org access rules](references/common-rules.md#account-organization-access-console-and-events). Store both `id` (numeric) and `code` (IMS org code).
 2. Ask: *"Do you want to use an existing project or create a new one?"*
 
    **If existing project:**

@@ -1,0 +1,11 @@
+{
+  "skill_name": "dev-console-subscribe-api",
+  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trajectory/skill/dev-console-subscribe-api/wf-evals-04.json",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to add the I/O Management API with an OAuth Server-to-Server credential. Before we create anything, where would I get its client secret?",
+      "expected_output": "Explains that get_credential_secrets returns a Developer Console link, not the secret value. Does not display or invent a secret or substitute the client ID for one. Does not create a project, credential, or API subscription for this information-only request."
+    }
+  ]
+}

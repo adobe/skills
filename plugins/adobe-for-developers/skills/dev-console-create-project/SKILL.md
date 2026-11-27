@@ -1,6 +1,6 @@
 ---
 name: dev-console-create-project
-description: Use when the user wants to create a new Adobe Developer Console project — phrases like "create a project", "new project", "set up a project", "create an App Builder project", or "start a new API project". Creates an App Builder project only when the user explicitly requests "App Builder" or a "template" project; otherwise creates a default project without asking. Creates and initializes the project with a single create_project call and reports the created type; for API subscription afterward, continue with dev-console-subscribe-api.
+description: Use when the user wants to create a new Adobe Developer Console project — phrases like "create a project", "new project", "set up a project", "create an App Builder project", or "start a new API project". Automatically resolves the name, including duplicates, without ever asking for naming input or confirmation. Creates an App Builder project only when the user explicitly requests "App Builder" or a "template" project; otherwise creates a default project without asking. Creates and initializes the project and reports the actual name and created type; for API subscription afterward, continue with dev-console-subscribe-api.
 license: Apache-2.0
 ---
 
@@ -9,7 +9,7 @@ license: Apache-2.0
 
 # Create Project
 
-Create and initialize an Adobe Developer Console project in the user's selected organization. Both project types use the same flow and the same `create_project` tool; only the `projectType` argument differs.
+Create and initialize an Adobe Developer Console project in a selected organization under the authenticated account. Both project types use the same flow and the same `create_project` tool; only the `projectType` argument differs.
 
 ## Steps
 
@@ -22,15 +22,17 @@ Create and initialize an Adobe Developer Console project in the user's selected 
 
    Steps 2–5 are identical for both types.
 
-2. **Select an organization** — Reuse the org if it has already been selected in this request. Otherwise call `get_organisations`. If multiple organizations are returned, show their names as a numbered list and ask the user to choose. If only one is returned, select it automatically and tell the user which organization will be used. Keep IDs internal; use the selected organization's `id` as `orgId`.
+2. **Resolve the organization** — Follow the [shared account-org access rules](references/common-rules.md#account-organization-access-console-and-events). Use the selected org's `id` as `consumerOrgId`, keeping IDs internal.
 
-3. **Resolve project naming** — Follow the [shared naming rules](references/common-rules.md#names-titles-and-descriptions).
+3. **Resolve project naming** — If the user supplied a project name or title for this project, use it, deriving the missing name/title per the [shared naming rules](references/common-rules.md#names-titles-and-descriptions). Otherwise call `get_next_project_name` with the selected `consumerOrgId` and use the returned `name` and `title` exactly. Do not list projects, generate a name yourself, or ask the user for a name or confirmation.
 
-4. **Create and initialize the project** — Call `create_project` once with the selected `orgId`, `name`, `title`, and the `projectType` from step 1. Do not pass a template ID or workspace details; the tool sets up the project for the chosen type:
+4. **Create and initialize the project** — Call `create_project` with the selected `consumerOrgId`, the resolved `name` and `title`, and the `projectType` from step 1. Do not pass a template ID or workspace details; the tool sets up the project for the chosen type:
    - Default project: creates the project with its default workspace.
    - App Builder template project: creates the project from the App Builder template together with **Production** and **Stage** workspaces, both with runtime enabled.
 
-5. **Report the result** — On success, explicitly state the created project's title and type:
+   If creation fails with an explicit duplicate-name rejection, call `get_next_project_name` again and retry once with the new `name` and `title`. Keep the resolved project type; never ask for a replacement name or reopen the project-type choice.
+
+5. **Report the result** — On success, report the name/title submitted to the tool and explicitly state the created project's type:
    - Default: "Created **{title}** as a **default project**."
    - App Builder: "Created **{title}** as an **App Builder template project**, with **Production** and **Stage** workspaces, both with runtime enabled."
 
@@ -44,5 +46,4 @@ If the user also wants to subscribe an API, continue with `dev-console-subscribe
 - This skill creates a project only; it does not create credentials or subscribe APIs.
 - Do not call `create_project` until the project type, organization, and project name are known.
 - Do not ask for custom workspace names, descriptions, or template choices; the connector does not accept them.
-- If project creation reports that Adobe Developer Terms have not been accepted, ask the user to review the terms and explicitly confirm agreement before calling `accept_developer_terms`. Then retry project creation once.
 - Do not claim success if the tool returns an error or an ambiguous result.

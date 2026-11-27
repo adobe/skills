@@ -1,0 +1,11 @@
+{
+  "skill_name": "app-builder-troubleshoot",
+  "source": "https://github.com/adobe-developer-platform/platform-internals-adp-connector/blob/087cbff3dbf2cd97ea47d8a80f9326a25e5243c7/evals/dataset/trigger/skill/app-builder-troubleshoot.json",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My App Builder extension running with aio app dev gets 401 when it calls its action. Help me debug locally.",
+      "expected_output": "Treats this as a local-dev failure, not a deployed Runtime activation. Uses redact-text.mjs if inspecting the dev log and directs the developer to the HTTP response body for the cause. Does not expose raw logs or credentials, invent a diagnosis, or redeploy."
+    }
+  ]
+}

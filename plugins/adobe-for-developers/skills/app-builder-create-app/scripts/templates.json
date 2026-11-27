@@ -1,0 +1,242 @@
+{
+  "excshell": {
+    "label": "Experience Cloud Shell: a standalone app inside experience.adobe.com",
+    "template": "@adobe/generator-app-excshell",
+    "extensionPoint": "dx/excshell/1",
+    "folder": "src/dx-excshell-1",
+    "mode": "plain",
+    "actions": "included",
+    "needs": [],
+    "fixups": [
+      "quiet-logging"
+    ]
+  },
+  "cf-admin": {
+    "label": "AEM Content Fragments console: a header button that opens a dialog",
+    "template": "@adobe/aem-cf-admin-ui-ext-tpl@2.1.0",
+    "extensionPoint": "aem/cf-console-admin/1",
+    "folder": "src/aem-cf-console-admin-1",
+    "mode": "is-test",
+    "manifest": {
+      "headerMenuButtons": [
+        {
+          "label": "{{label}}",
+          "needsModal": true,
+          "id": "{{id}}"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemAuthorHost",
+      "orgShortName"
+    ],
+    "fixups": [
+      "node-runtime",
+      "quiet-logging"
+    ]
+  },
+  "cf-admin-selected": {
+    "label": "AEM Content Fragments console: an action-bar button for the selected fragments",
+    "template": "@adobe/aem-cf-admin-ui-ext-tpl@2.1.0",
+    "extensionPoint": "aem/cf-console-admin/1",
+    "folder": "src/aem-cf-console-admin-1",
+    "mode": "is-test",
+    "manifest": {
+      "actionBarButtons": [
+        {
+          "label": "{{label}}",
+          "needsModal": true,
+          "id": "{{id}}"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemAuthorHost",
+      "orgShortName"
+    ],
+    "fixups": [
+      "node-runtime",
+      "quiet-logging"
+    ]
+  },
+  "cf-editor": {
+    "label": "AEM Content Fragment editor: a header button that opens a dialog",
+    "template": "@adobe/aem-cf-editor-ui-ext-tpl@2.1.0",
+    "extensionPoint": "aem/cf-editor/1",
+    "folder": "src/aem-cf-editor-1",
+    "mode": "manifest",
+    "manifest": {
+      "headerMenuButtons": [
+        {
+          "label": "{{label}}",
+          "needsModal": true,
+          "id": "{{id}}"
+        }
+      ]
+    },
+    "actions": "add-later",
+    "needs": [
+      "aemAuthorHost"
+    ],
+    "fixups": [
+      "quiet-logging"
+    ]
+  },
+  "assets-browse": {
+    "label": "AEM Assets View, browse: an action-bar button for selected assets",
+    "template": "@adobe/aem-assets-browse-ext-tpl@0.1.0",
+    "extensionPoint": "aem/assets/browse/1",
+    "folder": "src/aem-assets-browse-1",
+    "mode": "is-test",
+    "manifest": {
+      "actionBarActions": [
+        {
+          "label": "{{label}}",
+          "id": "{{id}}",
+          "icon": "Play",
+          "needsModal": true,
+          "componentName": "Modal{{Pascal}}",
+          "modalTitle": "{{label}}",
+          "modalType": "modal",
+          "modalSize": "M"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemAuthorHost",
+      "orgShortName"
+    ],
+    "fixups": [
+      "quiet-logging"
+    ]
+  },
+  "assets-details": {
+    "label": "AEM Assets View, asset details: a side panel",
+    "template": "@adobe/aem-assets-details-ext-tpl@0.1.0",
+    "extensionPoint": "aem/assets/details/1",
+    "folder": "src/aem-assets-details-1",
+    "mode": "is-test",
+    "manifest": {
+      "detailsSidePanels": [
+        {
+          "tooltip": "{{label}}",
+          "title": "{{label}}",
+          "icon": "Info",
+          "id": "{{id}}",
+          "componentName": "Panel{{Pascal}}"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemAuthorHost",
+      "orgShortName"
+    ],
+    "fixups": [
+      "quiet-logging"
+    ]
+  },
+  "assets-view": {
+    "label": "AEM Assets View, browse and details: an action-bar button and a side panel",
+    "template": "@adobe/aem-assets-assetsview-ext-tpl@0.1.0",
+    "extensionPoint": "aem/assets/assetsview/1",
+    "folder": "src/aem-assets-assetsview-1",
+    "mode": "is-test",
+    "manifest": {
+      "actionBarActions": [
+        {
+          "label": "{{label}}",
+          "id": "{{id}}",
+          "icon": "Play",
+          "needsModal": true,
+          "componentName": "Modal{{Pascal}}",
+          "modalTitle": "{{label}}",
+          "modalType": "modal",
+          "modalSize": "M"
+        }
+      ],
+      "detailsSidePanels": [
+        {
+          "tooltip": "{{label}}",
+          "title": "{{label}}",
+          "icon": "Info",
+          "id": "{{id}}-panel",
+          "componentName": "Panel{{Pascal}}"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemAuthorHost",
+      "orgShortName"
+    ],
+    "fixups": [
+      "quiet-logging"
+    ]
+  },
+  "experience-hub": {
+    "label": "AEM Experience Hub: a dashboard widget",
+    "template": "@adobe/aem-experience-hub-ext-tpl@0.0.21",
+    "extensionPoint": "aem/launchpad/1",
+    "folder": "src/aem-launchpad-1",
+    "mode": "stdin",
+    "actions": "included",
+    "needs": [
+      "aemAuthorHost"
+    ],
+    "fixups": [
+      "uix-guest",
+      "hub-notes",
+      "quiet-logging"
+    ]
+  },
+  "universal-editor": {
+    "label": "AEM Universal Editor: a panel in the editor's right rail",
+    "template": "@adobe/universal-editor-ui-ext-tpl@1.0.0-beta.1",
+    "extensionPoint": "universal-editor/ui/1",
+    "folder": "src/universal-editor-ui-1",
+    "mode": "is-test",
+    "manifest": {
+      "rightPanelRails": [
+        {
+          "header": "{{label}}",
+          "id": "{{id}}"
+        }
+      ]
+    },
+    "actions": "optional",
+    "needs": [
+      "aemSitesPageUrl"
+    ],
+    "fixups": [
+      "node-runtime",
+      "quiet-logging"
+    ]
+  },
+  "workfront": {
+    "label": "Workfront: an item in the Workfront main menu",
+    "template": "@adobe/workfront-ui-ext-tpl@0.0.7",
+    "extensionPoint": "workfront/ui/1",
+    "folder": "src/workfront-ui-1",
+    "mode": "manifest",
+    "manifest": {
+      "mainMenuItems": [
+        {
+          "label": "{{label}}",
+          "id": "{{id}}"
+        }
+      ]
+    },
+    "actions": "add-later",
+    "needs": [
+      "workfrontUrl"
+    ],
+    "fixups": [
+      "workfront-id",
+      "quiet-logging"
+    ]
+  }
+}
