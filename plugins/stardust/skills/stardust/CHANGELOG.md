@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/adobe/skills/compare/stardust-v1.6.1...stardust-v1.6.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* **stardust:** replica refuses an alternate rendering as the gate reference unless it is recorded ([#820](https://github.com/adobe/skills/issues/820)) ([7bd746c](https://github.com/adobe/skills/commit/7bd746cd2ddf59a6213c3ad81a5e497f968a00b4)), closes [#408](https://github.com/adobe/skills/issues/408)
+
 ## [1.6.1](https://github.com/adobe/skills/compare/stardust-v1.6.0...stardust-v1.6.1) (2026-11-22)
 
 
