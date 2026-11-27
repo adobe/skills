@@ -7959,8 +7959,14 @@ function normalizedUrl(raw2) {
   if (url) url.hash = "";
   return url;
 }
-function groupVariants(scanned) {
+function groupVariants(scanned, nodes) {
   const answers = (from, to) => to === from || !to.read || to.declares.has(from);
+  const pathDeclared = /* @__PURE__ */ new Set();
+  for (const node of nodes) {
+    for (const [target, tags] of node.declares) {
+      if (answers(node, target) && tags.has(target.lang)) pathDeclared.add(target);
+    }
+  }
   const owner = /* @__PURE__ */ new Map();
   const groups = [];
   for (const start of scanned) {
@@ -7982,10 +7988,8 @@ function groupVariants(scanned) {
     groups.push({ members, owned, fallback });
   }
   const proposed = /* @__PURE__ */ new Map();
-  const pathDeclared = /* @__PURE__ */ new Set();
-  for (const { members, fallback } of groups) {
+  for (const { fallback } of groups) {
     if (fallback) proposed.set(fallback, (proposed.get(fallback) ?? 0) + 1);
-    for (const [m, tags] of members) if (tags.has(m.lang)) pathDeclared.add(m);
   }
   return groups.map(({ members, owned, fallback }) => ({
     url: proposed.get(fallback) === 1 ? fallback : owned.map((m) => m.url).sort()[0],
@@ -8167,7 +8171,7 @@ async function crawl(origin, options = {}) {
     strategy,
     total: seen.size,
     valid: scanned.length,
-    urls: groupVariants(scanned),
+    urls: groupVariants(scanned, nodes.values()),
     scannedUrls: scanned.map((node) => node.url),
     sitemaps,
     errors

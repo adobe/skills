@@ -243,6 +243,17 @@ test('sitemaps: links to a shared page do not merge groups, and group URLs stay 
         variants: [{ lang: ['fr'], pathLang: null, url: `${s.origin}/fr/` }],
       },
     ]);
+    // The limit leaves post-2 out, but its declaration of /de/ was still read.
+    const limited = await crawl(s.origin, { limit: 1 });
+    assert.deepEqual(
+      limited.urls.map(({ variants }) => variants),
+      [
+        [
+          { lang: ['en'], pathLang: 'en', url: `${s.origin}/en/post-1` },
+          { lang: ['de', 'de-AT'], pathLang: null, url: `${s.origin}/de/` },
+        ],
+      ],
+    );
   } finally {
     s.close();
   }

@@ -94,10 +94,17 @@ function normalizedUrl(raw) {
  * Group the scanned URLs with their language variants. As Google requires, two URLs that a
  * read sitemap lists are variants only when each declares the other. A declared URL that no
  * read sitemap lists (another origin, a sitemap not read) can't answer: it is taken on trust
- * from each URL that declares it, and joins no groups together.
+ * from each URL that declares it, and joins no groups together. A path tag counts as declared
+ * when any declaration read names it, whichever URLs the filters and limit selected.
  */
-function groupVariants(scanned) {
+function groupVariants(scanned, nodes) {
   const answers = (from, to) => to === from || !to.read || to.declares.has(from);
+  const pathDeclared = new Set();
+  for (const node of nodes) {
+    for (const [target, tags] of node.declares) {
+      if (answers(node, target) && tags.has(target.lang)) pathDeclared.add(target);
+    }
+  }
   const owner = new Map();
   const groups = [];
   for (const start of scanned) {
@@ -124,11 +131,8 @@ function groupVariants(scanned) {
   }
   // An x-default that several groups share (often the home page) names none of them.
   const proposed = new Map();
-  // A URL in several groups has its path tag declared if any of them declares it.
-  const pathDeclared = new Set();
-  for (const { members, fallback } of groups) {
+  for (const { fallback } of groups) {
     if (fallback) proposed.set(fallback, (proposed.get(fallback) ?? 0) + 1);
-    for (const [m, tags] of members) if (tags.has(m.lang)) pathDeclared.add(m);
   }
   return groups.map(({ members, owned, fallback }) => ({
     url: proposed.get(fallback) === 1 ? fallback : owned.map((m) => m.url).sort()[0],
@@ -356,7 +360,7 @@ export async function crawl(origin, options = {}) {
     strategy,
     total: seen.size,
     valid: scanned.length,
-    urls: groupVariants(scanned),
+    urls: groupVariants(scanned, nodes.values()),
     scannedUrls: scanned.map((node) => node.url),
     sitemaps,
     errors,
