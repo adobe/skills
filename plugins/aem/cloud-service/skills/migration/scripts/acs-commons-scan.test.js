@@ -319,3 +319,29 @@ test('a BPA CSV exported with the ACS Commons filter is flagged: the section and
   assert.ok(gathered.analyzerWarnings.some(w => /ACS Commons filter/.test(w) && /7 of 9/.test(w)));
   assert.ok(gathered.findingsByPattern.acsCommons.some(f => /Generic Lists/.test(f.detail)), 'the repository scan still runs');
 });
+
+test('the parser total counts each BPA finding once: ACS rows are copies of rows other subtypes hold', () => {
+  const root = mkworkspace();
+  const rows = [
+    'LUI,legacy.user.interface,legacy.dialog.classic,MAJOR,/apps/acs-commons/components/utilities/sitemap/dialog,\\N,A classic dialog was found.,https://www.adobe.com/go/aem_pd_LUI,\\N',
+    'LUI,legacy.user.interface,legacy.dialog.classic,MAJOR,/apps/acme/components/teaser/dialog,\\N,A classic dialog was found.,https://www.adobe.com/go/aem_pd_LUI,\\N',
+  ];
+  const { parseBpaFile, createUnifiedCollection } = require('./bpa-local-parser.js');
+  const summary = createUnifiedCollection(parseBpaFile(bpaCsv(root, rows)), path.join(root, 'uc'));
+  assert.ok(summary.subtypes.includes('acs_commons'), 'the ACS row is kept for the runbook');
+  assert.strictEqual(summary.totalFindings, 2, 'two LUI findings, not three');
+});
+
+test('a filtered BPA CSV that still has ACS rows is not blamed on the ACS Commons filter', async () => {
+  const root = acsProject();
+  const rows = [
+    BPA_ACS_ROWS[0],
+    '_COUNT,__count.total,\\N,\\N,2,\\N, count: 2,\\N,"{""data"": {""unfilteredTotal"": 9}}"',
+  ];
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: bpaCsv(root, rows), collectionsDir: path.join(root, 'uc'), getEffectivePom: noPom });
+  assert.ok(!gathered.findingsByPattern.acsCommons.some(f => /filter/.test(f.detail)), 'no filter row in the ACS section');
+  const warning = gathered.analyzerWarnings.find(w => /exported with a filter/.test(w));
+  assert.ok(warning, 'a neutral filtered-export warning');
+  assert.match(warning, /7 of 9 findings/);
+  assert.doesNotMatch(warning, /ACS Commons filter/);
+});

@@ -23,7 +23,7 @@ BPA first, like the other runbook patterns (pattern `acsCommons`, part of the St
 | OSGi configs | `com.adobe.acs.commons.*` PIDs in config folders, one row per feature |
 | Content | `sling:resourceType="acs-commons/…"` in `jcr_root` XML, and the number of Redirect Manager rules |
 
-A CSV exported with the ACS Commons filter has none of these rows: its `_COUNT` `__count.total` row then counts fewer findings than its `unfilteredTotal`. The runbook says so in the section and the scan warnings (how many findings are not in the CSV); ask for an export that includes the ACS Commons findings.
+A CSV exported with a filter counts fewer findings in its `_COUNT` `__count.total` row than its `unfilteredTotal`. When it also has no ACS AEM Commons rows, the report's ACS Commons filter is the likely cause: the runbook says so in the section and the scan warnings, with how many findings are not in the CSV, and you can ask for an export that includes the ACS Commons findings. When it has ACS rows, the warning only says the export was filtered.
 
 CAM does not return the ACS rows of a BPA report yet, so with CAM alone the BPA part is empty: that is not a clean result, and the repository scan still runs. BPA rows of the patterns CAM does return (for example `lui`, `guavaCache`) that name ACS AEM Commons are added as **informational** rows, one per pattern and bundle; they stay in their own pattern's section too.
 

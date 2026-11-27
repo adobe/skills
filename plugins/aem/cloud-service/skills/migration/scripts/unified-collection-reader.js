@@ -486,9 +486,9 @@ function processContentFromUnified(subtypeData, targets, pattern, subtype) {
   return count;
 }
 
-/** `{ shown, total }` when the cached BPA CSV was exported with the ACS Commons filter, else null. */
-function getAcsCommonsFilter(collectionsDir = './unified-collections') {
-  return readUnifiedCollection(collectionsDir)?.meta?.acsCommonsFilter || null;
+/** `{ shown, total }` when the cached BPA CSV was exported with a filter, else null. */
+function getFilteredExport(collectionsDir = './unified-collections') {
+  return readUnifiedCollection(collectionsDir)?.meta?.filteredExport || null;
 }
 
 /**
@@ -739,7 +739,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  getAcsCommonsFilter,
+  getFilteredExport,
   hasUnifiedCollection,
   getAvailablePatterns,
   fetchUnifiedBpaFindings,

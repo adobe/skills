@@ -655,11 +655,11 @@ function processAcsCommonsFindings(findings) {
 }
 
 /**
- * A BPA CSV exported with the report's ACS Commons filter leaves out ACS AEM Commons
- * findings. Its `__count.total` row then counts fewer findings (`identifier`) than the
- * `data.unfilteredTotal` of its context. Returns `{ shown, total }`, or null when nothing is hidden.
+ * A BPA CSV exported with a filter (the report documents its ACS Commons filter) counts fewer
+ * findings in its `__count.total` row (`identifier`) than the `data.unfilteredTotal` of its
+ * context. Returns `{ shown, total }`, or null when nothing is left out.
  */
-function readAcsCommonsFilter(findings) {
+function readFilteredExport(findings) {
   const row = findings.find(f => f.code === '_COUNT' && f.type === '__count.total');
   if (!row) return null;
   let total;
@@ -848,14 +848,14 @@ function createUnifiedCollection(bpaData, outputDir) {
   if (acsIds.length > 0) {
     const mongoSafeSubtype = toMongoSafeFieldName(ACS_COMMONS_KEY);
     subtypes[mongoSafeSubtype] = {};
+    // Not added to totalFindings: these rows are copies of rows other subtypes may already count.
     acsIds.forEach(identifier => {
       subtypes[mongoSafeSubtype][identifier] = acsCollection.identifiers[identifier];
-      totalFindings += acsCollection.identifiers[identifier].length;
     });
     console.log(`Found ${acsIds.length} ACS AEM Commons identifiers`);
   }
 
-  const acsCommonsFilter = readAcsCommonsFilter(findings);
+  const filteredExport = readFilteredExport(findings);
 
   // Create unified collection structure with metadata
   const subtypeKeys = Object.keys(subtypes);
@@ -870,8 +870,8 @@ function createUnifiedCollection(bpaData, outputDir) {
       // API → class → BPA bundles (java.io.inputstream only); lets the reader
       // emit one target per bundle so rows can be grouped per bundle downstream.
       ...(inputStreamBundles ? { inputStreamBundles } : {}),
-      // Set when the CSV was exported with the ACS Commons filter: its findings are not in it.
-      ...(acsCommonsFilter ? { acsCommonsFilter } : {})
+      // Set when the CSV was exported with a filter: some findings are not in it.
+      ...(filteredExport ? { filteredExport } : {})
     }
   };
 
