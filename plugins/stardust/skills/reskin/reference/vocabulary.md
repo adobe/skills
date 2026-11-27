@@ -31,8 +31,6 @@ then re-run the content gate and render check on the migrated pages: unchanged.
 Recorded traps:
 
 - splice new tokens into the committed `:root` — re-running the foundation generator erases hand edits;
-- load `scripts/` features by dynamic import from `window.hlx.codeBasePath` (a static import of `fragment.js` closes
-  an `import/no-cycle` loop through `scripts.js`);
-- a `[hidden]` element whose class sets `display` needs `[hidden] { display: none }`;
+- dynamic-import `scripts/` features from `window.hlx.codeBasePath`;
 - parse an authored formula with a small evaluator, never `eval` / `Function`;
 - keep an unrecognised authored row as content (EW1).
