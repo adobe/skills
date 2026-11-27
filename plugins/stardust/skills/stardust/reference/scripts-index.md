@@ -62,7 +62,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/source-spec.mjs` — source box + font spec — `capture <live> --slug <s> [--widths 1440,360]`; `compare <spec> <build> [--tol 2]`; `view <spec> [--section <i>]`; exit 2 = off
-- `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--hide <sel,…>] [--freeze-baseline] [--check-baseline]`
+- `replica/stitch-shot.mjs` — stitched shot — `<url> <out.png> [--width] [--vh] [--settle --consent --[no-]dismiss] [--hide <sel,…>] [--freeze-baseline] [--check-baseline]`
 - `reskin/capture-content.mjs` — content model — `--url <u> --out <d>`
 - `reskin/deployed-gate.mjs` — preview gates — `preview|all --page <s>`; 124 = none
 - `reskin/dom-equality.mjs` — content gate — `--source --rendered --report`
@@ -101,6 +101,6 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `spec/spec-rum.mjs` — S5 Optel: `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet: `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants: `[--cut 0.5]`
-- `stardust/impeccable-version-check.mjs` — newer impeccable?: `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer: `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
-- `stardust/state.mjs` — page status writer: `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
+- `stardust/impeccable-version-check.mjs` — newer version?: `[--offline] [--json]`; `--where`
+- `stardust/ledger.mjs` — status writer: `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
+- `stardust/state.mjs` — page status: `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
