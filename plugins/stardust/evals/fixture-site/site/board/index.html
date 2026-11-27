@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" class="app">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The board: this week at the Fixture Store</title>
+<meta name="description" content="Everything that arrived at the shop this week, on one board.">
+<link rel="icon" href="/img/icon.svg">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/board.css">
+</head>
+<body>
+<div class="track">
+<p class="mode-link wrap"><a href="/board/?page-mode=static">Static page mode (for screen readers)</a></p>
+<!--header-->
+<main>
+  <section class="board">
+    <div class="wrap">
+      <p class="eyebrow">This week at the store</p>
+      <h1>The board</h1>
+      <p class="lede">Everything that arrived this week, on one board. Scroll it like a shelf: the board moves, the page stays put.</p>
+      <ul class="tiles">
+      <li><h3>Stoneware mug, moss glaze</h3><p>Kiln on Mill Road</p><p class="price">18.00</p></li>
+      <li><h3>Willow log basket</h3><p>Riverside weavers</p><p class="price">42.00</p></li>
+      <li><h3>Brass desk lamp</h3><p>The lamp room</p><p class="price">96.00</p></li>
+      <li><h3>Linen tea towel, two stripes</h3><p>Loom 4</p><p class="price">12.00</p></li>
+      <li><h3>Oak bread board</h3><p>Joinery at the yard</p><p class="price">34.00</p></li>
+      <li><h3>Enamel milk pan</h3><p>Northgate works</p><p class="price">28.00</p></li>
+      <li><h3>Wool blanket, slate</h3><p>Hill farm mill</p><p class="price">120.00</p></li>
+      <li><h3>Beeswax candles, pair</h3><p>Apiary lane</p><p class="price">9.00</p></li>
+      <li><h3>Cast iron trivet</h3><p>Northgate works</p><p class="price">22.00</p></li>
+      <li><h3>Rush seat stool</h3><p>Joinery at the yard</p><p class="price">88.00</p></li>
+      <li><h3>Glass carafe</h3><p>Furnace on Quay Street</p><p class="price">31.00</p></li>
+      <li><h3>Hemp shopping net</h3><p>Loom 4</p><p class="price">8.00</p></li>
+      <li><h3>Copper watering can</h3><p>The lamp room</p><p class="price">64.00</p></li>
+      <li><h3>Ash spoon set</h3><p>Joinery at the yard</p><p class="price">19.00</p></li>
+      <li><h3>Clay plant pot, large</h3><p>Kiln on Mill Road</p><p class="price">26.00</p></li>
+      <li><h3>Canvas apron</h3><p>Stitch room</p><p class="price">38.00</p></li>
+      <li><h3>Brass bottle opener</h3><p>The lamp room</p><p class="price">11.00</p></li>
+      <li><h3>Wicker lamp shade</h3><p>Riverside weavers</p><p class="price">47.00</p></li>
+      </ul>
+    </div>
+  </section>
+</main>
+<!--footer-->
+</div>
+<script>
+// App mode: the window never scrolls. The wheel, the keys and a touch drag move the track (a scroll-jacked board).
+(() => {
+  if (!document.documentElement.classList.contains('app')) return;
+  const track = document.querySelector('.track');
+  let y = 0;
+  const move = (dy) => {
+    y = Math.max(0, Math.min(y + dy, track.scrollHeight - window.innerHeight));
+    track.style.transform = `translateY(${-y}px)`;
+  };
+  window.addEventListener('wheel', (e) => { e.preventDefault(); move(e.deltaY); }, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    const step = { ArrowDown: 60, ArrowUp: -60, PageDown: window.innerHeight * 0.9, PageUp: -window.innerHeight * 0.9, ' ': window.innerHeight * 0.9 }[e.key];
+    if (step) { e.preventDefault(); move(step); }
+  });
+  let ty = null;
+  window.addEventListener('touchstart', (e) => { ty = e.touches[0].clientY; }, { passive: true });
+  window.addEventListener('touchmove', (e) => { if (ty !== null) { move(ty - e.touches[0].clientY); ty = e.touches[0].clientY; } }, { passive: true });
+})();
+</script>
+</body>
+</html>

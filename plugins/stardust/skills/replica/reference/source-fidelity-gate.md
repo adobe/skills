@@ -627,17 +627,30 @@ rather than erroring.
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live
     source has no pass to report.
-13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
-    cannot measure them.** On pages where `html`/`body` are
-    `overflow:hidden` and an inner container scrolls, the document reports
-    the full content height but `window.scrollTo` is a no-op — every chunk
-    would capture the top viewport and the rows below would stitch as
-    zero-filled black: a silently fictitious pixel diff. stitch-shot now
-    detects the stall and exits 1 with the signature `stitch-shot error:
-    scroll stall at chunk target …px: window scroll is a no-op
-    (window.scrollY stuck at …px) while the document reports …px`.
-    Capturing the inner scroller is future work; for now record the page as
-    gate-blocked for the pixel probe and rely on content-diff/visual-diff.
+13. **Inner-scroller, scroll-jacked and virtual-scroll pages fail loud, and
+    no other rendering stands in for them.** When `html`/`body` are
+    `overflow:hidden` and an inner container scrolls, `window.scrollTo` is a
+    no-op: every chunk would capture the top viewport and the rows below
+    would stitch as black, a fictitious pixel diff. stitch-shot detects the
+    stall and exits 1 (`stitch-shot error: scroll stall at chunk target
+    …px: window scroll is a no-op …`). Capturing the inner scroller is
+    future work. Until then, on such a page (or one whose sections script
+    positions, so the document is no taller than the viewport):
+    - record the pixel probe as gate-blocked, gate the page with
+      content-diff and visual-diff against the SAME URL, and say in the run
+      summary which rendering the gate could not measure;
+    - never substitute another rendering as the reference: a static or
+      screen-reader mode (`?page-mode=static`), a print, AMP, reader or
+      no-JS view is another layout, not the page visitors see. The
+      reference is the page as the inventory lists it (`state.json`
+      `pages[].url`), and its page record is captured from that URL.
+      `reference-url.mjs` owns what counts as the same page; gate.sh
+      refuses anything else (exit 7) and gate-all makes it an error row;
+    - a substitution exists only when the user accepts it after comparing
+      the first viewport of both renderings at each gate width: one
+      inconsistency-register entry with a `- **Reference substitution:**`
+      field naming both URLs. Every gate output then marks its pass as one
+      against a substituted reference, and the run summary tells the user.
 14. **Captures assert fonts loaded — a silent font fork is a false
     measurement.** A webfont that fails to fetch renders the ENTIRE live
     capture in fallback type: wrong wraps, wrong line counts, wrong section

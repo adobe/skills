@@ -274,7 +274,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const replica = join(root, 'stardust/scripts/replica');
   mkdirSync(replica, { recursive: true });
-  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs'));
+  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs')); cpSync(join(HERE, '..', 'reference-url.mjs'), join(replica, 'reference-url.mjs'));
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true }); // Setup step 7: the shared contracts
   const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\n${body}\n`);
   stub('stitch-shot.mjs', `
@@ -386,6 +386,20 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       assert.equal(clean.status, 0, clean.stderr);
       assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
     });
+    check('runner (prototype stage): a cached live.png whose live.json `url` is another rendering of the page (?page-mode=static) is not reused: the origin is captured from the inventory URL, said once; a trailing-slash variant is the same page and is reused', () => {
+      const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
+      const cached = join(root, 'stardust/replica/gates/a-1440');
+      const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
+      writeFileSync(join(cached, 'live.json'), JSON.stringify({ origin: 'baseline', url: 'https://origin.example/a?page-mode=static' }));
+      const other = runAll('proto-other-url', protoArgs, {}, proto);
+      assert.equal(other.status, 0, other.stderr);
+      assert.match(other.stdout, /origin a: stardust\/replica\/gates\/a-1440\/live\.png was captured from https:\/\/origin\.example\/a\?page-mode=static, not from https:\/\/origin\.example\/a: not reused, capturing the origin/);
+      assert.deepEqual([other.origin.instrument, other.origin.url], ['stitch-live', 'https://origin.example/a']);
+      writeFileSync(join(cached, 'live.json'), JSON.stringify({ origin: 'baseline', url: 'https://origin.example/a/' }));
+      const same = runAll('proto-same-url', protoArgs, {}, proto);
+      assert.equal(same.status, 0, same.stderr);
+      assert.match(same.origin.note, /^reused .*live\.png/);
+    });
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
@@ -432,7 +446,7 @@ function sandbox(slugs, { probes = false, units = false, inputs = true } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
   const rep = join(root, 'stardust/scripts/replica');
   mkdirSync(rep, { recursive: true });
-  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs')); copyFileSync(join(HERE, '..', 'foundation-freeze.mjs'), join(rep, 'foundation-freeze.mjs'));
+  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs')); copyFileSync(join(HERE, '..', 'foundation-freeze.mjs'), join(rep, 'foundation-freeze.mjs')); copyFileSync(join(HERE, '..', 'reference-url.mjs'), join(rep, 'reference-url.mjs'));
   // the project a page is built from (its local build inputs): a content file per page (`a` and `good` use the cards
   // block, every page the teaser block), two more blocks, the shared code and the header fragment
   if (inputs) {
@@ -569,6 +583,53 @@ check('a run with stub instruments: the passed page loses its PNGs, the failed o
     assert.deepEqual(shots(), ['https://eds.example/good', 'https://origin.example/good'], 'a changed mask re-captures both sides');
     assert.equal(rows().good.pass, true);
     assert.deepEqual(pngs('good'), [], 'and drops them again on the pass');
+  } finally { done(); }
+});
+check('reference URL: a page record captured from another rendering (?page-mode=static) is an error row, nothing captured; once the inconsistency register records the substitution the page is gated against that URL and named on its row, above the table, in its verdict cell and in the totals; other pages unchanged', () => {
+  const { root, out, gateAll, shots, rows, totals, done } = sandbox(['good', 'app']);
+  try {
+    const INV = 'https://origin.example/app'; const STATIC = `${INV}?page-mode=static`;
+    mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(root, 'stardust/current/pages/app.json'), JSON.stringify({ slug: 'app', url: STATIC }));
+    writeFileSync(join(root, 'stardust/current/pages/good.json'), JSON.stringify({ slug: 'good', url: 'https://origin.example/good/' }));
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /^gate-all: app: reference: REFUSED for app: the page record stardust\/current\/pages\/app\.json was captured from /m);
+    assert.equal(rows().app.pass, false); assert.match(rows().app.error, /^reference-refused: the page record stardust\/current\/pages\/app\.json was captured from https:\/\/origin\.example\/app\?page-mode=static, not from the inventory URL https:\/\/origin\.example\/app: query page-mode=static added\. /);
+    assert.equal(rows().good.pass, true, 'a record with a trailing slash is the same page');
+    assert.deepEqual(shots(), ['https://eds.example/good', 'https://origin.example/good'], 'the refused page captured nothing');
+    assert.deepEqual([totals().error, totals().referenceRefused, totals().referenceSubstituted], [1, 1, undefined]);
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /\| ERROR reference-refused: the page record /);
+    mkdirSync(join(root, 'stardust/replica'), { recursive: true });
+    writeFileSync(join(root, 'stardust/replica/inconsistency-register.md'), `# Inconsistency register\n\n## R-01 static mode\n\n- **Reference substitution:** ${STATIC} stands in for ${INV} (the user agreed).\n- **Status:** applied\n`);
+    r = gateAll();
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /^gate-all: app: reference: SUBSTITUTED: /m);
+    assert.deepEqual(shots(), ['https://eds.example/app', 'https://eds.example/good', STATIC, 'https://origin.example/good'], 'the origin is the URL that stands in');
+    assert.deepEqual(rows().app.referenceSubstitution, { url: STATIC, inventoryUrl: INV, entry: 'R-01', title: 'static mode', changes: ['query page-mode=static added'], record: STATIC });
+    assert.equal(rows().app.pass, true); assert.equal('referenceSubstitution' in rows().good, false, 'a normal row has no new key');
+    assert.deepEqual([totals().referenceSubstituted, totals().referenceRefused], [1, undefined]);
+    const md = readFileSync(join(out, 'summary.md'), 'utf8');
+    assert.match(md, /^\*\*Reference substituted on 1 page\(s\)\*\*, accepted in the inconsistency register: a pass on these rows is a pass against that rendering, not the page visitors see\. `\/app`: https:\/\/origin\.example\/app\?page-mode=static for https:\/\/origin\.example\/app \(R-01\)\.$/m);
+    assert.match(md, /\| `\/app` \|.*\| PASS \(against the substituted reference, R-01\) \|/);
+    assert.match(md, /\| `\/good` \|.*\| PASS \|/);
+  } finally { done(); }
+});
+check('reference URL fails closed: a reference check that throws, or no reference-url.mjs beside gate-all, stops the run (exit 1) before anything is captured: no gate dir, no summary, no round record, never a PASS', () => {
+  const { root, gateAll, shots, files, done } = sandbox(['good', 'app']);
+  try {
+    mkdirSync(join(root, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(root, 'stardust/current/pages/app.json'), JSON.stringify({ slug: 'app', url: 'https://origin.example/app?page-mode=static' }));
+    const rep = join(root, 'stardust/scripts/replica');
+    copyFileSync(join(rep, 'reference-url.mjs'), join(rep, 'reference-url-real.mjs'));
+    writeFileSync(join(rep, 'reference-url.mjs'), "export * from './reference-url-real.mjs';\nexport function checkReference() { throw new Error('stub: the reference check crashed'); }\n");
+    let r = gateAll();
+    assert.equal(r.status, 1, r.stdout + r.stderr); assert.match(r.stderr, /stub: the reference check crashed/);
+    assert.deepEqual([shots(), files('stardust/replica/gates')], [[], []], 'a throwing check: nothing captured, no gate dir, no summary, no rounds.json');
+    rmSync(join(rep, 'reference-url.mjs'));
+    r = gateAll();
+    assert.equal(r.status, 1, r.stdout + r.stderr); assert.match(r.stderr, /reference-url\.mjs/);
+    assert.deepEqual([shots(), files('stardust/replica/gates')], [[], []], 'no checker: nothing captured, no gate dir, no summary, no rounds.json');
   } finally { done(); }
 });
 check('a failed or interrupted re-capture never leaves the old pass to be reused: the next --skip-existing run captures again', () => {

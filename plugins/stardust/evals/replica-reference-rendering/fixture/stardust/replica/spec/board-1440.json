@@ -1,0 +1,306 @@
+{
+ "_provenance": {
+  "writtenBy": "skills/replica/scripts/source-spec.mjs",
+  "writtenAt": "2026-11-25T08:22:36.715Z",
+  "url": "http://localhost:8780/board/",
+  "width": 1440,
+  "main": "main",
+  "locale": "en-US"
+ },
+ "page": {
+  "url": "http://localhost:8780/board/",
+  "width": 1440,
+  "viewport": 1440,
+  "docHeight": 1925,
+  "scrollWidth": 1440,
+  "root": "main",
+  "rootFallback": false,
+  "records": [
+   "scroll",
+   "shape"
+  ],
+  "rootWrapsChrome": false,
+  "tier": "chrome"
+ },
+ "tokens": {
+  "fonts": [
+   {
+    "stack": "Helvetica, Arial, sans-serif",
+    "n": 52
+   },
+   {
+    "stack": "Georgia, \"Times New Roman\", serif",
+    "n": 19
+   }
+  ],
+  "loadedFaces": [],
+  "textStyles": [
+   {
+    "key": "20/23 700 Helvetica",
+    "fontSize": 20,
+    "lineHeight": 23,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 18,
+    "roles": {
+     "h3": 18
+    },
+    "sample": "Stoneware mug, moss glaze"
+   },
+   {
+    "key": "18/18 700 Helvetica",
+    "fontSize": 18,
+    "lineHeight": 18,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 18,
+    "roles": {
+     "p": 18
+    },
+    "sample": "18.00"
+   },
+   {
+    "key": "17/27.2 400 Georgia",
+    "fontSize": 17,
+    "lineHeight": 27.2,
+    "fontWeight": "400",
+    "fontFamily": "Georgia",
+    "textTransform": "none",
+    "n": 18,
+    "roles": {
+     "p": 18
+    },
+    "sample": "Kiln on Mill Road"
+   },
+   {
+    "key": "15/24 400 Helvetica",
+    "fontSize": 15,
+    "lineHeight": 24,
+    "fontWeight": "400",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 5,
+    "roles": {
+     "p": 2,
+     "link": 3
+    },
+    "sample": "12 Sample Lane Testville"
+   },
+   {
+    "key": "15/15 500 Helvetica",
+    "fontSize": 15,
+    "lineHeight": 15,
+    "fontWeight": "500",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 4,
+    "roles": {
+     "link": 4
+    },
+    "sample": "Shelf"
+   },
+   {
+    "key": "15/17.25 700 Helvetica uppercase",
+    "fontSize": 15,
+    "lineHeight": 17.25,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "uppercase",
+    "n": 3,
+    "roles": {
+     "h2": 3
+    },
+    "sample": "Fixture Store"
+   },
+   {
+    "key": "56/64.4 700 Helvetica",
+    "fontSize": 56,
+    "lineHeight": 64.4,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "h1": 1
+    },
+    "sample": "The board"
+   },
+   {
+    "key": "20/20 700 Helvetica",
+    "fontSize": 20,
+    "lineHeight": 20,
+    "fontWeight": "700",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "link": 1
+    },
+    "sample": "Fixture Store"
+   },
+   {
+    "key": "20/32 400 Georgia",
+    "fontSize": 20,
+    "lineHeight": 32,
+    "fontWeight": "400",
+    "fontFamily": "Georgia",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "Everything that arrived this week, on one board. Scroll it like a shelf: the bo…"
+   },
+   {
+    "key": "13/18.2 600 Helvetica uppercase",
+    "fontSize": 13,
+    "lineHeight": 18.2,
+    "fontWeight": "600",
+    "fontFamily": "Helvetica",
+    "textTransform": "uppercase",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "This week at the store"
+   },
+   {
+    "key": "13/20.8 400 Helvetica",
+    "fontSize": 13,
+    "lineHeight": 20.8,
+    "fontWeight": "400",
+    "fontFamily": "Helvetica",
+    "textTransform": "none",
+    "n": 1,
+    "roles": {
+     "p": 1
+    },
+    "sample": "A fixture for automated evaluations. Nothing here is for sale."
+   }
+  ],
+  "colours": [
+   {
+    "color": "rgb(29, 36, 32)",
+    "n": 41
+   },
+   {
+    "color": "rgb(85, 96, 90)",
+    "n": 19
+   },
+   {
+    "color": "rgb(216, 211, 200)",
+    "n": 5
+   },
+   {
+    "color": "rgb(255, 255, 255)",
+    "n": 3
+   },
+   {
+    "color": "rgb(154, 163, 157)",
+    "n": 1
+   },
+   {
+    "color": "rgb(176, 118, 42)",
+    "n": 1
+   },
+   {
+    "color": "rgb(244, 239, 230)",
+    "n": 1
+   }
+  ],
+  "container": {
+   "left": 192,
+   "right": 192,
+   "content": 1056,
+   "leftCommon": {
+    "x": 213,
+    "n": 18
+   }
+  }
+ },
+ "truncated": {
+  "text": 0,
+  "image": 0
+ },
+ "sections": [
+  {"i":0,"region":"header","y":34,"h":73,"background":"rgb(255, 253, 248)","paddingTop":0,"paddingBottom":0,"selectorHint":"header.site-header","firstText":"Fixture Store"},
+  {"i":1,"region":"main","y":107,"h":1547,"background":"none","paddingTop":56,"paddingBottom":72,"selectorHint":"section.board","firstText":"This week at the store"},
+  {"i":2,"region":"footer","y":1654,"h":271,"background":"rgb(29, 36, 32)","paddingTop":56,"paddingBottom":32,"selectorHint":"footer.site-footer","firstText":"Fixture Store"}
+ ],
+ "nodes": [
+  {"section":0,"region":"header","kind":"image","tag":"svg","role":"link","text":"","x":192,"y":52,"w":36,"h":36,"fit":"fill","shape":{"pos":"50% 50%"},"href":"/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Fixture Store","x":192,"y":52,"w":171,"h":36,"fontFamily":"Helvetica","fontSize":20,"lineHeight":20,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Shelf","x":953,"y":62,"w":34,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/#shelf"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"About","x":1015,"y":62,"w":39,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/#about"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Visit","x":1082,"y":62,"w":28,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1,"href":"/visit/"},
+  {"section":0,"region":"header","kind":"control","tag":"a","role":"link","text":"Open today","x":1138,"y":52,"w":110,"h":37,"fontFamily":"Helvetica","fontSize":15,"lineHeight":15,"fontWeight":"500","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(244, 239, 230)","lines":1,"href":"/visit/#hours"},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"This week at the store","x":192,"y":163,"w":1056,"h":18,"fontFamily":"Helvetica","fontSize":13,"lineHeight":18.2,"fontWeight":"600","letterSpacing":1.56,"textTransform":"uppercase","textAlign":"start","color":"rgb(176, 118, 42)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h1","role":"h1","text":"The board","x":192,"y":197,"w":1056,"h":64,"fontFamily":"Helvetica","fontSize":56,"lineHeight":64.4,"fontWeight":"700","letterSpacing":-1.12,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Everything that arrived this week, on one board. Scroll it like a shelf: the bo…","x":192,"y":278,"w":720,"h":64,"fontFamily":"Georgia","fontSize":20,"lineHeight":32,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":2},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Stoneware mug, moss glaze","x":213,"y":403,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Kiln on Mill Road","x":213,"y":434,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"18.00","x":213,"y":477,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Willow log basket","x":573,"y":403,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Riverside weavers","x":573,"y":434,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"42.00","x":573,"y":477,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Brass desk lamp","x":933,"y":403,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"The lamp room","x":933,"y":434,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"96.00","x":933,"y":477,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Linen tea towel, two stripes","x":213,"y":607,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Loom 4","x":213,"y":638,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"12.00","x":213,"y":681,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Oak bread board","x":573,"y":607,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Joinery at the yard","x":573,"y":638,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"34.00","x":573,"y":681,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Enamel milk pan","x":933,"y":607,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Northgate works","x":933,"y":638,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"28.00","x":933,"y":681,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Wool blanket, slate","x":213,"y":811,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Hill farm mill","x":213,"y":842,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"120.00","x":213,"y":885,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Beeswax candles, pair","x":573,"y":811,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Apiary lane","x":573,"y":842,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"9.00","x":573,"y":885,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Cast iron trivet","x":933,"y":811,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Northgate works","x":933,"y":842,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"22.00","x":933,"y":885,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Rush seat stool","x":213,"y":1015,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Joinery at the yard","x":213,"y":1046,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"88.00","x":213,"y":1089,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Glass carafe","x":573,"y":1015,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Furnace on Quay Street","x":573,"y":1046,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"31.00","x":573,"y":1089,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Hemp shopping net","x":933,"y":1015,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Loom 4","x":933,"y":1046,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"8.00","x":933,"y":1089,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Copper watering can","x":213,"y":1219,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"The lamp room","x":213,"y":1250,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"64.00","x":213,"y":1293,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Ash spoon set","x":573,"y":1219,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Joinery at the yard","x":573,"y":1250,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"19.00","x":573,"y":1293,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Clay plant pot, large","x":933,"y":1219,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Kiln on Mill Road","x":933,"y":1250,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"26.00","x":933,"y":1293,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Canvas apron","x":213,"y":1423,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Stitch room","x":213,"y":1454,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"38.00","x":213,"y":1497,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Brass bottle opener","x":573,"y":1423,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"The lamp room","x":573,"y":1454,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"11.00","x":573,"y":1497,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"h3","role":"h3","text":"Wicker lamp shade","x":933,"y":1423,"w":294,"h":23,"fontFamily":"Helvetica","fontSize":20,"lineHeight":23,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"Riverside weavers","x":933,"y":1454,"w":294,"h":27,"fontFamily":"Georgia","fontSize":17,"lineHeight":27.2,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(85, 96, 90)","lines":1},
+  {"section":1,"region":"main","kind":"text","tag":"p","role":null,"text":"47.00","x":933,"y":1497,"w":294,"h":18,"fontFamily":"Helvetica","fontSize":18,"lineHeight":18,"fontWeight":"700","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(29, 36, 32)","lines":1},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"Fixture Store","x":192,"y":1710,"w":384,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"12 Sample Lane Testville","x":192,"y":1739,"w":384,"h":48,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":2},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"Hours","x":624,"y":1710,"w":384,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"Tuesday to Saturday, 10:00 to 18:00 Closed Sunday and Monday","x":624,"y":1739,"w":384,"h":48,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":2},
+  {"section":2,"region":"footer","kind":"text","tag":"h2","role":"h2","text":"More","x":1056,"y":1710,"w":192,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":17.25,"fontWeight":"700","letterSpacing":1.2,"textTransform":"uppercase","textAlign":"start","color":"rgb(255, 255, 255)","lines":1},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"Plan a visit","x":1056,"y":1742,"w":73,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/visit/"},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"This week's shelf","x":1056,"y":1766,"w":114,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/#shelf"},
+  {"section":2,"region":"footer","kind":"control","tag":"a","role":"link","text":"About the shop","x":1056,"y":1790,"w":101,"h":17,"fontFamily":"Helvetica","fontSize":15,"lineHeight":24,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(216, 211, 200)","lines":1,"href":"/#about"},
+  {"section":2,"region":"footer","kind":"text","tag":"p","role":null,"text":"A fixture for automated evaluations. Nothing here is for sale.","x":160,"y":1851,"w":1120,"h":42,"fontFamily":"Helvetica","fontSize":13,"lineHeight":20.8,"fontWeight":"400","letterSpacing":0,"textTransform":"none","textAlign":"start","color":"rgb(154, 163, 157)","lines":1}
+ ]
+}

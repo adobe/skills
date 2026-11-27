@@ -227,7 +227,7 @@ check('count --json parses', r.status === 0 && Array.isArray(JSON.parse(r.stdout
 // ── gate.sh wiring (stub instruments, no browser) ─────────────────────────────────────────────────────────────
 const replica = join(root, 'stardust/scripts/replica');
 mkdirSync(replica, { recursive: true });
-for (const f of ['gate.sh', 'run-capped.mjs', 'rounds.mjs']) cpSync(join(scripts, f), join(replica, f));
+for (const f of ['gate.sh', 'run-capped.mjs', 'rounds.mjs', 'reference-url.mjs']) cpSync(join(scripts, f), join(replica, f));
 chmodSync(join(replica, 'gate.sh'), 0o755);
 const calls = join(root, 'calls.txt');
 const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\nimport { appendFileSync, writeFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, '${name}\\n');\n${body}\n`);
