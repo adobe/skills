@@ -1,16 +1,8 @@
----
-name: sling-distribution
-license: Apache-2.0
-description: |
-  Monitor and react to content distribution events using Sling Distribution API (org.apache.sling.distribution).
-  Covers distribution event handling, queue monitoring, and distribution lifecycle tracking.
----
-
 # AEM Cloud Service Sling Distribution Event Handling
 
 Monitor and react to content distribution lifecycle events using the Sling Distribution API.
 
-## When to Use This Skill
+## When to Use Sling Distribution Events
 
 Use Sling Distribution event handling for:
 - **Monitoring distribution lifecycle**: Track package creation, queueing, and delivery
@@ -19,11 +11,11 @@ Use Sling Distribution event handling for:
 - **Failure handling**: React to dropped packages and distribution failures
 - **Integration workflows**: Trigger external systems after successful distribution
 
-**For programmatic publishing**, use the [Replication API](../replication/SKILL.md) instead.
+**For programmatic publishing**, use the [Replication API guide](replication.md) instead.
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+**Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900 Sling Distribution API)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/event/package-summary.html
 
 **Key Packages**:
 - `org.apache.sling.distribution` - Core distribution interfaces
@@ -600,7 +592,7 @@ LOG.error("Package dropped: {}", packageId);
 While you can't directly query distribution queues via the API in Cloud Service, you can monitor via:
 
 1. **Events**: Track `AGENT_PACKAGE_QUEUED` and `AGENT_PACKAGE_DISTRIBUTED` events
-2. **Felix Console**: View Sling jobs at `/system/console/slingjobs`
+2. **Distribution UI**: Open **Tools > Deployment > Distribution** to inspect the persisted and fully published queues
 3. **Logs**: Check distribution logs in Cloud Manager
 
 ### Example: Queue Depth Monitoring
@@ -733,7 +725,7 @@ Target Tier: Imports package → [IMPORTER_PACKAGE_IMPORTED]
 
 ## References
 
-- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+- **Sling Distribution Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900 Sling Distribution API)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/event/package-summary.html
 - **Sling Distribution Docs**: https://sling.apache.org/documentation/bundles/content-distribution.html
-- **Replication API Skill**: [replication/SKILL.md](../replication/SKILL.md)
-- **Adobe AEM Replication**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **Replication API guide**: [replication.md](replication.md)
+- **Adobe AEM Replication**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication

@@ -1,16 +1,8 @@
----
-name: replication
-license: Apache-2.0
-description: "Publish, deactivate, and delete AEM content programmatically via the Cloud Service Replication API (com.day.cq.replication). Covers single-path and bulk activation, preview-tier targeting with AgentFilter, synchronous/async options, ReplicationStatus checks, permission validation, workflow process steps, and replication event handling. Use when the user needs to publish pages, activate or deactivate content, check replication status, build workflow steps that replicate content, listen to replication events, query batch publication state, or work with Replicator, ReplicationOptions, or ReplicationStatusProvider in AEM Cloud Service."
-metadata:
-  category: content-distribution
----
-
 # AEM Cloud Service Replication API
 
 Programmatic content publishing and unpublishing using the official AEM Replication API.
 
-## When to Use This Skill
+## When to Use the Replication API
 
 Use the Replication API for programmatic content distribution:
 - Custom OSGi services that publish content
@@ -23,7 +15,7 @@ Use the Replication API for programmatic content distribution:
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
+**Javadoc (AEM SDK 2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
 
 **Key Classes**:
 - `com.day.cq.replication.Replicator` - Main replication service
@@ -92,12 +84,11 @@ public class ContentPublisher {
 
 ## Bulk Replication: Multiple Paths
 
-**CONSTRAINTS** (per [official Javadoc](https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/Replicator.html)):
-- **Recommended limit**: 100 paths per call for a transactional guarantee
-- **Above 100 paths**: the system automatically splits into multiple non-transactional chunks — no extra options needed
-- **Payload size**: 10 MB maximum (excluding binaries)
-
-> **Note**: `ReplicationOptions.setUseAtomicCalls()` is `@Deprecated` and marked "no longer required" in the Cloud Service Javadoc. Do **not** call it; the system handles auto-bucketing automatically.
+**Bulk publishing limits** (Cloud Service operations documentation and [AEM SDK Javadocs, version 2026.9.28386.20260923T071724Z-260900](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/Replicator.html)):
+- Prefer fewer than 100 paths per custom call. Use the Tree Activation workflow for large hierarchies.
+- The Cloud Service operations guide documents a 500-path cap for default calls; larger requests throw `ReplicationException`.
+- It separately describes `ReplicationOptions.setUseAtomicCalls(false)` as a way to bucket larger requests, while the SDK 2026.9 Javadoc marks the option deprecated and “no longer required.” Treat this as a documented conflict: do not promise automatic splitting; handle `ReplicationException` and verify target-runtime behavior before relying on larger requests.
+- **Payload size**: 10 MB maximum (excluding binaries).
 
 ### Example: Bulk Activation
 
@@ -109,8 +100,8 @@ public class BulkPublisher {
     
     /**
      * Publish multiple pages.
-     * ≤100 paths → replicated atomically (transactional guarantee).
-     * >100 paths → system automatically splits into non-transactional chunks.
+     * Keep custom calls below 100 paths when possible. Product docs state calls above 500 paths
+     * throw ReplicationException by default; larger-batch behavior is not claimed here.
      */
     public void publishMultiplePages(Session session, String[] pagePaths) 
             throws ReplicationException {
@@ -119,7 +110,7 @@ public class BulkPublisher {
             session,
             ReplicationActionType.ACTIVATE,
             pagePaths,
-            null  // No options needed; system handles auto-bucketing above 100 paths
+            null  // Keep custom requests below 100 paths; handle ReplicationException.
         );
     }
 }
@@ -129,7 +120,7 @@ public class BulkPublisher {
 
 ## Publishing to Preview Tier
 
-The Preview tier requires explicit agent filtering.
+Without an `AgentFilter`, `Replicator` targets the enabled-by-default **publish** agent only. Preview requires an explicit filter and the Preview agent must be available in the target environment.
 
 ### Example: Publish to Preview
 
@@ -193,13 +184,38 @@ public class PreviewPublisher {
 }
 ```
 
-**Note**: Preview agent is disabled by default and must be configured in Cloud Manager.
+### Checking Preview Status
+
+After a preview-only activation, the per-agent status can be active even though aggregate `isActivated()` remains false:
+
+```java
+import com.day.cq.replication.ReplicationStatus;
+
+ReplicationStatus aggregate = replicator.getReplicationStatus(session, pagePath);
+ReplicationStatus preview = aggregate == null ? null : aggregate.getStatusForAgent("preview");
+boolean previewIsActivated = preview != null && preview.isActivated();
+// A preview-only activation can make previewIsActivated true while aggregate.isActivated() is false.
+```
+
+**Note**: Preview is not enabled by default; verify that the Preview agent is available in the target environment before using it.
 
 ## Advanced Options: ReplicationOptions
 
 ### Synchronous vs. Asynchronous Replication
 
 ```java
+import com.day.cq.replication.Agent;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationAction;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import com.day.cq.replication.ReplicationListener;
+import com.day.cq.replication.ReplicationLog;
+import com.day.cq.replication.ReplicationOptions;
+import com.day.cq.replication.ReplicationResult;
+import javax.jcr.Session;
+import org.osgi.service.component.annotations.Reference;
+
 public class SynchronousPublisher {
     
     @Reference
@@ -217,7 +233,7 @@ public class SynchronousPublisher {
         // Optional: Add listener for synchronous feedback
         options.setListener(new ReplicationListener() {
             @Override
-            public void onStart(ReplicationAction action) {
+            public void onStart(Agent agent, ReplicationAction action) {
                 // Called when replication starts
             }
             
@@ -227,12 +243,12 @@ public class SynchronousPublisher {
             }
             
             @Override
-            public void onEnd(ReplicationAction action, ReplicationResult result) {
+            public void onEnd(Agent agent, ReplicationAction action, ReplicationResult result) {
                 // Called when replication completes
             }
             
             @Override
-            public void onError(ReplicationAction action, Exception error) {
+            public void onError(Agent agent, ReplicationAction action, Exception error) {
                 // Called if replication fails
             }
         });
@@ -298,9 +314,13 @@ public void replicateWithoutVersioning(Session session, String path)
 ```java
 import com.day.cq.replication.ReplicationStatus;
 import org.apache.sling.api.resource.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StatusChecker {
-    
+
+    private static final Logger LOG = LoggerFactory.getLogger(StatusChecker.class);
+
     @Reference
     private Replicator replicator;
     
@@ -316,7 +336,7 @@ public class StatusChecker {
             return false;  // No replication metadata
         }
         
-        return status.isActivated();
+        return status.isActivated();  // Aggregate/default-publish status; use getStatusForAgent("preview") for Preview.
     }
     
     /**
@@ -328,12 +348,12 @@ public class StatusChecker {
         ReplicationStatus status = replicator.getReplicationStatus(session, path);
         
         if (status != null) {
-            System.out.println("Activated: " + status.isActivated());
-            System.out.println("Deactivated: " + status.isDeactivated());
-            System.out.println("Last Published: " + status.getLastPublished());
-            System.out.println("Published By: " + status.getLastPublishedBy());
-            System.out.println("Last Action: " + status.getLastReplicationAction());
-            System.out.println("Pending: " + status.isPending());
+            LOG.info("Activated: {}", status.isActivated());
+            LOG.info("Deactivated: {}", status.isDeactivated());
+            LOG.info("Last Published: {}", status.getLastPublished());
+            LOG.info("Published By: {}", status.getLastPublishedBy());
+            LOG.info("Last Action: {}", status.getLastReplicationAction());
+            LOG.info("Pending: {}", status.isPending());
         }
     }
     
@@ -535,7 +555,7 @@ public class ReplicationEventLogger implements EventHandler {
 ## Best Practices
 
 ### 1. Respect Rate Limits
-- ≤100 paths per call for transactional guarantee; system auto-splits if exceeded
+- Keep custom calls below 100 paths; see the batching caveat above and do not rely on automatic splitting.
 - ≤10 MB payload size
 
 ### 2. Use Workflow for Large Operations
@@ -545,14 +565,14 @@ Don't build custom bulk publishing code. Use Tree Activation workflow step.
 Always check permissions before replication to avoid exceptions.
 
 ### 4. Use Service Users
-Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate` via `ServiceUserMapperImpl.amended` config. Provision the principal with `jcr:read` + `crx:replicate` on `/content` via Repo Init scripts — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init). See [references/patterns.md](references/patterns.md) for the full service user setup example.
+Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate` via `ServiceUserMapperImpl.amended` config. Provision the principal with `jcr:read` + `crx:replicate` on `/content` via Repo Init scripts — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init). See [replication/patterns.md](replication/patterns.md) for the full service user setup example.
 
 ### 5. Publish Only What's Needed
 Minimize replication volume to reduce queue pressure and pipeline load.
 
 ## Common Patterns
 
-See [references/patterns.md](references/patterns.md) for complete implementations:
+See [replication/patterns.md](replication/patterns.md) for complete implementations:
 - **Auto-Publish on Content Fragment Save** — event-driven publish using `SlingConstants.TOPIC_RESOURCE_CHANGED`
 - **External Cache Purge After Publication** — CDN invalidation via replication event handler
 - **Service User Setup for Replication** — OSGi service user mapping and Repo Init provisioning
@@ -561,12 +581,7 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ### Issue: Replication Fails Silently
 
-**Check**: Verify replication queues in Felix console (Sling Jobs console):
-```
-https://author-p<programId>-e<envId>.adobeaemcloud.com/system/console/slingjobs
-```
-
-Look for failed jobs with topic: `com/day/cq/replication`
+**Check**: In **Tools > Deployment > Distribution**, open the `publish` or `preview` agent. Review its **persisted** and **fully published** queues and the **Logs** tab. Clearing `persisted` means content is durable on Publish; clearing `fully published` means it is live across Publish pods and Dispatcher invalidation is complete. A queued or accepted request alone does not prove delivery.
 
 ### Issue: Permission Errors
 
@@ -586,6 +601,6 @@ Look for failed jobs with topic: `com/day/cq/replication`
 
 ## References
 
-- **Official Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
-- **Adobe Docs**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
+- **AEM SDK Javadocs (2026.9.28386.20260923T071724Z-260900)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
+- **Cloud Service replication operations**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication
 - **Sling Distribution**: https://sling.apache.org/documentation/bundles/content-distribution.html
