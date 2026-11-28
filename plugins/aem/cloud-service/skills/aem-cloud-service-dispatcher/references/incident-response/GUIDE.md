@@ -1,13 +1,3 @@
----
-name: incident-response
-description: Investigate and triage runtime incidents involving the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM as a Cloud Service environments only, using runtime-backed MCP evidence.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Runtime Incident Response (Cloud)
 
 Investigate cloud runtime incidents involving the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration with an evidence-first workflow.

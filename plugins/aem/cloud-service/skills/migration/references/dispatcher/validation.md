@@ -2,11 +2,11 @@
 
 This is **phase 6 (VALIDATE)** of the flow in [context.md](context.md): the final gate that runs the AEM Cloud Service dispatcher validator against the converted config and iterates until it is clean. It runs **after** phase 4's output verification has cleared (no `filter-acl-loss` critical failure) and phase 5's judgment pass has relocated or flagged what the tool didn't resolve.
 
-**This doc delegates; it does not re-document the validator.** The Dispatcher SDK validator, its command surface, the guardrails it enforces, and the local Docker runtime harness are all owned by the `dispatcher` skill. Do not reimplement or re-explain them here — run the steps below against that skill's references, which are the source of truth.
+**This doc delegates; it does not re-document the validator.** The Dispatcher SDK validator, its command surface, the guardrails it enforces, and the local Docker runtime harness are all owned by the `aem-cloud-service-dispatcher` skill. Do not reimplement or re-explain them here — run the steps below against that skill's references, which are the source of truth.
 
-## Steps (delegate to the `dispatcher` skill)
+## Steps (delegate to the `aem-cloud-service-dispatcher` skill)
 
-1. **Run the Dispatcher SDK validator on the converted `src`.** Point the validator at the conversion output's dispatcher source root (the normalized `.../dispatcher/src`, containing `conf.d` and `conf.dispatcher.d`) and follow the flow in [validation-playbook](../../../dispatcher/config-authoring/references/config-authoring/validation-playbook.md):
+1. **Run the Dispatcher SDK validator on the converted `src`.** Point the validator at the conversion output's dispatcher source root (the normalized `.../dispatcher/src`, containing `conf.d` and `conf.dispatcher.d`) and follow the flow in [validation-playbook](../../../aem-cloud-service-dispatcher/references/config-authoring/references/config-authoring/validation-playbook.md):
 
    ```bash
    validator dispatcher <src>
@@ -14,9 +14,9 @@ This is **phase 6 (VALIDATE)** of the flow in [context.md](context.md): the fina
 
    Run the corroborating `validator full <src>` / `validator httpd <src>` passes too where available; the playbook documents the expected baseline (e.g. success with the `/ignoreUrlParams` marketing-parameter warning) and the full URL-verification matrix.
 
-2. **Check the result against the cloud guardrails.** Reconcile every validator finding — and the structural assertions the validator doesn't cover — against [cloud guardrails](../../../dispatcher/config-authoring/references/dispatcher-foundation/cloud-service-aemaacs-guardrails.md): source-of-truth layout and ownership, the required topology invariants (at least one enabled farm and one enabled vhost, known include locations, `default_*` wrapper contracts), and the CDN-vs-dispatcher boundary. A validator pass that violates a guardrail is not done.
+2. **Check the result against the cloud guardrails.** Reconcile every validator finding — and the structural assertions the validator doesn't cover — against [cloud guardrails](../../../aem-cloud-service-dispatcher/references/config-authoring/references/dispatcher-foundation/cloud-service-aemaacs-guardrails.md): source-of-truth layout and ownership, the required topology invariants (at least one enabled farm and one enabled vhost, known include locations, `default_*` wrapper contracts), and the CDN-vs-dispatcher boundary. A validator pass that violates a guardrail is not done.
 
-3. **Use the local SDK for `docker_run.sh` / runtime checks.** When runtime behavior is in scope (not just static structure), exercise the config in the local Dispatcher SDK per [local SDK execution](../../../dispatcher/config-authoring/references/dispatcher-foundation/local-sdk-execution.md) — the `./bin/docker_run.sh <dispatcher-src> <aem-host>:<aem-port> <local-port>` positional contract (or `test` mode for a static config test). This catches behavior the static validator can't: filter allow/deny decisions, cache hit/miss, rewrite/redirect resolution.
+3. **Use the local SDK for `docker_run.sh` / runtime checks.** When runtime behavior is in scope (not just static structure), exercise the config in the local Dispatcher SDK per [local SDK execution](../../../aem-cloud-service-dispatcher/references/config-authoring/references/dispatcher-foundation/local-sdk-execution.md) — the `./bin/docker_run.sh <dispatcher-src> <aem-host>:<aem-port> <local-port>` positional contract (or `test` mode for a static config test). This catches behavior the static validator can't: filter allow/deny decisions, cache hit/miss, rewrite/redirect resolution.
 
 4. **Iterate until clean.** Fix each finding, re-run the validator (and the runtime harness where relevant), and repeat until it passes with only the known/accepted warnings. Record executed checks, failures with their exact errors, and any accepted-with-reason warnings in the run's `conversion-report.md` — the same audit trail phase 4 writes to.
 

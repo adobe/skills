@@ -1,13 +1,3 @@
----
-name: workflow-orchestrator
-description: Orchestrate complete lifecycle work for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM as a Cloud Service, from design and implementation through validation, release readiness, and incident troubleshooting.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Workflow Orchestrator (Cloud)
 
 Use this skill when users need end-to-end Dispatcher support instead of a single specialist workflow.
@@ -62,11 +52,11 @@ Always return:
 
 ## Related Skills
 
-- [config-authoring](../config-authoring/SKILL.md)
-- [technical-advisory](../technical-advisory/SKILL.md)
-- [security-hardening](../security-hardening/SKILL.md)
-- [performance-tuning](../performance-tuning/SKILL.md)
-- [incident-response](../incident-response/SKILL.md)
+- [config-authoring](../config-authoring/GUIDE.md)
+- [technical-advisory](../technical-advisory/GUIDE.md)
+- [security-hardening](../security-hardening/GUIDE.md)
+- [performance-tuning](../performance-tuning/GUIDE.md)
+- [incident-response](../incident-response/GUIDE.md)
 
 ## References
 

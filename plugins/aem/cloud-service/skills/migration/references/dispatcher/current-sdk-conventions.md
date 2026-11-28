@@ -2,7 +2,7 @@
 
 This doc describes the **target end-state**: the shape a converted config must reach to be a valid AEM as a Cloud Service dispatcher. It is the convention set that phase-4 normalization aims at (see [output-verification.md](output-verification.md)) and that the phase-6 validator checks against (see [validation.md](validation.md)). See [context.md](context.md) for where these two phases sit in the 6-phase flow.
 
-This is **not** a re-documentation of the cloud dispatcher layout. The authoritative source of truth for the target layout, ownership rules, and validator invariants is the `dispatcher` skill — this doc names the handful of end-state markers the converter has to produce and then hands you to that skill for the full contract. Read those references before hand-editing anything; do not treat the summary below as a substitute.
+This is **not** a re-documentation of the cloud dispatcher layout. The authoritative source of truth for the target layout, ownership rules, and validator invariants is the `aem-cloud-service-dispatcher` skill — this doc names the handful of end-state markers the converter has to produce and then hands you to that skill for the full contract. Read those references before hand-editing anything; do not treat the summary below as a substitute.
 
 ## The collector-plus-includes shape
 
@@ -28,19 +28,19 @@ The `default_*.any` files shipped in a project (typically seeded from the AEM pr
 
 ## Runtime invariants the validator enforces (named here, not re-documented)
 
-Beyond the file-shape markers above, a valid cloud dispatcher must satisfy runtime invariants the **Dispatcher SDK validator** checks. This doc only *names* them so the converter's end-state is complete; the authoritative contract and exact values live in the `dispatcher` skill (the guardrails + `validation-playbook.md` §6 linked below), and [validation.md](validation.md) (phase 6) is where they are actually checked — not by the conversion coverage report.
+Beyond the file-shape markers above, a valid cloud dispatcher must satisfy runtime invariants the **Dispatcher SDK validator** checks. This doc only *names* them so the converter's end-state is complete; the authoritative contract and exact values live in the `aem-cloud-service-dispatcher` skill (the guardrails + `validation-playbook.md` §6 linked below), and [validation.md](validation.md) (phase 6) is where they are actually checked — not by the conversion coverage report.
 
 - **Publish host aliases** — at least one vhost advertises `ServerAlias "*.adobeaemcloud.net"` and `ServerAlias "*.adobeaemcloud.com"`; no leftover `ServerName "*"`.
 - **Reserved probe paths untouched** — `/system/probes/live`, `/system/probes/ready`, `/system/probes/start`, `/system/probes/health`, and `/systemready` are not intercepted by custom rewrites, redirects, or filters.
 - **Explicit `/ignoreUrlParams` strategy** — query-parameter (including marketing-parameter) cache handling is stated explicitly. This is a distinct concern from the farm `/cache/rules` count the coverage report tracks; it is validated in phase 6, not counted.
 - **Core vhost defaults intact** unless intentionally replaced with recorded evidence: `AllowEncodedSlashes NoDecode`, `DispatcherUseProcessedURL On`, `DispatcherPassError 0`, `ModMimeUsePathInfo On`, `DirectorySlash Off`.
 
-## Source of truth (dispatcher skill — link, don't re-document)
+## Source of truth (aem-cloud-service-dispatcher skill — link, don't re-document)
 
-For the full target layout, file-family ownership, wrapper-vs-default rules, and the validator-enforced topology invariants, defer to the `dispatcher` skill. These are authoritative; the summary above is only the converter's end-state checklist.
+For the full target layout, file-family ownership, wrapper-vs-default rules, and the validator-enforced topology invariants, defer to the `aem-cloud-service-dispatcher` skill. These are authoritative; the summary above is only the converter's end-state checklist.
 
-- [cloud guardrails](../../../dispatcher/config-authoring/references/dispatcher-foundation/cloud-service-aemaacs-guardrails.md) — Core-7 guardrails: source-of-truth layout and ownership, required cloud topology invariants (enabled farms/vhosts, known include locations, symlinks), validator-enforced contracts, and the CDN-vs-dispatcher boundary. This is the contract normalization and validation target.
-- [repo layout](../../../dispatcher/config-authoring/references/dispatcher-foundation/repo-layout-workflows.md) — the supported public repo layouts (`<repo>/src` vs `<repo>/dispatcher/src`), the `conf.d/` and `conf.dispatcher.d/` file families, and the file-family heuristics for locating a change.
+- [cloud guardrails](../../../aem-cloud-service-dispatcher/references/config-authoring/references/dispatcher-foundation/cloud-service-aemaacs-guardrails.md) — Core-7 guardrails: source-of-truth layout and ownership, required cloud topology invariants (enabled farms/vhosts, known include locations, symlinks), validator-enforced contracts, and the CDN-vs-dispatcher boundary. This is the contract normalization and validation target.
+- [repo layout](../../../aem-cloud-service-dispatcher/references/config-authoring/references/dispatcher-foundation/repo-layout-workflows.md) — the supported public repo layouts (`<repo>/src` vs `<repo>/dispatcher/src`), the `conf.d/` and `conf.dispatcher.d/` file families, and the file-family heuristics for locating a change.
 
 ## See also
 
