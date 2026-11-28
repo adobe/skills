@@ -15,6 +15,8 @@
  *                              → LLM scan (last resort — agent, not this script)
  *                   `replication` maps to the BPA `replication.agent` subtype;
  *                   with no BPA source it falls through to the analyzer (or LLM).
+ *                   `admin-resource-resolver` has no BPA subtype, so the
+ *                   analyzer owns it outright (LLM if the analyzer can't run).
  *   'html-scan'   — `htlLint`: heuristic regex scan of `.html` templates.
  *   'config-scan' — `osgiConfig`: heuristic scan of OSGi config files for
  *                   secret-looking keys and `$[secret:]`/`$[env:]` placeholders
@@ -166,6 +168,15 @@ const PATTERN_META = {
     bpaSlugs: ['replication'],
     description: 'Usage of `com.day.cq.replication.Replicator` / Sling Replication Agent. Migrate to the Sling Distribution API (`Distributor` + `SimpleDistributionRequest`).',
     promptPattern: 'replication',
+  },
+  'admin-resource-resolver': {
+    label: 'Admin Resource Resolver',
+    severity: 'high',
+    strategy: 'cascade',
+    // No BPA/CAM subtype exists, so the analyzer owns detection (LLM fallback if it cannot run).
+    bpaSlugs: [],
+    description: 'Calls to `getAdministrativeResourceResolver` / `loginAdministrative`, `ResourceProvider.AUTH_ADMIN`, and `ServiceUserMapperImpl` mappings to `admin`. Migrate to least-privilege service users provisioned with Repoinit; review ACLs before deploying.',
+    promptPattern: 'admin-resource-resolver',
   },
   htlLint: {
     label: 'HTL data-sly-test Lint',

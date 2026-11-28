@@ -1,0 +1,5 @@
+{
+  "user.mapping": [
+    "com.example.core:other=admin"
+  ]
+}

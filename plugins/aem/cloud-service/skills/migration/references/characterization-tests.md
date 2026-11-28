@@ -21,10 +21,11 @@ patterns that preserve a behavioral seam a single test can bind to on both sides
 | `eventListener` / `eventHandler` | ✅ *(conditional)* | The delegated handler method / `JobConsumer#process` outcome |
 | `replication` (Replicator → Distribution) | ❌ | Sync → **async** model change — a before-test pins behavior that no longer exists |
 | `assetApi` (AssetManager → external) | ❌ | In-JVM → out-of-process — no surviving in-process seam |
+| `admin-resource-resolver` (admin → service user) | ❌ | Identity / ACL change — a unit-test mock cannot pin repository permissions |
 
 Non-Java migration patterns (`htlLint`, `vault-package-dependencies`, `osgiConfig`, `lui`, `cdw`,
 `templateModernization`, `dispatcherConversion`) are **out of scope** — no Java unit under test.
-For `replication` and `assetApi`, do **not** write a test: rely on the guide's compile/build step
+For `replication`, `assetApi`, and `admin-resource-resolver`, do **not** write a test: rely on the guide's compile/build step
 plus a dev-deploy check before merge.
 
 ## Efficiency contract (non-negotiable — this is what keeps it cheap)

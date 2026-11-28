@@ -292,6 +292,26 @@ assert_absent  "ordinary names in login code not flagged"      "$OUT" 'CleanLogi
 assert_absent  "debug parameter outside security code not flagged" "$OUT" 'ProductListServlet.java'
 assert_absent  "src/test/ not flagged"                         "$OUT" 'LoginServletTest.java'
 
+echo "[admin-resource-resolver] admin resolvers and admin service-user mappings flagged"
+OUT="$(run "$FIX/admin-resource-resolver")"
+assert_contains "pattern present"                              "$OUT" '"pattern":"admin-resource-resolver"'
+assert_contains "getAdministrativeResourceResolver flagged"    "$OUT" 'AdminFactoryCaller.java","line":12'
+assert_contains "loginAdministrative flagged"                  "$OUT" 'AdminFactoryCaller.java","line":16'
+assert_contains "ResourceProvider.AUTH_ADMIN wrapper flagged"  "$OUT" 'AdministrativeResourceResolverImpl.java","line":21'
+assert_contains "static-imported AUTH_ADMIN flagged"           "$OUT" 'StaticImportAdmin.java'
+assert_contains "wildcard static-imported AUTH_ADMIN flagged" "$OUT" 'WildcardStaticImportAdmin.java'
+assert_contains "cfg.json mapping to admin flagged"            "$OUT" 'ServiceUserMapperImpl.amended-admin.cfg.json'
+assert_contains "mapping line is the snippet"                  "$OUT" 'siteAdminService=admin'
+assert_contains "user.default admin fallback flagged"          "$OUT" 'ServiceUserMapperImpl.amended-default.cfg.json'
+assert_contains ".config mapping to admin flagged"             "$OUT" 'ServiceUserMapperImpl.amended-legacy.config'
+assert_count   "one finding per site (8)"                      "$OUT" '"pattern":"admin-resource-resolver"' 8
+assert_absent  "service resolver not flagged"                  "$OUT" 'CleanServiceUser.java'
+assert_absent  "project's own AUTH_ADMIN not flagged"          "$OUT" 'UnrelatedAuthAdmin.java'
+assert_absent  "admin-like user names not flagged"             "$OUT" 'amended-clean.cfg.json'
+assert_absent  "non-service-user config not flagged"           "$OUT" 'OtherService.cfg.json'
+assert_absent  "commented-out admin mappings not flagged"      "$OUT" 'amended-commented'
+assert_absent  "comment and string mentions not flagged"       "$OUT" 'AdminFactoryCaller.java","line":\(19\|21\)'
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

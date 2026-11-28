@@ -1,5 +1,6 @@
 package analyzer;
 
+import analyzer.detectors.AdminResourceResolver;
 import analyzer.detectors.AssetManager;
 import analyzer.detectors.EventMigration;
 import analyzer.detectors.InjectInSlingModel;
@@ -32,7 +33,8 @@ public final class Registry {
             new UnboundedQuery(),
             new OakQueryIndexCoverage(),
             new RemoveDeprecatedApi(),
-            new RequestControlledSecurityBypass()
+            new RequestControlledSecurityBypass(),
+            new AdminResourceResolver()
         ));
     }
 }
