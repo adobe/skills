@@ -1,0 +1,38 @@
+{
+  "units": {
+    "foundation": {
+      "status": "done",
+      "kind": "foundation",
+      "templates": [],
+      "pages": 0,
+      "blocks": 2,
+      "startedAt": "2026-11-21T14:20:00Z",
+      "endedAt": "2026-11-21T15:00:00Z",
+      "verdict": "foundation: styles, fonts, header, footer live; gate 1440 1.2% / 360 1.9%"
+    },
+    "archetype-index": {
+      "status": "done",
+      "kind": "archetype",
+      "templates": [
+        "index"
+      ],
+      "pages": 1,
+      "blocks": 2,
+      "startedAt": "2026-11-21T15:00:00Z",
+      "endedAt": "2026-11-21T15:40:00Z",
+      "verdict": "archetype-index: pages 1/1 live, blocks 2, gate 1440 1.4% / 360 2.1%, requests 0"
+    },
+    "gate-all": {
+      "status": "done",
+      "kind": "final",
+      "templates": [
+        "index"
+      ],
+      "pages": 1,
+      "blocks": 0,
+      "startedAt": "2026-11-21T15:45:00Z",
+      "endedAt": "2026-11-21T16:00:00Z",
+      "verdict": "gate-all: 1/1 pass at 1440 and 360"
+    }
+  }
+}

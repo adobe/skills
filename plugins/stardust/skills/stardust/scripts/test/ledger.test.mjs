@@ -300,6 +300,20 @@ check('first page first: the reconcile alias is written as reconcile-first-page 
   const e = runIn(rdir, 'replica', 'reconcile-first-page', 'end', '--strict', '--detail', '7 checks: 6 confirmed, 1 corrected'); assert.equal(e.code, 0, e.err);
   const e2 = runIn(rdir, 'replica', 'Reconcile', 'end', '--strict', '--detail', 'x'); assert.equal(e2.code, 2, 'the alias end finds the start already closed');
 });
+check('extend pass: replica extend is a known phase; a pass\'s C-deliver pair (--track x1) opens and closes after the first pass closed its own, untagged', () => {
+  assert.equal(checkPhase('stardust:replica', 'extend'), null);
+  const xdir = join(root, 'extend'); mkdirSync(xdir);
+  for (const [skill, phase, event] of [['replica', 'handoff', 'start'], ['rollout', 'C-deliver', 'start'], ['rollout', 'C-deliver', 'end'], ['replica', 'handoff', 'end']]) {
+    assert.equal(runIn(xdir, skill, phase, event, '--strict', '--detail', 'pass 0').code, 0);
+  }
+  assert.equal(runIn(xdir, 'replica', 'extend', 'start', '--track', 'x1', '--strict').code, 0);
+  assert.equal(runIn(xdir, 'rollout', 'C-deliver', 'start', '--track', 'x1', '--strict').code, 0);
+  const e = runIn(xdir, 'rollout', 'C-deliver', 'end', '--track', 'x1', '--strict', '--detail', '12 pages'); assert.equal(e.code, 0, e.err);
+  assert.equal(JSON.parse(e.out).track, 'x1');
+  assert.equal(runIn(xdir, 'replica', 'handoff', 'start', '--track', 'x1', '--strict').code, 0);
+  assert.equal(runIn(xdir, 'replica', 'handoff', 'end', '--track', 'x1', '--strict', '--detail', 'x').code, 0);
+  assert.equal(runIn(xdir, 'replica', 'extend', 'end', '--track', 'x1', '--strict', '--detail', '12 pages delivered').code, 0);
+});
 check('buildLine: --track lands as `track` right after event, lower-cased; a track that is not one token is a usage error', () => {
   const l = buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'First-Page', detail: 'x' });
   assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'track', 'detail']); assert.equal(l.track, 'first-page');

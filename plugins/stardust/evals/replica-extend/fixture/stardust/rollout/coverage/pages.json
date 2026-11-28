@@ -1,0 +1,32 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-11-21T16:30:00Z",
+    "stardustVersion": "0.46.7"
+  },
+  "pages": [
+    {
+      "slug": "index",
+      "path": "/",
+      "templateId": "index",
+      "blocks": [
+        "hero",
+        "shelf-cards"
+      ],
+      "widgets": [],
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:fa1e2dec1ee57fb8d982e0386ec9b16552d3c1cc34d0e1637f39287ff8120b2f"
+      },
+      "delivery": {
+        "status": "verified",
+        "deployedAt": "2026-11-21T15:30:00Z",
+        "verifiedAt": "2026-11-21T16:20:00Z",
+        "gate": {
+          "pass": true
+        }
+      }
+    }
+  ]
+}

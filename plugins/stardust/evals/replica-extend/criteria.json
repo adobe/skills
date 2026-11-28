@@ -1,0 +1,36 @@
+{
+  "context": "replica — the extend pass. A delivered one-page run (home) is extended with `--extend-next 1`; the next page of the fixture site is /visit/. The run stops before Phases 3 and 5 by the prompt. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Judge from the transcript and the work directory.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "pass_opened",
+      "max_score": 15,
+      "description": "The run reads the ledger's last replica line (`ledger.mjs last replica` or `tail`) and opens pass x1: stardust/status.jsonl gains exactly one `stardust:replica` `extend` `start` line with `track: x1`, written before any crawl, and every line the run adds after it carries `track: x1`. The run does not re-run the first pass from Phase 1, and no `extend start` attempt failed for a --detail value that starts with `--` without being corrected."
+    },
+    {
+      "name": "spec_frozen",
+      "max_score": 20,
+      "description": "stardust/replica/extend/x1/ holds a copy of the spec files that exist (root and stardust/current/ PRODUCT.md, DESIGN.md, DESIGN.json), a foundation-freeze manifest over them, request.txt and base.txt (the opening commit, also in the `extend start` detail), opening.paths and content-freeze.json (a sha256 manifest of the documents under content/, both written before the `extend start` line), and no copy of content/ under x1/; content/index.html is byte-identical to the fixture; x1/foundation-freeze.json is re-frozen with the same paths as the fixture's (styles/, head.html, blocks/header/), not the script's defaults. At the end the six spec files and stardust/direction.md are byte-identical to the fixture: no re-promotion, no extract synthesis (Phases 3–5 of extract) over the new page, no module added to DESIGN.json."
+    },
+    {
+      "name": "roster_before_capture",
+      "max_score": 20,
+      "description": "The pass's roster is written before the page is captured: stardust/replica/extend/x1/urls.txt holds exactly http://localhost:8780/visit/, chosen in two steps — `stardust/scripts/extract/crawl.mjs --max 0 --first-run-order --skip-failed --skip-captured stardust/state.json --select-only` lists the source candidates (the first run's order comes from the crawl log, which records a user-named cap — link-first; no order taken from memory or a numeric cap), then `stardust/scripts/replica/extend-roster.mjs select --candidates … --max 1 --out stardust/replica/extend/x1/urls.txt --reserved-out stardust/replica/extend/x1/reserved.paths --opening stardust/replica/extend/x1/opening.paths` keeps the next page whose destination is new; opening.paths, written at the opening, lists `/index.html`, and reserved.paths holds `/` (the delivered home). A roster chosen by reading the site's links by hand, or written after the capture, fails."
+    },
+    {
+      "name": "no_recapture",
+      "max_score": 15,
+      "description": "The delivered page is not captured again: stardust/current/pages/index.json and index.html are byte-identical to the fixture, the `index` row of state.json keeps status `migrated` and `stale: false`. The new page is captured live (stardust/current/pages/visit.json from a Playwright render) with `--skip-captured`, and state.json gains one row for it, status `extracted`, with a page type."
+    },
+    {
+      "name": "type_split",
+      "max_score": 20,
+      "description": "stardust/replica/extend/x1/slugs.txt names the new page's slug. The report states its type and decides from stardust/replica/progress.json: a type with an archetype there (only `landing`, archetype `index`) goes to Phase 5 at sibling tier; any other type needs Phases 3–4 for that type and its own C-archetype unit. The decision matches the type the run recorded in state.json, and the next steps it names follow it (for a sibling: advance to `directed` and render with `--archetype`; for a new type: recreate and gate before its cluster)."
+    },
+    {
+      "name": "scope_kept",
+      "max_score": 10,
+      "description": "Nothing past the decision: no prototype written, no `migrate.mjs render`, no rollout or deploy command, no `handoff` or `extend end` line, and every `done` unit of the three progress.json files unchanged."
+    }
+  ]
+}

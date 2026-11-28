@@ -1,0 +1,41 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica",
+    "writtenAt": "2026-11-21T12:30:00Z",
+    "stardustVersion": "0.46.7"
+  },
+  "types": {
+    "landing": {
+      "pageType": "landing",
+      "archetype": "index",
+      "breakpoints": {
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 1.4,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        },
+        "360": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 2.1,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    }
+  }
+}

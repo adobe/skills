@@ -1,4 +1,4 @@
-# Scripts index — `<skill>/<script>` — what — key flags (CLIs only; import-only libraries are not listed)
+# Scripts index — `<skill>/<script>` — what — key flags (CLIs only, no libraries)
 
 Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it only for an unnamed flag. Full deploy/rollout/migrate calls: `../../replica/reference/handoff-contract.md` § 4.
 
@@ -43,9 +43,10 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
+- `replica/extend-roster.mjs` — extend pass — `select|output|publish`
 - `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--sample <n>] [--prune-captures] [--no-preflight] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL, 4 = captures do not fit on disk
-- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`; `--unit <slug,…|@file>` = a delivery unit's close check, exit 2 = a page without a gate row or with a stale pass
+- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--sample <n>] [--prune-captures] [--no-preflight] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL, 4 = disk too small
+- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`; `--unit <slug,…|@file>` = a unit's close check, exit 2 = a page ungated or stale
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`
 - `replica/html-slice.mjs` — one captured element — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded JSON view — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`

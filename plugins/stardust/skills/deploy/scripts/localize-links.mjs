@@ -44,6 +44,13 @@
  *                  (run the plain pass first; --check is the pre-deploy assertion)
  *   --json         machine-readable summary
  *
+ * Publish guard (publish-guard.mjs): while <content>/.deploy-allow exists (replica's extend
+ * pass writes it), only the documents it lists are rewritten, counted and checked. Every
+ * document is still a link target; where a listed document and another one claim the same
+ * URL, the listed one is the target. --json names the documents left alone in `held`. A
+ * missing guard while the ledger beside --content shows an open extend pass exits 1 with
+ * nothing written. No guard file and no open pass: nothing changes.
+ *
  * Writes: the rewritten *.html files IN PLACE under --content (nothing with
  * --dry-run or --check; the summary is stdout).
  *
@@ -54,6 +61,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
 import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
+import { publishGuard } from './publish-guard.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -194,7 +202,14 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
+  // The publish guard (deploy-batch.mjs reads the same file): a document it does not list is left as it is.
+  let guard;
+  try { guard = publishGuard(opts.content); } catch (e) { console.error(`localize-links: ${e.message}`); process.exit(1); }
+  const allow = guard && guard.allow;
+  const guarded = (f) => allow && !allow.has(`/${path.relative(opts.content, f).split(path.sep).join('/').replace(/\.html$/, '')}`);
+  const held = [];
+  // buildMap keeps the last file of a URL: the listed documents go last, so a held draft never takes a pass page's URL
+  const { map, redirects, pending } = buildMap([...files.filter(guarded), ...files.filter((f) => !guarded(f))], opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
@@ -204,16 +219,18 @@ function main() {
     const r = processFile(f, ctx);
     r.kept.forEach((k) => keptAll.set(k, (keptAll.get(k) || 0) + 1));
     if (!r.changed) continue;
+    if (guarded(f)) { held.push(`/${path.relative(opts.content, f).split(path.sep).join('/')}`); continue; }
     filesChanged += 1;
     localized += r.counts.localized; normalized += r.counts.normalized;
     perFile[`/${path.relative(opts.content, f).split(path.sep).join('/')}`] = r.counts;
     if (!opts.dryRun) writeFileSync(f, r.out);
   }
+  if (held.length) console.error(`localize-links: ${guard.file}: ${held.length} document(s) it does not list keep their links — not rewritten`);
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
   const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
 
   if (opts.json) {
-    console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
+    console.log(JSON.stringify({ ...summary, perFile, ...(allow ? { held } : {}), kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
     console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);

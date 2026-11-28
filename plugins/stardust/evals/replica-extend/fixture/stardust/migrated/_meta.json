@@ -1,0 +1,60 @@
+{
+  "slug": "index",
+  "type": "landing",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "hero",
+    "shelf-cards"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "h1"
+  ],
+  "canonShas": {
+    "header": null,
+    "footer": null,
+    "css": "c890b5ab27a9"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Fixture Store: everyday goods, made to last",
+    "description": null,
+    "canonical": "https://main--store--fixture.aem.live/",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Fixture Store: everyday goods, made to last",
+    "url": "https://main--store--fixture.aem.live/"
+  },
+  "migratedAt": "2026-11-21T14:05:00Z",
+  "designMdSha": "1936d146dddf",
+  "designJsonSha": "038c04d9d3f4",
+  "sourceCurrentSha": "b497997931e7",
+  "sourceProposedSha": "f508b1827e78",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [
+    "variance-probe",
+    "pixel-gate-1440",
+    "pixel-gate-360",
+    "delivery-lint",
+    "media-reconcile",
+    "content-fidelity",
+    "content-count"
+  ],
+  "gateEvidence": {},
+  "contentDeviations": [],
+  "assetsBundled": 1,
+  "missingAssets": [],
+  "brokenInternalLinks": [],
+  "outputPath": "index.html",
+  "outputPathDefault": null,
+  "sidecar": "_meta.json",
+  "driverVersion": "1"
+}

@@ -83,6 +83,17 @@ check('the rollout is ended only when its LAST I-dashboard line is an end', () =
   assert.equal(rolloutEnded([{ skill: 'stardust:replica', phase: 'I-dashboard', event: 'end' }]), false);
   assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [] }).gaps.includes('rollout_incomplete'));
 });
+check('--track: an earlier pass\'s I-dashboard end never completes this pass; only its own track\'s last line counts', () => {
+  const dash = (event, track) => ({ skill: 'stardust:rollout', phase: 'I-dashboard', event, ...(track ? { track } : {}) });
+  const opened = [dash('start'), dash('end'), { skill: 'stardust:replica', phase: 'extend', event: 'start', track: 'x1' }];
+  assert.equal(rolloutEnded(opened), true, 'untracked: the first pass\'s end');
+  assert.equal(rolloutEnded(opened, 'x1'), false, 'x1 has no I-dashboard line yet');
+  assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: opened, notLive: [], track: 'x1' }).gaps.includes('rollout_incomplete'));
+  const done = [...opened, dash('start', 'x1'), dash('end', 'x1')];
+  assert.equal(rolloutEnded(done, 'x1'), true);
+  assert.equal(rolloutEnded([...done, dash('start', 'x2')], 'x1'), true, 'another track re-opening does not touch x1');
+  assert.equal(rolloutEnded([...done, dash('start', 'x2')], 'x2'), false);
+});
 
 check('library_missing fires only when a page was delivered and the library is not published', () => {
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['library_missing']);
@@ -165,6 +176,23 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false });
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI --track: an earlier untracked I-dashboard end and none for the open pass — x1 is incomplete (exit 1); a missing, blank or flag-shaped name exits 2, never the untracked verdict', () => {
+  const proj = project({ ledger: [...ENDED, { skill: 'stardust:replica', phase: 'extend', event: 'start', track: 'x1' }] });
+  assert.equal(run(proj, ['--offline']).status, 0, 'untracked: the first pass is complete');
+  const r = run(proj, ['--offline', '--track', 'x1']);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /^rollout_incomplete$/m);
+  const done = project({ ledger: [...ENDED, { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'start', track: 'x1' }, { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'end', track: 'x1' }] });
+  assert.equal(run(done, ['--offline', '--track', 'X1']).status, 0, 'X1 is the ledger\'s x1 (lower-cased like the writer)');
+  rmSync(done, { recursive: true, force: true });
+  for (const tail of [['--track'], ['--track', ''], ['--track', '--offline'], ['--track', ' '], ['--track', 'x_1']]) {
+    const bad = run(proj, ['--offline', ...tail]);
+    assert.equal(bad.status, 2, `${JSON.stringify(tail)}: ${bad.stdout}${bad.stderr}`);
+    assert.match(bad.stderr, /--track needs a track name/);
+  }
   rmSync(proj, { recursive: true, force: true });
 });
 

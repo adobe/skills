@@ -119,6 +119,7 @@ export const PHASES = {
     handoff: [], // ### Phase 5 — HANDOFF
     'first-page': [], // reference/first-page-first.md § Track A
     'reconcile-first-page': ['reconcile'], // reference/first-page-first.md § RECONCILE
+    extend: [], // reference/extend-pass.md — one pass after handoff, every line tagged --track x<N>
   },
   // skills/dynamics/SKILL.md
   dynamics: {

@@ -1,0 +1,37 @@
+{
+  "units": {
+    "plan": {
+      "status": "done",
+      "kind": "plan",
+      "templates": [
+        "index"
+      ],
+      "pages": 1,
+      "startedAt": "2026-11-21T13:50:00Z",
+      "endedAt": "2026-11-21T14:05:00Z",
+      "verdict": "plan: 1 page, 1 template"
+    },
+    "index": {
+      "status": "done",
+      "kind": "render",
+      "templates": [
+        "index"
+      ],
+      "pages": 1,
+      "startedAt": "2026-11-21T13:50:00Z",
+      "endedAt": "2026-11-21T14:05:00Z",
+      "verdict": "rendered 1, unchanged 0, refused 0, passthrough 0"
+    },
+    "report": {
+      "status": "done",
+      "kind": "report",
+      "templates": [
+        "index"
+      ],
+      "pages": 1,
+      "startedAt": "2026-11-21T13:50:00Z",
+      "endedAt": "2026-11-21T14:05:00Z",
+      "verdict": "1 page migrated"
+    }
+  }
+}

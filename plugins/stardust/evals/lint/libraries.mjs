@@ -9,6 +9,7 @@ export const LIBRARIES = {
   'deploy/scripts/content-inventory.mjs': 'library: role-classified inventory + diff, imported by block-roundtrip and section-schema; no CLI',
   'deploy/scripts/css-as-text.mjs': 'library: is this authored text CSS? (D15 / #134), imported by davids-model-lint and ew-editability-probe; no CLI',
   'deploy/scripts/eds-path.mjs': 'library: the delivered-path contract (deliveredUrl, daPath, pathKey) imported by spec, rollout and deploy; no CLI',
+  'deploy/scripts/publish-guard.mjs': 'library: the extend pass\'s publish guard, read by deploy-batch and localize-links; no CLI',
   'deploy/scripts/file-lock.mjs': 'library: cross-process lock + atomic merge for the shared deploy ledgers; no CLI',
   'deploy/scripts/diff-profiles.mjs': 'library: stack profiles (eds|generic) for the inventory classifiers; no CLI',
   'diff/scripts/content-inventory.mjs': 'library: the diff skill\'s copy of the inventory classifier, imported by content-diff; no CLI',

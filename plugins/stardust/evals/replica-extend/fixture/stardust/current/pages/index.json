@@ -1,0 +1,217 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-11-24T15:10:50.223Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200
+  },
+  "slug": "index",
+  "url": "http://localhost:8780/",
+  "renderedBy": "playwright",
+  "fetchedAt": "2026-11-24T15:10:50.223Z",
+  "finalUrl": "http://localhost:8780/",
+  "title": "Fixture Store: everyday goods, made to last",
+  "description": "A small shop for mugs, baskets and lamps that are made to be repaired.",
+  "og": {
+    "title": null,
+    "description": null,
+    "image": null,
+    "type": null
+  },
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Everyday goods, made to last"
+    },
+    {
+      "tag": "h2",
+      "text": "Today at the store"
+    },
+    {
+      "tag": "h2",
+      "text": "On the shelf this week"
+    },
+    {
+      "tag": "h3",
+      "text": "Stoneware mug"
+    },
+    {
+      "tag": "h3",
+      "text": "Willow basket"
+    },
+    {
+      "tag": "h3",
+      "text": "Desk lamp"
+    },
+    {
+      "tag": "h2",
+      "text": "A small shop with a long memory"
+    },
+    {
+      "tag": "h2",
+      "text": "Fixture Store"
+    },
+    {
+      "tag": "h2",
+      "text": "Hours"
+    },
+    {
+      "tag": "h2",
+      "text": "More"
+    }
+  ],
+  "body": [
+    "New on the shelf every Tuesday",
+    "Mugs, baskets and lamps from workshops we know by name. Each one comes with a repair promise instead of a warranty card.",
+    "Browse the shelf Plan a visit",
+    "Open until 18:00. The colour of the day is on the board.",
+    "Stoneware mug Thrown by hand, glazed twice, safe in the oven. 18.00",
+    "Thrown by hand, glazed twice, safe in the oven.",
+    "18.00",
+    "Willow basket Woven from one season's cut. Carries a week of bread. 42.00",
+    "Woven from one season's cut. Carries a week of bread.",
+    "42.00",
+    "Desk lamp Brass arm, enamel shade, a switch you can replace. 96.00",
+    "Brass arm, enamel shade, a switch you can replace.",
+    "96.00",
+    "We keep a card for everything we sell: who made it, what it is made of and how to mend it. Bring a chipped mug back and we will tell you which glaze to ask for.",
+    "The shelf changes every week and never holds more than thirty things. If it is not on the shelf, it is not ready."
+  ],
+  "codeBlocks": [],
+  "ctas": [
+    {
+      "label": "Fixture Store",
+      "href": "/"
+    },
+    {
+      "label": "Shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About",
+      "href": "/#about"
+    },
+    {
+      "label": "Visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "Open today",
+      "href": "/visit/#hours"
+    },
+    {
+      "label": "Browse the shelf",
+      "href": "#shelf"
+    },
+    {
+      "label": "Plan a visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "Plan a visit",
+      "href": "/visit/"
+    },
+    {
+      "label": "This week's shelf",
+      "href": "/#shelf"
+    },
+    {
+      "label": "About the shop",
+      "href": "/#about"
+    }
+  ],
+  "links": [
+    "http://localhost:8780/",
+    "http://localhost:8780/#shelf",
+    "http://localhost:8780/#about",
+    "http://localhost:8780/visit/",
+    "http://localhost:8780/visit/#hours"
+  ],
+  "media": {
+    "imgs": [
+      {
+        "src": "http://localhost:8780/img/hero.svg",
+        "alt": "A wooden shelf with a mug, a basket and a lamp",
+        "w": 200,
+        "h": 150
+      },
+      {
+        "src": "http://localhost:8780/img/mug.svg",
+        "alt": "A stoneware mug with a wide handle",
+        "w": 200,
+        "h": 150
+      },
+      {
+        "src": "http://localhost:8780/img/basket.svg",
+        "alt": "A woven willow basket",
+        "w": 200,
+        "h": 150
+      },
+      {
+        "src": "http://localhost:8780/img/lamp.svg",
+        "alt": "A brass desk lamp with a green shade",
+        "w": 200,
+        "h": 150
+      },
+      {
+        "src": "http://localhost:8780/img/shopfront.svg",
+        "alt": "The shop front with a striped awning",
+        "w": 200,
+        "h": 150
+      }
+    ],
+    "allImgCount": 5,
+    "cssBackgrounds": [],
+    "modals": [],
+    "videos": [],
+    "iframes": []
+  },
+  "customProps": {
+    "--ink": "#1d2420",
+    "--muted": "#55605a",
+    "--paper": "#f4efe6",
+    "--card": "#fffdf8",
+    "--green": "#1f3a2e",
+    "--brass": "#b0762a",
+    "--line": "#d9d0c0",
+    "--wrap": "1120px",
+    "--gutter": "32px"
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 10,
+    "mainTextLen": 825,
+    "realImageCount": 5,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "screenshotMode": "fullPage",
+    "pageSize": {
+      "w": 1440,
+      "h": 2204
+    }
+  },
+  "dynamic": {
+    "endpoints": [],
+    "thirdPartyScriptHosts": [],
+    "truncated": false,
+    "inlineData": [],
+    "globalState": [],
+    "frameworkHints": [],
+    "forms": [],
+    "ariaLiveRegions": 0,
+    "triggers": [],
+    "mediaIds": [],
+    "summary": {
+      "sameSiteEndpoints": 0,
+      "thirdPartyEndpoints": 0,
+      "thirdPartyScriptHosts": 0,
+      "inlineDataBlobs": 0,
+      "forms": 0,
+      "searchForms": 0,
+      "hydrated": false
+    }
+  },
+  "screenshot": "assets/screenshots/index.png",
+  "renderedHtml": "pages/index.html"
+}
