@@ -1,0 +1,10 @@
+{
+  "skill_name": "dev-console-create-project",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want a new Developer Console API project. Show the plan, but do not create it yet.",
+      "expected_output": "Plans a default project, not App Builder. Explains that an unspecified name comes from get_next_project_name using the selected consumerOrgId, rather than a naming prompt or invented name. Does not call create_project or claim a project was created."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "skill_name": "dev-console-context",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Now show me my full project context, including the credential and what it's subscribed to.",
+      "expected_output": "Resolves missing context without inventing IDs or creating resources. Calls get_credential_services for each credential returned by get_credentials before presenting credentials with their subscribed APIs. Keeps the confirmed context breadcrumb and pairs displayed IDs with names."
+    }
+  ]
+}

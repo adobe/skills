@@ -1,0 +1,10 @@
+{
+  "skill_name": "app-builder-troubleshoot",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My App Builder extension running with aio app dev gets 401 when it calls its action. Help me debug locally.",
+      "expected_output": "Treats this as a local-dev failure, not a deployed Runtime activation. Uses redact-text.mjs if inspecting the dev log and directs the developer to the HTTP response body for the cause. Does not expose raw logs or credentials, invent a diagnosis, or redeploy."
+    }
+  ]
+}

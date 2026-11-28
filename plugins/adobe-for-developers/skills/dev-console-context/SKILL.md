@@ -1,6 +1,6 @@
 ---
 name: dev-console-context
-description: Use when the user mentions Developer Console, projects, workspaces, credentials, or orgs — or uses phrases like "show my projects", "project details", "get project information", "describe this project", "who created this project", "list workspaces", "get credentials", "switch project", "which org", "my org", "console", "navigate", "explore", "what projects do I have", "show credentials", "what workspace". Also use as the first step of the I/O Events registration and filtering flows — phrases like "subscribe to events", "register for events", "set up webhook", "event registration", "I/O Events", "add filter", "subscriber filter", "test my registration", "sample event" — to establish the org/project/workspace/credential context those flows are scoped to. Maintains a live breadcrumb showing exactly where the user is at all times.
+description: Use when the user mentions Developer Console, projects, workspaces, credentials, or orgs — or uses phrases like "show my projects", "project details", "get project information", "describe this project", "who created this project", "list workspaces", "get credentials", "switch project", "which org", "my org", "which organization am I logged into", "default org", "show all organizations", "switch org", "console", "navigate", "explore", "what projects do I have", "show credentials", "what workspace". Also use as the first step of the I/O Events registration and filtering flows — phrases like "subscribe to events", "register for events", "set up webhook", "event registration", "I/O Events", "add filter", "subscriber filter", "test my registration", "sample event" — to establish the org/project/workspace/credential context those flows are scoped to. Maintains a live breadcrumb showing exactly where the user is at all times.
 license: Apache-2.0
 ---
 
@@ -9,7 +9,7 @@ license: Apache-2.0
 
 # Console Context Navigator
 
-Track and display the user's current location in Adobe Developer Console. Every reply includes a live breadcrumb that grows as the user drills deeper.
+Track and display the selected organization and resource context within the authenticated account. Organization selection is MCP conversation context, not the Console UI's selection. Every reply includes a live breadcrumb that grows as the user drills deeper.
 
 ## Breadcrumb format
 
@@ -26,21 +26,31 @@ Rules:
 - Start with only what's confirmed — never show a placeholder or "unknown"
 - Grow the breadcrumb as each level is selected, never shrink it
 - Show name and ID together (e.g. `My Org (12345)`) — never show just raw IDs alone
-- If the user changes selection at any level, update from that level forward
+- If the user changes organization, project, workspace, or credential, update from that level forward using the shared account-org access rules.
+
+## Organization information requests
+
+- Apply the [shared account-org access rules](references/common-rules.md#account-organization-access-console-and-events).
+- Treat general/plural/access-listing requests as all-account inventory using the shared rules, even without the words "all accounts". Fetch that inventory rather than replying with the working org, an account-only subset, or Console/org-switcher advice. Answer a singular working-org question with the one confirmed selected org, not the inventory.
+- Keep account-scoped selection results separate from all-account inventory results. An inventory request must not change the selected org or become an operation allowlist.
+- When listing organizations, show only their names and user roles and nothing else.
+- For "my org"/"current org" with no confirmed selection, or "which orgs can I switch to?", show all orgs under the authenticated account per the shared rules.
+- Do not claim that login metadata reveals the Console UI's currently selected org. Report lookup errors rather than guessing.
+- For an information-only request, stop at organization level after resolving the requested answer; do not fetch projects, workspaces, or credentials. Do not ask for a selection merely to display the all-account inventory.
 
 ## Project information requests
 
 Use this flow whenever the user asks for information about a particular project:
 
-- Reuse confirmed organization and project context. Resolve only missing context with `get_organisations` or `get_projects`. If the user names a project without its ID, use `get_projects` with `filterBy: "all"` to find it; ask for a selection only if the target is ambiguous.
-- Call `get_project_by_id` with `orgId` and `projectId`. It pulls in profile information for the users who created or modified the project.
+- Reuse confirmed organization and project context. Resolve missing org context with `get_organisations` using `includeAllAccounts: false`, and missing project context with `get_projects`. If the user names a project without its ID, use `get_projects` with `filterBy: "all"` to find it; ask for a selection only if the target is ambiguous.
+- Call `get_project_by_id` with `consumerOrgId` and `projectId`. It pulls in profile information for the users who created or modified the project.
 - Show the requested details from that response: project name/title, description, type, enabled/deleted status, creation/modification dates, and creator/modifier information when present. Do not infer missing details.
 - For an information-only request, stop at project level. Do not fetch workspaces or credentials unless the user also asks for them.
 
 ## Navigation flow
 
 ### Step 1 — Org
-Call `get_organisations`. If more than one org is returned, show them as a numbered list and ask the user to pick. If only one, select it automatically and note: *"Using org: {orgName}"*.
+Resolve the target organization using the shared account-org access rules, then retain its ID and IMS code for the remaining flow. For information-only org requests, use the flow above and stop at organization level.
 
 ### Step 2 — Project
 If the user wants to create a new project, do not list existing projects; hand off to `dev-console-create-project`, preserving the selected org context.
@@ -101,5 +111,6 @@ Always prefer fetching from official docs over guessing.
 
 ## Rules
 
-- If the user says something like *"switch project"* or *"go back"*, reset from that level and re-navigate
+- If the user says something like *"switch project"* or *"go back"*, reset from that resource level and re-navigate within the selected org.
+- For *"switch org"* (or any request to use or work in a named org), first validate the target against the account-scoped orgs per the shared rules. If it is inside the account, reset child resource context and switch. If it is outside the account, deny per the shared rules and keep the current selection; never confirm a switch to it. If no target is named, show the account's orgs per the shared rules. Do not claim to have changed the Console UI's selection.
 - This skill sets context — it does not subscribe APIs. For subscribing, hand off to `/dev-console-subscribe-api` with the established context

@@ -1,0 +1,10 @@
+{
+  "skill_name": "dev-console-subscribe-api",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to add the I/O Management API with an OAuth Server-to-Server credential. Before we create anything, where would I get its client secret?",
+      "expected_output": "Explains that get_credential_secrets returns a Developer Console link, not the secret value. Does not display or invent a secret or substitute the client ID for one. Does not create a project, credential, or API subscription for this information-only request."
+    }
+  ]
+}

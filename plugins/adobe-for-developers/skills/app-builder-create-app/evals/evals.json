@@ -1,0 +1,10 @@
+{
+  "skill_name": "app-builder-create-app",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build an AEM Content Fragment console extension with a button that acts on the selected fragments.",
+      "expected_output": "Checks readiness first and hands off to app-builder-setup if needed. Once ready, selects cf-admin-selected from templates.json and requests confirmation before scaffolding with aio app init, not create_project. Does not deploy the extension."
+    }
+  ]
+}
