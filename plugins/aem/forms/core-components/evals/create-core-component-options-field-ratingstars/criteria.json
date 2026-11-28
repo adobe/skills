@@ -1,0 +1,51 @@
+{
+  "context": "Tests whether the agent picks an options-style sibling and its matching base class, not the plain field base, and still completes the wiring.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Options sibling chosen",
+      "max_score": 12,
+      "description": "Copies an options component such as `radiogroup` or `checkboxgroup`, and `REPORT.md` says which and why"
+    },
+    {
+      "name": "Options base class",
+      "max_score": 14,
+      "description": "The impl extends the options-field base class used by that sibling, not the plain field base class"
+    },
+    {
+      "name": "Creation order",
+      "max_score": 6,
+      "description": "`FormConstants` entry, interface and impl are created before the `ui.af.apps` files"
+    },
+    {
+      "name": "Unit test fixtures",
+      "max_score": 10,
+      "description": "A unit test with `test-content.json` and exporter JSON is added under `bundles/af-core/src/test`"
+    },
+    {
+      "name": "Example proxy and page",
+      "max_score": 8,
+      "description": "An example proxy and an example page are added under `examples`"
+    },
+    {
+      "name": "pom.xml replace line",
+      "max_score": 12,
+      "description": "`ui.af.apps/pom.xml` gains the `.core-adaptiveform` replace line for `ratingstars`"
+    },
+    {
+      "name": "Runtime embed",
+      "max_score": 12,
+      "description": "The component's site clientlib category is added to the `core-forms-components-runtime-all` embed"
+    },
+    {
+      "name": "Accessibility",
+      "max_score": 14,
+      "description": "Walks the accessibility checklist and the markup gives the choices a group role and a label association"
+    },
+    {
+      "name": "Honest report",
+      "max_score": 12,
+      "description": "`REPORT.md` names every gate that was not run, with its command"
+    }
+  ]
+}

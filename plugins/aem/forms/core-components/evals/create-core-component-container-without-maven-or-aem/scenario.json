@@ -1,0 +1,11 @@
+{
+  "description": "Build or decide in a clone of adobe/aem-core-forms-components pinned to a master commit",
+  "fixtures": {
+    "checkout": {
+      "type": "commit",
+      "repoUrl": "https://github.com/adobe/aem-core-forms-components.git",
+      "ref": "fc839c72ef1bdbbd9dcb6e1d099196d5a625de5f",
+      "installPath": "."
+    }
+  }
+}
