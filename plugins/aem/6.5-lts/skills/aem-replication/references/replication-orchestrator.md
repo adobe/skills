@@ -1,24 +1,16 @@
----
-name: replication-orchestrator
-description: |
-  Orchestrates end-to-end replication workflows spanning multiple concerns: new environment setup,
-  production incident response, and performance optimization for AEM 6.5 LTS.
-license: Apache-2.0
----
-
 # Replication Orchestrator
 
-Coordinates complex replication workflows that span multiple sub-skills (configure, replicate, troubleshoot).
+Coordinates complex replication workflows that span multiple reference guides (configure, replicate, troubleshoot).
 
-## When to Use This Skill
+## When to Use This Guide
 
-Use the orchestrator for multi-step scenarios requiring coordination across sub-skills:
+Use the orchestrator for multi-step scenarios requiring coordination across guides:
 - **New Environment Setup:** Configure agents → Test replication → Troubleshoot issues
 - **Production Incidents:** Diagnose problem → Isolate root cause → Fix and verify
 - **Performance Optimization:** Monitor metrics → Tune configuration → Validate improvements
 - **Migration Preparation:** Audit current setup → Document dependencies → Plan cutover
 
-For single-concern tasks, use the specific sub-skill directly instead of the orchestrator.
+For single-concern tasks, consult the specific guide directly instead of the orchestrator.
 
 ## Workflow 1: New Environment Setup
 
@@ -36,7 +28,7 @@ End-to-end workflow for setting up replication in a new AEM 6.5 LTS environment.
 
 #### 1. Configure Default Replication Agent
 
-**Delegate to:** [configure-replication-agent](../configure-replication-agent/SKILL.md)
+**Delegate to:** [Configure Replication Agent](./configure-replication-agent.md)
 
 **Actions:**
 1. Create default replication agent on Author
@@ -55,7 +47,7 @@ Expected: "Replication test succeeded"
 
 #### 2. Configure Dispatcher Flush Agent
 
-**Delegate to:** [configure-replication-agent](../configure-replication-agent/SKILL.md)
+**Delegate to:** [Configure Replication Agent](./configure-replication-agent.md)
 
 **Actions:**
 1. Create flush agent on each Publish instance
@@ -74,7 +66,7 @@ Expected: "Replication (Dispatcher Flush) test succeeded"
 
 #### 3. Test Content Replication
 
-**Delegate to:** [replicate-content](../replicate-content/SKILL.md)
+**Delegate to:** [Replicate Content](./replicate-content.md)
 
 **Actions:**
 1. Create test page: `/content/test/replication-check`
@@ -113,7 +105,7 @@ com.day.cq.replication:type=Agent,id=<agent-name>
 
 #### 5. Handle Any Issues
 
-**If problems occur, delegate to:** [troubleshoot-replication](../troubleshoot-replication/SKILL.md)
+**If problems occur, delegate to:** [Troubleshoot Replication](./troubleshoot-replication.md)
 
 **Common setup issues:**
 - Connection refused → Verify target instance running and network connectivity
@@ -162,7 +154,7 @@ tail -n 100 <aem-install>/crx-quickstart/logs/error.log | grep -i replication
 
 #### 2. Diagnose Root Cause
 
-**Delegate to:** [troubleshoot-replication](../troubleshoot-replication/SKILL.md)
+**Delegate to:** [Troubleshoot Replication](./troubleshoot-replication.md)
 
 **Follow diagnostic decision tree:**
 1. Is queue blocked? → Network/connectivity issue
@@ -299,7 +291,7 @@ End-to-end workflow for improving replication throughput and efficiency.
 
 **Optimization 1: Use Asynchronous Replication**
 
-**Delegate to:** [replication-api](../replication-api/SKILL.md)
+**Delegate to:** [Replication API](./replication-api.md)
 
 ```java
 ReplicationOptions opts = new ReplicationOptions();
@@ -311,7 +303,7 @@ replicator.replicate(session, type, paths, opts);
 
 **Optimization 2: Batch Replication**
 
-**Delegate to:** [replication-api](../replication-api/SKILL.md)
+**Delegate to:** [Replication API](./replication-api.md)
 
 ```java
 String[] paths = contentPaths.toArray(new String[0]);
@@ -450,16 +442,16 @@ Prepare for migration to AEM as a Cloud Service Sling Distribution API.
 - [ ] Migration plan documented and approved
 - [ ] Team trained on Cloud Service patterns
 
-## Cross-Skill Coordination
+## Cross-Guide Coordination
 
-The orchestrator coordinates across specialist skills:
+The orchestrator coordinates across the specialist reference guides:
 
-- **Configure:** [configure-replication-agent/SKILL.md](../configure-replication-agent/SKILL.md)
-- **Replicate:** [replicate-content/SKILL.md](../replicate-content/SKILL.md)
-- **API:** [replication-api/SKILL.md](../replication-api/SKILL.md)
-- **Troubleshoot:** [troubleshoot-replication/SKILL.md](../troubleshoot-replication/SKILL.md)
+- **Configure:** [Configure Replication Agent](./configure-replication-agent.md)
+- **Replicate:** [Replicate Content](./replicate-content.md)
+- **API:** [Replication API](./replication-api.md)
+- **Troubleshoot:** [Troubleshoot Replication](./troubleshoot-replication.md)
 
-## Related Skills
+## Related Guides
 
 - **AEM Workflow:** Integrate replication with approval workflows
 - **Dispatcher:** Configure cache invalidation and flush agents
@@ -467,7 +459,7 @@ The orchestrator coordinates across specialist skills:
 
 ## Foundation References
 
-- [Agent Types](../references/replication-foundation/agent-types.md)
-- [Queue Mechanics](../references/replication-foundation/queue-mechanics.md)
-- [AEM 6.5 LTS Guardrails](../references/replication-foundation/65-lts-guardrails.md)
-- [API Quick Reference](../references/replication-foundation/api-reference.md)
+- [Agent Types](./replication-foundation/agent-types.md)
+- [Queue Mechanics](./replication-foundation/queue-mechanics.md)
+- [AEM 6.5 LTS Guardrails](./replication-foundation/65-lts-guardrails.md)
+- [API Quick Reference](./replication-foundation/api-reference.md)

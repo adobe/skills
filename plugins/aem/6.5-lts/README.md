@@ -54,10 +54,10 @@ Granite Workflow Engine lifecycle with JMX, Felix Console, and direct log access
 
 Content distribution lifecycle from agent configuration to troubleshooting.
 
-| Skill | Description | Try it |
+| Guide | Description | Try it |
 |-------|-------------|--------|
-| [configure-replication-agent](skills/aem-replication/configure-replication-agent/SKILL.md) | Configure replication agents for publishing, dispatcher flush, and reverse replication | `Set up a dispatcher flush agent` |
-| [replicate-content](skills/aem-replication/replicate-content/SKILL.md) | Activate and deactivate content using UI, workflows, and package manager | `How do I activate a page tree?` |
-| [replication-api](skills/aem-replication/replication-api/SKILL.md) | Use the Replication API programmatically in custom code — 57 Java examples for OSGi services, servlets, and workflow steps | `Publish content programmatically from a servlet` |
-| [troubleshoot-replication](skills/aem-replication/troubleshoot-replication/SKILL.md) | Diagnose and fix blocked queues, connectivity failures, and distribution problems — 12+ troubleshooting scenarios | `My replication queue is blocked` |
-| [replication-orchestrator](skills/aem-replication/replication-orchestrator/SKILL.md) | End-to-end replication lifecycle orchestration across all sub-skills — new environment setup, production incidents, performance optimization, and migration preparation | `Set up replication for a new AEM 6.5 environment end-to-end` |
+| [configure-replication-agent](skills/aem-replication/references/configure-replication-agent.md) | Configure replication agents for publishing, dispatcher flush, and reverse replication | `Set up a dispatcher flush agent` |
+| [replicate-content](skills/aem-replication/references/replicate-content.md) | Activate and deactivate content using UI, workflows, and package manager | `How do I activate a page tree?` |
+| [replication-api](skills/aem-replication/references/replication-api.md) | Use the Replication API programmatically in custom code — 57 Java examples for OSGi services, servlets, and workflow steps | `Publish content programmatically from a servlet` |
+| [troubleshoot-replication](skills/aem-replication/references/troubleshoot-replication.md) | Diagnose and fix blocked queues, connectivity failures, and distribution problems — 12+ troubleshooting scenarios | `My replication queue is blocked` |
+| [replication-orchestrator](skills/aem-replication/references/replication-orchestrator.md) | End-to-end replication lifecycle orchestration across all bundled guides — new environment setup, production incidents, performance optimization, and migration preparation | `Set up replication for a new AEM 6.5 environment end-to-end` |

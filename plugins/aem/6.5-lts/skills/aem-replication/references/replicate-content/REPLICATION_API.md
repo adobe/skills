@@ -109,4 +109,4 @@ Use a dedicated service user (not `admin`) in OSGi components. Create an OSGi co
 
 Grant the service user `jcr:read` on the content path and `crx:replicate` privilege.
 
-For a complete API reference (ReplicationStatus, AgentManager, ReplicationQueue, ReplicationListener), see the `replication-api` skill.
+For a complete API reference (ReplicationStatus, AgentManager, ReplicationQueue, ReplicationListener), see the [Replication API guide](../replication-api.md).

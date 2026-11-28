@@ -1,16 +1,10 @@
----
-name: replicate-content
-description: Use when publishing, unpublishing, replicating, or activating/deactivating content in AEM 6.5 LTS. Covers Quick Publish, Manage Publication, tree activation, bulk content activation, package replication, workflow-based approval, scheduled activation/deactivation (on/off time), dispatcher flush, and the programmatic Replication Java API for AEM publish instances.
-license: Apache-2.0
----
-
 # Replicate Content in AEM 6.5 LTS
 
-Use this skill when the user asks to publish, unpublish, replicate, activate, deactivate, or bulk-replicate content on AEM 6.5 LTS publish instances.
+Use this guide when the user asks to publish, unpublish, replicate, activate, deactivate, or bulk-replicate content on AEM 6.5 LTS publish instances.
 
 ## Prerequisites
 
-- AEM 6.5 LTS Author with configured replication agents — see `configure-replication-agent`
+- AEM 6.5 LTS Author with configured replication agents — see [Configure Replication Agent](./configure-replication-agent.md)
 - Author permissions to activate/deactivate content
 
 ## Replication Method Selector
@@ -19,11 +13,11 @@ Use this skill when the user asks to publish, unpublish, replicate, activate, de
 |--------|-------------|-------|
 | [Quick Publish](#quick-publish) | Fast single-page activation, no approval | Selected pages only (shallow) |
 | [Manage Publication](#manage-publication) | Scheduling, references, or workflow control | Single/multiple pages with options |
-| [Tree Activation](#tree-activation) | Entire site section or initial site launch | Page tree (see `references/TREE_ACTIVATION.md`) |
-| [Package Replication](#package-replication) | Specific content sets or cross-env deploy | Custom JCR filter (see `references/PACKAGE_REPLICATION.md`) |
+| [Tree Activation](#tree-activation) | Entire site section or initial site launch | Page tree (see [Tree Activation details](./replicate-content/TREE_ACTIVATION.md)) |
+| [Package Replication](#package-replication) | Specific content sets or cross-env deploy | Custom JCR filter (see [Package Replication details](./replicate-content/PACKAGE_REPLICATION.md)) |
 | [Workflow Replication](#workflow-replication) | Approval required before going live | Any content with assigned approver |
 | [Scheduled Activation](#scheduled-activation) | Time-based publish/unpublish | On Time / Off Time in page properties |
-| [Replication API](#replication-api) | Programmatic from Java or scripts | Any JCR path (see `references/REPLICATION_API.md`) |
+| [Replication API](#replication-api) | Programmatic from Java or scripts | Any JCR path (see [Replication API details](./replicate-content/REPLICATION_API.md)) |
 
 ---
 
@@ -58,7 +52,7 @@ Sites console → select page(s) → **Manage Publication**
 - Options: Only Modified, Only Activated, Ignore Deactivated
 - ✓ Verify: results log shows success count with zero failures
 
-For full steps and performance guidance, see [`references/TREE_ACTIVATION.md`](references/TREE_ACTIVATION.md).
+For full steps and performance guidance, see [Tree Activation details](./replicate-content/TREE_ACTIVATION.md).
 
 ---
 
@@ -68,7 +62,7 @@ For full steps and performance guidance, see [`references/TREE_ACTIVATION.md`](r
 
 - ✓ Verify: package appears as Installed in Publish CRX Package Manager (`http://publish:4503/crx/packmgr`)
 
-For full steps, see [`references/PACKAGE_REPLICATION.md`](references/PACKAGE_REPLICATION.md).
+For full steps, see [Package Replication details](./replicate-content/PACKAGE_REPLICATION.md).
 
 ---
 
@@ -105,7 +99,7 @@ curl -u $AEM_USER:$AEM_PASSWORD -X POST http://localhost:4502/bin/replicate.json
 # ✓ Verify: HTTP 200 with {"success":true,"path":"/content/mysite/en/page"}
 ```
 
-For `ReplicationOptions` (synchronous, agent filtering) and full curl error handling, see [`references/REPLICATION_API.md`](references/REPLICATION_API.md).
+For `ReplicationOptions` (synchronous, agent filtering) and full curl error handling, see [Replication API details](./replicate-content/REPLICATION_API.md).
 
 ---
 
@@ -140,7 +134,7 @@ Logs: `crx-quickstart/logs/replication.log`
 - **Dispatcher serving stale content**: manually flush cache or verify flush agent configuration
 - **Permission denied errors**: check Agent User Id has replication privileges on the content path
 
-For deep diagnostics, use the `troubleshoot-replication` skill.
+For deep diagnostics, see [Troubleshoot Replication](./troubleshoot-replication.md).
 
 ---
 
@@ -157,8 +151,8 @@ Use the Assets console (`/assets.html/content/dam`) with the same Quick Publish 
 
 ---
 
-## Related Skills
+## Related Guides
 
-- `configure-replication-agent` — set up and configure replication agents
-- `replication-api` — full programmatic Replication API reference for custom OSGi services and servlets
-- `troubleshoot-replication` — diagnose and resolve replication failures
+- [Configure Replication Agent](./configure-replication-agent.md) — set up and configure replication agents
+- [Replication API](./replication-api.md) — full programmatic Replication API reference for custom OSGi services and servlets
+- [Troubleshoot Replication](./troubleshoot-replication.md) — diagnose and resolve replication failures

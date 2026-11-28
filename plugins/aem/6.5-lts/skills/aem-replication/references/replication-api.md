@@ -1,16 +1,10 @@
----
-name: replication-api
-description: Use the AEM 6.5 LTS Replication API for programmatic content activation, deactivation, and replication status management
-license: Apache-2.0
----
-
 # AEM 6.5 LTS Replication API
 
-This skill provides comprehensive guidance on using the official Adobe Experience Manager 6.5 LTS Replication API for programmatic replication operations. The API enables custom code to activate, deactivate, and manage content distribution workflows.
+This guide provides comprehensive guidance on using the official Adobe Experience Manager 6.5 LTS Replication API for programmatic replication operations. The API enables custom code to activate, deactivate, and manage content distribution workflows.
 
-## When to Use This Skill
+## When to Use This Guide
 
-Use this skill when you need to:
+Use this guide when you need to:
 - Programmatically activate/deactivate content from custom code
 - Build custom replication workflows in OSGi services or servlets
 - Integrate replication with external systems
@@ -26,7 +20,7 @@ Use this skill when you need to:
 - Java development environment for AEM
 - Maven project with AEM dependencies
 - Understanding of OSGi services and Sling ResourceResolver
-- Configured replication agents (see `configure-replication-agent` skill)
+- Configured replication agents (see [Configure Replication Agent](./configure-replication-agent.md))
 - Service user or user session with replication permissions
 
 ## Official API Documentation
@@ -470,10 +464,7 @@ Calendar getLastPublished();
 String getLastPublishedBy();
 
 // Get last replication action
-String getLastReplicationAction();
-
-// Get last replicated revision
-String getLastReplicatedRevision();
+ReplicationActionType getLastReplicationAction();
 ```
 
 **Example:**
@@ -941,7 +932,7 @@ public void forceRetryBlockedQueue(String agentId) {
 
 ### ReplicationListener Interface
 
-Listens for replication events in real-time.
+Receives callbacks only for synchronous replication when attached via `ReplicationOptions.setListener()`.
 
 **Official Documentation:** [ReplicationListener JavaDoc](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationListener.html)
 
@@ -1862,11 +1853,11 @@ Solution:
 4. Use getReplicationStatus() to verify activation
 ```
 
-## Related Skills
+## Related Guides
 
-- `configure-replication-agent`: Set up replication agents
-- `replicate-content`: UI-based content activation methods
-- `troubleshoot-replication`: Diagnose and fix replication issues
+- [Configure Replication Agent](./configure-replication-agent.md): Set up replication agents
+- [Replicate Content](./replicate-content.md): UI-based content activation methods
+- [Troubleshoot Replication](./troubleshoot-replication.md): Diagnose and fix replication issues
 
 ## Success Criteria
 

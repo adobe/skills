@@ -9,7 +9,7 @@ Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 **Key Characteristics:**
 - Transport Type: HTTP/HTTPS
 - Default URI Pattern: `http://publish-host:4503/bin/receive?sling:authRequestLogin=1`
-- Serialization Type: Dispatcher Flush
+- Serialization Type: Default
 - Direction: Author → Publish
 
 **When to Use:**
@@ -33,11 +33,15 @@ Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 - Coordinated with Author default agents
 
 **Dispatcher Configuration Required:**
+Add this property inside the applicable farm's `/cache` section in `dispatcher.any`:
 ```apache
 /allowedClients {
-    /0 { /type "allow" /glob "*" }
+    /0000 { /type "deny" /glob "*" }
+    /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP_1>" }
+    /0002 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP_2>" }
 }
 ```
+Replace the placeholders with the publish source IPs Dispatcher actually sees (after NAT/proxy). Never allow arbitrary clients.
 
 ## Reverse Replication Agent
 
@@ -140,7 +144,7 @@ private AgentManager agentManager;
 
 public void checkAgentStatus(String agentId) {
     // Get agent with null check
-    Agent agent = agentManager.getAgent(agentId);
+    Agent agent = agentManager.getAgents().get(agentId);
     
     if (agent == null) {
         LOG.warn("Agent not found: {}", agentId);

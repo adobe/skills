@@ -1,16 +1,10 @@
----
-name: configure-replication-agent
-description: Configure AEM 6.5 LTS replication agents for content publishing, dispatcher cache flushing, and reverse replication
-license: Apache-2.0
----
-
 # Configure AEM Replication Agent
 
-This skill guides you through configuring replication agents in Adobe Experience Manager 6.5 LTS. Replication agents are the core mechanism for distributing content from Author to Publish environments, managing Dispatcher cache, and handling user-generated content flows.
+This guide covers configuring replication agents in Adobe Experience Manager 6.5 LTS. Replication agents are the core mechanism for distributing content from Author to Publish environments, managing Dispatcher cache, and handling user-generated content flows.
 
-## When to Use This Skill
+## When to Use This Guide
 
-Use this skill when you need to:
+Use this guide when you need to:
 - Set up new replication agents for Publish instances
 - Configure Dispatcher Flush agents for cache invalidation
 - Implement Reverse Replication for user-generated content
@@ -282,12 +276,15 @@ Extended Tab:
 ```
 
 **Dispatcher configuration requirements:**
-Ensure Dispatcher `dispatcher.any` has:
+In the applicable farm's `/cache` section in Dispatcher `dispatcher.any`, configure:
 ```
 /allowedClients {
-  /0 { /type "allow" /glob "*publish-instance-ip*" }
+  /0000 { /type "deny" /glob "*" }
+  /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
 }
 ```
+
+Replace the placeholder with the exact publish source IP Dispatcher sees after NAT/proxy; never allow arbitrary clients.
 
 ### Reverse Replication Agent
 
@@ -494,10 +491,10 @@ Monitor:
    - Implement VPN for cross-datacenter replication
    - Whitelist IP addresses
 
-## Related Skills
+## Related Guides
 
-- `replicate-content`: Activate and deactivate content using configured agents
-- `troubleshoot-replication`: Diagnose and fix replication issues
+- [Replicate Content](./replicate-content.md): Activate and deactivate content using configured agents
+- [Troubleshoot Replication](./troubleshoot-replication.md): Diagnose and fix replication issues
 - For AEM as a Cloud Service, see content distribution documentation (different architecture)
 
 ## Success Criteria

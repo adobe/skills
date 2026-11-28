@@ -1,16 +1,10 @@
----
-name: troubleshoot-replication
-description: Diagnose and fix common AEM 6.5 LTS replication issues including blocked queues, connectivity failures, and content distribution problems
-license: Apache-2.0
----
-
 # Troubleshoot AEM 6.5 LTS Replication
 
-This skill provides systematic troubleshooting guidance for Adobe Experience Manager 6.5 LTS replication issues. Use this to diagnose and resolve problems with content distribution, agent configuration, and replication workflows.
+This guide provides systematic troubleshooting guidance for Adobe Experience Manager 6.5 LTS replication issues. Use this to diagnose and resolve problems with content distribution, agent configuration, and replication workflows.
 
-## When to Use This Skill
+## When to Use This Guide
 
-Use this skill when experiencing:
+Use this guide when experiencing:
 - Replication queues blocked or stuck
 - Content not appearing on Publish instances
 - Replication agent showing red/error status
@@ -466,15 +460,23 @@ On Author:
 
 2. **Review Dispatcher configuration:**
    ```
-   dispatcher.any file:
-   /allowedClients {
-     /0 { /type "allow" /glob "*publish-ip*" }
-   }
-   
-   /invalidate {
-     /0000 { /glob "*" /type "allow" }
+   dispatcher.any file, inside the applicable farm:
+   /farms {
+     /<FARM_NAME> {
+       /cache {
+         /allowedClients {
+           /0000 { /type "deny" /glob "*" }
+           /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
+         }
+
+         /invalidate {
+           /0000 { /glob "*" /type "allow" }
+         }
+       }
+     }
    }
    ```
+   Replace the placeholder with the exact publish source IP Dispatcher sees after NAT/proxy; never allow arbitrary clients.
 
 3. **Check Dispatcher logs:**
    ```
@@ -498,16 +500,14 @@ On Publish instance:
 
 **Solution B: Fix Dispatcher Configuration**
 ```
-Edit dispatcher.any:
-
-/allowedClients {
-  /0 { 
-    /type "allow" 
-    /glob "*<publish-instance-ip>*" 
-  }
-}
+Edit `dispatcher.any` in the applicable `/farms/<FARM_NAME>` entry:
 
 /cache {
+  /allowedClients {
+    /0000 { /type "deny" /glob "*" }
+    /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP>" }
+  }
+
   /invalidate {
     /0000 { /glob "*" /type "allow" }
   }
@@ -516,6 +516,8 @@ Edit dispatcher.any:
 Reload Dispatcher:
 apachectl graceful
 ```
+
+Replace the placeholder with the exact publish source IP Dispatcher sees after NAT/proxy; never allow arbitrary clients.
 
 **Solution C: Verify Flush Agent Transport**
 ```
@@ -1036,11 +1038,11 @@ If issue persists after troubleshooting:
    - Share log bundles
    - Include replication queue screenshots
 
-## Related Skills
+## Related Guides
 
-- `configure-replication-agent`: Set up and configure agents properly
-- `replicate-content`: Understand replication methods
-- `replication-api`: Programmatic replication for custom code
+- [Configure Replication Agent](./configure-replication-agent.md): Set up and configure agents properly
+- [Replicate Content](./replicate-content.md): Understand replication methods
+- [Replication API](./replication-api.md): Programmatic replication for custom code
 
 ## Success Criteria
 

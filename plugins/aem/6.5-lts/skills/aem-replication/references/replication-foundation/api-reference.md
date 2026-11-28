@@ -32,6 +32,7 @@ Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 | `setSuppressStatusUpdate()` | boolean | false | Don't update replication metadata |
 | `setFilter()` | AgentFilter | null | Target specific agents only |
 | `setRevision()` | String | null | Replicate specific version |
+| `setListener()` | ReplicationListener | null | Synchronous replication callbacks only |
 
 ### ReplicationStatus
 
@@ -41,46 +42,46 @@ Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `isActivated()` | boolean | True if replicated to at least one agent |
-| `isDeactivated()` | boolean | True if deactivated |
-| `getLastPublished()` | Calendar | Last activation timestamp |
-| `getLastPublishedBy()` | String | User who last activated |
-| `getLastReplicationAction()` | String | Last action (ACTIVATE, DEACTIVATE, etc.) |
-| `getLastReplicatedRevision()` | String | Version ID last replicated |
+| `isActivated()` | boolean | True if the last publish action was ACTIVATE; does not prove delivery |
+| `isDeactivated()` | boolean | True if the last publish action was DEACTIVATE |
+| `getLastPublished()` | Calendar | Time of the last publish action, or null |
+| `getLastPublishedBy()` | String | User who issued the last publish action, or null |
+| `getLastReplicationAction()` | ReplicationActionType | Last action (ACTIVATE, DEACTIVATE, etc.) |
 
 ### AgentManager
 
 **Package:** `com.day.cq.replication.AgentManager`
 
-**Purpose:** Inspect and manage agents
+**Purpose:** Inspect configured agents
 
 | Method | Parameters | Returns | Use Case |
 |--------|-----------|---------|----------|
 | `getAgents()` | - | Map<String, Agent> | Get all agents |
-| `getAgents()` | AgentFilter | Map<String, Agent> | Get filtered agents |
-| `getAgent()` | String agentId | Agent | Get specific agent |
+
+Look up one agent with `agentManager.getAgents().get(agentId)`; filter the returned map in caller code.
 
 ### ReplicationQueue
 
 **Package:** `com.day.cq.replication.ReplicationQueue`
 
-**Purpose:** Inspect queue state (read-only via JMX)
+**Purpose:** Inspect queue entries and status; other API methods can mutate the queue and require authorization.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `getEntries()` | Collection<ReplicationQueueItem> | All queued items |
-| `getSize()` | int | Queue depth |
-| `getState()` | State | IDLE, RUNNING, BLOCKED, PAUSED |
+| `entries()` | List<ReplicationQueue.Entry> | Unmodifiable queued-entry snapshot; `.size()` gives depth |
+| `getStatus()` | ReplicationQueue.Status | Queue status and timing snapshot |
+| `isPaused()` | boolean | Whether queue processing is paused |
 
 ### ReplicationListener
 
 **Package:** `com.day.cq.replication.ReplicationListener`
 
-**Purpose:** Monitor replication events
+**Purpose:** Receive synchronous replication callbacks via `ReplicationOptions.setListener()`; not a general asynchronous queue subscription.
 
 | Method | Parameters | Use Case |
 |--------|-----------|----------|
 | `onStart()` | Agent, ReplicationAction | Replication initiated |
+| `onMessage()` | ReplicationLog.Level, String | Replication log message |
 | `onEnd()` | Agent, ReplicationAction, ReplicationResult | Replication completed |
 | `onError()` | Agent, ReplicationAction, Exception | Replication failed |
 
