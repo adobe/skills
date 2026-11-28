@@ -1,14 +1,6 @@
----
-name: config-authoring
-description: Create, modify, review, and harden configuration for the Adobe Dispatcher Apache HTTP Server module and Apache HTTPD in AEM 6.5 LTS environments only. Use for `.any`, vhost, rewrite, cache, and filter changes.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Config Authoring (AMS)
+
+Use this guide for `.any`, vhost, rewrite, cache, and filter changes.
 
 Design minimal, deterministic changes for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM 6.5/AMS, then verify with MCP evidence.
 

@@ -1,14 +1,6 @@
----
-name: technical-advisory
-description: Provide advisory guidance for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM 6.5 / AMS workflows only, with public-doc citations and AMS-specific MCP verification plans. Use for conceptual questions such as `statfileslevel`, filter rules, URL decomposition, cache invalidation behavior, rewrite behavior, and security headers.
-license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
-allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
-metadata:
-  mcp-tool-contract: core-7-tools
----
-
 # Dispatcher Technical Advisory (AMS)
+
+Use for conceptual Dispatcher questions about rewrite behavior and security headers; cite official docs.
 
 Provide deterministic guidance for AEM 6.5/AMS use cases involving the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration.
 

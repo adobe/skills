@@ -27,14 +27,18 @@ Skills for developing and operating AEM 6.5 LTS and Adobe Managed Services (AMS)
 
 Config authoring, advisory, performance, security, and incident response. Requires [Dispatcher MCP](https://github.com/AdobeDocs/aem-dispatcher-mcp) (`AEM_DEPLOYMENT_MODE=ams`).
 
+Use the [aem-6-5-lts-dispatcher entrypoint](skills/aem-6-5-lts-dispatcher/SKILL.md) to route requests to the specialist guides below.
+
+Migration: the direct skill moved from `skills/dispatcher/SKILL.md` (`dispatcher`) to `skills/aem-6-5-lts-dispatcher/SKILL.md` (`aem-6-5-lts-dispatcher`); specialist guides moved from `skills/dispatcher/<specialist>/SKILL.md` to `skills/aem-6-5-lts-dispatcher/references/<specialist>/GUIDE.md`.
+
 | Skill | Description | Try it |
 |-------|-------------|--------|
-| [config-authoring](skills/dispatcher/config-authoring/SKILL.md) | Create, modify, review, and harden Dispatcher config files (`.any`, vhost, rewrite, cache, filter) for AEM 6.5 LTS and AMS | `Add a new vhost for my AMS site` |
-| [technical-advisory](skills/dispatcher/technical-advisory/SKILL.md) | Conceptual guidance on `statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, and security headers | `Explain statfileslevel for my AMS setup` |
-| [incident-response](skills/dispatcher/incident-response/SKILL.md) | Investigate runtime incidents, failures, and cache anomalies on AMS Dispatcher | `My pages are returning 403 on the AMS dispatcher` |
-| [performance-tuning](skills/dispatcher/performance-tuning/SKILL.md) | Optimize Dispatcher cache efficiency, latency, and throughput for AMS environments | `Tune my AMS dispatcher cache` |
-| [security-hardening](skills/dispatcher/security-hardening/SKILL.md) | Security audits, threat models, exposure control, and header hardening for AMS Dispatcher | `Harden my AMS dispatcher security headers` |
-| [workflow-orchestrator](skills/dispatcher/workflow-orchestrator/SKILL.md) | Orchestrate complete Dispatcher lifecycle from design through validation and incident troubleshooting | `Walk me through AMS dispatcher setup end-to-end` |
+| [config-authoring](skills/aem-6-5-lts-dispatcher/references/config-authoring/GUIDE.md) | Create, modify, review, and harden Dispatcher config files (`.any`, vhost, rewrite, cache, filter) for AEM 6.5 LTS and AMS | `Add a new vhost for my AMS site` |
+| [technical-advisory](skills/aem-6-5-lts-dispatcher/references/technical-advisory/GUIDE.md) | Conceptual guidance on `statfileslevel`, filter rules, URL decomposition, cache invalidation, rewrite behavior, and security headers | `Explain statfileslevel for my AMS setup` |
+| [incident-response](skills/aem-6-5-lts-dispatcher/references/incident-response/GUIDE.md) | Investigate runtime incidents, failures, and cache anomalies on AMS Dispatcher | `My pages are returning 403 on the AMS dispatcher` |
+| [performance-tuning](skills/aem-6-5-lts-dispatcher/references/performance-tuning/GUIDE.md) | Optimize Dispatcher cache efficiency, latency, and throughput for AMS environments | `Tune my AMS dispatcher cache` |
+| [security-hardening](skills/aem-6-5-lts-dispatcher/references/security-hardening/GUIDE.md) | Security audits, threat models, exposure control, and header hardening for AMS Dispatcher | `Harden my AMS dispatcher security headers` |
+| [workflow-orchestrator](skills/aem-6-5-lts-dispatcher/references/workflow-orchestrator/GUIDE.md) | Orchestrate complete Dispatcher lifecycle from design through validation and incident troubleshooting | `Walk me through AMS dispatcher setup end-to-end` |
 
 ### Workflow
 
