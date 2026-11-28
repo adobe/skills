@@ -54,6 +54,8 @@ const PATTERN_TO_SUBTYPES = {
   guavaCache: ["custom.guava.cache"],
   oakIndex: ["oak.index.definition"],
   inputStream: ["java.io.inputstream"],
+  // Not a BPA subtype: ACS AEM Commons rows of any code, collected by the parser.
+  acsCommons: ["acs.commons"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
@@ -442,6 +444,24 @@ function processInputStreamFromUnified(subtypeData, targets, meta = {}) {
 }
 
 /**
+ * Process ACS AEM Commons rows from unified collection (raw identifier → rows of
+ * any BPA code). One target per row, keeping the BPA code, subtype and, for
+ * installed artifacts, version and state.
+ */
+function processAcsCommonsFromUnified(subtypeData, targets) {
+  let count = 0;
+  for (const identifier of Object.keys(subtypeData || {}).sort()) {
+    for (const row of subtypeData[identifier] || []) {
+      count++;
+      const target = new BpaTarget("acsCommons", identifier, row.code, `ACS AEM Commons (${row.code}${row.subtype ? ` ${row.subtype}` : ''})`, "medium");
+      Object.assign(target, { code: row.code, subtype: row.subtype || '' }, row.version ? { version: row.version } : {}, row.state ? { state: row.state } : {});
+      targets.push(target);
+    }
+  }
+  return count;
+}
+
+/**
  * Process a content/legacy-UI subtype whose unified data is keyed by RAW JCR
  * path (no MongoDB round-trip). Emits one target per finding, with the JCR path
  * as `className` (so downstream `location`/`file` resolve to the path) and the
@@ -464,6 +484,11 @@ function processContentFromUnified(subtypeData, targets, pattern, subtype) {
     }
   }
   return count;
+}
+
+/** `{ shown, total }` when the cached BPA CSV was exported with a filter, else null. */
+function getFilteredExport(collectionsDir = './unified-collections') {
+  return readUnifiedCollection(collectionsDir)?.meta?.filteredExport || null;
 }
 
 /**
@@ -552,6 +577,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     guavaCache: processGuavaCacheFromUnified,
     oakIndex: processOakIndexFromUnified,
     inputStream: processInputStreamFromUnified,
+    acsCommons: processAcsCommonsFromUnified,
   };
 
   // Process each pattern — a pattern may map to more than one subtype.
@@ -713,6 +739,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  getFilteredExport,
   hasUnifiedCollection,
   getAvailablePatterns,
   fetchUnifiedBpaFindings,

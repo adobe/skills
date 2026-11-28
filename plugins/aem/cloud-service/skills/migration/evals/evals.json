@@ -40,6 +40,20 @@
         "The agent asks for a BPA CSV, a CAM project or concrete files as the source of the findings"
       ],
       "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "We use ACS AEM Commons 5.7 in this AEM 6.5 project. Upgrade it to the Cloud Service version and fix our ACS configs so it works on AEM as a Cloud Service.",
+      "expected_output": "The agent reads references/integrations/acs-commons.md and runs `node scripts/acs-commons-scan-runner.js <project>` (or the Step 0 runbook). It reports what the project uses and what each item needs: acs-aem-commons-content 5.7.0 is replaced by acs-aem-commons-all with the `cloud` classifier, acs-aem-commons-bundle stays as the `provided` dependency for the Java APIs, Generic Lists is checked against the ACS Commons documentation, and Versioned ClientLibs is not supported on AEM as a Cloud Service. It says the upgrade and this rework are customer-owned work outside the migration skills, and it edits no project file.",
+      "assertions": [
+        "references/integrations/acs-commons.md is read before the agent answers",
+        "No pom.xml, OSGi config or Java file in the project is edited",
+        "acs-aem-commons-content is reported as replaced by acs-aem-commons-all with the cloud classifier",
+        "acs-aem-commons-bundle is kept as a provided dependency, not replaced",
+        "Versioned ClientLibs is reported as not supported on AEM as a Cloud Service",
+        "The agent says the upgrade is customer-owned work outside the migration skills"
+      ],
+      "files": ["files/acs-commons-project"]
     }
   ]
 }

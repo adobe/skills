@@ -100,6 +100,8 @@ const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./
 const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan, scanUnsupportedRunmodes, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
+const { runAcsCommonsScan, isAcsCommonsTarget, linkAcsBpaFindings, summarizeAcsBpaTargets } = require('./acs-commons-scan-runner.js');
+const { getFilteredExport } = require('./unified-collection-reader.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
@@ -297,6 +299,26 @@ const PATTERN_META = {
     promptPattern: 'asset workflow migration',
     sampleOverride: 'Use the migration skill: migrate my DAM asset workflows to AEM as a Cloud Service post-processing workflows and processing profiles.',
   },
+  acsCommons: {
+    label: 'ACS AEM Commons (third-party)',
+    severity: 'medium',
+    strategy: 'content-scan',
+    // ACS AEM Commons is an open-source third-party library, not part of AEM. The
+    // runbook reports the version and the features in use and recommends an upgrade;
+    // it never changes or upgrades it — the customer owns that work.
+    // BPA first: a BPA CSV gives the installed ACS artifacts and the ACS rows of every
+    // BPA code. CAM does not return these rows, so an empty BPA result is not "clean"
+    // (bpaIncomplete), and the local scan always adds the repository's own use (unionLocal).
+    bpaSlugs: ['acsCommons'],
+    bpaIncomplete: true,
+    unionLocal: true,
+    heuristic: true,
+    reportOnly: true,
+    reference: 'references/integrations/acs-commons.md',
+    description: 'ACS AEM Commons: from a BPA CSV, the ACS bundles and packages installed on the source instance (version, state) and the ACS rows of every BPA code; from the repository, the dependency version (and whether the Cloud Service `cloud` classifier is used), Java imports, OSGi configs and content (e.g. Redirect Manager rules), grouped per feature with what each typically needs on AEM as a Cloud Service. Third-party and **customer-owned**: upgrades and compatibility changes are custom development outside the migration skills.',
+    promptPattern: 'acs commons',
+    sampleOverride: 'Use the migration skill: assess my ACS AEM Commons usage for AEM as a Cloud Service (report only, no upgrade).',
+  },
 };
 
 // content-scan strategy → the runner that produces that pattern's findings.
@@ -306,9 +328,17 @@ const CONTENT_SCANNERS = {
   templateModernization: runTemplateScan,
   dispatcherConversion: runDispatcherScan,
   assetWorkflowMigration: runAssetWorkflowScan,
+  acsCommons: runAcsCommonsScan,
+};
+
+// BPA targets → runbook findings for patterns that summarise rather than list one row per target.
+const BPA_SUMMARIZERS = {
+  acsCommons: summarizeAcsBpaTargets,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
+// Report-only patterns (third-party, customer-owned) have no apply workflow, so they stay out of the totals.
+const MIGRATABLE_PATTERNS = CANONICAL_PATTERNS.filter(p => !PATTERN_META[p].reportOnly);
 
 /** Normalize a BPA target into the runbook's display shape. */
 function normalizeBpaTarget(t) {
@@ -426,6 +456,7 @@ async function gatherFindings(options = {}) {
   const cascadePatterns = CANONICAL_PATTERNS.filter(p => PATTERN_META[p].strategy === 'cascade');
   const bpaPatterns = CANONICAL_PATTERNS.filter(p => (PATTERN_META[p].bpaSlugs || []).length > 0);
   const bpaTargetsByPattern = {};
+  const acsBpaTargets = [];
   const scanWarnings = [];
 
   // ── BPA tier (MCP or CSV) — any pattern with bpaSlugs. When a BPA source is
@@ -446,12 +477,20 @@ async function gatherFindings(options = {}) {
           const targets = bpaSubtypeFilter
             ? res.targets.filter(t => bpaSubtypeFilter.includes(t.identifier))
             : res.targets;
+          for (const t of targets) if (pattern !== 'acsCommons' && isAcsCommonsTarget(t)) acsBpaTargets.push({ pattern, target: t });
           if (PATTERN_META[pattern].strategy === 'java-scan') {
             // Kept raw for the java-scan merge below (needs className/identifier/bundle).
             (bpaTargetsByPattern[pattern] = bpaTargetsByPattern[pattern] || []).push(...targets);
           }
-          merged.push(...targets.map(normalizeBpaTarget));
-          mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
+          const summarize = BPA_SUMMARIZERS[pattern];
+          if (summarize) {
+            const summary = summarize(targets);
+            merged.push(...summary.findings);
+            mergedRaw.push(...summary.rawFindings);
+          } else {
+            merged.push(...targets.map(normalizeBpaTarget));
+            mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
+          }
         } else if (res.availablePatterns) {
           // Benign: the report parsed fine but this pattern is absent — a
           // legitimate "clean" result. Stay silent.
@@ -616,18 +655,54 @@ async function gatherFindings(options = {}) {
   if (workspaceRoot) {
     for (const pattern of CANONICAL_PATTERNS) {
       if (PATTERN_META[pattern].strategy !== 'content-scan') continue;
-      if (scannedBy[pattern]) continue; // BPA already provided findings
+      const union = Boolean(scannedBy[pattern] && PATTERN_META[pattern].unionLocal);
+      if (scannedBy[pattern] && !union) continue; // BPA already provided findings
       const scan = CONTENT_SCANNERS[pattern];
       if (!scan) continue;
       const res = scan(workspaceRoot);
       if (res.ok) {
-        findingsByPattern[pattern] = res.findings;
-        rawFindingsByPattern[pattern] = res.rawFindings;
-        sourceByPattern[pattern] = 'content-scan';
-        scannedBy[pattern] = 'content-scan';
+        if (union) {
+          // BPA owns what it reported; the local scan adds what only the repository shows.
+          findingsByPattern[pattern].push(...res.findings);
+          rawFindingsByPattern[pattern].push(...res.rawFindings);
+          sourceByPattern[pattern] = `${sourceByPattern[pattern]}+content-scan`;
+        } else {
+          findingsByPattern[pattern] = res.findings;
+          rawFindingsByPattern[pattern] = res.rawFindings;
+          sourceByPattern[pattern] = 'content-scan';
+        }
+        scannedBy[pattern] = sourceByPattern[pattern];
         if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
       }
     }
+  }
+
+  const acsFromBpa = (rawFindingsByPattern.acsCommons || []).some(r => r.kind === 'bpa' || r.kind === 'bpa-installed');
+
+  // ── A BPA CSV exported with a filter leaves findings out. Only when it also has no ACS AEM
+  //    Commons rows is BPA's ACS Commons filter the likely cause; then the ACS section says so
+  //    (the repository scan still ran). Otherwise the warning names no filter. ──
+  const filtered = bpaMode === 'csv' ? getFilteredExport(collectionsDir) : null;
+  if (filtered) {
+    const hidden = `${filtered.total - filtered.shown} of ${filtered.total} findings`;
+    if (!acsFromBpa && findingsByPattern.acsCommons) {
+      findingsByPattern.acsCommons.push({ location: 'BPA report', detail: `exported with a filter and no ACS AEM Commons rows, so likely the ACS Commons filter: ${hidden} are not in the CSV. Export it again with ACS Commons findings included to list them`, severity: 'medium', informational: true });
+      rawFindingsByPattern.acsCommons.push({ pattern: 'acsCommons', kind: 'bpa-filtered', file: null, line: null, shown: filtered.shown, total: filtered.total, snippet: null });
+      scanWarnings.push(`The BPA CSV was exported with a filter and has no ACS AEM Commons rows: ${hidden} are not in it. If the report's ACS Commons filter was applied, export it again with ACS Commons findings included.`);
+    } else {
+      scanWarnings.push(`The BPA CSV was exported with a filter: ${hidden} are not in it, so findings of any pattern may be missing from this runbook.`);
+    }
+  }
+
+  // ── acsCommons without ACS rows from BPA (CAM today): BPA rows of the other
+  //    patterns raised against ACS AEM Commons itself are listed in its report-only
+  //    section as informational rows; they stay in their own pattern too. ──
+  if (acsBpaTargets.length > 0 && findingsByPattern.acsCommons && !acsFromBpa) {
+    const linked = linkAcsBpaFindings(acsBpaTargets);
+    findingsByPattern.acsCommons.push(...linked.findings);
+    rawFindingsByPattern.acsCommons.push(...linked.rawFindings);
+    sourceByPattern.acsCommons = scannedBy.acsCommons ? `${sourceByPattern.acsCommons}+${bpaMode}` : bpaMode;
+    scannedBy.acsCommons = sourceByPattern.acsCommons;
   }
 
   // ── Strategy 'java-scan': inputStream. Same precedence as the other BPA
@@ -720,8 +795,8 @@ function renderRunbook(gathered, ctx = {}) {
   const root = ctx.workspaceRoot;
   const lines = [];
 
-  const total = CANONICAL_PATTERNS.reduce((n, p) => n + actionable(findingsByPattern[p]).length, 0);
-  const withFindings = CANONICAL_PATTERNS.filter(p => actionable(findingsByPattern[p]).length > 0);
+  const total = MIGRATABLE_PATTERNS.reduce((n, p) => n + actionable(findingsByPattern[p]).length, 0);
+  const withFindings = MIGRATABLE_PATTERNS.filter(p => actionable(findingsByPattern[p]).length > 0);
 
   lines.push('# AEM Cloud Service — Migration Runbook');
   lines.push('');
@@ -736,7 +811,7 @@ function renderRunbook(gathered, ctx = {}) {
   lines.push('|-------|-------|');
   lines.push(`| Generated | ${ctx.generatedAt || new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC |`);
   lines.push(`| Total findings | **${total}** |`);
-  lines.push(`| Patterns with findings | **${withFindings.length}** of ${CANONICAL_PATTERNS.length} |`);
+  lines.push(`| Patterns with findings | **${withFindings.length}** of ${MIGRATABLE_PATTERNS.length} |`);
   lines.push('');
 
   lines.push('### Findings by pattern');
@@ -749,7 +824,7 @@ function renderRunbook(gathered, ctx = {}) {
     const src = needsLlmScan.includes(p)
       ? '_needs LLM scan_'
       : sourceLabel(sourceByPattern[p]);
-    lines.push(`| ${meta.label} | ${meta.severity} | ${count === 0 ? '—' : `**${count}**`} | ${src} |`);
+    lines.push(`| ${meta.label} | ${meta.reportOnly ? 'report only' : meta.severity} | ${count === 0 ? '—' : `**${count}**`} | ${src} |`);
   }
   lines.push('');
 
@@ -775,6 +850,10 @@ function renderRunbook(gathered, ctx = {}) {
     lines.push('');
     lines.push(meta.description);
     lines.push('');
+    if (meta.reportOnly) {
+      lines.push(`> 🧾 **Report only — third-party, customer-owned.** The migration skill never upgrades or changes it. Share this list with the customer and plan the upgrade and any rework as custom development; see \`${meta.reference}\`.`);
+      lines.push('');
+    }
     if (meta.heuristic) {
       lines.push(`> ⚠️ **Heuristic detection** (${sourceLabel(sourceByPattern[p], 'non-deterministic')}) — these are candidate matches, not compiler/BPA-validated findings. Re-confirm each one before editing.`);
       if (meta.needsReview) {
@@ -954,14 +1033,14 @@ async function generateRunbook(options = {}) {
   let totalFindings = 0;
   for (const p of CANONICAL_PATTERNS) {
     patternCounts[p] = actionable(gathered.findingsByPattern[p]).length;
-    totalFindings += patternCounts[p];
+    if (!PATTERN_META[p].reportOnly) totalFindings += patternCounts[p];
   }
 
   return {
     success: true,
     outputPath,
     cachePath,
-    message: `Runbook written to ${outputPath} — ${totalFindings} findings across ${CANONICAL_PATTERNS.filter(p => patternCounts[p] > 0).length} pattern(s).`,
+    message: `Runbook written to ${outputPath} — ${totalFindings} findings across ${MIGRATABLE_PATTERNS.filter(p => patternCounts[p] > 0).length} pattern(s).`,
     totalFindings,
     patternCounts,
     needsLlmScan: gathered.needsLlmScan,

@@ -20,6 +20,7 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
 - Points to **`code-assessment`** for all detailed transformation steps
 - **Template modernization:** static → editable templates and AEM Modernize Tools rules (`references/template-modernization/`)
 - **`java.io.InputStream` advisories (`inputStream`):** triage and remediation of the BPA `DG` / `java.io.inputstream` findings (`references/input-stream.md`), driven by the deterministic scanner `scripts/input-stream-runner.js`. BPA findings come first (CAM, then a BPA CSV); the scanner checks the whole workspace only when BPA has none. This is migration-only, with no `code-assessment` pattern guide.
+- **ACS AEM Commons (`acsCommons`, report only):** the runbook lists the ACS Commons packages, the features in use and related BPA findings, with what each needs on Cloud Service (`references/integrations/acs-commons.md`, `scripts/acs-commons-scan-runner.js`). Third-party and customer-owned: the skill never upgrades or changes it.
 - **Legacy UI migration (`legacy-ui/`)**: Extensible folder for legacy UI remediation. Current sub-folders:
   - `dialog/` — Classic UI (ExtJS `cq:Dialog`) → Coral 3 `_cq_dialog`; Coral 2 in-place upgrade. BPA `lui` pattern (dialog sub-types only). Handles listeners, optionsProvider, namePrefix, filter.xml.
   - `cdw/` — Custom ExtJS widget (`cq:Widget` with unknown xtype) → known Coral 3 mapping or scaffolded Granite UI form component. BPA `cdw` pattern.
